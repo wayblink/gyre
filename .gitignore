@@ -1,0 +1,23 @@
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime data and logs
+data/
+tmp/
+*.log
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Browser/tooling scratch state
+.playwright-mcp/
+
+# Temporary local test files
+tmp-save-test.txt

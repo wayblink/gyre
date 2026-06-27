@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CapTable Equity Management</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">CT</div>
+                <div class="logo-text">
+                    <div class="logo-title">CapTable</div>
+                    <div class="logo-subtitle">Equity Management</div>
+                </div>
+                <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="收起导航栏" aria-expanded="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M15 18l-6-6 6-6"></path>
+                    </svg>
+                </button>
+            </div>
+            <nav class="nav-menu">
+                <div class="nav-item active" data-page="summary">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                    </span>
+                    <span class="nav-text">Summary</span>
+                </div>
+                <div class="nav-item" data-page="monthly">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    </span>
+                    <span class="nav-text">Monthly Updates</span>
+                </div>
+                <div class="nav-item" data-page="files">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M8 9h2"/></svg>
+                    </span>
+                    <span class="nav-text">Files</span>
+                </div>
+                <div class="nav-item" data-page="workflow">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8"/><path d="M7.5 7.5l3 7"/><path d="M16.5 7.5l-3 7"/></svg>
+                    </span>
+                    <span class="nav-text">Workflow</span>
+                </div>
+                <div class="nav-item" data-page="holdings">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    </span>
+                    <span class="nav-text">Holdings</span>
+                </div>
+                <div class="nav-item" data-page="employees">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
+                    </span>
+                    <span class="nav-text">Employees</span>
+                </div>
+                <div class="nav-item" data-page="settings">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.68 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.32 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    </span>
+                    <span class="nav-text">Settings</span>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <div class="page-title" id="pageTitle">Summary</div>
+                <div class="user-info">
+                    <span class="user-name">Administrator</span>
+                    <div class="user-avatar">A</div>
+                </div>
+            </header>
+
+            <!-- Page Container -->
+            <div class="page-container" id="pageContainer">
+                <!-- Summary Page -->
+                <section class="page-section active" id="page-summary">
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label">Month</label>
+                            <input type="month" id="monthPicker" class="search-input" value="2026-05">
+                            <button class="btn btn-primary" id="btnSearch">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search
+                            </button>
+                            <button class="btn btn-secondary" id="btnReset">Reset</button>
+                        </div>
+                        <div class="search-actions">
+                            <div class="summary-source-config">
+                                <select id="capitalizationSourceFile" class="search-input summary-source-select">
+                                    <option value="">默认快照数据</option>
+                                </select>
+                                <input type="text" id="capitalizationSourceSheet" class="search-input summary-source-sheet" placeholder="Sheet 名，可选">
+                                <button class="btn btn-secondary" id="btnSaveCapitalizationSource" type="button">Set Source</button>
+                            </div>
+                            <button class="btn btn-secondary" id="btnExport">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Export
+                            </button>
+                            <button class="btn btn-secondary" id="btnSaveSummaryToFiles">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                Save to Files
+                            </button>
+                            <button class="btn btn-secondary" id="btnRefresh">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="info-banner" id="currentMonthInfo">
+                        <span class="info-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        </span>
+                        <span class="info-text">Current View: <strong id="currentMonthText">May 2026</strong> Equity Data</span>
+                        <span class="info-badge">EOM: <span id="eomDate">2026/5/31</span></span>
+                        <span class="info-badge" id="capitalizationSourceBadge">Capitalization Source: Snapshot</span>
+                    </div>
+
+                    <!-- Table 1: Shares OS Reconciliation -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                                Shares OS Reconciliation
+                            </h3>
+                            <span class="card-subtitle">Equity Outstanding as of</span>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table table-reconciliation" id="reconciliationTable">
+                                <thead>
+                                    <tr>
+                                        <th rowspan="2" class="col-description">Item</th>
+                                        <th rowspan="2" class="col-date">Date</th>
+                                        <th class="col-group" colspan="3">Shares Outstanding</th>
+                                    </tr>
+                                    <tr>
+                                        <th>Last Month</th>
+                                        <th>New Shares</th>
+                                        <th>EOM Balance OS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reconciliationBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Table 2: Capitalization Table -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                                Capitalization Table (Summary View)
+                            </h3>
+                            <span class="card-subtitle">Capital Structure Overview</span>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table table-capitalization" id="capitalizationTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width:50px;">Number</th>
+                                        <th class="col-description">Description</th>
+                                        <th class="col-number">Common Shares Equivalent</th>
+                                        <th class="col-percent">% of fully diluted</th>
+                                        <th class="col-formula">Formula</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="capitalizationBody"></tbody>
+                                <tfoot>
+                                    <tr class="total-row-blue">
+                                        <td></td>
+                                        <td style="text-align:left; font-weight:var(--font-bold);">Total Fully Diluted Shares Outstand</td>
+                                        <td id="totalShares" style="font-weight:var(--font-bold);">133,527,448</td>
+                                        <td style="font-weight:var(--font-bold);">100%</td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="card card-notes">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                Notes
+                            </h3>
+                            <button class="btn btn-primary btn-sm" id="btnAddNote">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                Add Note
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="notes-container" id="notesContainer"></div>
+                            <div class="add-note-form hidden" id="addNoteForm">
+                                <textarea id="noteContent" class="note-input" placeholder="Enter note content..." rows="3"></textarea>
+                                <div class="note-form-actions">
+                                    <button class="btn btn-primary" id="btnSaveNote">Save Note</button>
+                                    <button class="btn btn-secondary" id="btnCancelNote">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Monthly Updates Page -->
+                <section class="page-section" id="page-monthly">
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label">Month</label>
+                            <input type="month" id="monthPickerMonthly" class="search-input">
+                            <button class="btn btn-primary" id="btnSearchMonthly">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search
+                            </button>
+                        </div>
+                        <div class="search-actions">
+                            <button class="btn btn-success" id="btnAddUpdate">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                New Update Plan
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-label">Total Plans</div>
+                            <div class="stat-value" id="planTotalCount">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Completed</div>
+                            <div class="stat-value stat-success" id="planCompletedCount">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">In Progress</div>
+                            <div class="stat-value stat-warning" id="planInProgressCount">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Pending</div>
+                            <div class="stat-value stat-info" id="planPendingCount">-</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                Monthly Update Plans
+                            </h3>
+                            <span class="card-subtitle">Manage data update plans by month</span>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table" id="monthlyUpdateTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width:60px;">No.</th>
+                                        <th>Month</th>
+                                        <th>Operation Time</th>
+                                        <th>Operator</th>
+                                        <th>Status</th>
+                                        <th style="width:280px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="monthlyUpdateBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- File Check Modal -->
+                    <div class="modal-overlay hidden" id="fileCheckModal">
+                        <div class="modal-container modal-large">
+                            <div class="modal-header">
+                                <h3 class="modal-title" id="modalTitle">Data Update - File Check</h3>
+                                <button class="modal-close" id="btnCloseModal">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                            <div class="step-tip">
+                                <span class="step-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                </span>
+                                <div class="step-text">
+                                    <strong>Tip:</strong> Upload the following files to complete data update check. File upload is <span class="highlight-blue">optional</span>.
+                                </div>
+                                <button class="btn btn-secondary btn-sm" id="btnSkipUpload">Skip Step &rarr;</button>
+                            </div>
+                            <div class="modal-info">
+                                <div class="info-item">
+                                    <span class="info-label">Month:</span>
+                                    <span class="info-value" id="modalMonth">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Operator:</span>
+                                    <span class="info-value" id="modalOperator">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Status:</span>
+                                    <span class="info-value" id="modalStatus">-</span>
+                                </div>
+                            </div>
+                            <div id="sourceTablesContainer">
+                                <!-- Table 1: Fixed Values -->
+                                <div class="source-table-section">
+                                    <div class="source-table-title">Fixed Value</div>
+                                    <table class="source-table" id="fixedValueTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Item</th>
+                                                <th>Value</th>
+                                                <th style="width:80px;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="fixedValueBody"></tbody>
+                                    </table>
+                                </div>
+                                <!-- Table 2: Table sourced from Shareworks -->
+                                <div class="source-table-section">
+                                    <div class="source-table-title">Table sourced from Shareworks</div>
+                                    <table class="source-table" id="shareworksTable">
+                                        <thead>
+                                            <tr>
+                                                <th>File Name</th>
+                                                <th style="width:80px;">Is required</th>
+                                                <th>Uploaded file</th>
+                                                <th>Item</th>
+                                                <th style="width:50px;">Status</th>
+                                                <th style="width:120px;">Value</th>
+                                                <th style="width:80px;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="shareworksBody"></tbody>
+                                    </table>
+                                </div>
+                                <!-- Table 3: Table sourced from Futu -->
+                                <div class="source-table-section">
+                                    <div class="source-table-title">Table sourced from Futu</div>
+                                    <table class="source-table" id="futuTable">
+                                        <thead>
+                                            <tr>
+                                                <th>File Name</th>
+                                                <th style="width:80px;">Is required</th>
+                                                <th>Uploaded file</th>
+                                                <th>Extracted Value</th>
+                                                <th style="width:50px;">Status</th>
+                                                <th style="width:120px;">Value</th>
+                                                <th style="width:80px;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="futuBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" id="btnSaveExit">Save & Exit</button>
+                                <button class="btn btn-primary" id="btnConfirmUpdate">Confirm & Update Data</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Add Plan Modal -->
+                    <div class="modal-overlay hidden" id="addPlanModal">
+                        <div class="modal-container" style="max-width:560px;">
+                            <div class="modal-header">
+                                <h3 class="modal-title">New Monthly Update Plan</h3>
+                                <button class="modal-close" id="btnCloseAddModal">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label>Month <span style="color:var(--danger-500);">*</span></label>
+                                    <input type="month" id="newPlanMonth" class="form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label>Operator <span style="color:var(--danger-500);">*</span></label>
+                                    <input type="text" id="newPlanOperator" class="form-input" value="Gu" placeholder="Enter operator name">
+                                </div>
+                                <div class="form-group">
+                                    <label>Remark</label>
+                                    <textarea id="newPlanRemark" class="form-input" rows="3" placeholder="Optional description..."></textarea>
+                                </div>
+
+                                <!-- Upload Files Section -->
+                                <div class="upload-section" id="uploadSection">
+                                    <div class="upload-section-header">
+                                        <label class="upload-section-title">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;vertical-align:middle;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                            Upload Files
+                                        </label>
+                                        <span class="upload-hint">Supports multiple files</span>
+                                    </div>
+                                    <div class="upload-dropzone" id="uploadDropzone">
+                                        <input type="file" id="fileInput" multiple style="display:none;">
+                                        <div class="upload-dropzone-content" id="dropzoneContent">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="upload-dropzone-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                            <div class="upload-dropzone-text">
+                                                <span class="upload-dropzone-main">Drag & drop files here, or <span class="upload-browse-link">browse</span></span>
+                                                <span class="upload-dropzone-sub">All file types accepted</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="upload-file-list" id="uploadFileList"></div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" id="btnCancelAddModal">Cancel</button>
+                                <button class="btn btn-primary" id="btnSubmitAdd">Create Plan</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Files Page -->
+                <section class="page-section" id="page-files">
+                    <div class="workspace workspace--embedded" id="filesWorkspace">
+                        <button class="rail rail--left hidden" id="filesCollapsedRail" title="展开 文件列表" aria-label="展开 文件列表">
+                            <span class="rail__arrow">›</span>
+                            <span class="rail__label">文件列表</span>
+                        </button>
+
+                        <div class="pane pane--left" id="filesLeftPane">
+                            <aside class="workbook-list">
+                                <div class="card-collapse card-collapse--left">
+                                    <button
+                                        class="card-collapse__btn"
+                                        id="btnCollapseFilesPane"
+                                        aria-label="收起表格列表"
+                                        title="收起"
+                                        type="button"
+                                    >
+                                        «
+                                    </button>
+                                </div>
+
+                                <div class="workbook-list__upload">
+                                    <button type="button" class="workbook-list__new" id="btnUploadProductFile">
+                                        上传 Excel
+                                    </button>
+                                </div>
+
+                                <div class="workbook-list__header">
+                                    <div>
+                                        <h2>表格列表</h2>
+                                        <p id="filesCountBadge">0 个</p>
+                                    </div>
+                                    <div class="workbook-list__actions">
+                                        <button type="button" class="btn btn-secondary btn-sm" id="btnSaveProductFile" disabled>保存</button>
+                                        <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshFiles">刷新</button>
+                                    </div>
+                                </div>
+
+                                <div class="workbook-list__items" id="productFilesList"></div>
+                            </aside>
+                        </div>
+
+                        <div class="divider" id="filesWorkspaceDivider" role="separator" aria-orientation="vertical"></div>
+
+                        <section class="sheet-card">
+                            <div class="files-empty-state" id="fileBrowserEmpty">
+                                选择左侧文件后可在页面内查看完整 Excel 工作簿。
+                            </div>
+                            <div class="univer-container hidden" id="productWorkbookViewer"></div>
+                        </section>
+                    </div>
+                </section>
+
+                <section class="page-section" id="page-workflow">
+                    <div class="workflow-page" id="workflowPageLayout">
+                        <button class="rail rail--left hidden" id="workflowCollapsedRail" title="展开 Workflows" aria-label="展开 Workflows">
+                            <span class="rail__arrow">›</span>
+                            <span class="rail__label">Workflows</span>
+                        </button>
+
+                        <aside class="workflow-sidebar" id="workflowSidebar">
+                            <div class="card-collapse card-collapse--left">
+                                <button
+                                    class="card-collapse__btn"
+                                    id="btnToggleWorkflowSidebar"
+                                    aria-label="收起 Workflows"
+                                    title="收起"
+                                    type="button"
+                                >
+                                    «
+                                </button>
+                            </div>
+                            <div class="workflow-sidebar__header">
+                                <div>
+                                    <h3>Workflows</h3>
+                                </div>
+                                <div class="workflow-sidebar__actions">
+                                    <button class="btn btn-secondary btn-sm" id="btnImportWorkflow">Import</button>
+                                    <input id="workflowImportInput" type="file" accept="application/json,.json" hidden>
+                                    <button class="btn btn-primary btn-sm" id="btnCreateWorkflow">New</button>
+                                </div>
+                            </div>
+                            <div class="workflow-list" id="workflowList"></div>
+                        </aside>
+
+                        <section class="workflow-canvas">
+                            <header class="workflow-toolbar">
+                                <div class="workflow-toolbar__meta">
+                                    <div class="workflow-toolbar__identity">
+                                        <input id="workflowNameInput" class="search-input workflow-input workflow-input--title" placeholder="Workflow name">
+                                        <div class="workflow-toolbar__description" id="workflowDescriptionPanel">
+                                            <div class="workflow-toolbar__description-row" id="workflowDescriptionDisplayRow">
+                                                <div class="workflow-toolbar__description-text" id="workflowDescriptionText">No description</div>
+                                                <button class="workflow-toolbar__description-edit" id="btnEditWorkflowDescription" type="button" aria-label="编辑工作流描述" title="编辑描述">
+                                                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                                                        <path d="M14.69 2.86a1.5 1.5 0 0 1 2.12 2.12l-8.18 8.18-3.27.82.82-3.27 8.5-8.5Zm-7.9 8.92-.3 1.2 1.2-.3 7.88-7.88-1.06-1.06-7.72 7.72Z" fill="currentColor"></path>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            <textarea id="workflowDescriptionInput" class="workflow-toolbar__description-input hidden" rows="3" placeholder="Description"></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="workflow-toolbar__actions">
+                                    <button class="btn btn-secondary" id="btnAddWorkflowTask">Add Task</button>
+                                    <button class="btn btn-secondary" id="btnAutoLayoutWorkflow">Auto Layout</button>
+                                    <button class="btn btn-secondary" id="btnExecuteWorkflow">Execute</button>
+                                    <button class="btn btn-primary" id="btnSaveWorkflow">Save</button>
+                                    <button class="btn btn-danger" id="btnDeleteWorkflow">Delete</button>
+                                </div>
+                            </header>
+
+                            <section class="workflow-run-panel hidden" id="workflowRunPanel">
+                                <div class="workflow-run-panel__header">
+                                    <div>
+                                        <h3>Execution</h3>
+                                        <p id="workflowRunSummary">Ready to run</p>
+                                    </div>
+                                    <button class="btn btn-secondary btn-sm" id="btnToggleWorkflowRunPanel" type="button">Hide</button>
+                                </div>
+                                <div class="workflow-run-panel__progress">
+                                    <div class="workflow-run-panel__progress-bar">
+                                        <span id="workflowRunProgressBar"></span>
+                                    </div>
+                                    <span class="workflow-run-panel__progress-text" id="workflowRunProgressText">0 / 0</span>
+                                </div>
+                                <div class="workflow-run-panel__list" id="workflowRunTaskList"></div>
+                                <div class="workflow-run-panel__footer" id="workflowRunFooter"></div>
+                            </section>
+
+                            <div class="workflow-dag" id="workflowDag"></div>
+                        </section>
+
+                        <button class="rail rail--right hidden" id="workflowInspectorCollapsedRail" title="展开 Operators" aria-label="展开 Operators">
+                            <span class="rail__arrow">‹</span>
+                            <span class="rail__label">Operators</span>
+                        </button>
+
+                        <aside class="workflow-inspector" id="workflowInspector">
+                            <div class="card-collapse card-collapse--right">
+                                <button
+                                    class="card-collapse__btn"
+                                    id="btnToggleWorkflowInspector"
+                                    aria-label="收起 Operators"
+                                    title="收起"
+                                    type="button"
+                                >
+                                    »
+                                </button>
+                            </div>
+                            <div class="workflow-inspector__section workflow-inspector__section--operators">
+                                <div class="workflow-inspector__title-row">
+                                    <div class="workflow-inspector__title-group">
+                                        <h3>Operators</h3>
+                                        <span class="workflow-count-badge" id="workflowOperatorCount">0</span>
+                                    </div>
+                                </div>
+                                <div class="workflow-operators" id="workflowOperators"></div>
+                            </div>
+                        </aside>
+                    </div>
+                </section>
+
+                <div class="modal-overlay hidden" id="workflowTaskModal">
+                    <div class="modal-container workflow-task-modal">
+                        <div class="modal-header">
+                            <h3 class="modal-title">Task Editor</h3>
+                            <button class="modal-close" id="btnCloseWorkflowTaskModal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="workflow-task-editor hidden" id="workflowTaskEditor">
+                                <div class="workflow-field">
+                                    <label class="workflow-field__label" for="taskNameInput">Task Name</label>
+                                    <input id="taskNameInput" class="search-input workflow-input" placeholder="Task name">
+                                </div>
+                                <div class="workflow-field">
+                                    <label class="workflow-field__label" for="taskDescriptionInput">Description</label>
+                                    <textarea id="taskDescriptionInput" class="workflow-description-input workflow-description-input--sm" placeholder="Task description"></textarea>
+                                </div>
+                                <div class="workflow-field">
+                                    <textarea id="taskParamsInput" class="workflow-code-input hidden" spellcheck="false" placeholder='{"sheetName":"Detailed Cap Table"}'></textarea>
+                                </div>
+                                <div class="workflow-structured hidden" id="workflowStructuredParams">
+                                    <div class="workflow-structured__title">Structured Params</div>
+                                    <div class="workflow-structured__row" id="workflowStructuredFileRow">
+                                        <label class="workflow-structured__label" for="workflowPreviewFileId">File</label>
+                                        <select id="workflowPreviewFileId" class="search-input workflow-select"></select>
+                                    </div>
+                                    <div class="workflow-structured__row" id="workflowStructuredSheetRow">
+                                        <label class="workflow-structured__label" for="workflowPreviewSheetName">Sheet</label>
+                                        <input id="workflowPreviewSheetName" class="search-input workflow-input" placeholder="Detailed Cap Table">
+                                    </div>
+                                    <div class="workflow-structured__row" id="workflowStructuredRangeRow">
+                                        <label class="workflow-structured__label" for="workflowPreviewRange">Range</label>
+                                        <input id="workflowPreviewRange" class="search-input workflow-input" placeholder="B3:F20">
+                                    </div>
+                                    <div class="workflow-structured__row" id="workflowStructuredHeaderRow">
+                                        <label class="workflow-structured__label" for="workflowPreviewHeaderRow">Header Row</label>
+                                        <input id="workflowPreviewHeaderRow" class="search-input workflow-input" type="number" min="1" placeholder="3">
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredSectionsRow">
+                                        <div id="workflowSectionsEditor"></div>
+                                    </div>
+                                    <div class="workflow-structured__row" id="workflowStructuredDependenciesRow">
+                                        <div id="workflowDependenciesEditor"></div>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredSqlTablesRow">
+                                        <div id="workflowSqlTables"></div>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredSqlRow">
+                                        <label class="workflow-structured__label" for="workflowSqlInput">SQL</label>
+                                        <textarea id="workflowSqlInput" class="workflow-code-input" spellcheck="false" placeholder="select count(*) as total from {source}"></textarea>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredPersistInputRow">
+                                        <label class="workflow-structured__label" for="workflowPersistInputSource">Input</label>
+                                        <select id="workflowPersistInputSource" class="search-input workflow-select"></select>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredPersistFileNameRow">
+                                        <label class="workflow-structured__label" for="workflowPersistFileName">File Name</label>
+                                        <input id="workflowPersistFileName" class="search-input workflow-input" placeholder="workflow-output.xlsx">
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredPersistSheetNameRow">
+                                        <label class="workflow-structured__label" for="workflowPersistSheetName">Sheet</label>
+                                        <input id="workflowPersistSheetName" class="search-input workflow-input" placeholder="Sheet1">
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredPersistUploadedByRow">
+                                        <label class="workflow-structured__label" for="workflowPersistUploadedBy">Uploaded By</label>
+                                        <input id="workflowPersistUploadedBy" class="search-input workflow-input" placeholder="Workflow">
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredAssertInputRow">
+                                        <label class="workflow-structured__label" for="workflowAssertInputSource">Input</label>
+                                        <select id="workflowAssertInputSource" class="search-input workflow-select"></select>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredAssertOperatorRow">
+                                        <label class="workflow-structured__label" for="workflowAssertOperator">Operator</label>
+                                        <select id="workflowAssertOperator" class="search-input workflow-select">
+                                            <option value=">">&gt;</option>
+                                            <option value=">=">&gt;=</option>
+                                            <option value="<">&lt;</option>
+                                            <option value="<=">&lt;=</option>
+                                            <option value="=">=</option>
+                                            <option value="!=">!=</option>
+                                        </select>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredAssertExpectedRow">
+                                        <label class="workflow-structured__label" for="workflowAssertExpectedValue">Expected Value</label>
+                                        <input id="workflowAssertExpectedValue" class="search-input workflow-input" placeholder="0">
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredSchemaModeRow">
+                                        <label class="workflow-structured__label" for="workflowAssertSchemaMode">Schema Mode</label>
+                                        <select id="workflowAssertSchemaMode" class="search-input workflow-select">
+                                            <option value="contains">Contains columns</option>
+                                            <option value="exact">Exact columns and order</option>
+                                        </select>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredSchemaColumnsRow">
+                                        <label class="workflow-structured__label" for="workflowAssertSchemaColumns">Expected Columns</label>
+                                        <textarea id="workflowAssertSchemaColumns" class="search-input workflow-textarea" rows="3" placeholder="column_a, column_b"></textarea>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredShapeRowsRow">
+                                        <label class="workflow-structured__label">Rows</label>
+                                        <div class="workflow-structured__grid">
+                                            <select id="workflowShapeRowOperator" class="search-input workflow-select">
+                                                <option value="any">Any</option>
+                                                <option value=">">&gt;</option>
+                                                <option value=">=">&gt;=</option>
+                                                <option value="<">&lt;</option>
+                                                <option value="<=">&lt;=</option>
+                                                <option value="=">=</option>
+                                                <option value="!=">!=</option>
+                                            </select>
+                                            <input id="workflowShapeExpectedRows" class="search-input workflow-input" type="number" min="0" placeholder="1">
+                                        </div>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredShapeColumnsRow">
+                                        <label class="workflow-structured__label">Columns</label>
+                                        <div class="workflow-structured__grid">
+                                            <select id="workflowShapeColumnOperator" class="search-input workflow-select">
+                                                <option value="any">Any</option>
+                                                <option value=">">&gt;</option>
+                                                <option value=">=">&gt;=</option>
+                                                <option value="<">&lt;</option>
+                                                <option value="<=">&lt;=</option>
+                                                <option value="=">=</option>
+                                                <option value="!=">!=</option>
+                                            </select>
+                                            <input id="workflowShapeExpectedColumns" class="search-input workflow-input" type="number" min="0" placeholder="1">
+                                        </div>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredAssertStrategyRow">
+                                        <label class="workflow-structured__label" for="workflowAssertFailureStrategy">Failure Strategy</label>
+                                        <select id="workflowAssertFailureStrategy" class="search-input workflow-select">
+                                            <option value="block">Block workflow</option>
+                                            <option value="warning">Warning, require review</option>
+                                            <option value="pass-through">Pass through</option>
+                                        </select>
+                                    </div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredAssertMessageRow">
+                                        <label class="workflow-structured__label" for="workflowAssertFailureMessage">Failure Message</label>
+                                        <input id="workflowAssertFailureMessage" class="search-input workflow-input" placeholder="Assertion failed">
+                                    </div>
+                                </div>
+                                <div class="workflow-preview hidden" id="workflowPreviewPanel">
+                                    <div class="workflow-inspector__title-row">
+                                        <h3>Preview</h3>
+                                        <button class="btn btn-secondary btn-sm" id="btnPreviewWorkflowTask" type="button">Preview</button>
+                                    </div>
+                                    <div class="workflow-preview__summary" id="workflowPreviewSummary"></div>
+                                    <div class="workflow-preview__table-wrap" id="workflowPreviewTable"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" id="btnRemoveWorkflowTask" type="button">Remove Task</button>
+                            <button class="btn btn-primary" id="btnDoneWorkflowTask" type="button">Done</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay hidden" id="workflowBindingPreviewModal">
+                    <div class="modal-container workflow-binding-preview-modal">
+                        <div class="modal-header">
+                            <h3 class="modal-title" id="workflowBindingPreviewTitle">Dataset Preview</h3>
+                            <button class="modal-close" id="btnCloseWorkflowBindingPreviewModal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="workflow-preview">
+                                <div class="workflow-preview__summary" id="workflowBindingPreviewSummary"></div>
+                                <div class="workflow-preview__table-wrap" id="workflowBindingPreviewTable"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay hidden" id="workflowOperatorPickerModal">
+                    <div class="modal-container workflow-operator-picker-modal">
+                        <div class="modal-header">
+                            <h3 class="modal-title">Select Operator</h3>
+                            <button class="modal-close" id="btnCloseWorkflowOperatorPickerModal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="workflow-field">
+                                <label class="workflow-field__label" for="workflowOperatorPickerSelect">Operator</label>
+                                <select id="workflowOperatorPickerSelect" class="search-input workflow-select"></select>
+                            </div>
+                            <div class="workflow-operator-picker__summary" id="workflowOperatorPickerSummary"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" id="btnCancelWorkflowOperatorPicker" type="button">Cancel</button>
+                            <button class="btn btn-primary" id="btnConfirmWorkflowOperatorPicker" type="button">Create Task</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Holdings Page -->
+                <section class="page-section" id="page-holdings">
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label">Search</label>
+                            <input type="text" id="searchHolder" class="search-input" placeholder="Search by name, plan, grant...">
+                            <label class="search-label">Tag</label>
+                            <input type="text" id="filterHoldingsTag" class="search-input" placeholder="Filter by employee tag">
+                            <label class="search-label">Incentive Type</label>
+                            <select id="filterGrantType" class="form-input" style="min-width:160px;height:36px;">
+                                <option value="">All Types</option>
+                                <option value="Option">Option</option>
+                            </select>
+                            <button class="btn btn-primary" id="btnSearchHoldings">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                Equity Grant Detail
+                            </h3>
+                            <span class="card-subtitle">Imported grant records aligned to the award workbook</span>
+                        </div>
+                        <div class="card-body" style="overflow-x:auto;">
+                            <table class="data-table table-holdings" id="holdingsTable">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width:60px;">No.<br><span class="sub-label">序号</span></th>
+                                        <th style="min-width:140px;">Employee Name<br><span class="sub-label">姓名</span></th>
+                                        <th style="min-width:100px;">Employee No.<br><span class="sub-label">工号</span></th>
+                                        <th style="min-width:120px;">User ID<br><span class="sub-label">用户ID</span></th>
+                                        <th style="min-width:180px;">Tags<br><span class="sub-label">标签</span></th>
+                                        <th style="min-width:100px;">Grant No.<br><span class="sub-label">授予编号</span></th>
+                                        <th style="min-width:120px;">Incentive Type<br><span class="sub-label">激励类型</span></th>
+                                        <th style="min-width:110px;">Grant Date<br><span class="sub-label">授予日期</span></th>
+                                        <th style="min-width:120px;" class="col-number">Grant Qty<br><span class="sub-label">授予数量</span></th>
+                                        <th style="min-width:120px;" class="col-number">Grant Price<br><span class="sub-label">授予价(USD)</span></th>
+                                        <th style="min-width:110px;">Expire Date<br><span class="sub-label">到期日</span></th>
+                                        <th style="min-width:220px;">Plan Name<br><span class="sub-label">所属计划</span></th>
+                                        <th style="min-width:110px;">Condition Rule<br><span class="sub-label">条件规则</span></th>
+                                        <th style="min-width:110px;">Portal Visibility<br><span class="sub-label">员工端</span></th>
+                                        <th style="min-width:150px;">Tax Rule<br><span class="sub-label">授予计税规则</span></th>
+                                        <th style="min-width:150px;">Vesting Rule<br><span class="sub-label">归属规则名称</span></th>
+                                        <th style="min-width:110px;">Vesting Start<br><span class="sub-label">归属起算日期</span></th>
+                                        <th style="min-width:110px;" class="col-number">Vested<br><span class="sub-label">已归属</span></th>
+                                        <th style="min-width:110px;" class="col-number">Effective Vested<br><span class="sub-label">有效已归属</span></th>
+                                        <th style="min-width:110px;" class="col-number">Unvested<br><span class="sub-label">待归属</span></th>
+                                        <th style="min-width:110px;" class="col-number">Exercised<br><span class="sub-label">已行权</span></th>
+                                        <th style="min-width:110px;" class="col-number">Pending Exercise<br><span class="sub-label">待行权</span></th>
+                                        <th style="min-width:110px;" class="col-number">Outstanding<br><span class="sub-label">Outstanding</span></th>
+                                        <th style="min-width:110px;" class="col-number">Sellable<br><span class="sub-label">可出售数量</span></th>
+                                        <th style="min-width:120px;">Data Source<br><span class="sub-label">数据来源</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="holdingsBody"></tbody>
+                            </table>
+                            <div class="table-pagination">
+                                <div class="pagination-summary" id="holdingsPaginationSummary">-</div>
+                                <div class="pagination-actions">
+                                    <button class="btn btn-secondary btn-sm" id="btnHoldingsPrevPage">Previous</button>
+                                    <span class="pagination-page" id="holdingsPaginationPage">1 / 1</span>
+                                    <button class="btn btn-secondary btn-sm" id="btnHoldingsNextPage">Next</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="page-section" id="page-employees">
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label">Search</label>
+                            <input type="text" id="searchEmployeesPage" class="search-input" placeholder="Search by name, employee no., user id...">
+                            <label class="search-label">Tag</label>
+                            <input type="text" id="filterEmployeesPageTag" class="search-input" placeholder="Filter by tag">
+                            <button class="btn btn-primary" id="btnSearchEmployeesPage">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search
+                            </button>
+                        </div>
+                        <div class="search-actions">
+                            <button class="btn btn-success" id="btnAddEmployeesPage">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                New Employee
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="info-banner">
+                        <span class="info-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        </span>
+                        <span class="info-text">Employee master data is extracted from the award workbook and linked to grant detail records.</span>
+                        <span class="info-badge" id="employeesCountBadge">0 employees</span>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
+                                Employees
+                            </h3>
+                            <span class="card-subtitle">Employee master records used by Holdings</span>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table" id="employeesPageTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width:60px;">No.</th>
+                                        <th>Employee Name</th>
+                                        <th>Employee No.</th>
+                                        <th>User ID</th>
+                                        <th>Tags</th>
+                                        <th style="width:120px;">Grant Count</th>
+                                        <th style="width:180px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="employeesPageBody"></tbody>
+                            </table>
+                            <div class="table-pagination">
+                                <div class="pagination-summary" id="employeesPaginationSummary">-</div>
+                                <div class="pagination-actions">
+                                    <button class="btn btn-secondary btn-sm" id="btnEmployeesPrevPage">Previous</button>
+                                    <span class="pagination-page" id="employeesPaginationPage">1 / 1</span>
+                                    <button class="btn btn-secondary btn-sm" id="btnEmployeesNextPage">Next</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-overlay hidden" id="employeesPageModal">
+                        <div class="modal-container modal-small">
+                            <div class="modal-header">
+                                <h3 class="modal-title" id="employeesPageModalTitle">New Employee</h3>
+                                <button class="modal-close" data-close="employeesPageModal">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-group"><label>Employee Name <span style="color:var(--danger-500);">*</span></label><input type="text" id="employeesPageName" class="form-input" placeholder="Enter employee name"></div>
+                                <div class="form-group"><label>Employee No. <span style="color:var(--danger-500);">*</span></label><input type="text" id="employeesPageNumber" class="form-input" placeholder="Enter employee number"></div>
+                                <div class="form-group"><label>User ID</label><input type="text" id="employeesPageUserId" class="form-input" placeholder="Enter user id"></div>
+                                <div class="form-group"><label>Tags</label><input type="text" id="employeesPageTags" class="form-input" placeholder="Comma separated tags"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" data-close="employeesPageModal">Cancel</button>
+                                <button class="btn btn-primary" id="btnSubmitEmployeesPage">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Settings Page -->
+                <section class="page-section" id="page-settings">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Settings</h3>
+                            <span class="card-subtitle">Reserved for future configuration modules</span>
+                        </div>
+                        <div class="card-body" style="min-height:320px;"></div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Link Detail Modal -->
+    <div class="modal-overlay hidden" id="linkDetailModal">
+        <div class="modal-container modal-xlarge">
+            <div class="modal-header">
+                <h3 class="modal-title" id="linkModalTitle">Detail</h3>
+                <button class="modal-close" id="btnCloseLinkModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="linkModalContent"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btnCloseLinkModalFooter">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/client/main.ts"></script>
+</body>
+</html>
