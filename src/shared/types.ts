@@ -195,12 +195,69 @@ export type WorkflowDataFrameRange = {
   endCol: number;
 };
 
+export type WorkflowDataFrameCellType = 'string' | 'number' | 'boolean' | 'date' | 'error' | 'blank' | 'null' | 'unknown';
+
+export type WorkflowDataFrameSource = {
+  kind: 'excel' | 'computed';
+  fileId?: number | null;
+  fileName?: string | null;
+  sheetName?: string | null;
+  range?: WorkflowDataFrameRange | null;
+};
+
+export type WorkflowDataFrameCell = {
+  column: string;
+  rowIndex: number;
+  columnIndex: number;
+  address: string | null;
+  value: unknown;
+  displayValue: string;
+  type: WorkflowDataFrameCellType;
+  format: string | null;
+  formula: string | null;
+  error: string | null;
+  isBlank: boolean;
+  isMerged?: boolean;
+  source: {
+    kind: 'excel' | 'computed';
+    fileId?: number | null;
+    fileName?: string | null;
+    sheetName?: string | null;
+    address?: string | null;
+    row?: number | null;
+    col?: number | null;
+  };
+};
+
+export type WorkflowDataFrameColumnSchema = {
+  name: string;
+  index: number;
+  type: WorkflowDataFrameCellType | 'mixed';
+  nullable: boolean;
+  formats: string[];
+  sourceAddress?: string | null;
+};
+
+export type WorkflowDataFrameSection = {
+  key: string;
+  title: string;
+  range: WorkflowDataFrameRange;
+  headerRow: number | null;
+  dataStartRow: number;
+  dataEndRow: number;
+  anchorAddress?: string | null;
+};
+
 export type WorkflowDataFrame = {
   columns: string[];
   rows: Array<Record<string, unknown>>;
   index: number[];
   matrix: unknown[][];
   range: WorkflowDataFrameRange;
+  schema?: WorkflowDataFrameColumnSchema[];
+  cells?: WorkflowDataFrameCell[][];
+  source?: WorkflowDataFrameSource;
+  sections?: WorkflowDataFrameSection[];
 };
 
 export type WorkflowSqlTableBinding = {

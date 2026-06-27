@@ -1379,7 +1379,20 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           </svg>
         </button>
       </div>
-      <div class="workflow-structured__section-subtitle">Use one row per logical table block in the selected sheet. Rows are merged into one dataframe with section metadata columns.</div>
+      <div class="workflow-structured__section-subtitle">Use fixed ranges, anchor text, or Auto mode for title/header/blank-row section detection.</div>
+      <div class="workflow-structured__grid">
+        <div>
+          <label class="workflow-structured__label">Mode</label>
+          <select class="search-input workflow-input" id="workflowSectionMode">
+            <option value="manual"${String(task.params.sectionMode ?? 'manual') === 'manual' ? ' selected' : ''}>Manual</option>
+            <option value="auto"${String(task.params.sectionMode ?? 'manual') === 'auto' ? ' selected' : ''}>Auto detect sections</option>
+          </select>
+        </div>
+        <div>
+          <label class="workflow-structured__label">Split By Column</label>
+          <input class="search-input workflow-input" id="workflowSectionSplitByColumn" value="${escapeHtml(task.params.splitByColumn ?? '')}" placeholder="Category for Grouping">
+        </div>
+      </div>
       ${sections
         .map(
           (section, index) => `
@@ -1397,10 +1410,30 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
               <input class="search-input workflow-input" data-sheet-section-range="${index}" value="${escapeHtml(section.range)}" placeholder="B3:F20">
             </div>
             <div>
+              <label class="workflow-structured__label">Anchor Text</label>
+              <input class="search-input workflow-input" data-sheet-section-anchor-text="${index}" value="${escapeHtml(section.anchorText ?? '')}" placeholder="2017 Plan">
+            </div>
+            <div>
+              <label class="workflow-structured__label">Columns</label>
+              <input class="search-input workflow-input" data-sheet-section-range-columns="${index}" value="${escapeHtml(section.rangeColumns ?? '')}" placeholder="B:F">
+            </div>
+            <div>
               <label class="workflow-structured__label">Header Row</label>
               <input class="search-input workflow-input" data-sheet-section-header-row="${index}" type="number" min="1" value="${
                 section.headerRow === null ? '' : escapeHtml(section.headerRow)
               }" placeholder="3">
+            </div>
+            <div>
+              <label class="workflow-structured__label">Header Offset</label>
+              <input class="search-input workflow-input" data-sheet-section-header-offset="${index}" type="number" value="${escapeHtml(section.headerRowOffset ?? '')}" placeholder="1">
+            </div>
+            <div>
+              <label class="workflow-structured__label">Data Offset</label>
+              <input class="search-input workflow-input" data-sheet-section-data-offset="${index}" type="number" value="${escapeHtml(section.dataStartRowOffset ?? '')}" placeholder="2">
+            </div>
+            <div>
+              <label class="workflow-structured__label">Max Rows</label>
+              <input class="search-input workflow-input" data-sheet-section-max-rows="${index}" type="number" min="1" value="${escapeHtml(section.maxRows ?? '')}" placeholder="blank row">
             </div>
             <div class="workflow-structured__actions">
               <button class="btn btn-secondary btn-sm" type="button" data-remove-sheet-section="${index}">Remove</button>
@@ -1410,7 +1443,11 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         .join('')}
     `;
 
-    container.querySelectorAll<HTMLInputElement>('[data-sheet-section-key], [data-sheet-section-title], [data-sheet-section-range], [data-sheet-section-header-row]').forEach((input) => {
+    el<HTMLSelectElement>('workflowSectionMode').addEventListener('change', syncStructuredTaskParamsToState);
+    el<HTMLInputElement>('workflowSectionSplitByColumn').addEventListener('input', syncStructuredTaskParamsToState);
+    container.querySelectorAll<HTMLInputElement>(
+      '[data-sheet-section-key], [data-sheet-section-title], [data-sheet-section-range], [data-sheet-section-anchor-text], [data-sheet-section-range-columns], [data-sheet-section-header-row], [data-sheet-section-header-offset], [data-sheet-section-data-offset], [data-sheet-section-max-rows]',
+    ).forEach((input) => {
       input.addEventListener('input', syncStructuredTaskParamsToState);
     });
     container.querySelectorAll<HTMLElement>('[data-remove-sheet-section]').forEach((button) => {
@@ -1429,7 +1466,17 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       if (!activeTask) return;
       const sections = getSheetSections(activeTask);
       const nextIndex = sections.length + 1;
-      sections.push({ key: `section_${nextIndex}`, title: `Section ${nextIndex}`, range: '', headerRow: null });
+      sections.push({
+        key: `section_${nextIndex}`,
+        title: `Section ${nextIndex}`,
+        range: '',
+        headerRow: null,
+        anchorText: '',
+        rangeColumns: '',
+        headerRowOffset: null,
+        dataStartRowOffset: null,
+        maxRows: null,
+      });
       activeTask.params.sections = sections;
       normalizeSheetSectionsExtractTask(activeTask);
       syncTaskParamsTextarea(activeTask);
@@ -1685,18 +1732,30 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       const selected = el<HTMLSelectElement>('workflowPreviewFileId').value;
       task.params.fileId = selected ? Number(selected) : null;
       task.params.sheetName = el<HTMLInputElement>('workflowPreviewSheetName').value.trim();
+      task.params.sectionMode = el<HTMLSelectElement>('workflowSectionMode')?.value ?? 'manual';
+      task.params.splitByColumn = el<HTMLInputElement>('workflowSectionSplitByColumn')?.value.trim() ?? '';
       task.params.sections = Array.from(document.querySelectorAll<HTMLElement>('[data-sheet-section-row]'))
         .map((row, index) => {
           const key =
             row.querySelector<HTMLInputElement>(`[data-sheet-section-key="${index}"]`)?.value.trim() || `section_${index + 1}`;
           const title = row.querySelector<HTMLInputElement>(`[data-sheet-section-title="${index}"]`)?.value.trim() || key;
           const range = row.querySelector<HTMLInputElement>(`[data-sheet-section-range="${index}"]`)?.value.trim() ?? '';
+          const anchorText = row.querySelector<HTMLInputElement>(`[data-sheet-section-anchor-text="${index}"]`)?.value.trim() ?? '';
+          const rangeColumns = row.querySelector<HTMLInputElement>(`[data-sheet-section-range-columns="${index}"]`)?.value.trim() ?? '';
           const headerRowValue = row.querySelector<HTMLInputElement>(`[data-sheet-section-header-row="${index}"]`)?.value.trim() ?? '';
+          const headerOffsetValue = row.querySelector<HTMLInputElement>(`[data-sheet-section-header-offset="${index}"]`)?.value.trim() ?? '';
+          const dataOffsetValue = row.querySelector<HTMLInputElement>(`[data-sheet-section-data-offset="${index}"]`)?.value.trim() ?? '';
+          const maxRowsValue = row.querySelector<HTMLInputElement>(`[data-sheet-section-max-rows="${index}"]`)?.value.trim() ?? '';
           return {
             key,
             title,
             range,
+            anchorText,
+            rangeColumns,
             headerRow: headerRowValue ? Number(headerRowValue) : null,
+            headerRowOffset: headerOffsetValue ? Number(headerOffsetValue) : null,
+            dataStartRowOffset: dataOffsetValue ? Number(dataOffsetValue) : null,
+            maxRows: maxRowsValue ? Number(maxRowsValue) : null,
           };
         });
       normalizeSheetSectionsExtractTask(task);
@@ -2032,7 +2091,12 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                         return `
                           <tr>
                             <td>${escapeHtml(dataFrame.index?.[absoluteRowIndex] ?? absoluteRowIndex + 1)}</td>
-                            ${dataFrame.columns.map((column) => `<td>${escapeHtml(row[column])}</td>`).join('')}
+                            ${dataFrame.columns
+                              .map((column, columnIndex) => {
+                                const displayValue = dataFrame.cells?.[absoluteRowIndex]?.[columnIndex]?.displayValue;
+                                return `<td>${escapeHtml(displayValue ?? row[column])}</td>`;
+                              })
+                              .join('')}
                           </tr>`;
                       },
                     )

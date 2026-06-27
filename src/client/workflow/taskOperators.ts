@@ -122,6 +122,11 @@ export type WorkflowSheetSectionConfig = {
   title: string;
   range: string;
   headerRow: number | null;
+  anchorText: string;
+  rangeColumns: string;
+  headerRowOffset: number | null;
+  dataStartRowOffset: number | null;
+  maxRows: number | null;
 };
 
 export function getSheetSections(task: WorkflowTask): WorkflowSheetSectionConfig[] {
@@ -133,17 +138,42 @@ export function getSheetSections(task: WorkflowTask): WorkflowSheetSectionConfig
       const key = String(record.key ?? record.title ?? `section_${index + 1}`).trim() || `section_${index + 1}`;
       const title = String(record.title ?? key).trim();
       const range = String(record.range ?? '').trim();
+      const anchorText = String(record.anchorText ?? '').trim();
+      const rangeColumns = String(record.rangeColumns ?? '').trim();
       const headerRowValue = record.headerRow;
       const numericHeaderRow = Number(headerRowValue);
+      const numericHeaderRowOffset = Number(record.headerRowOffset);
+      const numericDataStartRowOffset = Number(record.dataStartRowOffset);
+      const numericMaxRows = Number(record.maxRows);
       return {
         key,
         title,
         range,
+        anchorText,
+        rangeColumns,
         headerRow:
           headerRowValue === null || headerRowValue === undefined || headerRowValue === ''
             ? null
             : Number.isFinite(numericHeaderRow)
               ? numericHeaderRow
+              : null,
+        headerRowOffset:
+          record.headerRowOffset === null || record.headerRowOffset === undefined || record.headerRowOffset === ''
+            ? null
+            : Number.isFinite(numericHeaderRowOffset)
+              ? numericHeaderRowOffset
+              : null,
+        dataStartRowOffset:
+          record.dataStartRowOffset === null || record.dataStartRowOffset === undefined || record.dataStartRowOffset === ''
+            ? null
+            : Number.isFinite(numericDataStartRowOffset)
+              ? numericDataStartRowOffset
+              : null,
+        maxRows:
+          record.maxRows === null || record.maxRows === undefined || record.maxRows === ''
+            ? null
+            : Number.isFinite(numericMaxRows)
+              ? numericMaxRows
               : null,
       };
     })
@@ -156,7 +186,23 @@ export function normalizeSheetSectionsExtractTask(task: WorkflowTask) {
   task.params.sheetName = typeof task.params.sheetName === 'string' ? task.params.sheetName : '';
   task.params.fileId = typeof task.params.fileId === 'number' && Number.isFinite(task.params.fileId) ? task.params.fileId : null;
   const sections = getSheetSections(task);
-  task.params.sections = sections.length ? sections : [{ key: 'section_1', title: 'Section 1', range: '', headerRow: null }];
+  task.params.sectionMode = typeof task.params.sectionMode === 'string' ? task.params.sectionMode : 'manual';
+  task.params.splitByColumn = typeof task.params.splitByColumn === 'string' ? task.params.splitByColumn : '';
+  task.params.sections = sections.length
+    ? sections
+    : [
+        {
+          key: 'section_1',
+          title: 'Section 1',
+          range: '',
+          headerRow: null,
+          anchorText: '',
+          rangeColumns: '',
+          headerRowOffset: null,
+          dataStartRowOffset: null,
+          maxRows: null,
+        },
+      ];
   task.params.sectionColumn = typeof task.params.sectionColumn === 'string' && task.params.sectionColumn.trim() ? task.params.sectionColumn : 'section';
   task.params.sectionIndexColumn =
     typeof task.params.sectionIndexColumn === 'string' && task.params.sectionIndexColumn.trim()

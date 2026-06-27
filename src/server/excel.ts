@@ -1,5 +1,13 @@
 import * as XLSX from 'xlsx';
-import type { CapitalizationRow, SummarySnapshot, WorkflowDataFrame } from '../shared/types.js';
+import type {
+  CapitalizationRow,
+  SummarySnapshot,
+  WorkflowDataFrame,
+  WorkflowDataFrameCell,
+  WorkflowDataFrameCellType,
+  WorkflowDataFrameColumnSchema,
+  WorkflowDataFrameRange,
+} from '../shared/types.js';
 
 export type ParsedWorkbookRow = {
   sheetName: string;
@@ -29,6 +37,12 @@ export type ExtractSheetRangeOptions = {
   headerRow?: number | null;
 };
 
+export type ResolvedSheetRangeDataFrameOptions = {
+  range: XLSX.Range;
+  headerRow?: number | null;
+  sourceRange?: string;
+};
+
 export type DataFrameWorkbookOptions = {
   sheetName?: string;
 };
@@ -50,18 +64,51 @@ export function rowsToDataFrame(rows: Array<Record<string, unknown>>, range?: Pa
     Object.fromEntries(columns.map((column) => [column, row[column] ?? null])),
   );
 
+  const cells = normalizedRows.map((row, rowIndex) =>
+    columns.map((column, columnIndex): WorkflowDataFrameCell => {
+      const value = row[column] ?? null;
+      return {
+        column,
+        rowIndex: rowIndex + 1,
+        columnIndex: columnIndex + 1,
+        address: null,
+        value,
+        displayValue: value === null || value === undefined ? '' : String(value),
+        type: inferCellValueType(value),
+        format: null,
+        formula: null,
+        error: null,
+        isBlank: value === null || value === undefined || value === '',
+        source: {
+          kind: 'computed',
+          row: rowIndex + 1,
+          col: columnIndex + 1,
+        },
+      };
+    }),
+  );
+  const schema = inferColumnSchema(columns, cells);
+  const dataframeRange = {
+    sheetName: range?.sheetName ?? 'SQL Result',
+    a1Range: range?.a1Range ?? '',
+    startRow: range?.startRow ?? 1,
+    endRow: range?.endRow ?? normalizedRows.length,
+    startCol: range?.startCol ?? 1,
+    endCol: range?.endCol ?? columns.length,
+  };
+
   return {
     columns,
     rows: normalizedRows,
     index: normalizedRows.map((_, index) => index + 1),
     matrix: normalizedRows.map((row) => columns.map((column) => row[column] ?? null)),
-    range: {
-      sheetName: range?.sheetName ?? 'SQL Result',
-      a1Range: range?.a1Range ?? '',
-      startRow: range?.startRow ?? 1,
-      endRow: range?.endRow ?? normalizedRows.length,
-      startCol: range?.startCol ?? 1,
-      endCol: range?.endCol ?? columns.length,
+    range: dataframeRange,
+    schema,
+    cells,
+    source: {
+      kind: 'computed',
+      sheetName: dataframeRange.sheetName,
+      range: dataframeRange,
     },
   };
 }
@@ -73,6 +120,97 @@ function readWorkbook(buffer: Buffer) {
 function normalizeCellValue(cell: XLSX.CellObject | undefined): unknown {
   if (!cell || cell.v === undefined) return null;
   return cell.v;
+}
+
+function inferCellValueType(value: unknown): WorkflowDataFrameCellType {
+  if (value === null) return 'null';
+  if (value === undefined || value === '') return 'blank';
+  if (value instanceof Date) return 'date';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'string') return 'string';
+  return 'unknown';
+}
+
+function mapXlsxCellType(cell: XLSX.CellObject | undefined): WorkflowDataFrameCellType {
+  if (!cell || cell.v === undefined) return 'blank';
+  if (cell.t === 'e') return 'error';
+  if (cell.t === 'n') return 'number';
+  if (cell.t === 'b') return 'boolean';
+  if (cell.t === 'd') return 'date';
+  if (cell.t === 's') return 'string';
+  if (cell.v === null) return 'null';
+  return inferCellValueType(cell.v);
+}
+
+function getCellDisplayValue(cell: XLSX.CellObject | undefined): string {
+  if (!cell || cell.v === undefined || cell.v === null) return '';
+  if (cell.w !== undefined) return String(cell.w);
+  return String(cell.v);
+}
+
+function isCellInMergedRange(merges: XLSX.Range[] | undefined, rowIndex: number, colIndex: number): boolean {
+  if (!merges?.length) return false;
+  return merges.some(
+    (range) => rowIndex >= range.s.r && rowIndex <= range.e.r && colIndex >= range.s.c && colIndex <= range.e.c,
+  );
+}
+
+function buildDataFrameCell(
+  sheet: XLSX.WorkSheet,
+  sheetName: string,
+  rowIndex: number,
+  colIndex: number,
+  columnName: string,
+): WorkflowDataFrameCell {
+  const address = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+  const cell = sheet[address] as XLSX.CellObject | undefined;
+  const value = normalizeCellValue(cell);
+  const type = mapXlsxCellType(cell);
+
+  return {
+    column: columnName,
+    rowIndex: rowIndex + 1,
+    columnIndex: colIndex + 1,
+    address,
+    value,
+    displayValue: getCellDisplayValue(cell),
+    type,
+    format: cell?.z ? String(cell.z) : null,
+    formula: cell?.f ? String(cell.f) : null,
+    error: type === 'error' ? String(cell?.w ?? cell?.v ?? 'Excel error') : null,
+    isBlank: !cell || cell.v === undefined || cell.v === null || cell.v === '',
+    isMerged: isCellInMergedRange(sheet['!merges'], rowIndex, colIndex),
+    source: {
+      kind: 'excel',
+      sheetName,
+      address,
+      row: rowIndex + 1,
+      col: colIndex + 1,
+    },
+  };
+}
+
+function inferColumnSchema(columns: string[], cells: WorkflowDataFrameCell[][]): WorkflowDataFrameColumnSchema[] {
+  return columns.map((column, columnIndex) => {
+    const columnCells = cells.map((row) => row[columnIndex]).filter((cell): cell is WorkflowDataFrameCell => Boolean(cell));
+    const populatedTypes = new Set(
+      columnCells
+        .filter((cell) => !cell.isBlank && cell.type !== 'blank' && cell.type !== 'null')
+        .map((cell) => cell.type),
+    );
+    const formats = Array.from(new Set(columnCells.map((cell) => cell.format).filter((format): format is string => Boolean(format))));
+    const nullable = columnCells.some((cell) => cell.isBlank || cell.type === 'blank' || cell.type === 'null');
+    const type = populatedTypes.size === 0 ? 'blank' : populatedTypes.size === 1 ? Array.from(populatedTypes)[0] : 'mixed';
+    return {
+      name: column,
+      index: columnIndex + 1,
+      type,
+      nullable,
+      formats,
+      sourceAddress: columnCells[0]?.address ?? null,
+    };
+  });
 }
 
 function sanitizeColumnName(value: unknown, fallbackIndex: number): string {
@@ -204,6 +342,25 @@ export function extractSheetRangeAsDataFrame(
     throw new Error(`Invalid range: ${options.range}`);
   }
 
+  return extractResolvedSheetRangeAsDataFrame(buffer, sheetName, {
+    range: decodedRange,
+    headerRow: options.headerRow,
+    sourceRange: normalizedRange,
+  });
+}
+
+export function extractResolvedSheetRangeAsDataFrame(
+  buffer: Buffer,
+  sheetName: string,
+  options: ResolvedSheetRangeDataFrameOptions,
+): WorkflowDataFrame {
+  const workbook = readWorkbook(buffer);
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) {
+    throw new Error(`Sheet ${sheetName} not found`);
+  }
+
+  const decodedRange = options.range;
   const startRow = decodedRange.s.r + 1;
   const endRow = decodedRange.e.r + 1;
   const startCol = decodedRange.s.c + 1;
@@ -233,24 +390,38 @@ export function extractSheetRangeAsDataFrame(
   const columns = uniqueColumnNames(headerSource);
   const dataStartIndex = externalHeaderSource ? 0 : headerMatrixIndex === null ? 1 : headerMatrixIndex + 1;
 
-  const rows = matrix.slice(dataStartIndex).map((rowValues) =>
+  const dataMatrix = matrix.slice(dataStartIndex);
+  const rows = dataMatrix.map((rowValues) =>
     Object.fromEntries(columns.map((column, index) => [column, rowValues[index] ?? null])),
   );
 
   const index = rows.map((_, rowIndex) => startRow + dataStartIndex + rowIndex);
+  const cells = dataMatrix.map((_, rowIndex) => {
+    const absoluteRowIndex = decodedRange.s.r + dataStartIndex + rowIndex;
+    return columns.map((column, columnIndex) => buildDataFrameCell(sheet, sheetName, absoluteRowIndex, decodedRange.s.c + columnIndex, column));
+  });
+  const schema = inferColumnSchema(columns, cells);
+  const dataframeRange: WorkflowDataFrameRange = {
+    sheetName,
+    a1Range: XLSX.utils.encode_range(decodedRange),
+    startRow,
+    endRow,
+    startCol,
+    endCol,
+  };
 
   return {
     columns,
     rows,
     index,
     matrix,
-    range: {
+    range: dataframeRange,
+    schema,
+    cells,
+    source: {
+      kind: 'excel',
       sheetName,
-      a1Range: XLSX.utils.encode_range(decodedRange),
-      startRow,
-      endRow,
-      startCol,
-      endCol,
+      range: dataframeRange,
     },
   };
 }
