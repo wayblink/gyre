@@ -25,9 +25,15 @@ import type {
   SummarySnapshot,
   SummaryCapitalizationSource,
   WorkflowDataFrame,
+  WorkflowExecutionResult,
   WorkflowImportExportBundle,
   WorkflowPortableDefinition,
+  WorkflowRunArtifactRecord,
+  WorkflowRunRecord,
+  WorkflowRunStatus,
+  WorkflowRunStepRecord,
   WorkflowTask,
+  WorkflowTaskPreviewResult,
 } from '../shared/types.js';
 
 const db = await createDb();
@@ -584,6 +590,239 @@ const workflowOperatorRuntime: WorkflowOperatorRuntime = {
     return toProductFile(saved.file);
   },
 };
+
+function getWorkflowRunStatus(result: WorkflowExecutionResult): WorkflowRunStatus {
+  if (result.failedTaskId) return 'failed';
+  if (result.waitingForApprovalTaskIds.length) return 'waiting_approval';
+  if (result.warningTaskIds.length) return 'completed_with_warnings';
+  return 'completed';
+}
+
+function toWorkflowRunStepRecord(row: Record<string, unknown>): WorkflowRunStepRecord {
+  return {
+    id: Number(row.id),
+    runId: Number(row.run_id),
+    taskId: String(row.task_id),
+    taskName: String(row.task_name),
+    operatorCode: String(row.operator_code),
+    status: String(row.status) as WorkflowRunStepRecord['status'],
+    startedAt: row.started_at ? String(row.started_at) : null,
+    finishedAt: row.finished_at ? String(row.finished_at) : null,
+    durationMs: row.duration_ms === null || row.duration_ms === undefined ? null : Number(row.duration_ms),
+    errorMessage: row.error_message ? String(row.error_message) : null,
+    result: parseJson<WorkflowTaskPreviewResult | null>(row.result_json, null),
+  };
+}
+
+function toWorkflowRunArtifactRecord(row: Record<string, unknown>): WorkflowRunArtifactRecord {
+  return {
+    id: Number(row.id),
+    runId: Number(row.run_id),
+    stepId: row.step_id === null || row.step_id === undefined ? null : Number(row.step_id),
+    taskId: row.task_id ? String(row.task_id) : null,
+    artifactType: String(row.artifact_type) as WorkflowRunArtifactRecord['artifactType'],
+    fileId: row.file_id === null || row.file_id === undefined ? null : Number(row.file_id),
+    name: String(row.name ?? ''),
+    metadata: parseJson<Record<string, unknown>>(row.metadata_json, {}),
+    createdAt: String(row.created_at),
+  };
+}
+
+function toWorkflowRunRecord(
+  row: Record<string, unknown>,
+  steps: WorkflowRunStepRecord[],
+  artifacts: WorkflowRunArtifactRecord[],
+): WorkflowRunRecord {
+  return {
+    id: Number(row.id),
+    workflowId: Number(row.workflow_id),
+    status: String(row.status) as WorkflowRunStatus,
+    startedAt: String(row.started_at),
+    finishedAt: row.finished_at ? String(row.finished_at) : null,
+    durationMs: row.duration_ms === null || row.duration_ms === undefined ? null : Number(row.duration_ms),
+    errorMessage: row.error_message ? String(row.error_message) : null,
+    approvedWarningTaskIds: parseJson<string[]>(row.approved_warning_task_ids_json, []),
+    steps,
+    artifacts,
+  };
+}
+
+function buildWorkflowArtifactInput(task: WorkflowTask, stepId: number, result: WorkflowTaskPreviewResult | null) {
+  if (!result) return null;
+  if (result.kind === 'file') {
+    return {
+      stepId,
+      taskId: task.id,
+      artifactType: 'file',
+      fileId: result.file.id,
+      name: result.file.originalName,
+      metadata: {
+        file: result.file,
+        rows: result.dataFrame.rows.length,
+        columns: result.dataFrame.columns.length,
+        range: result.dataFrame.range,
+      },
+    } satisfies {
+      stepId: number;
+      taskId: string;
+      artifactType: WorkflowRunArtifactRecord['artifactType'];
+      fileId: number | null;
+      name: string;
+      metadata: Record<string, unknown>;
+    };
+  }
+  if (result.kind === 'assert') {
+    return {
+      stepId,
+      taskId: task.id,
+      artifactType: 'assertion',
+      fileId: null,
+      name: task.name,
+      metadata: {
+        assertion: result.assertion,
+        rows: result.dataFrame.rows.length,
+        columns: result.dataFrame.columns.length,
+        range: result.dataFrame.range,
+      },
+    } satisfies {
+      stepId: number;
+      taskId: string;
+      artifactType: WorkflowRunArtifactRecord['artifactType'];
+      fileId: number | null;
+      name: string;
+      metadata: Record<string, unknown>;
+    };
+  }
+  return {
+    stepId,
+    taskId: task.id,
+    artifactType: 'dataframe',
+    fileId: null,
+    name: task.name,
+    metadata: {
+      rows: result.dataFrame.rows.length,
+      columns: result.dataFrame.columns.length,
+      range: result.dataFrame.range,
+    },
+  } satisfies {
+    stepId: number;
+    taskId: string;
+    artifactType: WorkflowRunArtifactRecord['artifactType'];
+    fileId: number | null;
+    name: string;
+    metadata: Record<string, unknown>;
+  };
+}
+
+async function createWorkflowRun(params: {
+  workflow: Record<string, unknown>;
+  tasks: WorkflowTask[];
+  approvedWarningTaskIds: string[];
+}) {
+  const row = await db.queryOne<Record<string, unknown>>(
+    `insert into workflow_runs (
+      workflow_id, workflow_code, workflow_name, status, tasks_snapshot_json, approved_warning_task_ids_json
+    ) values ($1, $2, $3, 'running', $4::jsonb, $5::jsonb)
+    returning *`,
+    [
+      Number(params.workflow.id),
+      String(params.workflow.code),
+      String(params.workflow.name),
+      JSON.stringify(params.tasks),
+      JSON.stringify(params.approvedWarningTaskIds),
+    ],
+  );
+  if (!row) throw new Error('Failed to create workflow run');
+  return row;
+}
+
+async function markWorkflowRunFailed(runId: number, errorMessage: string) {
+  await db.execute(
+    `update workflow_runs
+     set status = 'failed',
+         error_message = $2,
+         finished_at = current_timestamp,
+         duration_ms = greatest(0, floor(extract(epoch from (current_timestamp - started_at)) * 1000)::integer)
+     where id = $1`,
+    [runId, errorMessage],
+  );
+}
+
+async function persistWorkflowExecutionResult(params: {
+  runId: number;
+  tasks: WorkflowTask[];
+  result: WorkflowExecutionResult;
+}): Promise<WorkflowRunRecord> {
+  const status = getWorkflowRunStatus(params.result);
+  const runRow = await db.queryOne<Record<string, unknown>>(
+    `update workflow_runs
+     set status = $2,
+         result_json = $3::jsonb,
+         error_message = $4,
+         finished_at = current_timestamp,
+         duration_ms = greatest(0, floor(extract(epoch from (current_timestamp - started_at)) * 1000)::integer)
+     where id = $1
+     returning *`,
+    [
+      params.runId,
+      status,
+      JSON.stringify(params.result),
+      params.result.errorMessage,
+    ],
+  );
+  if (!runRow) throw new Error('Failed to update workflow run');
+
+  const steps: WorkflowRunStepRecord[] = [];
+  const artifacts: WorkflowRunArtifactRecord[] = [];
+  for (const task of params.tasks) {
+    const timing = params.result.taskTimings[task.id];
+    const taskResult = params.result.taskResults[task.id] ?? null;
+    const stepRow = await db.queryOne<Record<string, unknown>>(
+      `insert into workflow_run_steps (
+        run_id, task_id, task_name, operator_code, status, task_snapshot_json, result_json,
+        error_message, started_at, finished_at, duration_ms
+      ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11)
+      returning *`,
+      [
+        params.runId,
+        task.id,
+        task.name,
+        task.operatorCode,
+        params.result.taskStates[task.id] ?? 'pending',
+        JSON.stringify(task),
+        taskResult ? JSON.stringify(taskResult) : null,
+        params.result.taskErrors[task.id] ?? null,
+        timing?.startedAt ?? null,
+        timing?.finishedAt ?? null,
+        timing?.durationMs ?? null,
+      ],
+    );
+    if (!stepRow) throw new Error(`Failed to insert workflow step ${task.id}`);
+    const step = toWorkflowRunStepRecord(stepRow);
+    steps.push(step);
+
+    const artifactInput = buildWorkflowArtifactInput(task, step.id, taskResult);
+    if (!artifactInput) continue;
+    const artifactRow = await db.queryOne<Record<string, unknown>>(
+      `insert into workflow_run_artifacts (
+        run_id, step_id, task_id, artifact_type, file_id, name, metadata_json
+      ) values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+      returning *`,
+      [
+        params.runId,
+        artifactInput.stepId,
+        artifactInput.taskId,
+        artifactInput.artifactType,
+        artifactInput.fileId,
+        artifactInput.name,
+        JSON.stringify(artifactInput.metadata),
+      ],
+    );
+    if (artifactRow) artifacts.push(toWorkflowRunArtifactRecord(artifactRow));
+  }
+
+  return toWorkflowRunRecord(runRow, steps, artifacts);
+}
 
 async function registerRoutes() {
   await app.register(cors, { origin: true });
@@ -1496,10 +1735,31 @@ async function registerRoutes() {
     if (!workflowRow) throw notFound('Workflow not found');
 
     const tasks = body.tasks ? normalizeWorkflowTasks(body.tasks) : normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
-    return executeWorkflowDefinition(tasks, workflowOperatorRuntime, {
-      enforceTerminalAssertBlock: true,
+    const runRow = await createWorkflowRun({
+      workflow: workflowRow,
+      tasks,
       approvedWarningTaskIds: body.approvedWarningTaskIds,
     });
+
+    try {
+      const result = await executeWorkflowDefinition(tasks, workflowOperatorRuntime, {
+        enforceTerminalAssertBlock: true,
+        approvedWarningTaskIds: body.approvedWarningTaskIds,
+      });
+      const run = await persistWorkflowExecutionResult({
+        runId: Number(runRow.id),
+        tasks,
+        result,
+      });
+      return {
+        ...result,
+        run,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Workflow execution failed';
+      await markWorkflowRunFailed(Number(runRow.id), message);
+      throw error;
+    }
   });
 
   app.delete('/api/workflows/:id', async (request, reply) => {

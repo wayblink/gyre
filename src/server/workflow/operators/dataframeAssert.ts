@@ -10,7 +10,6 @@ import {
   compareAssertValues,
   isAssertOperator,
   normalizeAssertBaseParams,
-  throwIfBlockingAssertionFailed,
 } from './assertUtils.js';
 
 export function normalizeAssertTask(task: WorkflowTask) {
@@ -82,8 +81,11 @@ export const dataframeAssertOperator = defineWorkflowOperator({
   async execute(context) {
     const dataframe = await requireInputDataFrame(context, 'input1');
     const assertion = evaluateDataFrameAssertion(context.task, dataframe);
-    throwIfBlockingAssertionFailed(assertion);
-    return dataframe;
+    return {
+      kind: 'assert',
+      assertion,
+      dataFrame: dataframe,
+    };
   },
   async preview(context) {
     const dataframe = await requireInputDataFrame(context, 'input1');

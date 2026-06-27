@@ -49,9 +49,11 @@ export type WorkflowOperatorExecutionContext = {
   resolveInputDataFrame: (inputSlot: string) => Promise<WorkflowDataFrame>;
 };
 
+export type WorkflowOperatorExecuteResult = WorkflowDataFrame | WorkflowTaskPreviewResult;
+
 export type WorkflowOperatorDefinition = WorkflowOperatorSeedDefinition & {
   normalizeTask?: (task: WorkflowTask) => void;
-  execute: (context: WorkflowOperatorExecutionContext) => Promise<WorkflowDataFrame>;
+  execute: (context: WorkflowOperatorExecutionContext) => Promise<WorkflowOperatorExecuteResult>;
   preview?: (context: WorkflowOperatorExecutionContext) => Promise<WorkflowTaskPreviewResult>;
 };
 

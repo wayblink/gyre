@@ -1828,9 +1828,6 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       body: JSON.stringify(payload),
     });
     workflowPreviewPage = 1;
-    if (activeWorkflowPreview.kind === 'file') {
-      await refreshProductFiles();
-    }
     renderWorkflowPreview();
   }
 
@@ -2078,6 +2075,21 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
 
     const preview = activeWorkflowPreview;
+    if (preview.kind === 'file-plan') {
+      summary.innerHTML = `
+        <div class="workflow-preview__summary-item"><strong>Planned File</strong><span>${escapeHtml(preview.fileName)}</span></div>
+        <div class="workflow-preview__summary-item"><strong>Sheet</strong><span>${escapeHtml(preview.sheetName)}</span></div>
+        <div class="workflow-preview__summary-item"><strong>Rows</strong><span>${escapeHtml(preview.dataFrame.rows.length)}</span></div>
+        <div class="workflow-preview__summary-item"><strong>Columns</strong><span>${escapeHtml(preview.dataFrame.columns.length)}</span></div>
+      `;
+      table.innerHTML = `
+        <div class="workflow-empty" style="align-items:flex-start;">
+          Preview 不会写入 Files。点击 Execute 后，该节点才会生成 Excel 文件并记录为 workflow artifact。
+        </div>
+      `;
+      return;
+    }
+
     if (preview.kind === 'file') {
       summary.innerHTML = `
         <div class="workflow-preview__summary-item"><strong>File</strong><span>${escapeHtml(preview.file.originalName)}</span></div>

@@ -30,21 +30,6 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
     const uploadedBy = String(task.params.uploadedBy ?? '').trim() || 'Workflow';
     const buffer = runtime.dataFrameToWorkbookBuffer(dataframe, { sheetName });
 
-    await runtime.saveGeneratedWorkbook({
-      originalName: fileName,
-      buffer,
-      uploadedBy,
-    });
-
-    return dataframe;
-  },
-  async preview(context) {
-    const { task, runtime } = context;
-    const dataframe = await requireInputDataFrame(context, 'input1');
-    const fileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
-    const sheetName = String(task.params.sheetName ?? '').trim() || dataframe.range.sheetName || 'Sheet1';
-    const uploadedBy = String(task.params.uploadedBy ?? '').trim() || 'Workflow';
-    const buffer = runtime.dataFrameToWorkbookBuffer(dataframe, { sheetName });
     const file = await runtime.saveGeneratedWorkbook({
       originalName: fileName,
       buffer,
@@ -54,6 +39,19 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
     return {
       kind: 'file',
       file,
+      dataFrame: dataframe,
+    };
+  },
+  async preview(context) {
+    const { task } = context;
+    const dataframe = await requireInputDataFrame(context, 'input1');
+    const fileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
+    const sheetName = String(task.params.sheetName ?? '').trim() || dataframe.range.sheetName || 'Sheet1';
+
+    return {
+      kind: 'file-plan',
+      fileName,
+      sheetName,
       dataFrame: dataframe,
     };
   },

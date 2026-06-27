@@ -1,5 +1,5 @@
 import type { WorkflowTask } from '../../../shared/types.js';
-import { buildAssertionResult, normalizeAssertBaseParams, throwIfBlockingAssertionFailed } from './assertUtils.js';
+import { buildAssertionResult, normalizeAssertBaseParams } from './assertUtils.js';
 import { defineWorkflowOperator, normalizeWorkflowTaskDependencies, requireInputDataFrame } from './types.js';
 
 type SchemaAssertMode = 'contains' | 'exact';
@@ -89,8 +89,11 @@ export const dataframeSchemaAssertOperator = defineWorkflowOperator({
   async execute(context) {
     const dataframe = await requireInputDataFrame(context, 'input1');
     const assertion = evaluateSchemaAssertion(context.task, dataframe.columns);
-    throwIfBlockingAssertionFailed(assertion);
-    return dataframe;
+    return {
+      kind: 'assert',
+      assertion,
+      dataFrame: dataframe,
+    };
   },
   async preview(context) {
     const dataframe = await requireInputDataFrame(context, 'input1');

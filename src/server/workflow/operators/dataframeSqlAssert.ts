@@ -4,7 +4,6 @@ import {
   compareAssertValues,
   isAssertOperator,
   normalizeAssertBaseParams,
-  throwIfBlockingAssertionFailed,
 } from './assertUtils.js';
 import { executeSqlDataFrameQuery } from './sqlUtils.js';
 import { defineWorkflowOperator, normalizeSqlTableBindings, normalizeWorkflowTaskDependencies } from './types.js';
@@ -103,8 +102,11 @@ export const dataframeSqlAssertOperator = defineWorkflowOperator({
   normalizeTask: normalizeSqlAssertTask,
   async execute({ task, runtime, resolveInputDataFrame }) {
     const { assertion, outputDataFrame } = await evaluateSqlAssertion(task, runtime, resolveInputDataFrame);
-    throwIfBlockingAssertionFailed(assertion);
-    return outputDataFrame;
+    return {
+      kind: 'assert',
+      assertion,
+      dataFrame: outputDataFrame,
+    };
   },
   async preview({ task, runtime, resolveInputDataFrame }) {
     const { assertion, outputDataFrame } = await evaluateSqlAssertion(task, runtime, resolveInputDataFrame);

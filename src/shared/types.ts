@@ -331,6 +331,12 @@ export type WorkflowTaskPreviewResult =
       dataFrame: WorkflowDataFrame;
     }
   | {
+      kind: 'file-plan';
+      fileName: string;
+      sheetName: string;
+      dataFrame: WorkflowDataFrame;
+    }
+  | {
       kind: 'file';
       file: ProductFileRecord;
       dataFrame: WorkflowDataFrame;
@@ -344,9 +350,19 @@ export type WorkflowExecutionWarning = {
   approved: boolean;
 };
 
+export type WorkflowExecutionTaskTiming = {
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+};
+
 export type WorkflowExecutionResult = {
+  run?: WorkflowRunRecord;
   result: WorkflowTaskPreviewResult | null;
   taskStates: Record<string, WorkflowExecutionTaskState>;
+  taskResults: Record<string, WorkflowTaskPreviewResult | null>;
+  taskTimings: Record<string, WorkflowExecutionTaskTiming>;
+  taskErrors: Record<string, string | null>;
   failedTaskId: string | null;
   blockedTaskIds: string[];
   warningTaskIds: string[];
@@ -358,4 +374,45 @@ export type WorkflowExecutionResult = {
 export type WorkflowExecuteRequest = {
   tasks?: WorkflowTask[];
   approvedWarningTaskIds?: string[];
+};
+
+export type WorkflowRunStatus = 'running' | 'completed' | 'completed_with_warnings' | 'waiting_approval' | 'failed';
+
+export type WorkflowRunStepRecord = {
+  id: number;
+  runId: number;
+  taskId: string;
+  taskName: string;
+  operatorCode: string;
+  status: WorkflowExecutionTaskState;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  errorMessage: string | null;
+  result: WorkflowTaskPreviewResult | null;
+};
+
+export type WorkflowRunArtifactRecord = {
+  id: number;
+  runId: number;
+  stepId: number | null;
+  taskId: string | null;
+  artifactType: 'dataframe' | 'assertion' | 'file' | 'json';
+  fileId: number | null;
+  name: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type WorkflowRunRecord = {
+  id: number;
+  workflowId: number;
+  status: WorkflowRunStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  errorMessage: string | null;
+  approvedWarningTaskIds: string[];
+  steps: WorkflowRunStepRecord[];
+  artifacts: WorkflowRunArtifactRecord[];
 };

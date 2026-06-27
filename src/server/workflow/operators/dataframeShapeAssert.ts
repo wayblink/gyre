@@ -4,7 +4,6 @@ import {
   compareAssertValues,
   isAssertOperator,
   normalizeAssertBaseParams,
-  throwIfBlockingAssertionFailed,
 } from './assertUtils.js';
 import { defineWorkflowOperator, normalizeWorkflowTaskDependencies, requireInputDataFrame } from './types.js';
 
@@ -90,8 +89,11 @@ export const dataframeShapeAssertOperator = defineWorkflowOperator({
   async execute(context) {
     const dataframe = await requireInputDataFrame(context, 'input1');
     const assertion = evaluateShapeAssertion(context.task, dataframe);
-    throwIfBlockingAssertionFailed(assertion);
-    return dataframe;
+    return {
+      kind: 'assert',
+      assertion,
+      dataFrame: dataframe,
+    };
   },
   async preview(context) {
     const dataframe = await requireInputDataFrame(context, 'input1');

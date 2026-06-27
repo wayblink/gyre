@@ -5,8 +5,13 @@ import type {
   WorkflowTask,
   WorkflowTaskPreviewResult,
 } from '../../shared/types.js';
-import type { WorkflowOperatorExecutionContext, WorkflowOperatorRuntime } from './operators/types.js';
+import type { WorkflowOperatorExecutionContext, WorkflowOperatorExecuteResult, WorkflowOperatorRuntime } from './operators/types.js';
 import { workflowOperatorDefinitionByCode } from './operators/registry.js';
+
+type WorkflowTaskExecutionOutput = {
+  dataFrame: WorkflowDataFrame;
+  result: WorkflowTaskPreviewResult;
+};
 
 function getWorkflowDependencyIds(task: WorkflowTask): string[] {
   const inputDependencies = Object.values(task.inputs ?? {})
@@ -71,6 +76,27 @@ function getOperatorOrThrow(task: WorkflowTask) {
   return operator;
 }
 
+function isWorkflowTaskPreviewResult(value: WorkflowOperatorExecuteResult): value is WorkflowTaskPreviewResult {
+  return typeof value === 'object' && value !== null && 'kind' in value && 'dataFrame' in value;
+}
+
+function toWorkflowTaskExecutionOutput(value: WorkflowOperatorExecuteResult): WorkflowTaskExecutionOutput {
+  if (isWorkflowTaskPreviewResult(value)) {
+    return {
+      dataFrame: value.dataFrame,
+      result: value,
+    };
+  }
+
+  return {
+    dataFrame: value,
+    result: {
+      kind: 'dataframe',
+      dataFrame: value,
+    },
+  };
+}
+
 function createExecutionContext(
   task: WorkflowTask,
   executed: Map<string, WorkflowDataFrame>,
@@ -104,24 +130,62 @@ export async function executeWorkflowTask(
   taskMap: Map<string, WorkflowTask>,
   runtime: WorkflowOperatorRuntime,
 ): Promise<WorkflowDataFrame> {
+  return (await executeWorkflowTaskOutput(task, executed, new Map(), taskMap, runtime)).dataFrame;
+}
+
+async function executeWorkflowTaskOutput(
+  task: WorkflowTask,
+  executed: Map<string, WorkflowDataFrame>,
+  taskResults: Map<string, WorkflowTaskPreviewResult>,
+  taskMap: Map<string, WorkflowTask>,
+  runtime: WorkflowOperatorRuntime,
+): Promise<WorkflowTaskExecutionOutput> {
   const cached = executed.get(task.id);
-  if (cached) return cached;
+  const cachedResult = taskResults.get(task.id);
+  if (cached && cachedResult) {
+    return {
+      dataFrame: cached,
+      result: cachedResult,
+    };
+  }
+  if (cached) {
+    return {
+      dataFrame: cached,
+      result: {
+        kind: 'dataframe',
+        dataFrame: cached,
+      },
+    };
+  }
 
   for (const dependencyId of getWorkflowDependencyIds(task)) {
     const dependencyTask = taskMap.get(dependencyId);
     if (!dependencyTask) {
       throw new Error(`Task ${task.name} references unknown dependency ${dependencyId}`);
     }
-    await executeWorkflowTask(dependencyTask, executed, taskMap, runtime);
+    await executeWorkflowTaskOutput(dependencyTask, executed, taskResults, taskMap, runtime);
   }
 
   const operator = getOperatorOrThrow(task);
   const context = createExecutionContext(task, executed, taskMap, runtime, (upstreamTask) =>
-    executeWorkflowTask(upstreamTask, executed, taskMap, runtime),
+    executeWorkflowTaskOutput(upstreamTask, executed, taskResults, taskMap, runtime).then((output) => output.dataFrame),
   );
-  const dataframe = await operator.execute(context);
-  executed.set(task.id, dataframe);
-  return dataframe;
+  const output = toWorkflowTaskExecutionOutput(await operator.execute(context));
+  executed.set(task.id, output.dataFrame);
+  taskResults.set(task.id, output.result);
+  return output;
+}
+
+async function executeWorkflowTaskPreviewDataFrame(
+  task: WorkflowTask,
+  executed: Map<string, WorkflowDataFrame>,
+  taskMap: Map<string, WorkflowTask>,
+  runtime: WorkflowOperatorRuntime,
+): Promise<WorkflowDataFrame> {
+  const cached = executed.get(task.id);
+  if (cached) return cached;
+  const preview = await executeWorkflowTaskPreview(task, executed, taskMap, runtime);
+  return preview.dataFrame;
 }
 
 export async function executeWorkflowTaskPreview(
@@ -132,7 +196,7 @@ export async function executeWorkflowTaskPreview(
 ): Promise<WorkflowTaskPreviewResult> {
   const operator = getOperatorOrThrow(task);
   const context = createExecutionContext(task, executed, taskMap, runtime, (upstreamTask) =>
-    executeWorkflowTask(upstreamTask, executed, taskMap, runtime),
+    executeWorkflowTaskPreviewDataFrame(upstreamTask, executed, taskMap, runtime),
   );
 
   if (operator.preview) {
@@ -141,11 +205,8 @@ export async function executeWorkflowTaskPreview(
     return preview;
   }
 
-  const dataFrame = await executeWorkflowTask(task, executed, taskMap, runtime);
-  return {
-    kind: 'dataframe',
-    dataFrame,
-  };
+  const output = await executeWorkflowTaskOutput(task, executed, new Map(), taskMap, runtime);
+  return output.result;
 }
 
 export async function executeWorkflowDefinition(
@@ -160,9 +221,17 @@ export async function executeWorkflowDefinition(
   const orderedTasks = getWorkflowExecutionOrder(tasks);
   const taskMap = new Map(orderedTasks.map((task) => [task.id, task]));
   const executed = new Map<string, WorkflowDataFrame>();
+  const taskResults = new Map<string, WorkflowTaskPreviewResult>();
   const approvedWarningTaskIds = new Set((options?.approvedWarningTaskIds ?? []).map((taskId) => String(taskId).trim()).filter(Boolean));
   const taskStates: Record<string, WorkflowExecutionTaskState> = Object.fromEntries(
     orderedTasks.map((task) => [task.id, 'pending' as WorkflowExecutionTaskState]),
+  );
+  const taskResultRecords: Record<string, WorkflowTaskPreviewResult | null> = Object.fromEntries(
+    orderedTasks.map((task) => [task.id, null]),
+  );
+  const taskTimings: WorkflowExecutionResult['taskTimings'] = {};
+  const taskErrors: WorkflowExecutionResult['taskErrors'] = Object.fromEntries(
+    orderedTasks.map((task) => [task.id, null]),
   );
 
   let lastResult: WorkflowTaskPreviewResult | null = null;
@@ -186,12 +255,23 @@ export async function executeWorkflowDefinition(
 
     try {
       taskStates[task.id] = 'running';
-      lastResult = await executeWorkflowTaskPreview(task, executed, taskMap, runtime);
+      const taskStartedAtMs = Date.now();
+      const taskStartedAt = new Date(taskStartedAtMs).toISOString();
+      const taskOutput = await executeWorkflowTaskOutput(task, executed, taskResults, taskMap, runtime);
+      const taskFinishedAtMs = Date.now();
+      taskTimings[task.id] = {
+        startedAt: taskStartedAt,
+        finishedAt: new Date(taskFinishedAtMs).toISOString(),
+        durationMs: taskFinishedAtMs - taskStartedAtMs,
+      };
+      lastResult = taskOutput.result;
+      taskResultRecords[task.id] = lastResult;
       if (lastResult.kind === 'assert' && !lastResult.assertion.passed) {
         if (lastResult.assertion.failureStrategy === 'block') {
           taskStates[task.id] = 'failed';
           failedTaskId = task.id;
           errorMessage = lastResult.assertion.failureMessage;
+          taskErrors[task.id] = lastResult.assertion.failureMessage;
           continue;
         }
         if (lastResult.assertion.failureStrategy === 'warning') {
@@ -214,14 +294,24 @@ export async function executeWorkflowDefinition(
       taskStates[task.id] = 'failed';
       failedTaskId = task.id;
       errorMessage = error instanceof Error ? error.message : 'Workflow execution failed';
+      taskErrors[task.id] = errorMessage;
+      if (!taskTimings[task.id]) {
+        const now = new Date().toISOString();
+        taskTimings[task.id] = {
+          startedAt: now,
+          finishedAt: now,
+          durationMs: 0,
+        };
+      }
       const operator = getOperatorOrThrow(task);
       if (operator.preview) {
         try {
           lastResult = await operator.preview(
             createExecutionContext(task, executed, taskMap, runtime, (upstreamTask) =>
-              executeWorkflowTask(upstreamTask, executed, taskMap, runtime),
+              executeWorkflowTaskPreviewDataFrame(upstreamTask, executed, taskMap, runtime),
             ),
           );
+          taskResultRecords[task.id] = lastResult;
         } catch {
           // Ignore preview fallback failure and keep the original error result.
         }
@@ -236,6 +326,9 @@ export async function executeWorkflowDefinition(
   return {
     result: lastResult,
     taskStates,
+    taskResults: taskResultRecords,
+    taskTimings,
+    taskErrors,
     failedTaskId,
     blockedTaskIds: orderedTasks.filter((task) => taskStates[task.id] === 'blocked').map((task) => task.id),
     warningTaskIds,
