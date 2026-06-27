@@ -1026,6 +1026,10 @@ body.sidebar-collapsed .sidebar-toggle {
   min-height: 132px;
 }
 
+.workflow-code-input--compact {
+  min-height: 86px;
+}
+
 .workflow-dag {
   position: relative;
   flex: 1;
@@ -1514,6 +1518,38 @@ body.sidebar-collapsed .sidebar-toggle {
   color: var(--text-muted);
   font-size: var(--text-xs);
   line-height: 1.5;
+}
+
+.workflow-generic-param-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.workflow-generic-param {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workflow-generic-param .workflow-structured__section-subtitle {
+  margin-bottom: 0;
+}
+
+.workflow-generic-param__checkbox {
+  align-items: center;
+  min-height: 38px;
+}
+
+.workflow-generic-param__required {
+  margin-left: 4px;
+  color: #dc2626;
+}
+
+.workflow-generic-param__error {
+  color: #dc2626;
+  font-size: var(--text-xs);
+  line-height: 1.4;
 }
 
 .workflow-checkbox {

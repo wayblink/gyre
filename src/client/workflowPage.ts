@@ -15,6 +15,7 @@ import type {
   WorkflowTaskPreviewResult,
   WorkflowTaskPreviewRequest,
 } from '../shared/types.js';
+import { renderOperatorConfigForm, syncOperatorConfigForm } from './workflow/operatorConfigForm.js';
 import {
   applyTaskOperatorDefaults,
   buildWorkflowTask,
@@ -1547,15 +1548,70 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el<HTMLTextAreaElement>('taskParamsInput').value = JSON.stringify(task.params ?? {}, null, 2);
   }
 
+  function getCustomParamKeys(task: WorkflowTask) {
+    const keys = new Set<string>();
+
+    if (isSheetRangeExtractTask(task)) {
+      ['fileId', 'sheetName', 'range', 'headerRow'].forEach((key) => keys.add(key));
+    }
+
+    if (isSheetSectionsExtractTask(task)) {
+      ['fileId', 'sheetName', 'sectionMode', 'sections', 'splitByColumn'].forEach((key) => keys.add(key));
+    }
+
+    if (isSqlTableBackedTask(task)) {
+      ['sql', 'tableBindings'].forEach((key) => keys.add(key));
+    }
+
+    if (isPersistExcelTask(task)) {
+      ['fileName', 'sheetName', 'uploadedBy'].forEach((key) => keys.add(key));
+    }
+
+    if (isAssertTask(task)) {
+      ['operator', 'expectedValue', 'failureStrategy', 'failureMessage'].forEach((key) => keys.add(key));
+    }
+
+    if (isSqlAssertTask(task)) {
+      ['sql', 'tableBindings', 'operator', 'expectedValue', 'failureStrategy', 'failureMessage'].forEach((key) => keys.add(key));
+    }
+
+    if (isSchemaAssertTask(task)) {
+      ['mode', 'expectedColumns', 'failureStrategy', 'failureMessage'].forEach((key) => keys.add(key));
+    }
+
+    if (isShapeAssertTask(task)) {
+      ['rowOperator', 'expectedRows', 'columnOperator', 'expectedColumns', 'failureStrategy', 'failureMessage'].forEach((key) => keys.add(key));
+    }
+
+    return keys;
+  }
+
+  function hasCustomStructuredParams(task: WorkflowTask) {
+    return (
+      isSheetRangeExtractTask(task) ||
+      isSheetSectionsExtractTask(task) ||
+      isSqlTableBackedTask(task) ||
+      isPersistExcelTask(task) ||
+      isAnyAssertTask(task)
+    );
+  }
+
   function renderStructuredTaskParams(task: WorkflowTask) {
     const structured = el('workflowStructuredParams');
-    if (
-      !isSheetRangeExtractTask(task) &&
-      !isSheetSectionsExtractTask(task) &&
-      !isSqlTableBackedTask(task) &&
-      !isPersistExcelTask(task) &&
-      !isAnyAssertTask(task)
-    ) {
+    const operator = getWorkflowOperator(task);
+    const customParamKeys = getCustomParamKeys(task);
+    const genericParamsRow = el('workflowStructuredGenericParamsRow');
+    const hasGenericParams = renderOperatorConfigForm({
+      container: genericParamsRow,
+      operator,
+      task,
+      excludedParamKeys: customParamKeys,
+      escapeHtml,
+      onChange: syncStructuredTaskParamsToState,
+    });
+    genericParamsRow.classList.toggle('hidden', !hasGenericParams);
+
+    if (!hasCustomStructuredParams(task) && !hasGenericParams) {
       structured.classList.add('hidden');
       return;
     }
@@ -1718,6 +1774,17 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   function syncStructuredTaskParamsToState() {
     const task = getActiveWorkflowTask();
     if (!task) return;
+    const operator = getWorkflowOperator(task);
+    const genericSyncResult = syncOperatorConfigForm({
+      container: el('workflowStructuredGenericParamsRow'),
+      operator,
+      task,
+      excludedParamKeys: getCustomParamKeys(task),
+    });
+    if (genericSyncResult.hasInvalidValue) {
+      syncTaskParamsTextarea(task);
+      return;
+    }
 
     if (isSheetRangeExtractTask(task)) {
       const selected = el<HTMLSelectElement>('workflowPreviewFileId').value;
