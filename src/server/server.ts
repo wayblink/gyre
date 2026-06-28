@@ -19,25 +19,38 @@ import {
   summarizeWorkbook,
 } from './excel.js';
 import { fileStorage } from './storage.js';
-import { executeWorkflowDefinition, executeWorkflowTaskPreview } from './workflow/engine.js';
+import { executeWorkflowTaskPreview } from './workflow/engine.js';
+import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
+import {
+  normalizeWorkflowRuntimeParameters,
+  normalizeWorkflowRuntimeParametersSchema,
+  validateRuntimeParameters,
+  resolveWorkflowRuntimeConfiguration,
+} from './workflow/runtimeParameters.js';
 import type { WorkflowOperatorRuntime } from './workflow/operators/types.js';
+import { WorkflowRunExecutor, workflowRunToExecutionResult } from './workflow/runExecutor.js';
+import { WorkflowRunStore } from './workflow/runStore.js';
 import type {
   SummarySnapshot,
   SummaryCapitalizationSource,
   WorkflowDataFrame,
-  WorkflowExecutionResult,
   WorkflowImportExportBundle,
   WorkflowPortableDefinition,
-  WorkflowRunArtifactRecord,
-  WorkflowRunRecord,
-  WorkflowRunStatus,
-  WorkflowRunStepRecord,
+  WorkflowRuntimeParameters,
   WorkflowTask,
-  WorkflowTaskPreviewResult,
 } from '../shared/types.js';
 
 const db = await createDb();
 const app = Fastify({ logger: true });
+
+function toIsoTimestamp(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+  }
+  return new Date(String(value)).toISOString();
+}
 
 const updatePlanSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
@@ -75,8 +88,14 @@ const workflowTaskPreviewBodySchema = z.object({
 });
 
 const workflowExecuteBodySchema = z.object({
-  tasks: z.array(z.any()).optional(),
+  runtimeParameters: z.record(z.string(), z.unknown()).optional(),
   approvedWarningTaskIds: z.array(z.string().trim().min(1)).optional().default([]),
+});
+
+const workflowApprovalBodySchema = z.object({
+  taskIds: z.array(z.string().trim().min(1)).optional(),
+  taskId: z.string().trim().min(1).optional(),
+  decision: z.enum(['approved', 'skipped']).optional().default('approved'),
 });
 
 const workflowPortableDefinitionSchema = z.object({
@@ -86,6 +105,8 @@ const workflowPortableDefinitionSchema = z.object({
   status: z.enum(['draft', 'active']).optional().default('draft'),
   version: z.number().int().min(1).optional().default(1),
   tasks: z.array(z.any()).optional().default([]),
+  runtimeParamsSchema: z.record(z.string(), z.unknown()).optional().default({}),
+  runtimeParamsDefaults: z.record(z.string(), z.unknown()).optional().default({}),
 });
 
 const workflowImportBundleSchema = z.object({
@@ -396,6 +417,8 @@ function toWorkflowDefinition(row: Record<string, unknown>) {
     status: String(row.status ?? 'draft') as 'draft' | 'active',
     version: Number(row.version ?? 1),
     tasks: normalizeWorkflowTasks(parseJson(row.tasks_json, [])),
+    runtimeParamsSchema: normalizeWorkflowRuntimeParametersSchema(parseJson(row.runtime_params_schema_json, {})),
+    runtimeParamsDefaults: normalizeWorkflowRuntimeParameters(parseJson(row.runtime_params_defaults_json, {})),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -408,12 +431,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizeWorkflowTask(value: unknown): WorkflowTask | null {
   if (!isRecord(value)) return null;
   if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.operatorCode !== 'string') return null;
+  const inputs: WorkflowTask['inputs'] = {};
+  if (isRecord(value.inputs)) {
+    for (const [slotName, input] of Object.entries(value.inputs)) {
+      const normalizedSlotName = String(slotName ?? '').trim();
+      if (!normalizedSlotName || !isRecord(input)) continue;
+      inputs[normalizedSlotName] = normalizeWorkflowTaskInput(input);
+    }
+  }
   const inputSourceIds = new Set(
-    Object.values(isRecord(value.inputs) ? value.inputs : {})
-      .map((input) => {
-        if (!isRecord(input)) return '';
-        return String(input.from ?? '').trim();
-      })
+    Object.values(inputs)
+      .map((input) => String(input.from ?? '').trim())
       .filter(Boolean),
   );
   const dependsOn = Array.isArray(value.dependsOn)
@@ -434,7 +462,7 @@ function normalizeWorkflowTask(value: unknown): WorkflowTask | null {
     x: Number(value.x ?? 0),
     y: Number(value.y ?? 0),
     params: isRecord(value.params) ? value.params : {},
-    inputs: isRecord(value.inputs) ? (value.inputs as WorkflowTask['inputs']) : {},
+    inputs,
     dependsOn,
   };
 }
@@ -453,6 +481,8 @@ function toWorkflowPortableDefinition(workflow: unknown): WorkflowPortableDefini
     status: source.status === 'active' ? 'active' : 'draft',
     version: Number(source.version ?? 1),
     tasks: normalizeWorkflowTasks(source.tasks ?? []),
+    runtimeParamsSchema: normalizeWorkflowRuntimeParametersSchema(source.runtimeParamsSchema),
+    runtimeParamsDefaults: normalizeWorkflowRuntimeParameters(source.runtimeParamsDefaults),
   };
 }
 
@@ -462,6 +492,19 @@ function toWorkflowImportExportBundle(workflow: WorkflowPortableDefinition): Wor
     version: 1,
     exportedAt: new Date().toISOString(),
     workflow,
+  };
+}
+
+function normalizeWorkflowRuntimeConfig(params: {
+  runtimeParamsSchema: unknown;
+  runtimeParamsDefaults: unknown;
+}): { runtimeParamsSchema: Record<string, unknown>; runtimeParamsDefaults: WorkflowRuntimeParameters } {
+  const runtimeParamsSchema = normalizeWorkflowRuntimeParametersSchema(params.runtimeParamsSchema);
+  const runtimeParamsDefaults = normalizeWorkflowRuntimeParameters(params.runtimeParamsDefaults);
+  validateRuntimeParameters(runtimeParamsDefaults, runtimeParamsSchema, '', { enforceRequired: false });
+  return {
+    runtimeParamsSchema,
+    runtimeParamsDefaults,
   };
 }
 
@@ -591,238 +634,8 @@ const workflowOperatorRuntime: WorkflowOperatorRuntime = {
   },
 };
 
-function getWorkflowRunStatus(result: WorkflowExecutionResult): WorkflowRunStatus {
-  if (result.failedTaskId) return 'failed';
-  if (result.waitingForApprovalTaskIds.length) return 'waiting_approval';
-  if (result.warningTaskIds.length) return 'completed_with_warnings';
-  return 'completed';
-}
-
-function toWorkflowRunStepRecord(row: Record<string, unknown>): WorkflowRunStepRecord {
-  return {
-    id: Number(row.id),
-    runId: Number(row.run_id),
-    taskId: String(row.task_id),
-    taskName: String(row.task_name),
-    operatorCode: String(row.operator_code),
-    status: String(row.status) as WorkflowRunStepRecord['status'],
-    startedAt: row.started_at ? String(row.started_at) : null,
-    finishedAt: row.finished_at ? String(row.finished_at) : null,
-    durationMs: row.duration_ms === null || row.duration_ms === undefined ? null : Number(row.duration_ms),
-    errorMessage: row.error_message ? String(row.error_message) : null,
-    result: parseJson<WorkflowTaskPreviewResult | null>(row.result_json, null),
-  };
-}
-
-function toWorkflowRunArtifactRecord(row: Record<string, unknown>): WorkflowRunArtifactRecord {
-  return {
-    id: Number(row.id),
-    runId: Number(row.run_id),
-    stepId: row.step_id === null || row.step_id === undefined ? null : Number(row.step_id),
-    taskId: row.task_id ? String(row.task_id) : null,
-    artifactType: String(row.artifact_type) as WorkflowRunArtifactRecord['artifactType'],
-    fileId: row.file_id === null || row.file_id === undefined ? null : Number(row.file_id),
-    name: String(row.name ?? ''),
-    metadata: parseJson<Record<string, unknown>>(row.metadata_json, {}),
-    createdAt: String(row.created_at),
-  };
-}
-
-function toWorkflowRunRecord(
-  row: Record<string, unknown>,
-  steps: WorkflowRunStepRecord[],
-  artifacts: WorkflowRunArtifactRecord[],
-): WorkflowRunRecord {
-  return {
-    id: Number(row.id),
-    workflowId: Number(row.workflow_id),
-    status: String(row.status) as WorkflowRunStatus,
-    startedAt: String(row.started_at),
-    finishedAt: row.finished_at ? String(row.finished_at) : null,
-    durationMs: row.duration_ms === null || row.duration_ms === undefined ? null : Number(row.duration_ms),
-    errorMessage: row.error_message ? String(row.error_message) : null,
-    approvedWarningTaskIds: parseJson<string[]>(row.approved_warning_task_ids_json, []),
-    steps,
-    artifacts,
-  };
-}
-
-function buildWorkflowArtifactInput(task: WorkflowTask, stepId: number, result: WorkflowTaskPreviewResult | null) {
-  if (!result) return null;
-  if (result.kind === 'file') {
-    return {
-      stepId,
-      taskId: task.id,
-      artifactType: 'file',
-      fileId: result.file.id,
-      name: result.file.originalName,
-      metadata: {
-        file: result.file,
-        rows: result.dataFrame.rows.length,
-        columns: result.dataFrame.columns.length,
-        range: result.dataFrame.range,
-      },
-    } satisfies {
-      stepId: number;
-      taskId: string;
-      artifactType: WorkflowRunArtifactRecord['artifactType'];
-      fileId: number | null;
-      name: string;
-      metadata: Record<string, unknown>;
-    };
-  }
-  if (result.kind === 'assert') {
-    return {
-      stepId,
-      taskId: task.id,
-      artifactType: 'assertion',
-      fileId: null,
-      name: task.name,
-      metadata: {
-        assertion: result.assertion,
-        rows: result.dataFrame.rows.length,
-        columns: result.dataFrame.columns.length,
-        range: result.dataFrame.range,
-      },
-    } satisfies {
-      stepId: number;
-      taskId: string;
-      artifactType: WorkflowRunArtifactRecord['artifactType'];
-      fileId: number | null;
-      name: string;
-      metadata: Record<string, unknown>;
-    };
-  }
-  return {
-    stepId,
-    taskId: task.id,
-    artifactType: 'dataframe',
-    fileId: null,
-    name: task.name,
-    metadata: {
-      rows: result.dataFrame.rows.length,
-      columns: result.dataFrame.columns.length,
-      range: result.dataFrame.range,
-    },
-  } satisfies {
-    stepId: number;
-    taskId: string;
-    artifactType: WorkflowRunArtifactRecord['artifactType'];
-    fileId: number | null;
-    name: string;
-    metadata: Record<string, unknown>;
-  };
-}
-
-async function createWorkflowRun(params: {
-  workflow: Record<string, unknown>;
-  tasks: WorkflowTask[];
-  approvedWarningTaskIds: string[];
-}) {
-  const row = await db.queryOne<Record<string, unknown>>(
-    `insert into workflow_runs (
-      workflow_id, workflow_code, workflow_name, status, tasks_snapshot_json, approved_warning_task_ids_json
-    ) values ($1, $2, $3, 'running', $4::jsonb, $5::jsonb)
-    returning *`,
-    [
-      Number(params.workflow.id),
-      String(params.workflow.code),
-      String(params.workflow.name),
-      JSON.stringify(params.tasks),
-      JSON.stringify(params.approvedWarningTaskIds),
-    ],
-  );
-  if (!row) throw new Error('Failed to create workflow run');
-  return row;
-}
-
-async function markWorkflowRunFailed(runId: number, errorMessage: string) {
-  await db.execute(
-    `update workflow_runs
-     set status = 'failed',
-         error_message = $2,
-         finished_at = current_timestamp,
-         duration_ms = greatest(0, floor(extract(epoch from (current_timestamp - started_at)) * 1000)::integer)
-     where id = $1`,
-    [runId, errorMessage],
-  );
-}
-
-async function persistWorkflowExecutionResult(params: {
-  runId: number;
-  tasks: WorkflowTask[];
-  result: WorkflowExecutionResult;
-}): Promise<WorkflowRunRecord> {
-  const status = getWorkflowRunStatus(params.result);
-  const runRow = await db.queryOne<Record<string, unknown>>(
-    `update workflow_runs
-     set status = $2,
-         result_json = $3::jsonb,
-         error_message = $4,
-         finished_at = current_timestamp,
-         duration_ms = greatest(0, floor(extract(epoch from (current_timestamp - started_at)) * 1000)::integer)
-     where id = $1
-     returning *`,
-    [
-      params.runId,
-      status,
-      JSON.stringify(params.result),
-      params.result.errorMessage,
-    ],
-  );
-  if (!runRow) throw new Error('Failed to update workflow run');
-
-  const steps: WorkflowRunStepRecord[] = [];
-  const artifacts: WorkflowRunArtifactRecord[] = [];
-  for (const task of params.tasks) {
-    const timing = params.result.taskTimings[task.id];
-    const taskResult = params.result.taskResults[task.id] ?? null;
-    const stepRow = await db.queryOne<Record<string, unknown>>(
-      `insert into workflow_run_steps (
-        run_id, task_id, task_name, operator_code, status, task_snapshot_json, result_json,
-        error_message, started_at, finished_at, duration_ms
-      ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11)
-      returning *`,
-      [
-        params.runId,
-        task.id,
-        task.name,
-        task.operatorCode,
-        params.result.taskStates[task.id] ?? 'pending',
-        JSON.stringify(task),
-        taskResult ? JSON.stringify(taskResult) : null,
-        params.result.taskErrors[task.id] ?? null,
-        timing?.startedAt ?? null,
-        timing?.finishedAt ?? null,
-        timing?.durationMs ?? null,
-      ],
-    );
-    if (!stepRow) throw new Error(`Failed to insert workflow step ${task.id}`);
-    const step = toWorkflowRunStepRecord(stepRow);
-    steps.push(step);
-
-    const artifactInput = buildWorkflowArtifactInput(task, step.id, taskResult);
-    if (!artifactInput) continue;
-    const artifactRow = await db.queryOne<Record<string, unknown>>(
-      `insert into workflow_run_artifacts (
-        run_id, step_id, task_id, artifact_type, file_id, name, metadata_json
-      ) values ($1, $2, $3, $4, $5, $6, $7::jsonb)
-      returning *`,
-      [
-        params.runId,
-        artifactInput.stepId,
-        artifactInput.taskId,
-        artifactInput.artifactType,
-        artifactInput.fileId,
-        artifactInput.name,
-        JSON.stringify(artifactInput.metadata),
-      ],
-    );
-    if (artifactRow) artifacts.push(toWorkflowRunArtifactRecord(artifactRow));
-  }
-
-  return toWorkflowRunRecord(runRow, steps, artifacts);
-}
+const workflowRunStore = new WorkflowRunStore(db);
+const workflowRunExecutor = new WorkflowRunExecutor(workflowRunStore, workflowOperatorRuntime);
 
 async function registerRoutes() {
   await app.register(cors, { origin: true });
@@ -1627,6 +1440,8 @@ async function registerRoutes() {
       status: workflow.status,
       version: workflow.version,
       tasks: workflow.tasks,
+      runtimeParamsSchema: workflow.runtimeParamsSchema,
+      runtimeParamsDefaults: workflow.runtimeParamsDefaults,
     });
   });
 
@@ -1634,12 +1449,27 @@ async function registerRoutes() {
     const body = workflowImportBundleSchema.parse(request.body);
     const imported = toWorkflowPortableDefinition(body.workflow);
     const uniqueCode = await ensureUniqueWorkflowCode(imported.code);
+    const runtimeConfig = normalizeWorkflowRuntimeConfig({
+      runtimeParamsSchema: imported.runtimeParamsSchema,
+      runtimeParamsDefaults: imported.runtimeParamsDefaults,
+    });
 
     const row = await db.queryOne<Record<string, unknown>>(
-      `insert into workflow_definitions (code, name, description, status, version, tasks_json)
-       values ($1, $2, $3, $4, $5, $6::jsonb)
+      `insert into workflow_definitions (
+         code, name, description, status, version, tasks_json, runtime_params_schema_json, runtime_params_defaults_json
+       )
+       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb)
        returning *`,
-      [uniqueCode, imported.name, imported.description, imported.status, imported.version, JSON.stringify(imported.tasks)],
+      [
+        uniqueCode,
+        imported.name,
+        imported.description,
+        imported.status,
+        imported.version,
+        JSON.stringify(imported.tasks),
+        JSON.stringify(runtimeConfig.runtimeParamsSchema),
+        JSON.stringify(runtimeConfig.runtimeParamsDefaults),
+      ],
     );
     if (!row) throw new Error('Failed to import workflow');
     return reply.code(201).send(toWorkflowDefinition(row));
@@ -1654,16 +1484,33 @@ async function registerRoutes() {
         status: z.enum(['draft', 'active']).optional().default('draft'),
         version: z.number().int().min(1).optional().default(1),
         tasks: z.array(z.record(z.string(), z.unknown())).optional().default([]),
+        runtimeParamsSchema: z.record(z.string(), z.unknown()).optional().default({}),
+        runtimeParamsDefaults: z.record(z.string(), z.unknown()).optional().default({}),
       })
       .parse(request.body);
 
     const normalizedTasks = normalizeWorkflowTasks(body.tasks);
+    const runtimeConfig = normalizeWorkflowRuntimeConfig({
+      runtimeParamsSchema: body.runtimeParamsSchema,
+      runtimeParamsDefaults: body.runtimeParamsDefaults,
+    });
 
     const row = await db.queryOne<Record<string, unknown>>(
-      `insert into workflow_definitions (code, name, description, status, version, tasks_json)
-       values ($1, $2, $3, $4, $5, $6::jsonb)
+      `insert into workflow_definitions (
+         code, name, description, status, version, tasks_json, runtime_params_schema_json, runtime_params_defaults_json
+       )
+       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb)
        returning *`,
-      [body.code, body.name, body.description, body.status, body.version, JSON.stringify(normalizedTasks)],
+      [
+        body.code,
+        body.name,
+        body.description,
+        body.status,
+        body.version,
+        JSON.stringify(normalizedTasks),
+        JSON.stringify(runtimeConfig.runtimeParamsSchema),
+        JSON.stringify(runtimeConfig.runtimeParamsDefaults),
+      ],
     );
     if (!row) throw new Error('Failed to create workflow');
     return reply.code(201).send(toWorkflowDefinition(row));
@@ -1683,11 +1530,19 @@ async function registerRoutes() {
         status: z.enum(['draft', 'active']).optional(),
         version: z.number().int().min(1).optional(),
         tasks: z.array(z.record(z.string(), z.unknown())).optional(),
+        runtimeParamsSchema: z.record(z.string(), z.unknown()).optional(),
+        runtimeParamsDefaults: z.record(z.string(), z.unknown()).optional(),
       })
       .parse(request.body);
 
     const normalizedTasks =
       body.tasks === undefined ? normalizeWorkflowTasks(parseJson(existing.tasks_json, [])) : normalizeWorkflowTasks(body.tasks);
+    const runtimeConfig = normalizeWorkflowRuntimeConfig({
+      runtimeParamsSchema:
+        body.runtimeParamsSchema === undefined ? parseJson(existing.runtime_params_schema_json, {}) : body.runtimeParamsSchema,
+      runtimeParamsDefaults:
+        body.runtimeParamsDefaults === undefined ? parseJson(existing.runtime_params_defaults_json, {}) : body.runtimeParamsDefaults,
+    });
 
     const row = await db.queryOne<Record<string, unknown>>(
       `update workflow_definitions
@@ -1697,8 +1552,10 @@ async function registerRoutes() {
            status = $4,
            version = $5,
            tasks_json = $6::jsonb,
+           runtime_params_schema_json = $7::jsonb,
+           runtime_params_defaults_json = $8::jsonb,
            updated_at = current_timestamp
-       where id = $7
+       where id = $9
        returning *`,
       [
         body.code ?? existing.code,
@@ -1707,6 +1564,8 @@ async function registerRoutes() {
         body.status ?? existing.status,
         body.version ?? Number(existing.version ?? 1),
         JSON.stringify(normalizedTasks),
+        JSON.stringify(runtimeConfig.runtimeParamsSchema),
+        JSON.stringify(runtimeConfig.runtimeParamsDefaults),
         workflowId,
       ],
     );
@@ -1734,32 +1593,50 @@ async function registerRoutes() {
     const workflowRow = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [workflowId]);
     if (!workflowRow) throw notFound('Workflow not found');
 
-    const tasks = body.tasks ? normalizeWorkflowTasks(body.tasks) : normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
-    const runRow = await createWorkflowRun({
+    const storedTasks = normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
+    const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
+      tasks: storedTasks,
+      runtimeParamsSchema: parseJson(workflowRow.runtime_params_schema_json, {}),
+      runtimeParamsDefaults: parseJson(workflowRow.runtime_params_defaults_json, {}),
+      runtimeParameters: body.runtimeParameters,
+    });
+    const run = await workflowRunStore.createRun({
       workflow: workflowRow,
-      tasks,
-      approvedWarningTaskIds: body.approvedWarningTaskIds,
+      tasks: runtimeConfiguration.tasks,
+      runtimeParameters: runtimeConfiguration.runtimeParameters,
     });
 
-    try {
-      const result = await executeWorkflowDefinition(tasks, workflowOperatorRuntime, {
-        enforceTerminalAssertBlock: true,
-        approvedWarningTaskIds: body.approvedWarningTaskIds,
-      });
-      const run = await persistWorkflowExecutionResult({
-        runId: Number(runRow.id),
-        tasks,
-        result,
-      });
-      return {
-        ...result,
-        run,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Workflow execution failed';
-      await markWorkflowRunFailed(Number(runRow.id), message);
-      throw error;
+    if (body.approvedWarningTaskIds.length) {
+      for (const taskId of body.approvedWarningTaskIds) {
+        await workflowRunStore.approveWarning(run.id, taskId, 'approved');
+      }
     }
+
+    workflowRunExecutor.startAsync(run.id);
+    return workflowRunToExecutionResult(await workflowRunStore.getRun(run.id));
+  });
+
+  app.get('/api/workflow-runs/:id', async (request) => {
+    const runId = Number((request.params as { id: string }).id);
+    return workflowRunStore.getRun(runId);
+  });
+
+  app.post('/api/workflow-runs/:id/approvals', async (request) => {
+    const runId = Number((request.params as { id: string }).id);
+    const body = workflowApprovalBodySchema.parse(request.body ?? {});
+    const taskIds = body.taskIds?.length ? body.taskIds : body.taskId ? [body.taskId] : [];
+    if (!taskIds.length) {
+      throw new Error('At least one approval task id is required');
+    }
+    const run = await workflowRunExecutor.continueAfterApproval(runId, taskIds, body.decision);
+    return workflowRunToExecutionResult(run);
+  });
+
+  app.post('/api/workflow-runs/:id/steps/:taskId/execute', async (request) => {
+    const { id, taskId } = request.params as { id: string; taskId: string };
+    const runId = Number(id);
+    workflowRunExecutor.startSingleStepAsync(runId, taskId);
+    return workflowRunToExecutionResult(await workflowRunStore.getRun(runId));
   });
 
   app.delete('/api/workflows/:id', async (request, reply) => {

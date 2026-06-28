@@ -7,8 +7,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body.app-booting .app-container {
+            visibility: hidden;
+        }
+    </style>
 </head>
-<body>
+<body class="app-booting">
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar">
@@ -51,7 +56,7 @@
                 </div>
                 <div class="nav-item" data-page="holdings">
                     <span class="nav-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M9 4v16"/><path d="M7 16l3-3 3 2 4-5"/><path d="M17 10h-3"/></svg>
                     </span>
                     <span class="nav-text">Holdings</span>
                 </div>
@@ -510,25 +515,23 @@
                                 <div class="workflow-toolbar__meta">
                                     <div class="workflow-toolbar__identity">
                                         <input id="workflowNameInput" class="search-input workflow-input workflow-input--title" placeholder="Workflow name">
-                                        <div class="workflow-toolbar__description" id="workflowDescriptionPanel">
-                                            <div class="workflow-toolbar__description-row" id="workflowDescriptionDisplayRow">
-                                                <div class="workflow-toolbar__description-text" id="workflowDescriptionText">No description</div>
-                                                <button class="workflow-toolbar__description-edit" id="btnEditWorkflowDescription" type="button" aria-label="编辑工作流描述" title="编辑描述">
-                                                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-                                                        <path d="M14.69 2.86a1.5 1.5 0 0 1 2.12 2.12l-8.18 8.18-3.27.82.82-3.27 8.5-8.5Zm-7.9 8.92-.3 1.2 1.2-.3 7.88-7.88-1.06-1.06-7.72 7.72Z" fill="currentColor"></path>
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                            <textarea id="workflowDescriptionInput" class="workflow-toolbar__description-input hidden" rows="3" placeholder="Description"></textarea>
-                                        </div>
                                     </div>
                                 </div>
                                 <div class="workflow-toolbar__actions">
-                                    <button class="btn btn-secondary" id="btnAddWorkflowTask">Add Task</button>
-                                    <button class="btn btn-secondary" id="btnAutoLayoutWorkflow">Auto Layout</button>
                                     <button class="btn btn-secondary" id="btnExecuteWorkflow">Execute</button>
                                     <button class="btn btn-primary" id="btnSaveWorkflow">Save</button>
                                     <button class="btn btn-danger" id="btnDeleteWorkflow">Delete</button>
+                                </div>
+                                <div class="workflow-toolbar__description" id="workflowDescriptionPanel">
+                                    <div class="workflow-toolbar__description-row" id="workflowDescriptionDisplayRow">
+                                        <div class="workflow-toolbar__description-text" id="workflowDescriptionText">No description</div>
+                                        <button class="workflow-toolbar__description-edit" id="btnEditWorkflowDescription" type="button" aria-label="编辑工作流描述" title="编辑描述">
+                                            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                                                <path d="M14.69 2.86a1.5 1.5 0 0 1 2.12 2.12l-8.18 8.18-3.27.82.82-3.27 8.5-8.5Zm-7.9 8.92-.3 1.2 1.2-.3 7.88-7.88-1.06-1.06-7.72 7.72Z" fill="currentColor"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <textarea id="workflowDescriptionInput" class="workflow-toolbar__description-input hidden" rows="3" placeholder="Description"></textarea>
                                 </div>
                             </header>
 
@@ -550,7 +553,35 @@
                                 <div class="workflow-run-panel__footer" id="workflowRunFooter"></div>
                             </section>
 
-                            <div class="workflow-dag" id="workflowDag"></div>
+                            <div class="workflow-dag-shell">
+                                <div class="workflow-canvas-actions" aria-label="Workflow canvas actions">
+                                    <button class="workflow-add-task-control" id="btnAddWorkflowTask" type="button" aria-label="Add task">
+                                        <span class="workflow-add-task-control__icon">+</span>
+                                        <span>Add Task</span>
+                                    </button>
+                                    <div class="workflow-zoom-controls" aria-label="Canvas view controls">
+                                        <button class="workflow-zoom-controls__button" id="btnWorkflowZoomIn" type="button" aria-label="Zoom in">+</button>
+                                        <button class="workflow-zoom-controls__button" id="btnWorkflowZoomOut" type="button" aria-label="Zoom out">−</button>
+                                        <button class="workflow-zoom-controls__button workflow-zoom-controls__fit" id="btnWorkflowZoomReset" type="button" aria-label="Fit view" title="Fit view">
+                                            <svg viewBox="0 0 20 20" aria-hidden="true">
+                                                <path d="M4.5 8V4.5H8M12 4.5h3.5V8M15.5 12v3.5H12M8 15.5H4.5V12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
+                                        </button>
+                                        <button class="workflow-zoom-controls__button workflow-zoom-controls__layout" id="btnAutoLayoutWorkflow" type="button" aria-label="Auto layout" title="Auto Layout">
+                                            <svg viewBox="0 0 20 20" aria-hidden="true">
+                                                <path d="M4 5.5h4M12 5.5h4M4 14.5h4M12 14.5h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                                                <path d="M8 5.5h4M8 14.5h4M10 7.5v5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                                                <circle cx="4" cy="5.5" r="1.4" fill="currentColor"/>
+                                                <circle cx="16" cy="5.5" r="1.4" fill="currentColor"/>
+                                                <circle cx="4" cy="14.5" r="1.4" fill="currentColor"/>
+                                                <circle cx="16" cy="14.5" r="1.4" fill="currentColor"/>
+                                            </svg>
+                                        </button>
+                                        <span class="workflow-zoom-controls__value" id="workflowZoomValue">100%</span>
+                                    </div>
+                                </div>
+                                <div class="workflow-dag" id="workflowDag"></div>
+                            </div>
                         </section>
 
                         <button class="rail rail--right hidden" id="workflowInspectorCollapsedRail" title="展开 Operators" aria-label="展开 Operators">
@@ -622,9 +653,6 @@
                                     </div>
                                     <div class="workflow-structured__row hidden" id="workflowStructuredSectionsRow">
                                         <div id="workflowSectionsEditor"></div>
-                                    </div>
-                                    <div class="workflow-structured__row" id="workflowStructuredDependenciesRow">
-                                        <div id="workflowDependenciesEditor"></div>
                                     </div>
                                     <div class="workflow-structured__row hidden" id="workflowStructuredSqlTablesRow">
                                         <div id="workflowSqlTables"></div>
@@ -722,6 +750,12 @@
                                         <input id="workflowAssertFailureMessage" class="search-input workflow-input" placeholder="Assertion failed">
                                     </div>
                                     <div class="workflow-structured__row hidden" id="workflowStructuredGenericParamsRow"></div>
+                                    <div class="workflow-structured__row hidden" id="workflowStructuredInputGuardsRow">
+                                        <div id="workflowInputGuardsEditor"></div>
+                                    </div>
+                                </div>
+                                <div class="workflow-dependencies-panel hidden" id="workflowDependenciesPanel">
+                                    <div id="workflowDependenciesEditor"></div>
                                 </div>
                                 <div class="workflow-preview hidden" id="workflowPreviewPanel">
                                     <div class="workflow-inspector__title-row">
@@ -751,6 +785,22 @@
                                 <div class="workflow-preview__summary" id="workflowBindingPreviewSummary"></div>
                                 <div class="workflow-preview__table-wrap" id="workflowBindingPreviewTable"></div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay hidden" id="workflowEdgeGuardsModal">
+                    <div class="modal-container workflow-edge-guards-modal">
+                        <div class="modal-header">
+                            <h3 class="modal-title" id="workflowEdgeGuardsTitle">Input Checks</h3>
+                            <button class="modal-close" id="btnCloseWorkflowEdgeGuardsModal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="workflowEdgeGuardsContent"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" id="btnEditWorkflowEdgeGuards" type="button">Edit in Task</button>
+                            <button class="btn btn-primary" id="btnDoneWorkflowEdgeGuards" type="button">Done</button>
                         </div>
                     </div>
                 </div>
@@ -802,39 +852,41 @@
                             </h3>
                             <span class="card-subtitle">Imported grant records aligned to the award workbook</span>
                         </div>
-                        <div class="card-body" style="overflow-x:auto;">
-                            <table class="data-table table-holdings" id="holdingsTable">
-                                <thead>
-                                    <tr>
-                                        <th style="min-width:60px;">No.<br><span class="sub-label">序号</span></th>
-                                        <th style="min-width:140px;">Employee Name<br><span class="sub-label">姓名</span></th>
-                                        <th style="min-width:100px;">Employee No.<br><span class="sub-label">工号</span></th>
-                                        <th style="min-width:120px;">User ID<br><span class="sub-label">用户ID</span></th>
-                                        <th style="min-width:180px;">Tags<br><span class="sub-label">标签</span></th>
-                                        <th style="min-width:100px;">Grant No.<br><span class="sub-label">授予编号</span></th>
-                                        <th style="min-width:120px;">Incentive Type<br><span class="sub-label">激励类型</span></th>
-                                        <th style="min-width:110px;">Grant Date<br><span class="sub-label">授予日期</span></th>
-                                        <th style="min-width:120px;" class="col-number">Grant Qty<br><span class="sub-label">授予数量</span></th>
-                                        <th style="min-width:120px;" class="col-number">Grant Price<br><span class="sub-label">授予价(USD)</span></th>
-                                        <th style="min-width:110px;">Expire Date<br><span class="sub-label">到期日</span></th>
-                                        <th style="min-width:220px;">Plan Name<br><span class="sub-label">所属计划</span></th>
-                                        <th style="min-width:110px;">Condition Rule<br><span class="sub-label">条件规则</span></th>
-                                        <th style="min-width:110px;">Portal Visibility<br><span class="sub-label">员工端</span></th>
-                                        <th style="min-width:150px;">Tax Rule<br><span class="sub-label">授予计税规则</span></th>
-                                        <th style="min-width:150px;">Vesting Rule<br><span class="sub-label">归属规则名称</span></th>
-                                        <th style="min-width:110px;">Vesting Start<br><span class="sub-label">归属起算日期</span></th>
-                                        <th style="min-width:110px;" class="col-number">Vested<br><span class="sub-label">已归属</span></th>
-                                        <th style="min-width:110px;" class="col-number">Effective Vested<br><span class="sub-label">有效已归属</span></th>
-                                        <th style="min-width:110px;" class="col-number">Unvested<br><span class="sub-label">待归属</span></th>
-                                        <th style="min-width:110px;" class="col-number">Exercised<br><span class="sub-label">已行权</span></th>
-                                        <th style="min-width:110px;" class="col-number">Pending Exercise<br><span class="sub-label">待行权</span></th>
-                                        <th style="min-width:110px;" class="col-number">Outstanding<br><span class="sub-label">Outstanding</span></th>
-                                        <th style="min-width:110px;" class="col-number">Sellable<br><span class="sub-label">可出售数量</span></th>
-                                        <th style="min-width:120px;">Data Source<br><span class="sub-label">数据来源</span></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="holdingsBody"></tbody>
-                            </table>
+                        <div class="card-body card-body--with-pagination">
+                            <div class="table-scroll">
+                                <table class="data-table table-holdings" id="holdingsTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width:60px;">No.<br><span class="sub-label">序号</span></th>
+                                            <th style="min-width:140px;">Employee Name<br><span class="sub-label">姓名</span></th>
+                                            <th style="min-width:100px;">Employee No.<br><span class="sub-label">工号</span></th>
+                                            <th style="min-width:120px;">User ID<br><span class="sub-label">用户ID</span></th>
+                                            <th style="min-width:180px;">Tags<br><span class="sub-label">标签</span></th>
+                                            <th style="min-width:100px;">Grant No.<br><span class="sub-label">授予编号</span></th>
+                                            <th style="min-width:120px;">Incentive Type<br><span class="sub-label">激励类型</span></th>
+                                            <th style="min-width:110px;">Grant Date<br><span class="sub-label">授予日期</span></th>
+                                            <th style="min-width:120px;" class="col-number">Grant Qty<br><span class="sub-label">授予数量</span></th>
+                                            <th style="min-width:120px;" class="col-number">Grant Price<br><span class="sub-label">授予价(USD)</span></th>
+                                            <th style="min-width:110px;">Expire Date<br><span class="sub-label">到期日</span></th>
+                                            <th style="min-width:220px;">Plan Name<br><span class="sub-label">所属计划</span></th>
+                                            <th style="min-width:110px;">Condition Rule<br><span class="sub-label">条件规则</span></th>
+                                            <th style="min-width:110px;">Portal Visibility<br><span class="sub-label">员工端</span></th>
+                                            <th style="min-width:150px;">Tax Rule<br><span class="sub-label">授予计税规则</span></th>
+                                            <th style="min-width:150px;">Vesting Rule<br><span class="sub-label">归属规则名称</span></th>
+                                            <th style="min-width:110px;">Vesting Start<br><span class="sub-label">归属起算日期</span></th>
+                                            <th style="min-width:110px;" class="col-number">Vested<br><span class="sub-label">已归属</span></th>
+                                            <th style="min-width:110px;" class="col-number">Effective Vested<br><span class="sub-label">有效已归属</span></th>
+                                            <th style="min-width:110px;" class="col-number">Unvested<br><span class="sub-label">待归属</span></th>
+                                            <th style="min-width:110px;" class="col-number">Exercised<br><span class="sub-label">已行权</span></th>
+                                            <th style="min-width:110px;" class="col-number">Pending Exercise<br><span class="sub-label">待行权</span></th>
+                                            <th style="min-width:110px;" class="col-number">Outstanding<br><span class="sub-label">Outstanding</span></th>
+                                            <th style="min-width:110px;" class="col-number">Sellable<br><span class="sub-label">可出售数量</span></th>
+                                            <th style="min-width:120px;">Data Source<br><span class="sub-label">数据来源</span></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="holdingsBody"></tbody>
+                                </table>
+                            </div>
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="holdingsPaginationSummary">-</div>
                                 <div class="pagination-actions">
@@ -865,14 +917,6 @@
                                 New Employee
                             </button>
                         </div>
-                    </div>
-
-                    <div class="info-banner">
-                        <span class="info-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                        </span>
-                        <span class="info-text">Employee master data is extracted from the award workbook and linked to grant detail records.</span>
-                        <span class="info-badge" id="employeesCountBadge">0 employees</span>
                     </div>
 
                     <div class="card">

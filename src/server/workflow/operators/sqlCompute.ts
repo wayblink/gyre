@@ -34,6 +34,7 @@ export const sqlComputeOperator = defineWorkflowOperator({
       nextInputs[slotName] = {
         from: String(binding?.from ?? '').trim(),
         slot: String(binding?.slot ?? 'dataframe').trim() || 'dataframe',
+        guards: binding?.guards,
       };
     }
     task.inputs = Object.keys(nextInputs).length ? nextInputs : { input1: { from: '', slot: 'dataframe' } };

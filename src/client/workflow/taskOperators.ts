@@ -239,6 +239,7 @@ export function normalizeSqlTask(task: WorkflowTask) {
     nextInputs[slotName] = {
       from: String(binding?.from ?? '').trim(),
       slot: String(binding?.slot ?? 'dataframe').trim() || 'dataframe',
+      guards: binding?.guards,
     };
   }
   if (!Object.keys(nextInputs).length) {
@@ -293,6 +294,7 @@ export function normalizePersistExcelTask(task: WorkflowTask) {
     input1: {
       from: String(task.inputs?.input1?.from ?? '').trim(),
       slot: 'dataframe',
+      guards: task.inputs?.input1?.guards,
     },
   };
   normalizeTaskDependencies(task);
@@ -305,6 +307,7 @@ export function normalizeAssertTask(task: WorkflowTask) {
     input1: {
       from: String(task.inputs?.input1?.from ?? '').trim(),
       slot: 'dataframe',
+      guards: task.inputs?.input1?.guards,
     },
   };
   normalizeTaskDependencies(task);
@@ -346,6 +349,7 @@ export function normalizeSchemaAssertTask(task: WorkflowTask) {
     input1: {
       from: String(task.inputs?.input1?.from ?? '').trim(),
       slot: 'dataframe',
+      guards: task.inputs?.input1?.guards,
     },
   };
   normalizeTaskDependencies(task);
@@ -370,6 +374,7 @@ export function normalizeShapeAssertTask(task: WorkflowTask) {
     input1: {
       from: String(task.inputs?.input1?.from ?? '').trim(),
       slot: 'dataframe',
+      guards: task.inputs?.input1?.guards,
     },
   };
   normalizeTaskDependencies(task);

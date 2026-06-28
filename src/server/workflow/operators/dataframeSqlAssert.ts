@@ -18,6 +18,7 @@ export function normalizeSqlAssertTask(task: WorkflowTask) {
     nextInputs[slotName] = {
       from: String(binding?.from ?? '').trim(),
       slot: String(binding?.slot ?? 'dataframe').trim() || 'dataframe',
+      guards: binding?.guards,
     };
   }
   task.inputs = Object.keys(nextInputs).length ? nextInputs : { input1: { from: '', slot: 'dataframe' } };
@@ -34,7 +35,7 @@ export function normalizeSqlAssertTask(task: WorkflowTask) {
   normalizeWorkflowTaskDependencies(task);
 }
 
-async function evaluateSqlAssertion(
+export async function evaluateSqlAssertion(
   task: WorkflowTask,
   runtime: Parameters<typeof executeSqlDataFrameQuery>[1],
   resolveInputDataFrame: Parameters<typeof executeSqlDataFrameQuery>[2],

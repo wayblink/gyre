@@ -267,6 +267,11 @@ export type WorkflowSqlTableBinding = {
 
 export type WorkflowAssertOperator = '>' | '>=' | '<' | '<=' | '=' | '!=';
 export type WorkflowAssertFailureStrategy = 'block' | 'warning' | 'pass-through';
+export type WorkflowInputGuardType =
+  | 'dataframe.assert'
+  | 'dataframe.sql.assert'
+  | 'dataframe.schema.assert'
+  | 'dataframe.shape.assert';
 
 export type WorkflowAssertionResult = {
   passed: boolean;
@@ -278,6 +283,14 @@ export type WorkflowAssertionResult = {
   blockExecution: boolean;
   actualLabel?: string;
   expectedLabel?: string;
+};
+
+export type WorkflowInputGuard = {
+  id: string;
+  type: WorkflowInputGuardType;
+  name: string;
+  enabled: boolean;
+  params: Record<string, unknown>;
 };
 
 export type PaginatedResult<T> = {
@@ -311,6 +324,22 @@ export type WorkflowOperatorParamField = {
 
 export type WorkflowOperatorParamsSchema = Record<string, WorkflowOperatorParamField>;
 
+export type WorkflowRuntimeParameterField = {
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  label: string;
+  required?: boolean;
+  description?: string;
+  enum?: string[];
+  properties?: WorkflowRuntimeParametersSchema;
+};
+
+export type WorkflowRuntimeParametersSchema = Record<string, WorkflowRuntimeParameterField>;
+export type WorkflowRuntimeParameters = Record<string, unknown>;
+
+export type WorkflowRuntimeParameterReference = {
+  $fromRuntime: string;
+};
+
 export type WorkflowOperator = {
   id: number;
   code: string;
@@ -328,6 +357,7 @@ export type WorkflowOperator = {
 export type WorkflowTaskInput = {
   from: string;
   slot: string;
+  guards?: WorkflowInputGuard[];
 };
 
 export type WorkflowTask = {
@@ -351,6 +381,8 @@ export type WorkflowDefinition = {
   status: 'draft' | 'active';
   version: number;
   tasks: WorkflowTask[];
+  runtimeParamsSchema: WorkflowRuntimeParametersSchema;
+  runtimeParamsDefaults: WorkflowRuntimeParameters;
   createdAt: string;
   updatedAt: string;
 };
@@ -362,6 +394,8 @@ export type WorkflowPortableDefinition = {
   status: 'draft' | 'active';
   version: number;
   tasks: WorkflowTask[];
+  runtimeParamsSchema: WorkflowRuntimeParametersSchema;
+  runtimeParamsDefaults: WorkflowRuntimeParameters;
 };
 
 export type WorkflowImportExportBundle = {
@@ -399,7 +433,14 @@ export type WorkflowTaskPreviewResult =
       dataFrame: WorkflowDataFrame;
     };
 
-export type WorkflowExecutionTaskState = 'pending' | 'running' | 'completed' | 'failed' | 'blocked' | 'warning';
+export type WorkflowExecutionTaskState =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'blocked'
+  | 'warning'
+  | 'skipped';
 
 export type WorkflowExecutionWarning = {
   taskId: string;
@@ -429,11 +470,43 @@ export type WorkflowExecutionResult = {
 };
 
 export type WorkflowExecuteRequest = {
-  tasks?: WorkflowTask[];
+  runtimeParameters?: WorkflowRuntimeParameters;
   approvedWarningTaskIds?: string[];
 };
 
-export type WorkflowRunStatus = 'running' | 'completed' | 'completed_with_warnings' | 'waiting_approval' | 'failed';
+export type WorkflowRunStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'completed_with_warnings'
+  | 'waiting_approval'
+  | 'failed'
+  | 'skipped';
+
+export type WorkflowRunEventRecord = {
+  id: number;
+  runId: number;
+  stepId: number | null;
+  taskId: string | null;
+  eventType: string;
+  level: 'info' | 'warning' | 'error';
+  message: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type WorkflowRunApprovalRecord = {
+  id: number;
+  runId: number;
+  taskId: string;
+  approvalKey: string;
+  status: 'pending' | 'approved' | 'rejected' | 'skipped';
+  decision: string | null;
+  decidedBy: string | null;
+  comment: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+};
 
 export type WorkflowRunStepRecord = {
   id: number;
@@ -442,6 +515,9 @@ export type WorkflowRunStepRecord = {
   taskName: string;
   operatorCode: string;
   status: WorkflowExecutionTaskState;
+  lockToken: string | null;
+  lockedAt: string | null;
+  attemptCount: number;
   startedAt: string | null;
   finishedAt: string | null;
   durationMs: number | null;
@@ -464,7 +540,11 @@ export type WorkflowRunArtifactRecord = {
 export type WorkflowRunRecord = {
   id: number;
   workflowId: number;
+  workflowCode: string;
+  workflowName: string;
   status: WorkflowRunStatus;
+  runtimeParameters: WorkflowRuntimeParameters;
+  tasksSnapshot: WorkflowTask[];
   startedAt: string;
   finishedAt: string | null;
   durationMs: number | null;
@@ -472,4 +552,6 @@ export type WorkflowRunRecord = {
   approvedWarningTaskIds: string[];
   steps: WorkflowRunStepRecord[];
   artifacts: WorkflowRunArtifactRecord[];
+  events: WorkflowRunEventRecord[];
+  approvals: WorkflowRunApprovalRecord[];
 };

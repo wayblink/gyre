@@ -1,0 +1,264 @@
+import type {
+  WorkflowExecutionTaskState,
+  WorkflowRunRecord,
+  WorkflowRunStatus,
+  WorkflowTask,
+} from '../../shared/types.js';
+import {
+  getWorkflowDependencyIds,
+  getWorkflowExecutionOrder,
+} from './engine.js';
+import type { WorkflowOperatorRuntime } from './operators/types.js';
+import type { WorkflowRunMode } from './runDispatcher.js';
+import type { WorkflowRunRepository } from './runRepository.js';
+import {
+  getRunStatusFromSteps,
+  getStepStates,
+  hydrateRunOutputs,
+  isApprovedWarning,
+  isReusableStepOutput,
+  workflowRunToExecutionResult,
+} from './runResult.js';
+import { WorkflowStepWorker } from './runWorker.js';
+
+const WORKFLOW_STEP_LOCK_TIMEOUT_MS = 10 * 60 * 1_000;
+
+type TaskReadiness =
+  | { kind: 'ready' }
+  | { kind: 'blocked' }
+  | { kind: 'waiting' }
+  | { kind: 'missing_output'; dependencyId: string };
+
+export class WorkflowRunScheduler {
+  private readonly worker: WorkflowStepWorker;
+
+  constructor(
+    private readonly store: WorkflowRunRepository,
+    runtime: WorkflowOperatorRuntime,
+  ) {
+    this.worker = new WorkflowStepWorker(store, runtime);
+  }
+
+  async execute(runId: number, mode: WorkflowRunMode): Promise<void> {
+    try {
+      await this.releaseExpiredLocks(runId);
+      await this.store.updateRunStatus({ runId, status: 'running', errorMessage: null });
+      await this.executeRunnableSteps(runId, mode);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Workflow execution failed';
+      await this.store.updateRunStatus({ runId, status: 'failed', errorMessage: message, finish: true });
+      await this.store.createRunFinishedEvent(runId, 'failed', { errorMessage: message });
+    }
+  }
+
+  private async releaseExpiredLocks(runId: number): Promise<void> {
+    const releasedCount = await this.store.releaseExpiredStepLocks(WORKFLOW_STEP_LOCK_TIMEOUT_MS, runId);
+    if (!releasedCount) return;
+    await this.store.createEvent({
+      runId,
+      eventType: 'expired_step_locks_released',
+      level: 'warning',
+      message: `${releasedCount} expired workflow step lock${releasedCount === 1 ? '' : 's'} released`,
+      payload: { releasedCount, timeoutMs: WORKFLOW_STEP_LOCK_TIMEOUT_MS },
+    });
+  }
+
+  async skipDownstream(runId: number, rootTaskIds: string[]): Promise<void> {
+    const run = await this.store.getRun(runId);
+    const tasks = run.tasksSnapshot;
+    const downstream = new Set<string>();
+    const queue = [...rootTaskIds];
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current) continue;
+      for (const task of tasks) {
+        if (!getWorkflowDependencyIds(task).includes(current) || downstream.has(task.id)) continue;
+        downstream.add(task.id);
+        queue.push(task.id);
+      }
+    }
+    for (const taskId of downstream) {
+      const task = tasks.find((item) => item.id === taskId);
+      if (!task) continue;
+      await this.store.markStepFinished({
+        runId,
+        task,
+        status: 'skipped',
+        errorMessage: `${task.name} skipped after checkpoint decision`,
+      });
+    }
+    const latestRun = await this.store.getRun(runId);
+    const result = workflowRunToExecutionResult(latestRun);
+    await this.store.updateRunStatus({ runId, status: 'skipped', result, finish: true });
+    await this.store.createRunFinishedEvent(runId, 'skipped', { skippedAfter: rootTaskIds });
+  }
+
+  private async executeRunnableSteps(runId: number, mode: WorkflowRunMode): Promise<void> {
+    let run = await this.store.getRun(runId);
+    const orderedTasks = getWorkflowExecutionOrder(run.tasksSnapshot);
+    const taskMap = new Map(orderedTasks.map((task) => [task.id, task]));
+    let { executed, taskResults } = hydrateRunOutputs(run, taskMap);
+    let stepStates: Record<string, WorkflowExecutionTaskState> = getStepStates(run);
+
+    for (const task of orderedTasks) {
+      if (mode.kind === 'single' && task.id !== mode.taskId) continue;
+
+      run = await this.store.getRun(runId);
+      ({ executed, taskResults } = hydrateRunOutputs(run, taskMap));
+      stepStates = getStepStates(run);
+      if (run.approvals.some((approval) => approval.status === 'pending')) {
+        await this.store.updateRunStatus({ runId, status: 'waiting_approval', errorMessage: null });
+        return;
+      }
+
+      const currentState = stepStates[task.id] ?? 'pending';
+      const currentStep = run.steps.find((step) => step.taskId === task.id) ?? null;
+      if (currentState === 'completed') continue;
+      if (currentState === 'running') continue;
+      if (currentState === 'warning' && isApprovedWarning(run, task.id) && isReusableStepOutput(currentStep, task)) continue;
+      if (currentState === 'failed' || currentState === 'skipped') continue;
+
+      const readiness = await this.resolveTaskReadiness(runId, task, run, stepStates, executed);
+      if (readiness.kind === 'blocked') continue;
+      if (readiness.kind === 'waiting') continue;
+      if (readiness.kind === 'missing_output') {
+        await this.failMissingPersistedOutput(runId, task, readiness.dependencyId);
+        stepStates[task.id] = 'failed';
+        continue;
+      }
+
+      const claim = await this.store.claimStep(runId, task);
+      if (!claim) {
+        await this.store.createEvent({
+          runId,
+          taskId: task.id,
+          eventType: 'task_claim_skipped',
+          level: 'info',
+          message: `${task.name} was already claimed or no longer runnable`,
+          payload: { reason: 'not claimable' },
+        });
+        continue;
+      }
+
+      const outcome = await this.worker.executeClaimedStep({
+        runId,
+        task,
+        claim,
+        run,
+        executed,
+        taskResults,
+        taskMap,
+      });
+      stepStates[task.id] = outcome.state;
+      if (outcome.paused) return;
+    }
+
+    await this.finalizeRun(runId, mode);
+  }
+
+  private async resolveTaskReadiness(
+    runId: number,
+    task: WorkflowTask,
+    run: WorkflowRunRecord,
+    stepStates: Record<string, WorkflowExecutionTaskState>,
+    executed: Map<string, unknown>,
+  ): Promise<TaskReadiness> {
+    const dependencyIds = getWorkflowDependencyIds(task);
+    const unapprovedWarningDependency = dependencyIds.find(
+      (dependencyId) => stepStates[dependencyId] === 'warning' && !isApprovedWarning(run, dependencyId),
+    );
+    const terminalDependency = dependencyIds.find((dependencyId) => {
+      const state = stepStates[dependencyId];
+      return state === 'failed' || state === 'blocked' || state === 'skipped';
+    });
+    const pendingDependency = dependencyIds.find((dependencyId) => {
+      const state = stepStates[dependencyId];
+      if (!state || state === 'pending' || state === 'running') return true;
+      return state !== 'completed' && !(state === 'warning' && isApprovedWarning(run, dependencyId));
+    });
+    const missingPersistedOutputDependency = dependencyIds.find((dependencyId) => {
+      const state = stepStates[dependencyId];
+      const shouldHaveOutput = state === 'completed' || (state === 'warning' && isApprovedWarning(run, dependencyId));
+      return shouldHaveOutput && !executed.has(dependencyId);
+    });
+
+    if (terminalDependency || unapprovedWarningDependency) {
+      const message = terminalDependency
+        ? `${task.name} blocked by dependency ${terminalDependency}`
+        : `${task.name} blocked by warning checkpoint ${unapprovedWarningDependency}`;
+      await this.store.markStepFinished({
+        runId,
+        task,
+        status: 'blocked',
+        errorMessage: message,
+      });
+      return { kind: 'blocked' };
+    }
+
+    if (pendingDependency) {
+      await this.store.createEvent({
+        runId,
+        taskId: task.id,
+        eventType: 'task_waiting_dependency',
+        level: 'info',
+        message: `${task.name} is waiting for dependency ${pendingDependency}`,
+        payload: { dependencyId: pendingDependency },
+      });
+      return { kind: 'waiting' };
+    }
+
+    return missingPersistedOutputDependency
+      ? { kind: 'missing_output', dependencyId: missingPersistedOutputDependency }
+      : { kind: 'ready' };
+  }
+
+  private async failMissingPersistedOutput(runId: number, task: WorkflowTask, dependencyId: string): Promise<void> {
+    const claim = await this.store.claimStep(runId, task);
+    if (!claim) return;
+    await this.store.finishClaimedStep({
+      runId,
+      task,
+      stepId: claim.step.id,
+      lockToken: claim.lockToken,
+      status: 'failed',
+      errorMessage: `${task.name} dependency ${dependencyId} has no persisted output`,
+      startedAt: claim.step.startedAt,
+    });
+  }
+
+  private async finalizeRun(runId: number, mode: WorkflowRunMode): Promise<void> {
+    const latestRun = await this.store.getRun(runId);
+    const status = mode.kind === 'single' ? getRunStatusFromSteps(latestRun) : this.getTerminalRunStatus(latestRun);
+    const shouldFinish = mode.kind === 'all' && status !== 'running' && status !== 'waiting_approval';
+    const result = workflowRunToExecutionResult(latestRun);
+    await this.store.updateRunStatus({
+      runId,
+      status,
+      result,
+      errorMessage: result.errorMessage,
+      finish: shouldFinish,
+    });
+    if (shouldFinish || status === 'waiting_approval') {
+      await this.store.createRunFinishedEvent(runId, status, {
+        failedTaskId: result.failedTaskId,
+        waitingForApprovalTaskIds: result.waitingForApprovalTaskIds,
+        warningTaskIds: result.warningTaskIds,
+        errorMessage: result.errorMessage,
+      });
+    }
+  }
+
+  private getTerminalRunStatus(run: WorkflowRunRecord): WorkflowRunStatus {
+    const waiting = run.approvals.some((approval) => approval.status === 'pending');
+    if (waiting) return 'waiting_approval';
+    const failed = run.steps.some((step) => step.status === 'failed');
+    if (failed) return 'failed';
+    const blocked = run.steps.some((step) => step.status === 'blocked');
+    if (blocked) return 'failed';
+    const unfinished = run.steps.some((step) => step.status === 'pending' || step.status === 'running');
+    if (unfinished) return 'running';
+    const warnings = run.steps.some((step) => step.status === 'warning');
+    if (warnings) return 'completed_with_warnings';
+    return 'completed';
+  }
+}

@@ -8,16 +8,22 @@ import type {
   WorkflowExecuteRequest,
   WorkflowDataFrame,
   WorkflowDefinition,
+  WorkflowInputGuard,
+  WorkflowInputGuardType,
   WorkflowImportExportBundle,
   WorkflowOperator,
+  WorkflowRunRecord,
   WorkflowSqlTableBinding,
   WorkflowTask,
+  WorkflowTaskInput,
   WorkflowTaskPreviewResult,
   WorkflowTaskPreviewRequest,
 } from '../shared/types.js';
+import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import { renderOperatorConfigForm, syncOperatorConfigForm } from './workflow/operatorConfigForm.js';
 import {
   applyTaskOperatorDefaults,
+  buildDefaultTaskParams,
   buildWorkflowTask,
   getAssertFailureStrategy,
   getSheetSections,
@@ -62,8 +68,12 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   const WORKFLOW_LAYOUT_COLUMN_GAP = 120;
   const WORKFLOW_LAYOUT_ROW_GAP = 56;
   const WORKFLOW_DRAG_THRESHOLD = 4;
-  const WORKFLOW_EXECUTE_STEP_MS = 480;
   const WORKFLOW_PREVIEW_PAGE_SIZE = 20;
+  const WORKFLOW_ZOOM_MIN = 0.5;
+  const WORKFLOW_ZOOM_MAX = 1.5;
+  const WORKFLOW_ZOOM_STEP = 0.1;
+  const WORKFLOW_SIDEBAR_COLLAPSED_KEY = 'captable.workflow.sidebarCollapsed';
+  const WORKFLOW_INSPECTOR_COLLAPSED_KEY = 'captable.workflow.inspectorCollapsed';
   const WORKFLOW_OPERATOR_GROUPS: Array<{ category: WorkflowOperator['category']; label: string }> = [
     { category: 'Input', label: '输入' },
     { category: 'Transform', label: '计算' },
@@ -74,6 +84,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     isOpen: boolean;
     isRunning: boolean;
     workflowId: number | null;
+    runId: number | null;
     activeTaskId: string | null;
     taskStates: Record<string, WorkflowExecutionTaskState>;
     approvedWarningTaskIds: string[];
@@ -104,11 +115,22 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   let pendingWorkflowOperatorKey: string | null = null;
   let isWorkflowSidebarCollapsed = false;
   let isWorkflowInspectorCollapsed = false;
+  let isWorkflowDependenciesCollapsed = false;
+  let isWorkflowDependencyPickerOpen = false;
+  let workflowCanvasZoom = 1;
+  let workflowInputGuardAddSlot: string | null = null;
+  let activeWorkflowEdgeGuards:
+    | {
+        taskId: string;
+        slot: string;
+      }
+    | null = null;
   let pendingWorkflowConnectionSource: { taskId: string; slot: string } | null = null;
   let workflowRunState: WorkflowRunState = {
     isOpen: false,
     isRunning: false,
     workflowId: null,
+    runId: null,
     activeTaskId: null,
     taskStates: {},
     approvedWarningTaskIds: [],
@@ -167,6 +189,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   }
 
   async function init() {
+    restoreWorkflowPanelState();
     el('btnCreateWorkflow').addEventListener('click', () => void createWorkflow());
     el('btnSaveWorkflow').addEventListener('click', () => void saveWorkflow());
     el('btnDeleteWorkflow').addEventListener('click', () => void deleteWorkflow());
@@ -182,6 +205,9 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el('workflowInspectorCollapsedRail').addEventListener('click', toggleWorkflowInspector);
     el('btnAddWorkflowTask').addEventListener('click', addWorkflowTask);
     el('btnAutoLayoutWorkflow').addEventListener('click', autoLayoutActiveWorkflow);
+    el('btnWorkflowZoomOut').addEventListener('click', () => setWorkflowCanvasZoom(workflowCanvasZoom - WORKFLOW_ZOOM_STEP));
+    el('btnWorkflowZoomIn').addEventListener('click', () => setWorkflowCanvasZoom(workflowCanvasZoom + WORKFLOW_ZOOM_STEP));
+    el('btnWorkflowZoomReset').addEventListener('click', fitWorkflowCanvas);
     el('btnExecuteWorkflow').addEventListener('click', () => void executeWorkflow());
     el('btnEditWorkflowDescription').addEventListener('click', () => {
       if (activeWorkflowId !== null) startWorkflowDescriptionEdit(activeWorkflowId);
@@ -209,8 +235,9 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el('workflowRunFooter').addEventListener('click', (event) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
       const button = target?.closest<HTMLButtonElement>('[data-continue-workflow-warning]');
-      if (!button) return;
-      void continueWorkflowAfterWarning();
+      const skipButton = target?.closest<HTMLButtonElement>('[data-skip-workflow-warning]');
+      if (!button && !skipButton) return;
+      void continueWorkflowAfterWarning(skipButton ? 'skipped' : 'approved');
     });
     el('btnConfirmWorkflowOperatorPicker').addEventListener('click', confirmAddWorkflowTask);
     el('btnCancelWorkflowOperatorPicker').addEventListener('click', closeWorkflowOperatorPickerModal);
@@ -231,6 +258,20 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el('btnCloseWorkflowBindingPreviewModal').addEventListener('click', closeWorkflowBindingPreviewModal);
     el('workflowBindingPreviewModal').addEventListener('click', (event) => {
       if (event.target === el('workflowBindingPreviewModal')) closeWorkflowBindingPreviewModal();
+    });
+    el('btnCloseWorkflowEdgeGuardsModal').addEventListener('click', closeWorkflowEdgeGuardsModal);
+    el('btnDoneWorkflowEdgeGuards').addEventListener('click', closeWorkflowEdgeGuardsModal);
+    el('workflowEdgeGuardsModal').addEventListener('click', (event) => {
+      if (event.target === el('workflowEdgeGuardsModal')) closeWorkflowEdgeGuardsModal();
+    });
+    el('btnEditWorkflowEdgeGuards').addEventListener('click', () => {
+      if (!activeWorkflowEdgeGuards) return;
+      activeWorkflowTaskId = activeWorkflowEdgeGuards.taskId;
+      activeWorkflowPreview = null;
+      workflowPreviewPage = 1;
+      closeWorkflowEdgeGuardsModal();
+      renderWorkflowEditor();
+      openWorkflowTaskModal();
     });
     el('workflowPreviewTable').addEventListener('click', (event) => {
       const button = (event.target instanceof HTMLElement ? event.target : null)?.closest<HTMLButtonElement>(
@@ -297,13 +338,82 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     inspectorToggle.textContent = '»';
   }
 
+  function setWorkflowCanvasZoom(nextZoom: number) {
+    const clampedZoom = Math.min(WORKFLOW_ZOOM_MAX, Math.max(WORKFLOW_ZOOM_MIN, nextZoom));
+    workflowCanvasZoom = Math.round(clampedZoom * 10) / 10;
+    renderWorkflowEditor();
+  }
+
+  function getWorkflowCanvasSize(workflow: WorkflowDefinition) {
+    const operatorsByTaskId = new Map(workflow.tasks.map((task) => [task.id, getWorkflowOperator(task)]));
+    return {
+      width: Math.max(
+        960,
+        ...workflow.tasks.map((task) => task.x + WORKFLOW_NODE_WIDTH + WORKFLOW_CANVAS_PADDING * 2),
+      ),
+      height: Math.max(
+        620,
+        ...workflow.tasks.map((task) => task.y + getWorkflowNodeHeight(task, operatorsByTaskId.get(task.id) ?? null) + WORKFLOW_CANVAS_PADDING * 2),
+      ),
+    };
+  }
+
+  function fitWorkflowCanvas() {
+    const workflow = getActiveWorkflow();
+    if (!workflow) {
+      setWorkflowCanvasZoom(1);
+      return;
+    }
+
+    const dag = el('workflowDag');
+    const canvasSize = getWorkflowCanvasSize(workflow);
+    const viewportWidth = Math.max(1, dag.clientWidth - WORKFLOW_CANVAS_PADDING * 2);
+    const viewportHeight = Math.max(1, dag.clientHeight - WORKFLOW_CANVAS_PADDING * 2);
+    const fitZoom = Math.min(viewportWidth / canvasSize.width, viewportHeight / canvasSize.height, 1);
+    setWorkflowCanvasZoom(fitZoom);
+    requestAnimationFrame(() => {
+      dag.scrollLeft = 0;
+      dag.scrollTop = 0;
+    });
+  }
+
+  function renderWorkflowZoomControls() {
+    el('workflowZoomValue').textContent = `${Math.round(workflowCanvasZoom * 100)}%`;
+  }
+
+  function readCachedBoolean(key: string, fallback: boolean) {
+    try {
+      const value = window.localStorage.getItem(key);
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    } catch {
+      return fallback;
+    }
+    return fallback;
+  }
+
+  function writeCachedBoolean(key: string, value: boolean) {
+    try {
+      window.localStorage.setItem(key, String(value));
+    } catch {
+      // Ignore storage failures; the live UI state should still update.
+    }
+  }
+
+  function restoreWorkflowPanelState() {
+    isWorkflowSidebarCollapsed = readCachedBoolean(WORKFLOW_SIDEBAR_COLLAPSED_KEY, isWorkflowSidebarCollapsed);
+    isWorkflowInspectorCollapsed = readCachedBoolean(WORKFLOW_INSPECTOR_COLLAPSED_KEY, isWorkflowInspectorCollapsed);
+  }
+
   function toggleWorkflowSidebar() {
     isWorkflowSidebarCollapsed = !isWorkflowSidebarCollapsed;
+    writeCachedBoolean(WORKFLOW_SIDEBAR_COLLAPSED_KEY, isWorkflowSidebarCollapsed);
     renderWorkflowLayout();
   }
 
   function toggleWorkflowInspector() {
     isWorkflowInspectorCollapsed = !isWorkflowInspectorCollapsed;
+    writeCachedBoolean(WORKFLOW_INSPECTOR_COLLAPSED_KEY, isWorkflowInspectorCollapsed);
     renderWorkflowLayout();
   }
 
@@ -327,6 +437,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       isOpen: false,
       isRunning: false,
       workflowId,
+      runId: null,
       activeTaskId: null,
       taskStates: {},
       approvedWarningTaskIds: [],
@@ -366,6 +477,53 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
     renderWorkflowList();
     renderWorkflowEditor();
+  }
+
+  function normalizeWorkflowDefinitionForClient(workflow: WorkflowDefinition): WorkflowDefinition {
+    return {
+      ...workflow,
+      tasks: workflow.tasks.map((task) => {
+        applyTaskOperatorDefaults(task);
+        return task;
+      }),
+    };
+  }
+
+  function upsertWorkflowDefinition(workflow: WorkflowDefinition) {
+    const normalized = normalizeWorkflowDefinitionForClient(workflow);
+    const existingIndex = workflowDefinitions.findIndex((item) => item.id === normalized.id);
+    if (existingIndex >= 0) {
+      workflowDefinitions.splice(existingIndex, 1, normalized);
+    } else {
+      workflowDefinitions.unshift(normalized);
+    }
+    activeWorkflowId = normalized.id;
+  }
+
+  async function persistWorkflowDefinition(workflow: WorkflowDefinition, options: { reload?: boolean } = {}) {
+    const saved = await api<WorkflowDefinition>(`/api/workflows/${workflow.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        code: workflow.code,
+        name: workflow.name,
+        description: workflow.description,
+        status: workflow.status,
+        version: workflow.version,
+        tasks: workflow.tasks,
+        runtimeParamsSchema: workflow.runtimeParamsSchema,
+        runtimeParamsDefaults: workflow.runtimeParamsDefaults,
+      }),
+    });
+
+    if (options.reload) {
+      await loadWorkflows(saved.id);
+      return workflowDefinitions.find((item) => item.id === saved.id) ?? normalizeWorkflowDefinitionForClient(saved);
+    }
+
+    upsertWorkflowDefinition(saved);
+    renderWorkflowList();
+    renderWorkflowEditor();
+    return normalizeWorkflowDefinitionForClient(saved);
   }
 
   function downloadJsonFile(fileName: string, payload: unknown) {
@@ -519,6 +677,17 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el('workflowBindingPreviewModal').classList.add('hidden');
   }
 
+  function openWorkflowEdgeGuardsModal(taskId: string, slot: string) {
+    activeWorkflowEdgeGuards = { taskId, slot };
+    renderWorkflowEdgeGuardsModal();
+    el('workflowEdgeGuardsModal').classList.remove('hidden');
+  }
+
+  function closeWorkflowEdgeGuardsModal() {
+    el('workflowEdgeGuardsModal').classList.add('hidden');
+    activeWorkflowEdgeGuards = null;
+  }
+
   function openWorkflowOperatorPickerModal() {
     if (!workflowOperators.length) {
       alert('暂无可用算子');
@@ -632,17 +801,20 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           if (!sourceHandle || !targetHandle) return null;
           const sourceRect = sourceHandle.getBoundingClientRect();
           const targetRect = targetHandle.getBoundingClientRect();
-          const startX = sourceRect.left + sourceRect.width / 2 - canvasRect.left;
-          const startY = sourceRect.top + sourceRect.height / 2 - canvasRect.top;
-          const endX = targetRect.left + targetRect.width / 2 - canvasRect.left;
-          const endY = targetRect.top + targetRect.height / 2 - canvasRect.top;
+          const startX = (sourceRect.left + sourceRect.width / 2 - canvasRect.left) / workflowCanvasZoom;
+          const startY = (sourceRect.top + sourceRect.height / 2 - canvasRect.top) / workflowCanvasZoom;
+          const endX = (targetRect.left + targetRect.width / 2 - canvasRect.left) / workflowCanvasZoom;
+          const endY = (targetRect.top + targetRect.height / 2 - canvasRect.top) / workflowCanvasZoom;
           return {
             id: `${sourceTask.id}:${sourceSlot}->${task.id}:${targetSlot}`,
             targetTaskId: task.id,
             targetSlot,
+            guardCount: normalizeInputGuards(input.guards).filter((guard) => guard.enabled).length,
             path: getEdgePath(startX, startY, endX, endY),
             labelX: startX + (endX - startX) / 2,
-            labelY: startY + (endY - startY) / 2 - 10,
+            labelY: startY + (endY - startY) / 2 - 16,
+            guardX: startX + (endX - startX) / 2,
+            guardY: startY + (endY - startY) / 2,
           };
         })
         .filter((edge): edge is NonNullable<typeof edge> => Boolean(edge));
@@ -658,10 +830,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           if (!sourceNode || !targetNode) return null;
           const sourceRect = sourceNode.getBoundingClientRect();
           const targetRect = targetNode.getBoundingClientRect();
-          const startX = sourceRect.right - canvasRect.left;
-          const startY = sourceRect.top + sourceRect.height / 2 - canvasRect.top;
-          const endX = targetRect.left - canvasRect.left;
-          const endY = targetRect.top + targetRect.height / 2 - canvasRect.top;
+          const startX = (sourceRect.right - canvasRect.left) / workflowCanvasZoom;
+          const startY = (sourceRect.top + sourceRect.height / 2 - canvasRect.top) / workflowCanvasZoom;
+          const endX = (targetRect.left - canvasRect.left) / workflowCanvasZoom;
+          const endY = (targetRect.top + targetRect.height / 2 - canvasRect.top) / workflowCanvasZoom;
           return {
             id: `${dependencyTask.id}->${task.id}:dependency`,
             labelX: startX + (endX - startX) / 2,
@@ -679,6 +851,14 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
             <path class="workflow-edge__path" d="${edge.path}"></path>
             <path class="workflow-edge__hitbox" d="${edge.path}"></path>
             <text class="workflow-edge__label" x="${edge.labelX}" y="${edge.labelY}">${escapeHtml(edge.targetSlot)}</text>
+            ${
+              edge.guardCount
+                ? `<g class="workflow-edge__guard-badge" data-edge-guard-task-id="${escapeHtml(edge.targetTaskId)}" data-edge-guard-slot="${escapeHtml(edge.targetSlot)}" transform="translate(${edge.guardX}, ${edge.guardY})">
+                    <rect x="${edge.guardCount > 9 ? -36 : -32}" y="-10" width="${edge.guardCount > 9 ? 72 : 64}" height="22" rx="11"></rect>
+                    <text x="0" y="5">${edge.guardCount} checks</text>
+                  </g>`
+                : ''
+            }
           </g>`,
       )
       .concat(
@@ -714,10 +894,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     if (!workflow) return;
     const targetTask = workflow.tasks.find((task) => task.id === targetTaskId);
     if (!targetTask) return;
-    targetTask.inputs[targetSlot] = {
+    targetTask.inputs[targetSlot] = getInputBindingWithGuards(targetTask.inputs[targetSlot], {
       from: sourceTaskId,
       slot: sourceSlot,
-    };
+    });
     normalizeTaskDependencies(targetTask);
     activeWorkflowPreview = null;
     workflowPreviewPage = 1;
@@ -851,7 +1031,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const total = orderedTasks.length;
     const completed = orderedTasks.filter((task) => workflowRunState.taskStates[task.id] === 'completed').length;
     const warnings = orderedTasks.filter((task) => workflowRunState.taskStates[task.id] === 'warning').length;
-    const reached = completed + warnings;
+    const skipped = orderedTasks.filter((task) => workflowRunState.taskStates[task.id] === 'skipped').length;
+    const reached = completed + warnings + skipped;
     const ratio = total ? Math.min(1, reached / total) : 0;
     const hasFailedTask = orderedTasks.some((task) => workflowRunState.taskStates[task.id] === 'failed');
     const hasWarningTask = orderedTasks.some((task) => workflowRunState.taskStates[task.id] === 'warning');
@@ -889,12 +1070,14 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
             ? '✓'
             : state === 'running'
               ? '…'
-              : state === 'failed'
+            : state === 'failed'
                 ? '!'
                 : state === 'warning'
                   ? '!'
                 : state === 'blocked'
                   ? '·'
+                : state === 'skipped'
+                  ? '–'
                 : String(index + 1).padStart(2, '0');
         const stateLabel =
           state === 'completed'
@@ -909,6 +1092,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                     : 'Warning'
                 : state === 'blocked'
                   ? 'Blocked'
+                : state === 'skipped'
+                  ? 'Skipped'
                 : 'Pending';
         const meta = state === 'warning' ? (workflowRunState.warningMessages[task.id] ?? task.operatorCode) : task.operatorCode;
         return `
@@ -937,6 +1122,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       footer.innerHTML = `
         <span class="workflow-run-panel__warning">Warning requires review: ${escapeHtml(waitingNames)}</span>
         <button class="btn btn-warning btn-sm" type="button" data-continue-workflow-warning>Continue</button>
+        <button class="btn btn-secondary btn-sm" type="button" data-skip-workflow-warning>Skip Downstream</button>
       `;
       return;
     }
@@ -1058,8 +1244,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     if (!workflowDragState.moved && Math.hypot(deltaX, deltaY) >= WORKFLOW_DRAG_THRESHOLD) {
       workflowDragState.moved = true;
     }
-    task.x = Math.max(WORKFLOW_CANVAS_PADDING / 2, Math.round(workflowDragState.startTaskX + deltaX));
-    task.y = Math.max(WORKFLOW_CANVAS_PADDING / 2, Math.round(workflowDragState.startTaskY + deltaY));
+    task.x = Math.max(WORKFLOW_CANVAS_PADDING / 2, Math.round(workflowDragState.startTaskX + deltaX / workflowCanvasZoom));
+    task.y = Math.max(WORKFLOW_CANVAS_PADDING / 2, Math.round(workflowDragState.startTaskY + deltaY / workflowCanvasZoom));
     renderWorkflowEditor();
   }
 
@@ -1071,6 +1257,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   }
 
   function renderWorkflowEditor() {
+    renderWorkflowZoomControls();
     const workflow = getActiveWorkflow();
     el<HTMLInputElement>('workflowNameInput').value = workflow?.name ?? '';
     const descriptionText = el('workflowDescriptionText');
@@ -1101,88 +1288,83 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
 
     const operatorsByTaskId = new Map(workflow.tasks.map((task) => [task.id, getWorkflowOperator(task)]));
-    const canvasWidth = Math.max(
-      960,
-      ...workflow.tasks.map((task) => task.x + WORKFLOW_NODE_WIDTH + WORKFLOW_CANVAS_PADDING * 2),
-    );
-    const canvasHeight = Math.max(
-      620,
-      ...workflow.tasks.map((task) => task.y + getWorkflowNodeHeight(task, operatorsByTaskId.get(task.id) ?? null) + WORKFLOW_CANVAS_PADDING * 2),
-    );
+    const { width: canvasWidth, height: canvasHeight } = getWorkflowCanvasSize(workflow);
 
     dag.innerHTML = `
-      <div class="workflow-dag__canvas" style="width:${canvasWidth}px;height:${canvasHeight}px;">
-        <svg class="workflow-dag__edges" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" aria-hidden="true"></svg>
-        ${workflow.tasks
-          .map((task) => {
-            const operator = operatorsByTaskId.get(task.id) ?? null;
-            const categoryBadge = getWorkflowNodeCategoryBadge(operator);
-            const inputs = Object.entries(task.inputs ?? {});
-            const inputSlots = getTaskInputSlots(task, operator);
-            const outputSlots = getTaskOutputSlots(task, operator);
-            const slotRows = Math.max(inputSlots.length, outputSlots.length, 1);
-            const runState = getWorkflowRunTaskState(task.id);
-            const controlDependencyCount = getWorkflowControlDependencies(task).length;
-            return `
-            <div
-              class="workflow-node ${task.id === activeWorkflowTaskId ? 'is-active' : ''} ${runState ? `workflow-node--${runState}` : ''}"
-              data-task-id="${escapeHtml(task.id)}"
-              style="left:${task.x}px;top:${task.y}px;height:${getWorkflowNodeHeight(task, operator)}px;"
-              tabindex="0"
-              role="button"
-              aria-label="${escapeHtml(task.name)}"
-            >
-              <div class="workflow-node__title">
-                <div class="workflow-node__id">${escapeHtml(task.name)}</div>
-                <span class="workflow-node__category workflow-node__category--${escapeHtml(categoryBadge.code)}">${escapeHtml(categoryBadge.label)}</span>
-              </div>
-              <div class="workflow-node__step">${escapeHtml(operator?.name ?? task.operatorCode)}</div>
-              <div class="workflow-node__meta">${escapeHtml(task.id)} · ${inputs.length} inputs · ${controlDependencyCount} deps</div>
-              <div class="workflow-node__slots" style="--workflow-slot-count:${slotRows};">
-                <div class="workflow-node__slot-column workflow-node__slot-column--inputs">
-                  ${inputSlots.length
-                    ? inputSlots
-                        .map((slot) => {
-                          const binding = task.inputs?.[slot];
-                          return `
-                          <button
-                            type="button"
-                            class="workflow-handle workflow-handle--target"
-                            data-handle-role="target"
-                            data-task-id="${escapeHtml(task.id)}"
-                            data-slot="${escapeHtml(slot)}"
-                            title="${escapeHtml(binding?.from ? `${slot} <- ${binding.from}.${binding.slot}` : `Connect ${slot}`)}"
-                          ></button>
-                          <div class="workflow-node__slot workflow-node__slot--input">
-                            <span class="workflow-node__slot-name">${escapeHtml(slot)}</span>
-                            <span class="workflow-node__slot-binding">${escapeHtml(binding?.from ? `${binding.from}.${binding.slot}` : 'Not connected')}</span>
-                          </div>`;
-                        })
-                        .join('')
-                    : '<div class="workflow-node__slot workflow-node__slot--empty">No inputs</div>'}
+      <div class="workflow-dag__surface" style="width:${canvasWidth * workflowCanvasZoom}px;height:${canvasHeight * workflowCanvasZoom}px;">
+        <div class="workflow-dag__canvas" style="width:${canvasWidth}px;height:${canvasHeight}px;transform:scale(${workflowCanvasZoom});">
+          <svg class="workflow-dag__edges" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" aria-hidden="true"></svg>
+          ${workflow.tasks
+            .map((task) => {
+              const operator = operatorsByTaskId.get(task.id) ?? null;
+              const categoryBadge = getWorkflowNodeCategoryBadge(operator);
+              const inputs = Object.entries(task.inputs ?? {});
+              const inputSlots = getTaskInputSlots(task, operator);
+              const outputSlots = getTaskOutputSlots(task, operator);
+              const slotRows = Math.max(inputSlots.length, outputSlots.length, 1);
+              const runState = getWorkflowRunTaskState(task.id);
+              const controlDependencyCount = getWorkflowControlDependencies(task).length;
+              return `
+              <div
+                class="workflow-node ${task.id === activeWorkflowTaskId ? 'is-active' : ''} ${runState ? `workflow-node--${runState}` : ''}"
+                data-task-id="${escapeHtml(task.id)}"
+                style="left:${task.x}px;top:${task.y}px;height:${getWorkflowNodeHeight(task, operator)}px;"
+                tabindex="0"
+                role="button"
+                aria-label="${escapeHtml(task.name)}"
+              >
+                <div class="workflow-node__title">
+                  <div class="workflow-node__id">${escapeHtml(task.name)}</div>
+                  <span class="workflow-node__category workflow-node__category--${escapeHtml(categoryBadge.code)}">${escapeHtml(categoryBadge.label)}</span>
                 </div>
-                <div class="workflow-node__slot-column workflow-node__slot-column--outputs">
-                  ${outputSlots
-                    .map(
-                      (slot) => `
-                      <div class="workflow-node__slot workflow-node__slot--output">
-                        <span class="workflow-node__slot-name">${escapeHtml(slot)}</span>
-                      </div>
-                      <button
-                        type="button"
-                        class="workflow-handle workflow-handle--source ${isWorkflowHandleSelected(task.id, slot) ? 'is-selected' : ''}"
-                        data-handle-role="source"
-                        data-task-id="${escapeHtml(task.id)}"
-                        data-slot="${escapeHtml(slot)}"
-                        title="${escapeHtml(`Connect from ${task.name}.${slot}`)}"
-                      ></button>`,
-                    )
-                    .join('')}
+                <div class="workflow-node__step">${escapeHtml(operator?.name ?? task.operatorCode)}</div>
+                <div class="workflow-node__meta">${escapeHtml(task.id)} · ${inputs.length} inputs · ${controlDependencyCount} deps</div>
+                <div class="workflow-node__slots" style="--workflow-slot-count:${slotRows};">
+                  <div class="workflow-node__slot-column workflow-node__slot-column--inputs">
+                    ${inputSlots.length
+                      ? inputSlots
+                          .map((slot) => {
+                            const binding = task.inputs?.[slot];
+                            return `
+                            <button
+                              type="button"
+                              class="workflow-handle workflow-handle--target"
+                              data-handle-role="target"
+                              data-task-id="${escapeHtml(task.id)}"
+                              data-slot="${escapeHtml(slot)}"
+                              title="${escapeHtml(binding?.from ? `${slot} <- ${binding.from}.${binding.slot}` : `Connect ${slot}`)}"
+                            ></button>
+                            <div class="workflow-node__slot workflow-node__slot--input">
+                              <span class="workflow-node__slot-name">${escapeHtml(slot)}</span>
+                              <span class="workflow-node__slot-binding">${escapeHtml(binding?.from ? `${binding.from}.${binding.slot}` : 'Not connected')}</span>
+                            </div>`;
+                          })
+                          .join('')
+                      : '<div class="workflow-node__slot workflow-node__slot--empty">No inputs</div>'}
+                  </div>
+                  <div class="workflow-node__slot-column workflow-node__slot-column--outputs">
+                    ${outputSlots
+                      .map(
+                        (slot) => `
+                        <div class="workflow-node__slot workflow-node__slot--output">
+                          <span class="workflow-node__slot-name">${escapeHtml(slot)}</span>
+                        </div>
+                        <button
+                          type="button"
+                          class="workflow-handle workflow-handle--source ${isWorkflowHandleSelected(task.id, slot) ? 'is-selected' : ''}"
+                          data-handle-role="source"
+                          data-task-id="${escapeHtml(task.id)}"
+                          data-slot="${escapeHtml(slot)}"
+                          title="${escapeHtml(`Connect from ${task.name}.${slot}`)}"
+                        ></button>`,
+                      )
+                      .join('')}
+                  </div>
                 </div>
-              </div>
-            </div>`;
-          })
-          .join('')}
+              </div>`;
+            })
+            .join('')}
+        </div>
       </div>
     `;
 
@@ -1235,6 +1417,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
     dag.querySelectorAll<HTMLElement>('[data-edge-target-task-id]').forEach((edge) => {
       edge.addEventListener('click', (event) => {
+        if ((event.target instanceof Element ? event.target : null)?.closest('[data-edge-guard-task-id]')) return;
         event.stopPropagation();
         const targetTaskId = edge.dataset.edgeTargetTaskId ?? '';
         const targetSlot = edge.dataset.edgeTargetSlot ?? '';
@@ -1243,8 +1426,22 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       });
     });
 
+    dag.querySelectorAll<SVGElement>('[data-edge-guard-task-id]').forEach((badge) => {
+      badge.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const targetTaskId = badge.dataset.edgeGuardTaskId ?? '';
+        const targetSlot = badge.dataset.edgeGuardSlot ?? '';
+        if (!targetTaskId || !targetSlot) return;
+        openWorkflowEdgeGuardsModal(targetTaskId, targetSlot);
+      });
+    });
+
     dag.onclick = (event) => {
-      if (event.target === dag || (event.target instanceof HTMLElement && event.target.classList.contains('workflow-dag__canvas'))) {
+      if (
+        event.target === dag ||
+        (event.target instanceof HTMLElement &&
+          (event.target.classList.contains('workflow-dag__canvas') || event.target.classList.contains('workflow-dag__surface')))
+      ) {
         clearPendingWorkflowConnection();
         renderWorkflowEditor();
       }
@@ -1257,10 +1454,12 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const editor = el('workflowTaskEditor');
     const task = getActiveWorkflowTask();
     const structured = el('workflowStructuredParams');
+    const dependencies = el('workflowDependenciesPanel');
     const preview = el('workflowPreviewPanel');
     if (!task) {
       editor.classList.add('hidden');
       structured.classList.add('hidden');
+      dependencies.classList.add('hidden');
       preview.classList.add('hidden');
       closeWorkflowTaskModal();
       return;
@@ -1270,6 +1469,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el<HTMLTextAreaElement>('taskDescriptionInput').value = task.description ?? '';
     el<HTMLTextAreaElement>('taskParamsInput').value = JSON.stringify(task.params ?? {}, null, 2);
     renderStructuredTaskParams(task);
+    dependencies.classList.remove('hidden');
+    renderTaskDependencies(task);
     renderWorkflowPreview();
   }
 
@@ -1277,6 +1478,343 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const workflow = getActiveWorkflow();
     if (!workflow) return [];
     return workflow.tasks.filter((task) => task.id !== taskId);
+  }
+
+  function getInputGuardOperators() {
+    return workflowOperators.filter((operator) => operator.category === 'Validation') as Array<
+      WorkflowOperator & { code: WorkflowInputGuardType }
+    >;
+  }
+
+  function getInputGuardOperator(type: string) {
+    return getInputGuardOperators().find((operator) => operator.code === type) ?? null;
+  }
+
+  function normalizeInputGuards(guards: unknown): WorkflowInputGuard[] {
+    if (!Array.isArray(guards)) return [];
+    return guards
+      .map((guard, index) => {
+        if (!guard || typeof guard !== 'object') return null;
+        const record = guard as Partial<WorkflowInputGuard>;
+        const operator = getInputGuardOperator(String(record.type ?? ''));
+        if (!operator) return null;
+        return {
+          id: String(record.id ?? `guard_${index + 1}`).trim() || `guard_${index + 1}`,
+          type: operator.code,
+          name: String(record.name ?? operator.name).trim() || operator.name,
+          enabled: record.enabled !== false,
+          params: record.params && typeof record.params === 'object' && !Array.isArray(record.params) ? record.params : {},
+        };
+      })
+      .filter((guard): guard is WorkflowInputGuard => Boolean(guard));
+  }
+
+  function getInputBindingWithGuards(input: WorkflowTaskInput | undefined, next: { from: string; slot?: string }): WorkflowTaskInput {
+    const guards = normalizeInputGuards(input?.guards);
+    return {
+      from: next.from,
+      slot: next.slot ?? 'dataframe',
+      guards,
+    };
+  }
+
+  function getInputGuardParamValue(guard: WorkflowInputGuard, key: string, operator: WorkflowOperator) {
+    if (Object.prototype.hasOwnProperty.call(guard.params, key)) return guard.params[key];
+    return operator.paramsSchema?.[key]?.default ?? '';
+  }
+
+  function renderInputGuardParamField(guard: WorkflowInputGuard, operator: WorkflowOperator, key: string) {
+    const field = operator.paramsSchema[key];
+    const value = getInputGuardParamValue(guard, key, operator);
+    const label = escapeHtml(field.label ?? key);
+    const commonAttrs = `data-input-guard-param-id="${escapeHtml(guard.id)}" data-input-guard-param-key="${escapeHtml(key)}"`;
+    if (field.enum?.length) {
+      return `
+        <label class="workflow-input-guard__field">
+          <span>${label}</span>
+          <select class="search-input workflow-select" ${commonAttrs}>
+            ${field.enum.map((item) => `<option value="${escapeHtml(item)}"${String(value) === item ? ' selected' : ''}>${escapeHtml(item)}</option>`).join('')}
+          </select>
+        </label>`;
+    }
+    if (field.type === 'number') {
+      return `
+        <label class="workflow-input-guard__field">
+          <span>${label}</span>
+          <input class="search-input workflow-input" type="number" ${commonAttrs} value="${escapeHtml(value)}">
+        </label>`;
+    }
+    if (field.type === 'boolean') {
+      return `
+        <label class="workflow-input-guard__field workflow-input-guard__field--checkbox">
+          <input type="checkbox" ${commonAttrs} ${value === true ? 'checked' : ''}>
+          <span>${label}</span>
+        </label>`;
+    }
+    const isLong = key === 'sql' || key === 'expectedColumns' || field.type === 'array';
+    if (isLong) {
+      return `
+        <label class="workflow-input-guard__field workflow-input-guard__field--wide">
+          <span>${label}</span>
+          <textarea class="search-input workflow-textarea" rows="2" ${commonAttrs}>${escapeHtml(
+            Array.isArray(value) ? value.join(', ') : value,
+          )}</textarea>
+        </label>`;
+    }
+    return `
+      <label class="workflow-input-guard__field">
+        <span>${label}</span>
+        <input class="search-input workflow-input" ${commonAttrs} value="${escapeHtml(value)}" placeholder="${escapeHtml(field.placeholder ?? '')}">
+      </label>`;
+  }
+
+  function renderWorkflowEdgeGuardsModal() {
+    const workflow = getActiveWorkflow();
+    const content = el('workflowEdgeGuardsContent');
+    const title = el('workflowEdgeGuardsTitle');
+    if (!workflow || !activeWorkflowEdgeGuards) {
+      title.textContent = 'Input Checks';
+      content.innerHTML = '<div class="workflow-dependency-empty">No checks</div>';
+      return;
+    }
+
+    const task = workflow.tasks.find((item) => item.id === activeWorkflowEdgeGuards?.taskId);
+    const input = task?.inputs?.[activeWorkflowEdgeGuards.slot];
+    const guards = normalizeInputGuards(input?.guards).filter((guard) => guard.enabled);
+    title.textContent = `${task?.name ?? activeWorkflowEdgeGuards.taskId} · ${activeWorkflowEdgeGuards.slot}`;
+    content.innerHTML = `
+      <div class="workflow-edge-guards">
+        <div class="workflow-edge-guards__summary">
+          <strong>${escapeHtml(activeWorkflowEdgeGuards.slot)}</strong>
+          <span>${escapeHtml(input?.from ? `${input.from}.${input.slot}` : 'Not connected')}</span>
+        </div>
+        ${
+          guards.length
+            ? guards
+                .map((guard) => {
+                  const guardOperator = getInputGuardOperator(guard.type);
+                  const params = Object.entries(guard.params ?? {});
+                  return `
+                    <article class="workflow-edge-guard-card">
+                      <div class="workflow-edge-guard-card__header">
+                        <div>
+                          <strong>${escapeHtml(guard.name)}</strong>
+                          <span>${escapeHtml(guardOperator?.name ?? guard.type)}</span>
+                        </div>
+                        <span class="workflow-input-guard__type">Enabled</span>
+                      </div>
+                      ${
+                        params.length
+                          ? `<dl class="workflow-edge-guard-card__params">
+                              ${params
+                                .map(
+                                  ([key, value]) => `
+                                    <div>
+                                      <dt>${escapeHtml(key)}</dt>
+                                      <dd>${escapeHtml(Array.isArray(value) ? value.join(', ') : value)}</dd>
+                                    </div>`,
+                                )
+                                .join('')}
+                            </dl>`
+                          : '<div class="workflow-dependency-empty">No parameters</div>'
+                      }
+                    </article>`;
+                })
+                .join('')
+            : '<div class="workflow-dependency-empty">No enabled checks on this input</div>'
+        }
+      </div>
+    `;
+  }
+
+  function renderWorkflowInputGuards(task: WorkflowTask) {
+    const row = el('workflowStructuredInputGuardsRow');
+    const container = el('workflowInputGuardsEditor');
+    const operator = getWorkflowOperator(task);
+    const inputSlots = getTaskInputSlots(task, operator);
+    const guardOperators = getInputGuardOperators();
+    const slotsWithInputs = inputSlots.filter((slot) => task.inputs?.[slot]);
+
+    if (!slotsWithInputs.length || !guardOperators.length) {
+      row.classList.add('hidden');
+      container.innerHTML = '';
+      return;
+    }
+
+    row.classList.remove('hidden');
+    container.innerHTML = `
+      <div class="workflow-input-guards">
+        <div class="workflow-structured__section-head">
+          <div>
+            <div class="workflow-structured__label">Input Checks</div>
+            <div class="workflow-structured__section-subtitle">Assertions attached to data inputs. Failed checks can block or pause this node.</div>
+          </div>
+        </div>
+        ${slotsWithInputs
+          .map((slot) => {
+            const input = task.inputs[slot];
+            const guards = normalizeInputGuards(input.guards);
+            return `
+              <section class="workflow-input-guard-slot" data-input-guard-slot="${escapeHtml(slot)}">
+                <div class="workflow-input-guard-slot__header">
+                  <div>
+                    <strong>${escapeHtml(slot)}</strong>
+                    <span>${escapeHtml(input.from ? `${input.from}.${input.slot}` : 'Not connected')}</span>
+                  </div>
+                  <button class="workflow-icon-btn" type="button" data-add-input-guard-slot="${escapeHtml(slot)}" aria-label="Add check" title="Add check">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                  </button>
+                </div>
+                ${
+                  workflowInputGuardAddSlot === slot
+                    ? `<div class="workflow-input-guard-picker">
+                        ${guardOperators
+                          .map(
+                            (guardOperator) => `
+                              <button class="workflow-dependency-option" type="button" data-create-input-guard-slot="${escapeHtml(slot)}" data-create-input-guard-type="${escapeHtml(guardOperator.code)}">
+                                <span>${escapeHtml(guardOperator.name)}</span>
+                                <small>${escapeHtml(guardOperator.description)}</small>
+                              </button>`,
+                          )
+                          .join('')}
+                      </div>`
+                    : ''
+                }
+                <div class="workflow-input-guard-list">
+                  ${
+                    guards.length
+                      ? guards
+                          .map((guard) => {
+                            const guardOperator = getInputGuardOperator(guard.type);
+                            if (!guardOperator) return '';
+                            return `
+                              <article class="workflow-input-guard" data-input-guard-id="${escapeHtml(guard.id)}">
+                                <div class="workflow-input-guard__header">
+                                  <label class="workflow-input-guard__enabled">
+                                    <input type="checkbox" data-toggle-input-guard-id="${escapeHtml(guard.id)}" ${guard.enabled ? 'checked' : ''}>
+                                    <span>${escapeHtml(guard.name)}</span>
+                                  </label>
+                                  <span class="workflow-input-guard__type">${escapeHtml(guardOperator.name)}</span>
+                                  <button class="workflow-icon-btn workflow-icon-btn--danger" type="button" data-remove-input-guard-id="${escapeHtml(guard.id)}" aria-label="Remove check">
+                                    <svg viewBox="0 0 16 16" fill="none">
+                                      <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                    </svg>
+                                  </button>
+                                </div>
+                                <div class="workflow-input-guard__params">
+                                  ${Object.keys(guardOperator.paramsSchema ?? {})
+                                    .map((key) => renderInputGuardParamField(guard, guardOperator, key))
+                                    .join('')}
+                                </div>
+                              </article>`;
+                          })
+                          .join('')
+                      : '<div class="workflow-dependency-empty">No checks on this input</div>'
+                  }
+                </div>
+              </section>`;
+          })
+          .join('')}
+      </div>
+    `;
+
+    container.querySelectorAll<HTMLButtonElement>('[data-add-input-guard-slot]').forEach((button) => {
+      button.addEventListener('click', () => {
+        workflowInputGuardAddSlot = workflowInputGuardAddSlot === button.dataset.addInputGuardSlot ? null : button.dataset.addInputGuardSlot ?? null;
+        renderWorkflowInputGuards(task);
+      });
+    });
+    container.querySelectorAll<HTMLButtonElement>('[data-create-input-guard-slot]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const slot = button.dataset.createInputGuardSlot ?? '';
+        const guardOperator = getInputGuardOperator(button.dataset.createInputGuardType ?? '');
+        if (!slot || !guardOperator || !task.inputs[slot]) return;
+        const guards = normalizeInputGuards(task.inputs[slot].guards);
+        guards.push({
+          id: `guard_${Date.now().toString(36)}`,
+          type: guardOperator.code,
+          name: guardOperator.name,
+          enabled: true,
+          params: buildDefaultTaskParams(guardOperator),
+        });
+        task.inputs[slot].guards = guards;
+        workflowInputGuardAddSlot = null;
+        syncTaskParamsTextarea(task);
+        renderWorkflowEditor();
+      });
+    });
+    container.querySelectorAll<HTMLInputElement>('[data-toggle-input-guard-id]').forEach((checkbox) => {
+      checkbox.addEventListener('change', () => {
+        const guard = findInputGuard(task, checkbox.dataset.toggleInputGuardId ?? '');
+        if (!guard) return;
+        guard.enabled = checkbox.checked;
+        syncTaskParamsTextarea(task);
+        renderWorkflowEditor();
+      });
+    });
+    container.querySelectorAll<HTMLButtonElement>('[data-remove-input-guard-id]').forEach((button) => {
+      button.addEventListener('click', () => {
+        removeInputGuard(task, button.dataset.removeInputGuardId ?? '');
+        syncTaskParamsTextarea(task);
+        renderWorkflowEditor();
+      });
+    });
+    container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-input-guard-param-id]').forEach((field) => {
+      field.addEventListener('input', () => syncInputGuardParam(task, field));
+      field.addEventListener('change', () => syncInputGuardParam(task, field));
+    });
+  }
+
+  function findInputGuard(task: WorkflowTask, guardId: string): WorkflowInputGuard | null {
+    for (const input of Object.values(task.inputs ?? {})) {
+      input.guards = normalizeInputGuards(input.guards);
+      const guard = input.guards.find((item) => item.id === guardId);
+      if (guard) return guard;
+    }
+    return null;
+  }
+
+  function removeInputGuard(task: WorkflowTask, guardId: string) {
+    for (const input of Object.values(task.inputs ?? {})) {
+      input.guards = normalizeInputGuards(input.guards).filter((guard) => guard.id !== guardId);
+    }
+  }
+
+  function syncInputGuardParam(
+    task: WorkflowTask,
+    field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
+  ) {
+    const guard = findInputGuard(task, field.dataset.inputGuardParamId ?? '');
+    if (!guard) return;
+    const key = field.dataset.inputGuardParamKey ?? '';
+    if (!key) return;
+    let value: unknown = field.value;
+    const guardOperator = getInputGuardOperator(guard.type);
+    const paramField = guardOperator?.paramsSchema?.[key];
+    if (field instanceof HTMLInputElement && field.type === 'checkbox') {
+      value = field.checked;
+    } else if (paramField?.type === 'number') {
+      const numeric = Number(field.value);
+      value = Number.isFinite(numeric) ? numeric : field.value;
+    } else if (paramField?.type === 'array') {
+      value = field.value;
+    }
+    guard.params[key] = value;
+    syncTaskParamsTextarea(task);
+    activeWorkflowPreview = null;
+    workflowPreviewPage = 1;
+    renderWorkflowEdgesForActiveEditor();
+  }
+
+  function renderWorkflowEdgesForActiveEditor() {
+    const workflow = getActiveWorkflow();
+    const dag = el('workflowDag');
+    if (!workflow) return;
+    const operatorsByTaskId = new Map(workflow.tasks.map((item) => [item.id, getWorkflowOperator(item)]));
+    renderWorkflowEdges(workflow, operatorsByTaskId, dag);
   }
 
   function getSqlInputSlots(task: WorkflowTask): string[] {
@@ -1513,34 +2051,121 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   function renderTaskDependencies(task: WorkflowTask) {
     const container = el('workflowDependenciesEditor');
-    const candidates = getWorkflowTaskCandidates(task.id);
     normalizeTaskDependencies(task);
-    const selected = new Set(task.dependsOn ?? []);
+    const selectedIds = getWorkflowControlDependencies(task);
+    const selected = new Set(selectedIds);
+    const candidates = getWorkflowTaskCandidates(task.id).filter((candidate) => !selected.has(candidate.id));
+    const workflow = getActiveWorkflow();
+    const taskMap = workflow ? getWorkflowTaskMap(workflow) : new Map<string, WorkflowTask>();
+    const selectedTasks = selectedIds.map((taskId) => taskMap.get(taskId)).filter((candidate): candidate is WorkflowTask => Boolean(candidate));
+    const hasCandidates = candidates.length > 0;
 
     container.innerHTML = `
-      <div class="workflow-structured__section-head">
-        <div class="workflow-structured__label">Execution Dependencies</div>
-      </div>
-      <div class="workflow-structured__section-subtitle">Choose predecessor tasks that must finish successfully before this node can run. This does not replace the Input source.</div>
-      ${
-        candidates.length
-          ? `<div class="workflow-dependency-list">
-              ${candidates
-                .map(
-                  (candidate) => `
-                    <label class="workflow-checkbox workflow-checkbox--dependency">
-                      <input type="checkbox" data-workflow-dependency-id="${escapeHtml(candidate.id)}" ${selected.has(candidate.id) ? 'checked' : ''}>
-                      <span>${escapeHtml(candidate.name)} · ${escapeHtml(candidate.id)}</span>
-                    </label>`,
-                )
-                .join('')}
-            </div>`
-          : '<div class="workflow-empty" style="align-items:flex-start;">No candidate tasks</div>'
-      }
+      <section class="workflow-dependency-card${isWorkflowDependenciesCollapsed ? ' is-collapsed' : ''}">
+        <button class="workflow-dependency-card__header" id="btnToggleWorkflowDependencies" type="button" aria-expanded="${String(!isWorkflowDependenciesCollapsed)}">
+          <span class="workflow-dependency-card__title">Execution Dependencies</span>
+          <span class="workflow-dependency-card__summary">${selectedTasks.length} selected</span>
+          <span class="workflow-dependency-card__chevron" aria-hidden="true">
+            <svg viewBox="0 0 16 16" fill="none">
+              <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </button>
+        ${
+          isWorkflowDependenciesCollapsed
+            ? ''
+            : `<div class="workflow-dependency-card__body">
+                <div class="workflow-dependency-selected-list">
+                  ${
+                    selectedTasks.length
+                      ? selectedTasks
+                          .map(
+                            (dependency) => `
+                              <div class="workflow-dependency-row" data-workflow-selected-dependency-id="${escapeHtml(dependency.id)}">
+                                <div class="workflow-dependency-row__text">
+                                  <strong>${escapeHtml(dependency.name)}</strong>
+                                  <span>${escapeHtml(dependency.id)}</span>
+                                </div>
+                                <button class="workflow-icon-btn workflow-icon-btn--danger" data-remove-workflow-dependency-id="${escapeHtml(dependency.id)}" type="button" aria-label="Remove dependency">
+                                  <svg viewBox="0 0 16 16" fill="none">
+                                    <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                  </svg>
+                                </button>
+                              </div>`,
+                          )
+                          .join('')
+                      : '<div class="workflow-dependency-empty">No execution dependencies</div>'
+                  }
+                </div>
+                <div class="workflow-dependency-add">
+                  <button class="btn btn-secondary btn-sm workflow-dependency-add__button" id="btnAddWorkflowDependency" type="button" ${hasCandidates ? '' : 'disabled'}>
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                    Add
+                  </button>
+                  ${
+                    isWorkflowDependencyPickerOpen
+                      ? `<div class="workflow-dependency-picker">
+                          ${
+                            hasCandidates
+                              ? candidates
+                                  .map(
+                                    (candidate) => `
+                                      <button class="workflow-dependency-option" data-add-workflow-dependency-id="${escapeHtml(candidate.id)}" type="button">
+                                        <span>${escapeHtml(candidate.name)}</span>
+                                        <small>${escapeHtml(candidate.id)}</small>
+                                      </button>`,
+                                  )
+                                  .join('')
+                              : '<div class="workflow-dependency-empty">No more candidate tasks</div>'
+                          }
+                        </div>`
+                      : ''
+                  }
+                </div>
+              </div>`
+        }
+      </section>
     `;
 
-    container.querySelectorAll<HTMLInputElement>('[data-workflow-dependency-id]').forEach((input) => {
-      input.addEventListener('change', syncStructuredTaskParamsToState);
+    container.querySelector<HTMLButtonElement>('#btnToggleWorkflowDependencies')?.addEventListener('click', () => {
+      isWorkflowDependenciesCollapsed = !isWorkflowDependenciesCollapsed;
+      isWorkflowDependencyPickerOpen = false;
+      renderTaskDependencies(task);
+    });
+
+    container.querySelector<HTMLButtonElement>('#btnAddWorkflowDependency')?.addEventListener('click', () => {
+      isWorkflowDependencyPickerOpen = !isWorkflowDependencyPickerOpen;
+      renderTaskDependencies(task);
+    });
+
+    container.querySelectorAll<HTMLButtonElement>('[data-add-workflow-dependency-id]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const dependencyId = button.dataset.addWorkflowDependencyId?.trim();
+        if (!dependencyId) return;
+        task.dependsOn = Array.from(new Set([...getWorkflowControlDependencies(task), dependencyId]));
+        normalizeTaskDependencies(task);
+        isWorkflowDependencyPickerOpen = false;
+        activeWorkflowPreview = null;
+        workflowPreviewPage = 1;
+        syncTaskParamsTextarea(task);
+        renderWorkflowEditor();
+      });
+    });
+
+    container.querySelectorAll<HTMLButtonElement>('[data-remove-workflow-dependency-id]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const dependencyId = button.dataset.removeWorkflowDependencyId?.trim();
+        if (!dependencyId) return;
+        task.dependsOn = getWorkflowControlDependencies(task).filter((taskId) => taskId !== dependencyId);
+        normalizeTaskDependencies(task);
+        isWorkflowDependencyPickerOpen = false;
+        activeWorkflowPreview = null;
+        workflowPreviewPage = 1;
+        syncTaskParamsTextarea(task);
+        renderWorkflowEditor();
+      });
     });
   }
 
@@ -1600,6 +2225,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const structured = el('workflowStructuredParams');
     const operator = getWorkflowOperator(task);
     const customParamKeys = getCustomParamKeys(task);
+    const hasInputSlots = getTaskInputSlots(task, operator).some((slot) => task.inputs?.[slot]);
     const genericParamsRow = el('workflowStructuredGenericParamsRow');
     const hasGenericParams = renderOperatorConfigForm({
       container: genericParamsRow,
@@ -1611,7 +2237,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     });
     genericParamsRow.classList.toggle('hidden', !hasGenericParams);
 
-    if (!hasCustomStructuredParams(task) && !hasGenericParams) {
+    if (!hasCustomStructuredParams(task) && !hasGenericParams && !hasInputSlots) {
       structured.classList.add('hidden');
       return;
     }
@@ -1629,7 +2255,6 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const rangeRow = el('workflowStructuredRangeRow');
     const headerRow = el('workflowStructuredHeaderRow');
     const sectionsRow = el('workflowStructuredSectionsRow');
-    const dependenciesRow = el('workflowStructuredDependenciesRow');
     const sqlTablesRow = el('workflowStructuredSqlTablesRow');
     const sqlRow = el('workflowStructuredSqlRow');
     const persistInputRow = el('workflowStructuredPersistInputRow');
@@ -1645,13 +2270,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const shapeColumnsRow = el('workflowStructuredShapeColumnsRow');
     const assertStrategyRow = el('workflowStructuredAssertStrategyRow');
     const assertMessageRow = el('workflowStructuredAssertMessageRow');
+    const inputGuardsRow = el('workflowStructuredInputGuardsRow');
 
     fileRow.classList.add('hidden');
     sheetRow.classList.add('hidden');
     rangeRow.classList.add('hidden');
     headerRow.classList.add('hidden');
     sectionsRow.classList.add('hidden');
-    dependenciesRow.classList.remove('hidden');
     sqlTablesRow.classList.add('hidden');
     sqlRow.classList.add('hidden');
     persistInputRow.classList.add('hidden');
@@ -1667,7 +2292,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     shapeColumnsRow.classList.add('hidden');
     assertStrategyRow.classList.add('hidden');
     assertMessageRow.classList.add('hidden');
-    renderTaskDependencies(task);
+    inputGuardsRow.classList.add('hidden');
 
     if (isSheetRangeExtractTask(task)) {
       fileRow.classList.remove('hidden');
@@ -1769,6 +2394,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       el<HTMLSelectElement>('workflowAssertFailureStrategy').value = getAssertFailureStrategy(task);
       el<HTMLInputElement>('workflowAssertFailureMessage').value = String(task.params.failureMessage ?? 'Assertion failed');
     }
+
+    renderWorkflowInputGuards(task);
   }
 
   function syncStructuredTaskParamsToState() {
@@ -1837,12 +2464,14 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           const upstreamTaskId = (row.querySelector<HTMLSelectElement>(`[data-sql-table-source="${index}"]`)?.value ?? '').trim();
           if (!tableName) return null;
           const inputSlot = `input${index + 1}`;
-          nextInputs[inputSlot] = { from: upstreamTaskId, slot: 'dataframe' };
+          nextInputs[inputSlot] = getInputBindingWithGuards(task.inputs?.[inputSlot], { from: upstreamTaskId, slot: 'dataframe' });
           return { tableName, inputSlot };
         })
         .filter((item): item is WorkflowSqlTableBinding => Boolean(item));
 
-      task.inputs = Object.keys(nextInputs).length ? nextInputs : { input1: { from: '', slot: 'dataframe' } };
+      task.inputs = Object.keys(nextInputs).length
+        ? nextInputs
+        : { input1: getInputBindingWithGuards(task.inputs?.input1, { from: '', slot: 'dataframe' }) };
       normalizeSqlTask(task);
     }
 
@@ -1851,10 +2480,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       task.params.sheetName = el<HTMLInputElement>('workflowPersistSheetName').value.trim();
       task.params.uploadedBy = el<HTMLInputElement>('workflowPersistUploadedBy').value.trim();
       task.inputs = {
-        input1: {
+        input1: getInputBindingWithGuards(task.inputs?.input1, {
           from: el<HTMLSelectElement>('workflowPersistInputSource').value.trim(),
           slot: 'dataframe',
-        },
+        }),
       };
       normalizePersistExcelTask(task);
     }
@@ -1870,10 +2499,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       task.params.blockExecution = failureStrategy === 'block';
       task.params.failureMessage = el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
       task.inputs = {
-        input1: {
+        input1: getInputBindingWithGuards(task.inputs?.input1, {
           from: el<HTMLSelectElement>('workflowAssertInputSource').value.trim(),
           slot: 'dataframe',
-        },
+        }),
       };
       normalizeAssertTask(task);
     }
@@ -1899,10 +2528,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       task.params.blockExecution = failureStrategy === 'block';
       task.params.failureMessage = el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
       task.inputs = {
-        input1: {
+        input1: getInputBindingWithGuards(task.inputs?.input1, {
           from: el<HTMLSelectElement>('workflowAssertInputSource').value.trim(),
           slot: 'dataframe',
-        },
+        }),
       };
       normalizeSchemaAssertTask(task);
     }
@@ -1919,17 +2548,15 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       task.params.blockExecution = failureStrategy === 'block';
       task.params.failureMessage = el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
       task.inputs = {
-        input1: {
+        input1: getInputBindingWithGuards(task.inputs?.input1, {
           from: el<HTMLSelectElement>('workflowAssertInputSource').value.trim(),
           slot: 'dataframe',
-        },
+        }),
       };
       normalizeShapeAssertTask(task);
     }
 
-    task.dependsOn = Array.from(document.querySelectorAll<HTMLInputElement>('[data-workflow-dependency-id]:checked'))
-      .map((input) => input.dataset.workflowDependencyId?.trim() ?? '')
-      .filter(Boolean);
+    task.dependsOn = getWorkflowControlDependencies(task);
     normalizeTaskDependencies(task);
 
     syncTaskParamsTextarea(task);
@@ -1957,7 +2584,118 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     renderWorkflowPreview();
   }
 
-  async function executeWorkflow(options: { approvedWarningTaskIds?: string[]; isResume?: boolean } = {}) {
+  function getWorkflowRunLastResult(run: WorkflowRunRecord): WorkflowTaskPreviewResult | null {
+    for (let index = run.steps.length - 1; index >= 0; index -= 1) {
+      const result = run.steps[index]?.result;
+      if (result) return result;
+    }
+    return null;
+  }
+
+  function applyWorkflowRunRecord(run: WorkflowRunRecord, workflow: WorkflowDefinition) {
+    const orderedTasks = getWorkflowExecutionOrder(workflow);
+    const taskStates: Record<string, WorkflowExecutionTaskState> = Object.fromEntries(
+      orderedTasks.map((task) => [task.id, 'pending' as WorkflowExecutionTaskState]),
+    );
+    for (const step of run.steps) {
+      taskStates[step.taskId] = step.status;
+    }
+
+    const runIsTerminal = isWorkflowRunTerminalStatus(run.status);
+    const activeStep = runIsTerminal ? null : run.steps.find((step) => step.status === 'running');
+    const waitingForApprovalTaskIds = run.approvals
+      .filter((approval) => approval.status === 'pending')
+      .map((approval) => approval.taskId);
+    const warningMessages = Object.fromEntries(
+      run.steps
+        .filter((step) => step.status === 'warning')
+        .map((step) => [
+          step.taskId,
+          step.result?.kind === 'assert'
+            ? step.result.assertion.failureMessage
+            : step.errorMessage ?? run.approvals.find((approval) => approval.taskId === step.taskId)?.comment ?? 'Warning',
+        ]),
+    );
+
+    workflowRunState.workflowId = workflow.id;
+    workflowRunState.runId = run.id;
+    workflowRunState.isOpen = true;
+    workflowRunState.isRunning = !runIsTerminal && (run.status === 'running' || Boolean(activeStep));
+    workflowRunState.activeTaskId = activeStep?.taskId ?? null;
+    workflowRunState.taskStates = taskStates;
+    workflowRunState.approvedWarningTaskIds = run.approvedWarningTaskIds;
+    workflowRunState.waitingForApprovalTaskIds = waitingForApprovalTaskIds;
+    workflowRunState.warningTaskIds = run.steps.filter((step) => step.status === 'warning').map((step) => step.taskId);
+    workflowRunState.warningMessages = warningMessages;
+    workflowRunState.errorMessage =
+      run.errorMessage ?? run.steps.find((step) => step.status === 'failed')?.errorMessage ?? null;
+
+    if (run.status === 'waiting_approval' || waitingForApprovalTaskIds.length) {
+      workflowRunState.isRunning = false;
+      workflowRunState.message = 'Workflow requires review before continuing';
+    } else if (run.status === 'failed') {
+      workflowRunState.isRunning = false;
+      workflowRunState.message = 'Workflow execution failed';
+    } else if (run.status === 'skipped') {
+      workflowRunState.isRunning = false;
+      workflowRunState.message = `Workflow ${workflow.name} skipped`;
+    } else if (run.status === 'completed_with_warnings') {
+      workflowRunState.isRunning = false;
+      workflowRunState.message = `Workflow ${workflow.name} completed with warnings`;
+    } else if (run.status === 'completed') {
+      workflowRunState.isRunning = false;
+      workflowRunState.message = `Workflow ${workflow.name} completed`;
+    } else if (activeStep) {
+      const task = orderedTasks.find((item) => item.id === activeStep.taskId);
+      workflowRunState.message = task ? `Running ${task.name}` : `Workflow ${workflow.name} is running`;
+    } else {
+      workflowRunState.message = `Workflow ${workflow.name} is queued`;
+    }
+
+    activeWorkflowPreview = getWorkflowRunLastResult(run);
+    workflowPreviewPage = 1;
+    renderWorkflowEditor();
+    renderWorkflowPreview();
+  }
+
+  async function pollWorkflowRunUntilSettled(
+    runId: number,
+    workflow: WorkflowDefinition,
+    options: { minimumPollCount?: number } = {},
+  ) {
+    let shouldRefreshFiles = false;
+    let pollCount = 0;
+    for (;;) {
+      await wait(500);
+      pollCount += 1;
+      const run = await api<WorkflowRunRecord>(`/api/workflow-runs/${runId}`);
+      applyWorkflowRunRecord(run, workflow);
+      shouldRefreshFiles ||= run.artifacts.some((artifact) => artifact.artifactType === 'file');
+      const isSettled =
+        isWorkflowRunTerminalStatus(run.status) || (run.status !== 'running' && !run.steps.some((step) => step.status === 'running'));
+      if (pollCount < (options.minimumPollCount ?? 1)) continue;
+      if (!isSettled) continue;
+      if (shouldRefreshFiles || getWorkflowRunLastResult(run)?.kind === 'file') {
+        await refreshProductFiles();
+      }
+      if (run.status === 'completed' || run.status === 'completed_with_warnings' || run.status === 'skipped') {
+        window.setTimeout(() => {
+          if (workflowRunState.runId === runId && !workflowRunState.isRunning) {
+            alert(
+              run.status === 'skipped'
+                ? '任务已跳过后续流程'
+                : run.status === 'completed_with_warnings'
+                  ? '任务完成（包含 Warning）'
+                  : '任务完成',
+            );
+          }
+        }, 120);
+      }
+      return;
+    }
+  }
+
+  async function executeWorkflow() {
     const workflow = getActiveWorkflow();
     if (!workflow) return;
     if (!workflow.tasks.length) {
@@ -1965,89 +2703,28 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       return;
     }
 
-    const approvedWarningTaskIds = options.approvedWarningTaskIds ?? [];
-    const payload: WorkflowExecuteRequest = {
-      tasks: workflow.tasks,
-      approvedWarningTaskIds,
-    };
-    const executionOrder = getWorkflowExecutionOrder(workflow);
+    const initialExecutionOrder = getWorkflowExecutionOrder(workflow);
     resetWorkflowRunState(workflow.id);
     workflowRunState.isOpen = true;
     workflowRunState.isRunning = true;
-    workflowRunState.approvedWarningTaskIds = approvedWarningTaskIds;
-    workflowRunState.message = options.isResume ? `Continuing ${workflow.name}` : `Executing ${workflow.name}`;
+    workflowRunState.taskStates = Object.fromEntries(
+      initialExecutionOrder.map((task) => [task.id, 'pending' as WorkflowExecutionTaskState]),
+    );
+    workflowRunState.message = `Starting ${workflow.name}`;
     renderWorkflowEditor();
 
-    workflowRunState.taskStates = Object.fromEntries(
-      executionOrder.map((task) => [task.id, 'pending' as WorkflowExecutionTaskState]),
-    );
     try {
-      const result = await api<WorkflowExecutionResult>(`/api/workflows/${workflow.id}/execute`, {
+      const savedWorkflow = await persistWorkflowDefinition(workflow);
+      const payload: WorkflowExecuteRequest = {};
+      const result = await api<WorkflowExecutionResult>(`/api/workflows/${savedWorkflow.id}/execute`, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-
-      workflowRunState.warningTaskIds = result.warningTaskIds;
-      workflowRunState.waitingForApprovalTaskIds = result.waitingForApprovalTaskIds;
-      workflowRunState.warningMessages = Object.fromEntries(result.warnings.map((warning) => [warning.taskId, warning.message]));
-
-      for (const [index, task] of executionOrder.entries()) {
-        const finalState = result.taskStates[task.id] ?? 'pending';
-        const shouldAnimate = finalState === 'completed' || finalState === 'failed' || finalState === 'warning';
-        workflowRunState.activeTaskId = shouldAnimate ? task.id : null;
-
-        if (shouldAnimate) {
-          workflowRunState.taskStates[task.id] = 'running';
-          workflowRunState.message = `Running ${task.name} (${index + 1}/${executionOrder.length})`;
-          renderWorkflowEditor();
-          await wait(WORKFLOW_EXECUTE_STEP_MS);
-        }
-
-        workflowRunState.activeTaskId = null;
-        workflowRunState.taskStates[task.id] = finalState;
-        workflowRunState.message =
-          finalState === 'blocked'
-            ? `${task.name} blocked by dependency`
-            : finalState === 'failed'
-              ? `${task.name} failed`
-              : finalState === 'warning'
-                ? result.waitingForApprovalTaskIds.includes(task.id)
-                  ? `${task.name} requires review`
-                  : `${task.name} completed with warning`
-              : finalState === 'completed'
-                ? `${task.name} completed`
-                : `${task.name} pending`;
-        renderWorkflowEditor();
-        await wait(finalState === 'blocked' ? 120 : 60);
+      if (!result.run) {
+        throw new Error('Workflow run was not created');
       }
-
-      activeWorkflowPreview = result.result;
-      workflowPreviewPage = 1;
-      if (activeWorkflowPreview?.kind === 'file') {
-        await refreshProductFiles();
-      }
-      workflowRunState.isRunning = false;
-      workflowRunState.activeTaskId = null;
-      workflowRunState.taskStates = result.taskStates;
-      const hasWaitingWarning = result.waitingForApprovalTaskIds.length > 0;
-      const hasWarning = result.warningTaskIds.length > 0;
-      workflowRunState.message = result.failedTaskId
-        ? 'Workflow execution failed'
-        : hasWaitingWarning
-          ? 'Workflow requires review before continuing'
-          : hasWarning
-            ? `Workflow ${workflow.name} completed with warnings`
-            : `Workflow ${workflow.name} completed`;
-      workflowRunState.errorMessage = result.errorMessage;
-      renderWorkflowEditor();
-      renderWorkflowPreview();
-      if (!result.failedTaskId && !hasWaitingWarning) {
-        window.setTimeout(() => {
-          if (workflowRunState.workflowId === workflow.id && !workflowRunState.isRunning) {
-            alert(hasWarning ? '任务完成（包含 Warning）' : '任务完成');
-          }
-        }, 120);
-      }
+      applyWorkflowRunRecord(result.run, savedWorkflow);
+      await pollWorkflowRunUntilSettled(result.run.id, savedWorkflow);
     } catch (error) {
       workflowRunState.isRunning = false;
       if (workflowRunState.activeTaskId) {
@@ -2061,13 +2738,29 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
   }
 
-  async function continueWorkflowAfterWarning() {
+  async function continueWorkflowAfterWarning(decision: 'approved' | 'skipped' = 'approved') {
     const workflow = getActiveWorkflow();
     if (!workflow || workflowRunState.isRunning) return;
     const waitingTaskIds = workflowRunState.waitingForApprovalTaskIds.filter(Boolean);
     if (!waitingTaskIds.length) return;
-    const approvedWarningTaskIds = Array.from(new Set([...workflowRunState.approvedWarningTaskIds, ...waitingTaskIds]));
-    await executeWorkflow({ approvedWarningTaskIds, isResume: true });
+    if (!workflowRunState.runId) {
+      alert('当前没有可继续的工作流运行');
+      return;
+    }
+
+    workflowRunState.isRunning = true;
+    workflowRunState.message = decision === 'skipped' ? `Skipping downstream flow for ${workflow.name}` : `Continuing ${workflow.name}`;
+    renderWorkflowEditor();
+
+    const result = await api<WorkflowExecutionResult>(`/api/workflow-runs/${workflowRunState.runId}/approvals`, {
+      method: 'POST',
+      body: JSON.stringify({ taskIds: waitingTaskIds, decision }),
+    });
+    if (!result.run) {
+      throw new Error('Workflow run was not returned');
+    }
+    applyWorkflowRunRecord(result.run, workflow);
+    await pollWorkflowRunUntilSettled(result.run.id, workflow, { minimumPollCount: 2 });
   }
 
   async function previewSqlBinding(bindingIndex: number) {
@@ -2358,6 +3051,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         status: 'draft',
         version: 1,
         tasks: [],
+        runtimeParamsSchema: {},
+        runtimeParamsDefaults: {},
       }),
     });
     resetWorkflowRunState(created.id);
@@ -2378,6 +3073,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         status: 'draft',
         version: workflow.version,
         tasks: cloneJson(workflow.tasks),
+        runtimeParamsSchema: cloneJson(workflow.runtimeParamsSchema),
+        runtimeParamsDefaults: cloneJson(workflow.runtimeParamsDefaults),
       }),
     });
     resetWorkflowRunState(created.id);
@@ -2444,19 +3141,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
     workflow.name = name;
 
-    await api(`/api/workflows/${workflow.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        code: workflow.code,
-        name: workflow.name,
-        description: workflow.description,
-        status: workflow.status,
-        version: workflow.version,
-        tasks: workflow.tasks,
-      }),
-    });
+    await persistWorkflowDefinition(workflow, { reload: true });
     resetWorkflowRunState(workflow.id);
-    await loadWorkflows(workflow.id);
   }
 
   async function deleteWorkflow() {

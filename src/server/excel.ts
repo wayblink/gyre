@@ -436,9 +436,44 @@ export function dataFrameToWorkbookBuffer(
   const worksheet = XLSX.utils.json_to_sheet(rows, {
     header: dataframe.columns,
   });
+  applyDataFrameWorksheetFormats(worksheet, dataframe.columns);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, options.sheetName?.trim() || dataframe.range.sheetName || 'Sheet1');
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+}
+
+function isPercentColumnName(columnName: string): boolean {
+  const normalized = columnName.trim().toLowerCase();
+  return normalized.includes('%') || normalized.includes('percent') || normalized.includes('percentage');
+}
+
+function isShareCountColumnName(columnName: string): boolean {
+  const normalized = columnName.trim().toLowerCase();
+  return normalized.includes('shares') || normalized.includes('qty') || normalized.includes('quantity') || normalized.includes('outstanding');
+}
+
+function applyDataFrameWorksheetFormats(worksheet: XLSX.WorkSheet, columns: string[]) {
+  const ref = worksheet['!ref'];
+  if (!ref) return;
+
+  const range = XLSX.utils.decode_range(ref);
+  for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
+    const columnName = columns[columnIndex - range.s.c] ?? '';
+    const numberFormat = isPercentColumnName(columnName)
+      ? '0.00%'
+      : isShareCountColumnName(columnName)
+        ? '#,##0'
+        : null;
+    if (!numberFormat) continue;
+
+    for (let rowIndex = range.s.r + 1; rowIndex <= range.e.r; rowIndex += 1) {
+      const cell = worksheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+      if (cell && typeof cell.v === 'number') {
+        cell.t = 'n';
+        cell.z = numberFormat;
+      }
+    }
+  }
 }
 
 function normalizePercentForWorkbook(percent: number | null | undefined): number | null {

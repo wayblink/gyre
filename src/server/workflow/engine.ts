@@ -7,13 +7,14 @@ import type {
 } from '../../shared/types.js';
 import type { WorkflowOperatorExecutionContext, WorkflowOperatorExecuteResult, WorkflowOperatorRuntime } from './operators/types.js';
 import { workflowOperatorDefinitionByCode } from './operators/registry.js';
+import { evaluateWorkflowInputGuards, type WorkflowEvaluatedInputGuard } from './inputGuards.js';
 
 type WorkflowTaskExecutionOutput = {
   dataFrame: WorkflowDataFrame;
   result: WorkflowTaskPreviewResult;
 };
 
-function getWorkflowDependencyIds(task: WorkflowTask): string[] {
+export function getWorkflowDependencyIds(task: WorkflowTask): string[] {
   const inputDependencies = Object.values(task.inputs ?? {})
     .map((input) => String(input?.from ?? '').trim())
     .filter(Boolean);
@@ -23,7 +24,7 @@ function getWorkflowDependencyIds(task: WorkflowTask): string[] {
   return Array.from(new Set([...inputDependencies, ...controlDependencies])).filter((taskId) => taskId !== task.id);
 }
 
-function getWorkflowExecutionOrder(tasks: WorkflowTask[]): WorkflowTask[] {
+export function getWorkflowExecutionOrder(tasks: WorkflowTask[]): WorkflowTask[] {
   const taskMap = new Map(tasks.map((task) => [task.id, task]));
   const inDegree = new Map<string, number>();
   const outgoing = new Map<string, string[]>();
@@ -124,6 +125,37 @@ function createExecutionContext(
   };
 }
 
+export async function evaluateTaskInputGuards(
+  task: WorkflowTask,
+  executed: Map<string, WorkflowDataFrame>,
+  _taskResults: Map<string, WorkflowTaskPreviewResult>,
+  taskMap: Map<string, WorkflowTask>,
+  runtime: WorkflowOperatorRuntime,
+) {
+  const results: WorkflowEvaluatedInputGuard[] = [];
+  for (const [inputSlot, inputRef] of Object.entries(task.inputs ?? {})) {
+    if (!inputRef?.from?.trim() || !inputRef.guards?.length) continue;
+    const upstreamTask = taskMap.get(inputRef.from);
+    if (!upstreamTask) {
+      throw new Error(`Task ${task.name} references unknown upstream task ${inputRef.from}`);
+    }
+    const upstreamDataFrame = executed.get(upstreamTask.id);
+    if (!upstreamDataFrame) {
+      throw new Error(`Task ${task.name} input ${inputSlot} depends on ${upstreamTask.name}, but its output is not available`);
+    }
+    results.push(
+      ...(await evaluateWorkflowInputGuards({
+        task,
+        inputSlot,
+        inputRef,
+        dataframe: upstreamDataFrame,
+        runtime,
+      })),
+    );
+  }
+  return results;
+}
+
 export async function executeWorkflowTask(
   task: WorkflowTask,
   executed: Map<string, WorkflowDataFrame>,
@@ -133,7 +165,7 @@ export async function executeWorkflowTask(
   return (await executeWorkflowTaskOutput(task, executed, new Map(), taskMap, runtime)).dataFrame;
 }
 
-async function executeWorkflowTaskOutput(
+export async function executeWorkflowTaskOutput(
   task: WorkflowTask,
   executed: Map<string, WorkflowDataFrame>,
   taskResults: Map<string, WorkflowTaskPreviewResult>,
@@ -170,6 +202,55 @@ async function executeWorkflowTaskOutput(
   const context = createExecutionContext(task, executed, taskMap, runtime, (upstreamTask) =>
     executeWorkflowTaskOutput(upstreamTask, executed, taskResults, taskMap, runtime).then((output) => output.dataFrame),
   );
+  const output = toWorkflowTaskExecutionOutput(await operator.execute(context));
+  executed.set(task.id, output.dataFrame);
+  taskResults.set(task.id, output.result);
+  return output;
+}
+
+export async function executeWorkflowTaskOutputStrict(
+  task: WorkflowTask,
+  executed: Map<string, WorkflowDataFrame>,
+  taskResults: Map<string, WorkflowTaskPreviewResult>,
+  taskMap: Map<string, WorkflowTask>,
+  runtime: WorkflowOperatorRuntime,
+): Promise<WorkflowTaskExecutionOutput> {
+  const cached = executed.get(task.id);
+  const cachedResult = taskResults.get(task.id);
+  if (cached && cachedResult) {
+    return {
+      dataFrame: cached,
+      result: cachedResult,
+    };
+  }
+  if (cached) {
+    return {
+      dataFrame: cached,
+      result: {
+        kind: 'dataframe',
+        dataFrame: cached,
+      },
+    };
+  }
+
+  for (const dependencyId of getWorkflowDependencyIds(task)) {
+    const dependencyTask = taskMap.get(dependencyId);
+    if (!dependencyTask) {
+      throw new Error(`Task ${task.name} references unknown dependency ${dependencyId}`);
+    }
+    if (!executed.has(dependencyId)) {
+      throw new Error(`Task ${task.name} dependency ${dependencyTask.name} has not produced a persisted output`);
+    }
+  }
+
+  const operator = getOperatorOrThrow(task);
+  const context = createExecutionContext(task, executed, taskMap, runtime, async (upstreamTask) => {
+    const upstreamDataFrame = executed.get(upstreamTask.id);
+    if (!upstreamDataFrame) {
+      throw new Error(`Task ${task.name} input depends on ${upstreamTask.name}, but its output is not available`);
+    }
+    return upstreamDataFrame;
+  });
   const output = toWorkflowTaskExecutionOutput(await operator.execute(context));
   executed.set(task.id, output.dataFrame);
   taskResults.set(task.id, output.result);
@@ -257,6 +338,75 @@ export async function executeWorkflowDefinition(
       taskStates[task.id] = 'running';
       const taskStartedAtMs = Date.now();
       const taskStartedAt = new Date(taskStartedAtMs).toISOString();
+      const inputGuardResults = await evaluateTaskInputGuards(task, executed, taskResults, taskMap, runtime);
+      const failedInputGuard = inputGuardResults.find(
+        (result) => !result.assertion.passed && result.assertion.failureStrategy === 'block',
+      );
+      const warningInputGuards = inputGuardResults.filter(
+        (result) => !result.assertion.passed && result.assertion.failureStrategy === 'warning',
+      );
+      const passThroughInputGuards = inputGuardResults.filter(
+        (result) => !result.assertion.passed && result.assertion.failureStrategy === 'pass-through',
+      );
+
+      if (failedInputGuard) {
+        const taskFinishedAtMs = Date.now();
+        taskTimings[task.id] = {
+          startedAt: taskStartedAt,
+          finishedAt: new Date(taskFinishedAtMs).toISOString(),
+          durationMs: taskFinishedAtMs - taskStartedAtMs,
+        };
+        lastResult = {
+          kind: 'assert',
+          assertion: failedInputGuard.assertion,
+          dataFrame: failedInputGuard.dataFrame,
+        };
+        taskResultRecords[task.id] = lastResult;
+        taskStates[task.id] = 'failed';
+        failedTaskId = task.id;
+        errorMessage = failedInputGuard.assertion.failureMessage;
+        taskErrors[task.id] = failedInputGuard.assertion.failureMessage;
+        continue;
+      }
+
+      if (warningInputGuards.length) {
+        const approved = approvedWarningTaskIds.has(task.id);
+        warningTaskIds.push(task.id);
+        for (const warningGuard of warningInputGuards) {
+          warnings.push({
+            taskId: task.id,
+            message: warningGuard.assertion.failureMessage,
+            approved,
+          });
+        }
+        if (!approved) {
+          const warningGuard = warningInputGuards[0];
+          const taskFinishedAtMs = Date.now();
+          taskTimings[task.id] = {
+            startedAt: taskStartedAt,
+            finishedAt: new Date(taskFinishedAtMs).toISOString(),
+            durationMs: taskFinishedAtMs - taskStartedAtMs,
+          };
+          lastResult = {
+            kind: 'assert',
+            assertion: warningGuard.assertion,
+            dataFrame: warningGuard.dataFrame,
+          };
+          taskResultRecords[task.id] = lastResult;
+          taskStates[task.id] = 'warning';
+          waitingForApprovalTaskIds.push(task.id);
+          continue;
+        }
+      }
+
+      for (const warningGuard of passThroughInputGuards) {
+        warnings.push({
+          taskId: task.id,
+          message: warningGuard.assertion.failureMessage,
+          approved: true,
+        });
+      }
+
       const taskOutput = await executeWorkflowTaskOutput(task, executed, taskResults, taskMap, runtime);
       const taskFinishedAtMs = Date.now();
       taskTimings[task.id] = {
@@ -289,7 +439,7 @@ export async function executeWorkflowDefinition(
           continue;
         }
       }
-      taskStates[task.id] = 'completed';
+      taskStates[task.id] = warningInputGuards.length ? 'warning' : 'completed';
     } catch (error) {
       taskStates[task.id] = 'failed';
       failedTaskId = task.id;

@@ -27,6 +27,7 @@ export function normalizeSchemaAssertTask(task: WorkflowTask) {
     input1: {
       from: String(task.inputs?.input1?.from ?? '').trim(),
       slot: 'dataframe',
+      guards: task.inputs?.input1?.guards,
     },
   };
   normalizeWorkflowTaskDependencies(task);

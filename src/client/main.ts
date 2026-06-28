@@ -272,6 +272,16 @@ function initNavigation() {
   void syncPageFromLocation();
 }
 
+function applyInitialRouteBeforeReveal() {
+  const page = getPageFromLocation();
+  setActivePage(page);
+  if (window.location.pathname !== buildPagePath(page)) {
+    replacePagePath(page);
+  }
+  document.body.classList.remove('app-booting');
+  document.body.classList.add('app-ready');
+}
+
 function initMonthPicker() {
   el<HTMLInputElement>('monthPicker').value = currentMonth;
   el<HTMLInputElement>('monthPickerMonthly').value = '';
@@ -695,14 +705,18 @@ async function initEmployeesPage() {
 
 
 function renderHoldingsPagination(page: number, totalPages: number, total: number) {
-  el('holdingsPaginationSummary').textContent = total === 0 ? '0 records' : `${total} records`;
+  const start = total === 0 ? 0 : (page - 1) * holdingsPageSize + 1;
+  const end = Math.min(page * holdingsPageSize, total);
+  el('holdingsPaginationSummary').textContent = total === 0 ? '0 records' : `Showing ${start}-${end} of ${total} records`;
   el('holdingsPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
   el<HTMLButtonElement>('btnHoldingsPrevPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnHoldingsNextPage').disabled = total === 0 || page >= totalPages;
 }
 
 function renderEmployeesPagination(page: number, totalPages: number, total: number) {
-  el('employeesPaginationSummary').textContent = total === 0 ? '0 employees' : `${total} employees`;
+  const start = total === 0 ? 0 : (page - 1) * employeesPageSize + 1;
+  const end = Math.min(page * employeesPageSize, total);
+  el('employeesPaginationSummary').textContent = total === 0 ? '0 employees' : `Showing ${start}-${end} of ${total} employees`;
   el('employeesPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
   el<HTMLButtonElement>('btnEmployeesPrevPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnEmployeesNextPage').disabled = total === 0 || page >= totalPages;
@@ -800,7 +814,6 @@ async function loadEmployeesPage() {
 }
 
 function renderEmployeesPageTable() {
-  el('employeesCountBadge').textContent = `${employeesTotal} employees`;
   if (employees.length === 0) {
     el('employeesPageBody').innerHTML =
       '<tr><td colspan="7" style="text-align:center; padding:32px; color:#64748b;">No matching employees found</td></tr>';
@@ -1163,6 +1176,7 @@ function initLinkModal() {
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     initSidebarToggle();
+    applyInitialRouteBeforeReveal();
     initNavigation();
     initMonthPicker();
     await initSummaryPage();
