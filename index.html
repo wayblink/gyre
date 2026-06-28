@@ -67,13 +67,15 @@
                     </span>
                     <span class="nav-text">Employees</span>
                 </div>
-                <div class="nav-item" data-page="settings">
+            </nav>
+            <div class="sidebar-footer">
+                <div class="nav-item nav-item--footer" data-page="settings" title="Settings">
                     <span class="nav-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.68 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.32 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </span>
                     <span class="nav-text">Settings</span>
                 </div>
-            </nav>
+            </div>
         </aside>
 
         <!-- Main Content -->
@@ -976,12 +978,50 @@
 
                 <!-- Settings Page -->
                 <section class="page-section" id="page-settings">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3 class="card-title">Settings</h3>
-                            <span class="card-subtitle">Reserved for future configuration modules</span>
+                    <div class="settings-shell">
+                        <div class="settings-quick-grid">
+                            <div class="card settings-quick-card">
+                                <div class="card-header">
+                                    <div>
+                                        <h3 class="card-title">风格</h3>
+                                        <span class="card-subtitle">控制组件的材质语言与层次表现</span>
+                                    </div>
+                                    <span class="settings-pill" id="settingsStyleStatus">Flat</span>
+                                </div>
+                                <div class="card-body settings-placeholder">
+                                    <label class="settings-placeholder__label">界面风格</label>
+                                    <div class="theme-grid" id="themeStyleOptions"></div>
+                                    <p class="settings-placeholder__hint">Flat 使用当前整站的扁平企业风格；Glass 会增强高光、分层和玻璃质感，适合更强的视觉表现。</p>
+                                </div>
+                            </div>
+                            <div class="card settings-quick-card">
+                                <div class="card-header">
+                                    <div>
+                                        <h3 class="card-title">配色</h3>
+                                        <span class="card-subtitle">控制品牌主色与强调色倾向</span>
+                                    </div>
+                                    <span class="settings-pill" id="settingsColorStatus">Blue</span>
+                                </div>
+                                <div class="card-body settings-placeholder">
+                                    <label class="settings-placeholder__label">配色方案</label>
+                                    <div class="theme-grid" id="themeColorOptions"></div>
+                                    <p class="settings-placeholder__hint">这里会作为后续全局配色设置入口。现在先把主色系统和关键组件接到统一的主题变量。</p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="card-body" style="min-height:320px;"></div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Appearance</h3>
+                                <span class="card-subtitle">切换后立即生效，并保存在当前浏览器</span>
+                            </div>
+                            <div class="card-body settings-appearance-summary">
+                                <div class="settings-appearance-summary__surface">
+                                    <div class="settings-appearance-summary__eyebrow">当前组合</div>
+                                    <div class="settings-appearance-summary__title" id="appearanceSummaryTitle">Flat Blue</div>
+                                    <p class="settings-appearance-summary__text" id="appearanceSummaryText">使用稳健的蓝色企业风格与扁平化表面，适合日常操作界面。</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
             </div>

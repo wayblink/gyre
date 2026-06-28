@@ -14,6 +14,17 @@ import type {
   ShareholderTag,
 } from '../shared/types.js';
 import { createFilesPage } from './filesPage.js';
+import {
+  applyThemeSelection,
+  COLOR_OPTIONS,
+  getStoredTheme,
+  getThemeColorOption,
+  getThemeStyleOption,
+  STYLE_OPTIONS,
+  type ThemeColorName,
+  type ThemeSelection,
+  type ThemeStyleName,
+} from './theme.js';
 import { createWorkflowPage } from './workflowPage.js';
 import '../../css/style.css';
 import '@univerjs/design/lib/index.css';
@@ -52,6 +63,7 @@ const DEFAULT_PAGE: PageKey = 'summary';
 const validPages = new Set<PageKey>(Object.keys(pageTitles) as PageKey[]);
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'captable.sidebar.collapsed';
 let sidebarCollapsed = false;
+let themeSelection: ThemeSelection = getStoredTheme();
 
 let editingEmployeeId: number | null = null;
 
@@ -173,6 +185,87 @@ function initSidebarToggle() {
   sidebarCollapsed = readSidebarCollapsedPreference();
   applySidebarState();
   el('sidebarToggle').addEventListener('click', () => setSidebarCollapsed(!sidebarCollapsed));
+}
+
+function renderThemeCards() {
+  el('themeStyleOptions').innerHTML = STYLE_OPTIONS.map(
+    (option) => `
+      <button
+        class="theme-card${themeSelection.style === option.name ? ' active' : ''}"
+        type="button"
+        data-theme-style="${option.name}"
+      >
+        <span class="theme-card-head">
+          <span>
+            <strong>${escapeHtml(option.label)}</strong>
+            <small>${escapeHtml(option.desc)}</small>
+          </span>
+          ${themeSelection.style === option.name ? '<span class="theme-check">当前</span>' : ''}
+        </span>
+        <span class="theme-swatches" aria-hidden="true">
+          ${option.swatches.map((color) => `<span class="theme-swatch" style="background-color:${escapeHtml(color)}"></span>`).join('')}
+        </span>
+      </button>`,
+  ).join('');
+
+  el('themeColorOptions').innerHTML = COLOR_OPTIONS.map(
+    (option) => `
+      <button
+        class="theme-card${themeSelection.color === option.name ? ' active' : ''}"
+        type="button"
+        data-theme-color="${option.name}"
+      >
+        <span class="theme-card-head">
+          <span>
+            <strong>${escapeHtml(option.label)}</strong>
+            <small>${escapeHtml(option.desc)}</small>
+          </span>
+          ${themeSelection.color === option.name ? '<span class="theme-check">当前</span>' : ''}
+        </span>
+        <span class="theme-swatches" aria-hidden="true">
+          ${option.swatches.map((color) => `<span class="theme-swatch" style="background-color:${escapeHtml(color)}"></span>`).join('')}
+        </span>
+      </button>`,
+  ).join('');
+
+  document.querySelectorAll<HTMLElement>('[data-theme-style]').forEach((button) => {
+    button.addEventListener('click', () => setThemeStyle(button.dataset.themeStyle as ThemeStyleName));
+  });
+  document.querySelectorAll<HTMLElement>('[data-theme-color]').forEach((button) => {
+    button.addEventListener('click', () => setThemeColor(button.dataset.themeColor as ThemeColorName));
+  });
+}
+
+function renderThemeSummary() {
+  const styleOption = getThemeStyleOption(themeSelection.style);
+  const colorOption = getThemeColorOption(themeSelection.color);
+  el('settingsStyleStatus').textContent = styleOption.label;
+  el('settingsColorStatus').textContent = colorOption.label;
+  el('appearanceSummaryTitle').textContent = `${styleOption.label} ${colorOption.label}`;
+  el('appearanceSummaryText').textContent =
+    themeSelection.style === 'glass'
+      ? `${colorOption.label} 配色下启用玻璃高光与更强层次，适合更强调品牌感和视觉表现的工作台。`
+      : `${colorOption.label} 配色下保持克制、清晰的扁平企业风格，适合高频使用和长时间操作。`;
+}
+
+function applyTheme() {
+  applyThemeSelection(themeSelection);
+  if (document.getElementById('themeStyleOptions')) {
+    renderThemeCards();
+    renderThemeSummary();
+  }
+}
+
+function setThemeStyle(style: ThemeStyleName) {
+  if (themeSelection.style === style) return;
+  themeSelection = { ...themeSelection, style };
+  applyTheme();
+}
+
+function setThemeColor(color: ThemeColorName) {
+  if (themeSelection.color === color) return;
+  themeSelection = { ...themeSelection, color };
+  applyTheme();
 }
 
 function normalizePage(page: string | null | undefined): PageKey {
@@ -373,7 +466,7 @@ async function renderSummaryPage(month: string) {
     renderNotes(data.notes);
   } catch (error) {
     currentSummary = null;
-    el('reconciliationBody').innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:#64748b;">${escapeHtml((error as Error).message)}</td></tr>`;
+    el('reconciliationBody').innerHTML = `<tr><td colspan="5" class="table-empty-cell">${escapeHtml((error as Error).message)}</td></tr>`;
     el('capitalizationBody').innerHTML = '';
     applyCapitalizationSourceState(null);
     renderNotes([]);
@@ -506,7 +599,7 @@ async function renderMonthlyPage(filterMonth: string) {
 
   const tbody = el('monthlyUpdateBody');
   if (updatePlans.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:#64748b;">暂无月度更新计划</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无月度更新计划</td></tr>';
     return;
   }
   tbody.innerHTML = updatePlans
@@ -514,7 +607,7 @@ async function renderMonthlyPage(filterMonth: string) {
       (plan, index) => `
       <tr>
         <td>${index + 1}</td>
-        <td><strong>${escapeHtml(plan.monthLabel)}</strong><br><span style="font-size:11px;color:#64748b;">${escapeHtml(plan.month)}</span></td>
+        <td><strong>${escapeHtml(plan.monthLabel)}</strong><br><span class="text-muted" style="font-size:11px;">${escapeHtml(plan.month)}</span></td>
         <td>${escapeHtml(plan.operationTime)}</td>
         <td>${escapeHtml(plan.operator)}</td>
         <td><span class="status-badge ${statusClass(plan.status)}">${escapeHtml(plan.status)}</span></td>
@@ -575,7 +668,7 @@ function renderSourceTables() {
       <tr>
         <td style="text-align:left;">${escapeHtml(item.item)}</td>
         <td class="col-number">${formatNumber(item.value)}</td>
-        <td>${item.action === 'edit' ? `<a href="javascript:void(0)" class="source-edit-link" data-table="fixed" data-id="${item.id}">edit</a>` : '<span style="color:#94a3b8;">-</span>'}</td>
+        <td>${item.action === 'edit' ? `<a href="javascript:void(0)" class="source-edit-link" data-table="fixed" data-id="${item.id}">edit</a>` : '<span class="source-empty-value">-</span>'}</td>
       </tr>`,
     )
     .join('');
@@ -600,9 +693,9 @@ function sourceMetricRow(item: SourceChecklist['shareworksData'][number], table:
       ? '<span class="source-status-icon source-status-pass" title="Pass">&#10003;</span>'
       : item.status === 'warning'
         ? '<span class="source-status-icon source-status-warning" title="Warning">&#9888;</span>'
-        : '<span style="color:#94a3b8;">-</span>';
+        : '<span class="source-empty-value">-</span>';
   const required = !item.isRequired
-    ? '<span style="color:#94a3b8;">-</span>'
+    ? '<span class="source-empty-value">-</span>'
     : item.isRequired === 'Required'
       ? '<span class="source-required-badge">Required</span>'
       : '<span class="source-optional-badge">Optional</span>';
@@ -615,10 +708,10 @@ function sourceMetricRow(item: SourceChecklist['shareworksData'][number], table:
     <td style="text-align:left;${item.fileName ? ' font-weight:600;' : ''}">${escapeHtml(item.fileName)}</td>
     <td>${required}</td>
     <td>${uploaded}</td>
-    <td style="text-align:left;">${label || '<span style="color:#94a3b8;">-</span>'}</td>
+    <td style="text-align:left;">${label || '<span class="source-empty-value">-</span>'}</td>
     <td style="text-align:center;">${statusIcon}</td>
-    <td>${item.value === null || item.value === undefined ? '<span style="color:#94a3b8;">-</span>' : `<span class="col-number">${formatNumber(item.value)}</span>`}</td>
-    <td>${item.action === 'edit' ? `<a href="javascript:void(0)" class="source-edit-link" data-id="${item.id}">edit</a>` : '<span style="color:#94a3b8;">-</span>'}</td>
+    <td>${item.value === null || item.value === undefined ? '<span class="source-empty-value">-</span>' : `<span class="col-number">${formatNumber(item.value)}</span>`}</td>
+    <td>${item.action === 'edit' ? `<a href="javascript:void(0)" class="source-edit-link" data-id="${item.id}">edit</a>` : '<span class="source-empty-value">-</span>'}</td>
   </tr>`;
 }
 
@@ -816,7 +909,7 @@ async function loadEmployeesPage() {
 function renderEmployeesPageTable() {
   if (employees.length === 0) {
     el('employeesPageBody').innerHTML =
-      '<tr><td colspan="7" style="text-align:center; padding:32px; color:#64748b;">No matching employees found</td></tr>';
+      '<tr><td colspan="7" class="table-empty-cell">No matching employees found</td></tr>';
     return;
   }
   el('employeesPageBody').innerHTML = employees
@@ -893,6 +986,8 @@ async function initSettingsPage() {
   document.querySelectorAll<HTMLElement>('[data-close]').forEach((button) => {
     button.addEventListener('click', () => el(button.dataset.close ?? '').classList.add('hidden'));
   });
+  renderThemeCards();
+  renderThemeSummary();
 }
 
 async function loadEmployees() {
@@ -1175,6 +1270,7 @@ function initLinkModal() {
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+    applyTheme();
     initSidebarToggle();
     applyInitialRouteBeforeReveal();
     initNavigation();
