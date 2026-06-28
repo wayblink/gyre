@@ -4,6 +4,7 @@ import { InProcessWorkflowRunDispatcher, type WorkflowRunDispatcher } from './ru
 import type { WorkflowRunRepository } from './runRepository.js';
 import { workflowRunToExecutionResult } from './runResult.js';
 import { WorkflowRunScheduler } from './runScheduler.js';
+import type { WorkflowRunSchedulerOptions } from './runScheduler.js';
 
 export { workflowRunToExecutionResult } from './runResult.js';
 
@@ -15,8 +16,9 @@ export class WorkflowRunExecutor {
     private readonly store: WorkflowRunRepository,
     runtime: WorkflowOperatorRuntime,
     dispatcher?: WorkflowRunDispatcher,
+    schedulerOptions?: WorkflowRunSchedulerOptions,
   ) {
-    this.scheduler = new WorkflowRunScheduler(store, runtime);
+    this.scheduler = new WorkflowRunScheduler(store, runtime, schedulerOptions);
     this.dispatcher = dispatcher ?? new InProcessWorkflowRunDispatcher((runId, mode) => this.scheduler.execute(runId, mode));
   }
 

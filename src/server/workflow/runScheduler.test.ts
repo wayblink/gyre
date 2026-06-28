@@ -441,6 +441,85 @@ test('skip checkpoint decision skips downstream steps and finishes the same run'
   assert.equal(store.run.steps.find((step) => step.taskId === 'assert')?.status, 'warning');
 });
 
+test('onRunFinalized fires once when an all-mode run reaches a terminal status', async () => {
+  const source = sourceTask();
+  const finalizedRuns: WorkflowRunRecord[] = [];
+  const store = new FakeWorkflowRunStore([source]);
+  const scheduler = new WorkflowRunScheduler(store, runtime, {
+    onRunFinalized: (run) => {
+      finalizedRuns.push(run);
+    },
+  });
+
+  await scheduler.execute(store.run.id, { kind: 'all' });
+
+  assert.equal(store.run.status, 'completed');
+  assert.equal(finalizedRuns.length, 1);
+  assert.equal(finalizedRuns[0]?.id, store.run.id);
+  assert.equal(finalizedRuns[0]?.status, 'completed');
+});
+
+test('onRunFinalized does not fire for waiting approval or single-step running status', async () => {
+  const source = sourceTask();
+  const check = assertTask();
+  const finalizedRuns: WorkflowRunRecord[] = [];
+  const waitingStore = new FakeWorkflowRunStore([source, check], [{ task: source, status: 'completed', result: dataframeResult() }]);
+  const waitingScheduler = new WorkflowRunScheduler(waitingStore, runtime, {
+    onRunFinalized: (run) => {
+      finalizedRuns.push(run);
+    },
+  });
+
+  await waitingScheduler.execute(waitingStore.run.id, { kind: 'all' });
+
+  assert.equal(waitingStore.run.status, 'waiting_approval');
+  assert.equal(finalizedRuns.length, 0);
+
+  const passingCheck = assertTask({
+    params: {
+      operator: '=',
+      expectedValue: 1,
+      failureStrategy: 'block',
+      failureMessage: 'value mismatch',
+    },
+  });
+  const output = persistTask({ inputs: { input1: { from: 'assert', slot: 'dataframe' } } });
+  const singleStore = new FakeWorkflowRunStore([source, passingCheck, output], [{ task: source, status: 'completed', result: dataframeResult() }]);
+  const singleScheduler = new WorkflowRunScheduler(singleStore, runtime, {
+    onRunFinalized: (run) => {
+      finalizedRuns.push(run);
+    },
+  });
+
+  await singleScheduler.execute(singleStore.run.id, { kind: 'single', taskId: 'assert' });
+
+  assert.equal(singleStore.run.status, 'running');
+  assert.equal(finalizedRuns.length, 0);
+});
+
+test('onRunFinalized fires when execution throws and marks the run failed', async () => {
+  const source = sourceTask();
+  const finalizedRuns: WorkflowRunRecord[] = [];
+  const store = new FakeWorkflowRunStore([source]);
+  const failingStore = Object.assign(store, {
+    releaseExpiredStepLocks: async () => {
+      throw new Error('lock cleanup failed');
+    },
+  });
+  const scheduler = new WorkflowRunScheduler(failingStore, runtime, {
+    onRunFinalized: (run) => {
+      finalizedRuns.push(run);
+    },
+  });
+
+  await scheduler.execute(store.run.id, { kind: 'all' });
+
+  assert.equal(store.run.status, 'failed');
+  assert.equal(finalizedRuns.length, 1);
+  assert.equal(finalizedRuns[0]?.status, 'failed');
+  assert.match(finalizedRuns[0]?.errorMessage ?? '', /lock cleanup failed/);
+});
+
 test('single-step execution only advances the selected task', async () => {
   const source = sourceTask();
   const check = assertTask({
@@ -557,7 +636,7 @@ test('persist excel preview does not write files but execution does', async () =
     },
   });
   const source = sourceTask();
-  const output = persistTask();
+  const output = persistTask({ params: { fileName: 'workflow-output.xlsx', sheetName: 'Output Sheet', uploadedBy: 'Workflow' } });
   const taskMap = new Map([source, output].map((task) => [task.id, task]));
 
   const preview = await executeWorkflowTaskPreview(output, new Map([['source', testDataFrame]]), taskMap, runtimeWithSaveSpy);
@@ -573,6 +652,7 @@ test('persist excel preview does not write files but execution does', async () =
   );
 
   assert.equal(execution.result.kind, 'file');
+  assert.equal(execution.result.dataFrame.range.sheetName, 'Output Sheet');
   assert.equal(saveCount, 1);
 });
 

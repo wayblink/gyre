@@ -6,7 +6,7 @@ import { seedDatabase } from './seed.js';
 import { fileStorage } from './storage.js';
 
 export type Queryable = {
-  query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<{ rows: T[] }>;
+  query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
 export class AppDb {

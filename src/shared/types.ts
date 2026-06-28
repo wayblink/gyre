@@ -41,6 +41,19 @@ export type SummaryCapitalizationSource = {
   sheetName: string | null;
 };
 
+export type AuthenticatedUser = {
+  id: number;
+  username: string;
+  displayName: string;
+  role: string;
+};
+
+export type AuthStatus = {
+  authenticated: boolean;
+  bootstrapRequired: boolean;
+  user: AuthenticatedUser | null;
+};
+
 export type UpdatePlan = {
   id: number;
   month: string;
@@ -554,4 +567,61 @@ export type WorkflowRunRecord = {
   artifacts: WorkflowRunArtifactRecord[];
   events: WorkflowRunEventRecord[];
   approvals: WorkflowRunApprovalRecord[];
+};
+
+export type MonthlyRunStatus = WorkflowRunStatus;
+
+export type MonthlyRunHistoryRecord = {
+  id: number;
+  monthId: number;
+  monthKey: string;
+  workflowId: number;
+  workflowRunId: number | null;
+  sourceFileId: number | null;
+  sourceFileName: string | null;
+  producedFileId: number | null;
+  producedFileName: string | null;
+  producedSheetName: string | null;
+  operator: string;
+  status: MonthlyRunStatus;
+  errorMessage: string | null;
+  triggeredAt: string;
+  finishedAt: string | null;
+  runtimeParameters: WorkflowRuntimeParameters;
+};
+
+export type MonthlyRunSourceDefinition = {
+  sourceKey: string;
+  taskId: string;
+  label: string;
+  description: string;
+  defaultSheetName?: string | null;
+  required: boolean;
+};
+
+export type MonthlyRunSourceBinding = {
+  fileId: number;
+};
+
+export type MonthlyRunTriggerRequest = {
+  month: string;
+  sources: Record<string, MonthlyRunSourceBinding>;
+  operator?: string;
+};
+
+export type MonthlyRunTriggerResponse = {
+  history: MonthlyRunHistoryRecord;
+  executionResult: WorkflowExecutionResult;
+};
+
+export type MonthlyRunSourceConfigResponse = {
+  workflowCode: string;
+  workflowName: string;
+  sources: MonthlyRunSourceDefinition[];
+};
+
+export type MonthlyRunApprovalRequest = {
+  taskIds?: string[];
+  taskId?: string;
+  decision?: 'approved' | 'skipped';
 };

@@ -23,6 +23,12 @@ import { WorkflowStepWorker } from './runWorker.js';
 
 const WORKFLOW_STEP_LOCK_TIMEOUT_MS = 10 * 60 * 1_000;
 
+export type WorkflowRunFinalizedHook = (run: WorkflowRunRecord) => Promise<void> | void;
+
+export type WorkflowRunSchedulerOptions = {
+  onRunFinalized?: WorkflowRunFinalizedHook;
+};
+
 type TaskReadiness =
   | { kind: 'ready' }
   | { kind: 'blocked' }
@@ -35,6 +41,7 @@ export class WorkflowRunScheduler {
   constructor(
     private readonly store: WorkflowRunRepository,
     runtime: WorkflowOperatorRuntime,
+    private readonly options: WorkflowRunSchedulerOptions = {},
   ) {
     this.worker = new WorkflowStepWorker(store, runtime);
   }
@@ -48,6 +55,7 @@ export class WorkflowRunScheduler {
       const message = error instanceof Error ? error.message : 'Workflow execution failed';
       await this.store.updateRunStatus({ runId, status: 'failed', errorMessage: message, finish: true });
       await this.store.createRunFinishedEvent(runId, 'failed', { errorMessage: message });
+      await this.notifyRunFinalized(runId);
     }
   }
 
@@ -91,6 +99,7 @@ export class WorkflowRunScheduler {
     const result = workflowRunToExecutionResult(latestRun);
     await this.store.updateRunStatus({ runId, status: 'skipped', result, finish: true });
     await this.store.createRunFinishedEvent(runId, 'skipped', { skippedAfter: rootTaskIds });
+    await this.notifyRunFinalized(runId);
   }
 
   private async executeRunnableSteps(runId: number, mode: WorkflowRunMode): Promise<void> {
@@ -246,6 +255,15 @@ export class WorkflowRunScheduler {
         errorMessage: result.errorMessage,
       });
     }
+    if (shouldFinish) {
+      await this.notifyRunFinalized(runId);
+    }
+  }
+
+  private async notifyRunFinalized(runId: number): Promise<void> {
+    if (!this.options.onRunFinalized) return;
+    const run = await this.store.getRun(runId);
+    await this.options.onRunFinalized(run);
   }
 
   private getTerminalRunStatus(run: WorkflowRunRecord): WorkflowRunStatus {

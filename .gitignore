@@ -11,6 +11,10 @@ data/
 tmp/
 *.log
 
+# Database backups / dumps (large binaries, keep out of git)
+backups/
+*.dump
+
 # Local environment
 .env
 .env.*

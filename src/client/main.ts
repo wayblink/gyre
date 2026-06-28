@@ -1,4 +1,6 @@
 import type {
+  AuthStatus,
+  AuthenticatedUser,
   Employee,
   EmployeeMapping,
   Holding,
@@ -14,6 +16,7 @@ import type {
   ShareholderTag,
 } from '../shared/types.js';
 import { createFilesPage } from './filesPage.js';
+import { createMonthlyRunPage } from './monthlyRunPage.js';
 import {
   applyThemeSelection,
   COLOR_OPTIONS,
@@ -33,6 +36,7 @@ import '@univerjs/sheets-ui/lib/index.css';
 
 let currentMonth = '2026-05';
 let currentSummary: SummarySnapshot | null = null;
+let authStatus: AuthStatus | null = null;
 let updatePlans: UpdatePlan[] = [];
 let currentPlan: UpdatePlan | null = null;
 let currentFileList: SourceChecklist | null = null;
@@ -52,6 +56,7 @@ const employeesPageSize = 20;
 const pageTitles: Record<string, string> = {
   summary: 'Summary',
   monthly: 'Monthly Updates',
+  monthlyrun: 'Monthly Run',
   files: 'Files',
   workflow: 'Workflow',
   holdings: 'Holdings',
@@ -60,10 +65,12 @@ const pageTitles: Record<string, string> = {
 };
 type PageKey = keyof typeof pageTitles;
 const DEFAULT_PAGE: PageKey = 'summary';
+const FIXED_CAPITALIZATION_SUMMARY_SHEET = 'Capitalization Summary';
 const validPages = new Set<PageKey>(Object.keys(pageTitles) as PageKey[]);
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'captable.sidebar.collapsed';
 let sidebarCollapsed = false;
 let themeSelection: ThemeSelection = getStoredTheme();
+let appInitialized = false;
 
 let editingEmployeeId: number | null = null;
 
@@ -84,6 +91,15 @@ const workflowPage = createWorkflowPage({
   refreshProductFiles: () => filesPage.refreshProductFiles(),
 });
 
+const monthlyRunPage = createMonthlyRunPage({
+  el,
+  api,
+  escapeHtml,
+  formatDateTime,
+  refreshProductFiles: () => filesPage.refreshProductFiles(),
+  refreshSummary: (month) => renderSummaryPage(month),
+});
+
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`Missing element #${id}`);
@@ -94,9 +110,14 @@ async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
   const shouldSendJsonContentType =
     options.body !== undefined && options.body !== null && !(options.body instanceof FormData);
   const response = await fetch(url, {
+    credentials: 'same-origin',
     headers: shouldSendJsonContentType ? { 'Content-Type': 'application/json' } : undefined,
     ...options,
   });
+  if (response.status === 401) {
+    await handleUnauthorized();
+    throw new Error('请先登录');
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));
     throw new Error(body.error ?? response.statusText);
@@ -106,7 +127,11 @@ async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 async function apiBinary(url: string, options: RequestInit = {}): Promise<ArrayBuffer> {
-  const response = await fetch(url, options);
+  const response = await fetch(url, { credentials: 'same-origin', ...options });
+  if (response.status === 401) {
+    await handleUnauthorized();
+    throw new Error('请先登录');
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: response.statusText }));
     throw new Error(body.error ?? response.statusText);
@@ -268,6 +293,114 @@ function setThemeColor(color: ThemeColorName) {
   applyTheme();
 }
 
+function setCurrentUser(user: AuthenticatedUser | null) {
+  const userName = user?.displayName || user?.username || '访客';
+  const avatar = userName.trim().charAt(0).toUpperCase() || 'U';
+  el('currentUserName').textContent = userName;
+  el('currentUserAvatar').textContent = avatar;
+}
+
+function showAuthError(message: string) {
+  const node = el('authError');
+  node.textContent = message;
+  node.classList.remove('hidden');
+}
+
+function clearAuthError() {
+  const node = el('authError');
+  node.textContent = '';
+  node.classList.add('hidden');
+}
+
+function setAuthMode(bootstrapRequired: boolean) {
+  el('authSubmit').textContent = bootstrapRequired ? '创建并登录' : '登录';
+  el('authDisplayNameField').classList.toggle('hidden', !bootstrapRequired);
+  el('authBootstrapSecretField').classList.toggle('hidden', !bootstrapRequired);
+  el<HTMLInputElement>('authPassword').autocomplete = bootstrapRequired ? 'new-password' : 'current-password';
+}
+
+function showAuthShell(status: AuthStatus) {
+  authStatus = status;
+  document.body.classList.add('auth-required');
+  el('authShell').classList.remove('hidden');
+  setAuthMode(status.bootstrapRequired);
+  setCurrentUser(null);
+}
+
+function hideAuthShell() {
+  document.body.classList.remove('auth-required');
+  el('authShell').classList.add('hidden');
+  clearAuthError();
+}
+
+async function fetchAuthStatus(): Promise<AuthStatus> {
+  const response = await fetch('/api/auth/status', { credentials: 'same-origin' });
+  if (!response.ok) {
+    throw new Error('无法获取登录状态');
+  }
+  const status = (await response.json()) as AuthStatus;
+  authStatus = status;
+  return status;
+}
+
+async function handleUnauthorized() {
+  const status = await fetchAuthStatus();
+  showAuthShell(status);
+}
+
+async function submitAuthForm(event: Event) {
+  event.preventDefault();
+  if (!authStatus) return;
+  clearAuthError();
+
+  const payload = {
+    username: el<HTMLInputElement>('authUsername').value.trim(),
+    password: el<HTMLInputElement>('authPassword').value,
+  };
+  if (!payload.username || !payload.password) {
+    showAuthError('请输入用户名和密码');
+    return;
+  }
+
+  const url = authStatus.bootstrapRequired ? '/api/auth/bootstrap' : '/api/auth/login';
+  const body = authStatus.bootstrapRequired
+    ? {
+        ...payload,
+        displayName: el<HTMLInputElement>('authDisplayName').value.trim(),
+        bootstrapSecret: el<HTMLInputElement>('authBootstrapSecret').value.trim(),
+      }
+    : payload;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ error: response.statusText }));
+    showAuthError(errorBody.error ?? '登录失败');
+    return;
+  }
+
+  const status = (await response.json()) as AuthStatus;
+  authStatus = status;
+  setCurrentUser(status.user);
+  hideAuthShell();
+  if (!appInitialized) {
+    await initializeApp();
+  }
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'same-origin',
+  });
+  authStatus = { authenticated: false, bootstrapRequired: false, user: null };
+  showAuthShell(authStatus);
+}
+
 function normalizePage(page: string | null | undefined): PageKey {
   const value = page?.trim().toLowerCase() ?? '';
   return validPages.has(value as PageKey) ? (value as PageKey) : DEFAULT_PAGE;
@@ -316,6 +449,11 @@ async function activatePage(page: PageKey) {
 
   if (page === 'files') {
     await filesPage.refreshProductFiles();
+    return;
+  }
+
+  if (page === 'monthlyrun') {
+    await monthlyRunPage.onActivate();
     return;
   }
 
@@ -379,28 +517,21 @@ function initMonthPicker() {
   el<HTMLInputElement>('monthPicker').value = currentMonth;
   el<HTMLInputElement>('monthPickerMonthly').value = '';
 
-  el('btnSearch').addEventListener('click', () => {
+  el('monthPicker').addEventListener('change', () => {
     const month = el<HTMLInputElement>('monthPicker').value;
     if (!month) return alert('请选择月份');
     currentMonth = month;
     void renderSummaryPage(month);
     void renderHoldingsPage(month);
   });
-  el('btnReset').addEventListener('click', () => {
-    currentMonth = '2026-05';
-    el<HTMLInputElement>('monthPicker').value = currentMonth;
-    void renderSummaryPage(currentMonth);
-  });
   el('btnExport').addEventListener('click', () => exportData());
-  el('btnSaveSummaryToFiles').addEventListener('click', () => void saveSummaryToFiles());
-  el('btnRefresh').addEventListener('click', () => void renderSummaryPage(currentMonth));
   el('btnSearchMonthly').addEventListener('click', () => void renderMonthlyPage(el<HTMLInputElement>('monthPickerMonthly').value));
 }
 
 async function initSummaryPage() {
   await refreshSummarySourceFileOptions();
   await renderSummaryPage(currentMonth);
-  el('btnSaveCapitalizationSource').addEventListener('click', () => void saveCapitalizationSource());
+  el<HTMLSelectElement>('capitalizationSourceFile').addEventListener('change', () => void saveCapitalizationSource());
   el('btnAddNote').addEventListener('click', () => {
     el('addNoteForm').classList.remove('hidden');
     el<HTMLTextAreaElement>('noteContent').focus();
@@ -422,6 +553,8 @@ async function initSummaryPage() {
 
 async function renderSummaryPage(month: string) {
   try {
+    currentMonth = month;
+    el<HTMLInputElement>('monthPicker').value = month;
     const data = await api<SummarySnapshot>(`/api/months/${month}/summary`);
     currentSummary = data;
     el('currentMonthText').textContent = formatMonthCN(month);
@@ -489,40 +622,34 @@ async function refreshSummarySourceFileOptions() {
 
 function applyCapitalizationSourceState(source: SummaryCapitalizationSource | null) {
   const select = el<HTMLSelectElement>('capitalizationSourceFile');
-  const sheetInput = el<HTMLInputElement>('capitalizationSourceSheet');
   const badge = el('capitalizationSourceBadge');
 
   select.value = source?.fileId ? String(source.fileId) : '';
-  sheetInput.value = source?.sheetName ?? '';
   badge.textContent = source?.fileName
-    ? `Capitalization Source: ${source.fileName}${source.sheetName ? ` / ${source.sheetName}` : ''}`
+    ? `Capitalization Source: ${source.fileName}`
     : 'Capitalization Source: Snapshot';
 }
 
 async function saveCapitalizationSource() {
   const select = el<HTMLSelectElement>('capitalizationSourceFile');
-  const sheetInput = el<HTMLInputElement>('capitalizationSourceSheet');
-  const button = el<HTMLButtonElement>('btnSaveCapitalizationSource');
-  const previousText = button.textContent ?? 'Set Source';
+  const targetMonth = currentSummary?.month || el<HTMLInputElement>('monthPicker').value || currentMonth;
 
-  button.disabled = true;
-  button.textContent = 'Saving...';
+  select.disabled = true;
 
   try {
-    await api(`/api/months/${currentMonth}/capitalization-source`, {
+    await api(`/api/months/${targetMonth}/capitalization-source`, {
       method: 'PUT',
       body: JSON.stringify({
         fileId: select.value ? Number(select.value) : null,
-        sheetName: sheetInput.value.trim() || null,
+        sheetName: select.value ? FIXED_CAPITALIZATION_SUMMARY_SHEET : null,
       }),
     });
-    await renderSummaryPage(currentMonth);
-    alert('Capitalization Table 数据来源已更新');
+    await renderSummaryPage(targetMonth);
   } catch (error) {
     alert((error as Error).message);
+    await renderSummaryPage(targetMonth);
   } finally {
-    button.disabled = false;
-    button.textContent = previousText;
+    select.disabled = false;
   }
 }
 
@@ -1215,31 +1342,6 @@ function exportData() {
   document.body.removeChild(link);
 }
 
-async function saveSummaryToFiles() {
-  if (!currentSummary) {
-    alert('当前月份没有可保存的摘要数据');
-    return;
-  }
-
-  const button = el<HTMLButtonElement>('btnSaveSummaryToFiles');
-  const previousLabel = button.innerHTML;
-  button.disabled = true;
-  button.textContent = 'Saving...';
-
-  try {
-    const result = await api<ProductFileDetail>(`/api/months/${currentMonth}/capitalization-summary-file`, {
-      method: 'POST',
-    });
-    await filesPage.refreshProductFiles();
-    alert(`已保存到 Files：${result.file.originalName}`);
-  } catch (error) {
-    alert((error as Error).message);
-  } finally {
-    button.disabled = false;
-    button.innerHTML = previousLabel;
-  }
-}
-
 async function openLinkModal(key: string) {
   const detail = await api<LinkDetail>(`/api/link-details/${key}`);
   el('linkModalTitle').textContent = detail.title;
@@ -1268,21 +1370,38 @@ function initLinkModal() {
   });
 }
 
+async function initializeApp() {
+  if (appInitialized) return;
+  initSidebarToggle();
+  applyInitialRouteBeforeReveal();
+  initNavigation();
+  initMonthPicker();
+  await initSummaryPage();
+  await initMonthlyPage();
+  await monthlyRunPage.init();
+  await filesPage.init();
+  await workflowPage.init();
+  await initHoldingsPage();
+  await initEmployeesPage();
+  await initSettingsPage();
+  initLinkModal();
+  el('btnLogout').addEventListener('click', () => void logout());
+  appInitialized = true;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     applyTheme();
-    initSidebarToggle();
-    applyInitialRouteBeforeReveal();
-    initNavigation();
-    initMonthPicker();
-    await initSummaryPage();
-    await initMonthlyPage();
-    await filesPage.init();
-    await workflowPage.init();
-    await initHoldingsPage();
-    await initEmployeesPage();
-    await initSettingsPage();
-    initLinkModal();
+    el('authForm').addEventListener('submit', (event) => void submitAuthForm(event));
+    const status = await fetchAuthStatus();
+    if (!status.authenticated) {
+      showAuthShell(status);
+      document.body.classList.remove('app-booting');
+      return;
+    }
+    setCurrentUser(status.user);
+    hideAuthShell();
+    await initializeApp();
   } catch (error) {
     console.error(error);
     alert((error as Error).message);

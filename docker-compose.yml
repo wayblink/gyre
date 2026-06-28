@@ -31,4 +31,6 @@ services:
 
 volumes:
   gyre-captable-postgres:
+    name: captable-0618_gyre-captable-postgres
+    external: true
   gyre-captable-minio:

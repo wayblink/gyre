@@ -1,7 +1,5 @@
 import * as XLSX from 'xlsx';
 import type {
-  CapitalizationRow,
-  SummarySnapshot,
   WorkflowDataFrame,
   WorkflowDataFrameCell,
   WorkflowDataFrameCellType,
@@ -47,21 +45,13 @@ export type DataFrameWorkbookOptions = {
   sheetName?: string;
 };
 
-type CapitalizationWorkbookRow = {
-  Number: string;
-  Description: string;
-  'Common Shares Equivalent': number | string | null;
-  '% of fully diluted': number | string | null;
-  Formula: string;
-};
-
 export function rowsToDataFrame(rows: Array<Record<string, unknown>>, range?: Partial<WorkflowDataFrame['range']>): WorkflowDataFrame {
   const columns = Array.from(
     new Set(rows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0)),
   );
 
   const normalizedRows = rows.map((row) =>
-    Object.fromEntries(columns.map((column) => [column, row[column] ?? null])),
+    Object.fromEntries(columns.map((column) => [column, normalizeDataFrameInputValue(row[column] ?? null, column)])),
   );
 
   const cells = normalizedRows.map((row, rowIndex) =>
@@ -130,6 +120,33 @@ function inferCellValueType(value: unknown): WorkflowDataFrameCellType {
   if (typeof value === 'boolean') return 'boolean';
   if (typeof value === 'string') return 'string';
   return 'unknown';
+}
+
+function normalizeDataFrameInputValue(value: unknown, columnName: string): unknown {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (!isInferableNumericColumnName(columnName)) return value;
+  return parseWorkbookNumber(value, isPercentColumnName(columnName)) ?? value;
+}
+
+function isInferableNumericColumnName(columnName: string): boolean {
+  const normalized = columnName.trim().toLowerCase();
+  if (!normalized) return false;
+  if (/\b(id|code|employee|user|grant|account|identifier|uuid|serial)\b/.test(normalized)) return false;
+  return (
+    normalized === 'number' ||
+    normalized === 'no' ||
+    normalized === 'no.' ||
+    normalized === '#' ||
+    normalized.includes('shares') ||
+    normalized.includes('quantity') ||
+    normalized.includes('qty') ||
+    normalized.includes('amount') ||
+    normalized.includes('price') ||
+    normalized.includes('percent') ||
+    normalized.includes('percentage') ||
+    normalized.includes('%')
+  );
 }
 
 function mapXlsxCellType(cell: XLSX.CellObject | undefined): WorkflowDataFrameCellType {
@@ -430,8 +447,14 @@ export function dataFrameToWorkbookBuffer(
   dataframe: WorkflowDataFrame,
   options: DataFrameWorkbookOptions = {},
 ): Buffer {
+  const columnSchema = new Map(dataframe.schema?.map((schema) => [schema.name, schema]));
   const rows = dataframe.rows.map((row) =>
-    Object.fromEntries(dataframe.columns.map((column) => [column, row[column] ?? null])),
+    Object.fromEntries(
+      dataframe.columns.map((column) => [
+        column,
+        normalizeDataFrameValueForWorkbook(row[column] ?? null, column, columnSchema.get(column)),
+      ]),
+    ),
   );
   const worksheet = XLSX.utils.json_to_sheet(rows, {
     header: dataframe.columns,
@@ -442,9 +465,48 @@ export function dataFrameToWorkbookBuffer(
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }
 
+function normalizeDataFrameValueForWorkbook(
+  value: unknown,
+  columnName: string,
+  schema?: WorkflowDataFrameColumnSchema,
+): unknown {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date || typeof value === 'number' || typeof value === 'boolean') return value;
+
+  if (schema?.type === 'number') {
+    const parsed = parseWorkbookNumber(value, isPercentColumnName(columnName) || schema.formats.some(isPercentFormat));
+    return parsed ?? value;
+  }
+
+  return value;
+}
+
+function parseWorkbookNumber(value: unknown, percent: boolean): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? normalizeWorkbookNumericValue(value, percent) : null;
+  }
+
+  const text = String(value).trim();
+  if (!text || /^[-+]?0\d/.test(text)) return null;
+  const withoutPercent = text.endsWith('%') ? text.slice(0, -1).trim() : text;
+  const normalized = withoutPercent.replace(/,/g, '');
+  if (!/^[-+]?(?:\d+|\d*\.\d+)$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return normalizeWorkbookNumericValue(parsed, percent || text.endsWith('%'));
+}
+
+function normalizeWorkbookNumericValue(value: number, percent: boolean): number {
+  return percent && Math.abs(value) > 1 ? value / 100 : value;
+}
+
 function isPercentColumnName(columnName: string): boolean {
   const normalized = columnName.trim().toLowerCase();
   return normalized.includes('%') || normalized.includes('percent') || normalized.includes('percentage');
+}
+
+function isPercentFormat(format: string): boolean {
+  return format.includes('%');
 }
 
 function isShareCountColumnName(columnName: string): boolean {
@@ -474,212 +536,4 @@ function applyDataFrameWorksheetFormats(worksheet: XLSX.WorkSheet, columns: stri
       }
     }
   }
-}
-
-function normalizePercentForWorkbook(percent: number | null | undefined): number | null {
-  if (percent === null || percent === undefined || Number.isNaN(percent)) return null;
-  return percent > 1 ? percent / 100 : percent;
-}
-
-export function summaryCapitalizationToWorkbookBuffer(summary: SummarySnapshot): Buffer {
-  const rows: CapitalizationWorkbookRow[] = summary.capitalization.map((item) => {
-    if (item.type === 'cat-header-blue' || item.type === 'cat-header-gray') {
-      return {
-        Number: '',
-        Description: item.description,
-        'Common Shares Equivalent': null,
-        '% of fully diluted': null,
-        Formula: '',
-      };
-    }
-
-    if (item.type === 'cat-sub-label') {
-      return {
-        Number: '',
-        Description: item.description,
-        'Common Shares Equivalent': item.shares ?? null,
-        '% of fully diluted': null,
-        Formula: item.formula ?? '',
-      };
-    }
-
-    return {
-      Number: item.number ?? '',
-      Description: item.description,
-      'Common Shares Equivalent': item.shares ?? null,
-      '% of fully diluted': normalizePercentForWorkbook(item.percent),
-      Formula: item.formula ?? '',
-    };
-  });
-
-  rows.push({
-    Number: '',
-    Description: 'Total Fully Diluted Shares Outstand',
-    'Common Shares Equivalent': summary.totalFullyDiluted,
-    '% of fully diluted': 1,
-    Formula: '',
-  });
-
-  const worksheet = XLSX.utils.json_to_sheet(rows, {
-    header: ['Number', 'Description', 'Common Shares Equivalent', '% of fully diluted', 'Formula'],
-  });
-
-  worksheet['!cols'] = [
-    { wch: 10 },
-    { wch: 48 },
-    { wch: 28 },
-    { wch: 20 },
-    { wch: 24 },
-  ];
-
-  const range = XLSX.utils.decode_range(worksheet['!ref'] ?? 'A1');
-  for (let rowIndex = range.s.r + 1; rowIndex <= range.e.r; rowIndex += 1) {
-    const shareCell = worksheet[XLSX.utils.encode_cell({ r: rowIndex, c: 2 })];
-    if (shareCell && typeof shareCell.v === 'number') {
-      shareCell.t = 'n';
-      shareCell.z = '#,##0.00';
-    }
-
-    const percentCell = worksheet[XLSX.utils.encode_cell({ r: rowIndex, c: 3 })];
-    if (percentCell && typeof percentCell.v === 'number') {
-      percentCell.t = 'n';
-      percentCell.z = '0.00%';
-    }
-  }
-
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Capitalization Summary');
-  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
-}
-
-function asTrimmedText(value: unknown): string {
-  return value === null || value === undefined ? '' : String(value).trim();
-}
-
-function asOptionalNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  const normalized = String(value).replace(/,/g, '').trim();
-  if (!normalized) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function normalizePercentValue(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'string' && value.includes('%')) {
-    const parsed = asOptionalNumber(value.replace('%', ''));
-    return parsed === null ? null : parsed;
-  }
-  const parsed = asOptionalNumber(value);
-  return parsed;
-}
-
-function findColumnKey(row: Record<string, unknown>, candidates: string[]): string | undefined {
-  const entries = Object.keys(row);
-  return entries.find((key) => candidates.includes(key.trim().toLowerCase()));
-}
-
-export function parseCapitalizationSummarySheet(
-  buffer: Buffer,
-  preferredSheetName?: string | null,
-): Pick<SummarySnapshot, 'capitalization' | 'totalFullyDiluted'> & { resolvedSheetName: string } {
-  const workbook = readWorkbook(buffer);
-  const sheetName =
-    (preferredSheetName && workbook.SheetNames.find((name) => name === preferredSheetName)) ||
-    workbook.SheetNames.find((name) => name === 'Capitalization Summary') ||
-    workbook.SheetNames[0];
-
-  if (!sheetName) {
-    throw new Error('Workbook has no sheets');
-  }
-
-  const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-    defval: null,
-    raw: true,
-  });
-
-  if (rows.length === 0) {
-    return {
-      capitalization: [],
-      totalFullyDiluted: 0,
-      resolvedSheetName: sheetName,
-    };
-  }
-
-  const descriptionKey =
-    findColumnKey(rows[0], ['description', 'item', 'label']) ??
-    Object.keys(rows[0]).find((key) => key.trim().length > 0);
-  if (!descriptionKey) {
-    throw new Error(`Sheet ${sheetName} missing description column`);
-  }
-
-  const numberKey = findColumnKey(rows[0], ['number', 'no', '#']);
-  const sharesKey = findColumnKey(rows[0], ['common shares equivalent', 'shares', 'common shares', 'value']);
-  const percentKey = findColumnKey(rows[0], ['% of fully diluted', 'percent', 'percentage', 'ownership %']);
-  const formulaKey = findColumnKey(rows[0], ['formula']);
-
-  const capitalization: CapitalizationRow[] = [];
-  let totalFullyDiluted = 0;
-
-  rows.forEach((row) => {
-    const description = asTrimmedText(row[descriptionKey]);
-    const number = numberKey ? asTrimmedText(row[numberKey]) : '';
-    const shares = sharesKey ? asOptionalNumber(row[sharesKey]) : null;
-    const percent = percentKey ? normalizePercentValue(row[percentKey]) : null;
-    const formula = formulaKey ? asTrimmedText(row[formulaKey]) : '';
-
-    if (!description && !number && shares === null && percent === null && !formula) {
-      return;
-    }
-
-    const normalizedDescription = description.toLowerCase();
-    if (normalizedDescription === 'total fully diluted shares outstand') {
-      totalFullyDiluted = shares ?? totalFullyDiluted;
-      return;
-    }
-
-    const isHeader = !number && shares === null && percent === null && !formula && Boolean(description);
-    if (isHeader) {
-      capitalization.push({
-        type: 'cat-header-blue',
-        description,
-      });
-      return;
-    }
-
-    const isSubLabel = !number && shares !== null && percent === null;
-    if (isSubLabel) {
-      capitalization.push({
-        type: 'cat-sub-label',
-        description,
-        shares,
-        formula: formula || undefined,
-      });
-      return;
-    }
-
-    capitalization.push({
-      type: 'data',
-      number: number || undefined,
-      description,
-      shares: shares ?? undefined,
-      percent,
-      formula: formula || undefined,
-    });
-  });
-
-  if (!totalFullyDiluted) {
-    const lastNumericRow = [...capitalization]
-      .reverse()
-      .find((row) => row.type === 'data' && typeof row.shares === 'number');
-    totalFullyDiluted = lastNumericRow?.shares ?? 0;
-  }
-
-  return {
-    capitalization,
-    totalFullyDiluted,
-    resolvedSheetName: sheetName,
-  };
 }

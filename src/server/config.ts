@@ -19,4 +19,7 @@ export const config = {
   minioAccessKey: process.env.MINIO_ACCESS_KEY ?? 'minioadmin',
   minioSecretKey: process.env.MINIO_SECRET_KEY ?? 'minioadmin',
   minioBucket: process.env.MINIO_BUCKET ?? 'captable-files',
+  sessionCookieName: process.env.SESSION_COOKIE_NAME ?? 'captable_session',
+  sessionTtlHours: Number(process.env.SESSION_TTL_HOURS ?? 24 * 7),
+  authBootstrapSecret: process.env.AUTH_BOOTSTRAP_SECRET ?? '',
 };

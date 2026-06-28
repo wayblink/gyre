@@ -9,14 +9,19 @@ export type StoredFile = {
   filePath: string;
 };
 
+export type SaveFileOptions = {
+  prefix?: string;
+  relativeFilePath?: string;
+};
+
 export type FileCategory = 'product' | 'source';
 
 function ensureDir(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-function buildObjectName(category: FileCategory, storedName: string): string {
-  return `${category}/${storedName}`;
+function normalizePathSegment(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
 }
 
 class LocalStorage {
@@ -25,9 +30,13 @@ class LocalStorage {
     ensureDir(config.productFileDir);
   }
 
-  async save(category: FileCategory, storedName: string, buffer: Buffer): Promise<StoredFile> {
+  async save(category: FileCategory, storedName: string, buffer: Buffer, options: SaveFileOptions = {}): Promise<StoredFile> {
     const baseDir = category === 'product' ? config.productFileDir : config.uploadDir;
-    const filePath = path.join(baseDir, storedName);
+    const relativePath = options.relativeFilePath
+      ? normalizePathSegment(options.relativeFilePath)
+      : [options.prefix, storedName].filter((value): value is string => Boolean(value)).map(normalizePathSegment).join('/');
+    const filePath = path.join(baseDir, relativePath);
+    ensureDir(path.dirname(filePath));
     fs.writeFileSync(filePath, buffer);
     return {
       storageBackend: 'local',
@@ -67,8 +76,11 @@ class MinioStorage {
     }
   }
 
-  async save(category: FileCategory, storedName: string, buffer: Buffer): Promise<StoredFile> {
-    const objectName = buildObjectName(category, storedName);
+  async save(category: FileCategory, storedName: string, buffer: Buffer, options: SaveFileOptions = {}): Promise<StoredFile> {
+    const relativePath = options.relativeFilePath
+      ? normalizePathSegment(options.relativeFilePath)
+      : [options.prefix, storedName].filter((value): value is string => Boolean(value)).map(normalizePathSegment).join('/');
+    const objectName = `${category}/${relativePath}`;
     await this.client.putObject(config.minioBucket, objectName, buffer, buffer.length);
     return {
       storageBackend: 'minio',
@@ -104,8 +116,8 @@ class FileStorage {
     await this.backend.init();
   }
 
-  async save(category: FileCategory, storedName: string, buffer: Buffer): Promise<StoredFile> {
-    return this.backend.save(category, storedName, buffer);
+  async save(category: FileCategory, storedName: string, buffer: Buffer, options: SaveFileOptions = {}): Promise<StoredFile> {
+    return this.backend.save(category, storedName, buffer, options);
   }
 
   async read(filePath: string): Promise<Buffer> {

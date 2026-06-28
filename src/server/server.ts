@@ -9,16 +9,45 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { createDb } from './db.js';
 import {
+  calculateSessionExpiry,
+  createSession,
+  createSessionToken,
+  createUser,
+  deleteSessionByHash,
+  findSessionUserByTokenHash,
+  findUserByUsername,
+  hashPassword,
+  hashSessionToken,
+  hasAnyUsers,
+  parseCookies,
+  serializeCookie,
+  toAuthStatus,
+  touchSession,
+  touchUserLastLogin,
+  verifyPassword,
+} from './auth.js';
+import {
   dataFrameToWorkbookBuffer,
   extractSheetRangeAsDataFrame,
-  parseCapitalizationSummarySheet,
   parseWorkbook,
   previewWorkbookSheet,
   rowsToDataFrame,
-  summaryCapitalizationToWorkbookBuffer,
   summarizeWorkbook,
 } from './excel.js';
+import {
+  parseCapitalizationSummarySheet,
+  summaryCapitalizationToWorkbookBuffer,
+} from './summary/capitalizationWorkbook.js';
 import { fileStorage } from './storage.js';
+import {
+  applyMonthlyRunPostProcessing,
+  attachWorkflowRunToMonthlyHistory,
+  createMonthlyRunHistory,
+  getMonthlyRun,
+  listMonthlyRuns,
+  MONTHLY_WORKFLOW_CODE,
+} from './monthlyRun/store.js';
+import { MONTHLY_RUN_SOURCE_DEFINITIONS, MONTHLY_WORKFLOW_NAME } from './monthlyRun/workflowDefinition.js';
 import { executeWorkflowTaskPreview } from './workflow/engine.js';
 import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
 import {
@@ -31,6 +60,8 @@ import type { WorkflowOperatorRuntime } from './workflow/operators/types.js';
 import { WorkflowRunExecutor, workflowRunToExecutionResult } from './workflow/runExecutor.js';
 import { WorkflowRunStore } from './workflow/runStore.js';
 import type {
+  AuthStatus,
+  MonthlyRunSourceConfigResponse,
   SummarySnapshot,
   SummaryCapitalizationSource,
   WorkflowDataFrame,
@@ -42,6 +73,17 @@ import type {
 
 const db = await createDb();
 const app = Fastify({ logger: true });
+
+type RequestWithAuth = {
+  currentUser?: {
+    id: number;
+    username: string;
+    display_name: string;
+    role: string;
+    is_active: boolean;
+    last_login_at: string | null;
+  } | null;
+};
 
 function toIsoTimestamp(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
@@ -81,6 +123,10 @@ const fileSheetRangeQuerySchema = z.object({
   headerRow: z.coerce.number().int().min(1).optional(),
 });
 
+const productFilePatchSchema = z.object({
+  originalName: z.string().trim().min(1).max(255),
+});
+
 const workflowTaskPreviewBodySchema = z.object({
   workflowId: z.number().int().positive(),
   taskId: z.string().trim().min(1),
@@ -96,6 +142,17 @@ const workflowApprovalBodySchema = z.object({
   taskIds: z.array(z.string().trim().min(1)).optional(),
   taskId: z.string().trim().min(1).optional(),
   decision: z.enum(['approved', 'skipped']).optional().default('approved'),
+});
+
+const monthlyRunListQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
+const monthlyRunTriggerBodySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() })),
+  operator: z.string().trim().min(1).optional().default('Administrator'),
 });
 
 const workflowPortableDefinitionSchema = z.object({
@@ -121,6 +178,18 @@ const paginationQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
+const authBootstrapSchema = z.object({
+  username: z.string().trim().min(3).max(64),
+  password: z.string().min(8).max(128),
+  displayName: z.string().trim().min(1).max(64).optional(),
+  bootstrapSecret: z.string().trim().optional(),
+});
+
+const authLoginSchema = z.object({
+  username: z.string().trim().min(1).max(64),
+  password: z.string().min(1).max(128),
+});
+
 function eomForMonth(monthKey: string): string {
   const [year, month] = monthKey.split('-').map(Number);
   return `${year}/${month}/${new Date(year, month, 0).getDate()}`;
@@ -132,6 +201,56 @@ function labelForMonth(monthKey: string): string {
 
 function maskDatabaseUrl(databaseUrl: string): string {
   return databaseUrl.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:***@');
+}
+
+function sessionCookieOptions(maxAgeSeconds: number) {
+  return {
+    httpOnly: true,
+    maxAgeSeconds,
+    path: '/',
+    sameSite: 'Lax' as const,
+    secure: false,
+  };
+}
+
+function getSessionTokenFromRequest(request: { headers: Record<string, unknown> }): string | null {
+  const rawCookie = request.headers.cookie;
+  const cookies = parseCookies(typeof rawCookie === 'string' ? rawCookie : undefined);
+  return cookies[config.sessionCookieName] ?? null;
+}
+
+async function resolveAuthUser(request: { headers: Record<string, unknown> }): Promise<RequestWithAuth['currentUser']> {
+  const token = getSessionTokenFromRequest(request);
+  if (!token) return null;
+  const tokenHash = hashSessionToken(token);
+  const user = await findSessionUserByTokenHash(db, tokenHash);
+  if (!user) {
+    await deleteSessionByHash(db, tokenHash);
+    return null;
+  }
+  const expiresAt = calculateSessionExpiry(config.sessionTtlHours);
+  await touchSession(db, { tokenHash, expiresAt });
+  return {
+    id: user.id,
+    username: user.username,
+    display_name: user.display_name,
+    role: user.role,
+    is_active: user.is_active,
+    last_login_at: user.last_login_at,
+  };
+}
+
+async function requireAuth(request: { headers: Record<string, unknown> } & RequestWithAuth, reply: { code: (statusCode: number) => { send: (payload: unknown) => unknown } }) {
+  request.currentUser = await resolveAuthUser(request);
+  if (!request.currentUser) {
+    return reply.code(401).send({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
+  }
+}
+
+async function currentAuthStatus(request: { headers: Record<string, unknown> }): Promise<AuthStatus> {
+  const bootstrapRequired = !(await hasAnyUsers(db));
+  const currentUser = await resolveAuthUser(request);
+  return toAuthStatus(currentUser ?? null, bootstrapRequired);
 }
 
 async function getOrCreateMonth(monthKey: string): Promise<number> {
@@ -525,6 +644,7 @@ async function saveProductWorkbook(params: {
   buffer: Buffer;
   mimeType?: string;
   uploadedBy?: string;
+  folderPrefix?: string;
 }) {
   const mimeType =
     params.mimeType?.trim() ||
@@ -533,7 +653,9 @@ async function saveProductWorkbook(params: {
   const checksum = crypto.createHash('sha256').update(params.buffer).digest('hex');
   const ext = path.extname(params.originalName).toLowerCase() || '.xlsx';
   const storedName = `${Date.now()}-${checksum.slice(0, 12)}${ext}`;
-  const stored = await fileStorage.save('product', storedName, params.buffer);
+  const stored = await fileStorage.save('product', storedName, params.buffer, {
+    prefix: params.folderPrefix,
+  });
   const summary = summarizeWorkbook(params.buffer);
 
   const row = await db.queryOne<Record<string, unknown>>(
@@ -583,7 +705,9 @@ async function updateProductWorkbook(params: {
   const ext = path.extname(params.originalName).toLowerCase() || '.xlsx';
   const summary = summarizeWorkbook(params.buffer);
 
-  await fileStorage.save('product', String(existing.stored_name), params.buffer);
+  await fileStorage.save('product', String(existing.stored_name), params.buffer, {
+    relativeFilePath: String(existing.file_path).replace(/^product\//, ''),
+  });
 
   const row = await db.queryOne<Record<string, unknown>>(
     `update product_files
@@ -635,11 +759,21 @@ const workflowOperatorRuntime: WorkflowOperatorRuntime = {
 };
 
 const workflowRunStore = new WorkflowRunStore(db);
-const workflowRunExecutor = new WorkflowRunExecutor(workflowRunStore, workflowOperatorRuntime);
+const workflowRunExecutor = new WorkflowRunExecutor(workflowRunStore, workflowOperatorRuntime, undefined, {
+  onRunFinalized: (run) => applyMonthlyRunPostProcessing(db, run),
+});
 
 async function registerRoutes() {
   await app.register(cors, { origin: true });
   await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
+
+  app.addHook('preHandler', async (request, reply) => {
+    const url = request.raw.url ?? '';
+    if (!url.startsWith('/api/')) return;
+    if (url === '/api/health') return;
+    if (url.startsWith('/api/auth/')) return;
+    return requireAuth(request as typeof request & RequestWithAuth, reply);
+  });
 
   app.get('/api/health', async () => ({
     ok: true,
@@ -648,9 +782,192 @@ async function registerRoutes() {
     excel: 'xlsx@0.18.x',
   }));
 
+  app.get('/api/auth/status', async (request) => currentAuthStatus(request));
+
+  app.post('/api/auth/bootstrap', async (request, reply) => {
+    const body = authBootstrapSchema.parse(request.body ?? {});
+    const bootstrapRequired = !(await hasAnyUsers(db));
+    if (!bootstrapRequired) {
+      return reply.code(409).send({ error: 'Bootstrap already completed' });
+    }
+    if (config.authBootstrapSecret && body.bootstrapSecret !== config.authBootstrapSecret) {
+      return reply.code(403).send({ error: 'Invalid bootstrap secret' });
+    }
+
+    const user = await createUser(db, {
+      username: body.username,
+      passwordHash: await hashPassword(body.password),
+      displayName: body.displayName?.trim() || body.username,
+      role: 'admin',
+    });
+    const sessionToken = createSessionToken();
+    await createSession(db, {
+      userId: user.id,
+      sessionTokenHash: hashSessionToken(sessionToken),
+      expiresAt: calculateSessionExpiry(config.sessionTtlHours),
+    });
+    await touchUserLastLogin(db, user.id);
+
+    reply.header(
+      'Set-Cookie',
+      serializeCookie(
+        config.sessionCookieName,
+        sessionToken,
+        sessionCookieOptions(config.sessionTtlHours * 60 * 60),
+      ),
+    );
+
+    return reply.code(201).send(
+      toAuthStatus(
+        {
+          ...user,
+          is_active: true,
+        },
+        false,
+      ),
+    );
+  });
+
+  app.post('/api/auth/login', async (request, reply) => {
+    const body = authLoginSchema.parse(request.body ?? {});
+    const user = await findUserByUsername(db, body.username);
+    if (!user || !user.is_active || !(await verifyPassword(body.password, user.password_hash))) {
+      return reply.code(401).send({ error: 'Invalid username or password' });
+    }
+
+    const sessionToken = createSessionToken();
+    await createSession(db, {
+      userId: user.id,
+      sessionTokenHash: hashSessionToken(sessionToken),
+      expiresAt: calculateSessionExpiry(config.sessionTtlHours),
+    });
+    await touchUserLastLogin(db, user.id);
+
+    reply.header(
+      'Set-Cookie',
+      serializeCookie(
+        config.sessionCookieName,
+        sessionToken,
+        sessionCookieOptions(config.sessionTtlHours * 60 * 60),
+      ),
+    );
+
+    return toAuthStatus(
+      {
+        id: user.id,
+        username: user.username,
+        display_name: user.display_name,
+        role: user.role,
+        is_active: user.is_active,
+        last_login_at: user.last_login_at,
+      },
+      false,
+    );
+  });
+
+  app.post('/api/auth/logout', async (request, reply) => {
+    const token = getSessionTokenFromRequest(request);
+    if (token) {
+      await deleteSessionByHash(db, hashSessionToken(token));
+    }
+    reply.header(
+      'Set-Cookie',
+      serializeCookie(config.sessionCookieName, '', sessionCookieOptions(0)),
+    );
+    return reply.code(204).send();
+  });
+
   app.get('/api/months', async () => {
     const rows = await db.query('select month_key as month, eom_date as "eomDate", status from months order by month_key desc');
     return { months: rows };
+  });
+
+  app.get('/api/monthly-runs', async (request) => {
+    const query = monthlyRunListQuerySchema.parse(request.query);
+    return { items: await listMonthlyRuns(db, query) };
+  });
+
+  app.get('/api/monthly-runs/source-config', async (): Promise<MonthlyRunSourceConfigResponse> => ({
+    workflowCode: MONTHLY_WORKFLOW_CODE,
+    workflowName: MONTHLY_WORKFLOW_NAME,
+    sources: MONTHLY_RUN_SOURCE_DEFINITIONS,
+  }));
+
+  app.get('/api/monthly-runs/:id', async (request) => {
+    const runId = Number((request.params as { id: string }).id);
+    const history = await getMonthlyRun(db, runId);
+    if (!history) throw notFound('Monthly run not found');
+    return history;
+  });
+
+  app.post('/api/monthly-runs', async (request, reply) => {
+    const body = monthlyRunTriggerBodySchema.parse(request.body ?? {});
+    const requiredSources = MONTHLY_RUN_SOURCE_DEFINITIONS.filter((source) => source.required);
+    const resolvedSourceEntries = await Promise.all(
+      requiredSources.map(async (source) => {
+        const binding = body.sources[source.sourceKey];
+        if (!binding) throw new Error(`Missing source binding: ${source.sourceKey}`);
+        await getProductFileOrThrow(binding.fileId);
+        return [source.sourceKey, binding.fileId] as const;
+      }),
+    );
+    const monthId = await getOrCreateMonth(body.month);
+    const workflowRow = await db.queryOne<Record<string, unknown>>(
+      'select * from workflow_definitions where code = $1',
+      [MONTHLY_WORKFLOW_CODE],
+    );
+    if (!workflowRow) throw notFound(`Workflow ${MONTHLY_WORKFLOW_CODE} not found`);
+
+    const runtimeParameters: WorkflowRuntimeParameters = {
+      month: body.month,
+      fileIds: Object.fromEntries(resolvedSourceEntries),
+    };
+    const storedTasks = normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
+    const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
+      tasks: storedTasks,
+      runtimeParamsSchema: parseJson(workflowRow.runtime_params_schema_json, {}),
+      runtimeParamsDefaults: parseJson(workflowRow.runtime_params_defaults_json, {}),
+      runtimeParameters,
+    });
+
+    const primarySourceFileId = body.sources.control_book?.fileId ?? resolvedSourceEntries[0]?.[1] ?? null;
+    const history = await createMonthlyRunHistory(db, {
+      monthId,
+      monthKey: body.month,
+      workflowId: Number(workflowRow.id),
+      sourceFileId: primarySourceFileId,
+      operator: body.operator,
+      runtimeParameters: runtimeConfiguration.runtimeParameters,
+    });
+    const workflowRun = await workflowRunStore.createRun({
+      workflow: workflowRow,
+      tasks: runtimeConfiguration.tasks,
+      runtimeParameters: runtimeConfiguration.runtimeParameters,
+    });
+    const attachedHistory = await attachWorkflowRunToMonthlyHistory(db, {
+      historyId: history.id,
+      workflowRunId: workflowRun.id,
+    });
+
+    workflowRunExecutor.startAsync(workflowRun.id);
+    return reply.code(201).send({
+      history: attachedHistory,
+      executionResult: workflowRunToExecutionResult(await workflowRunStore.getRun(workflowRun.id)),
+    });
+  });
+
+  app.post('/api/monthly-runs/:id/approvals', async (request) => {
+    const historyId = Number((request.params as { id: string }).id);
+    const history = await getMonthlyRun(db, historyId);
+    if (!history) throw notFound('Monthly run not found');
+    if (!history.workflowRunId) throw new Error('Monthly run has no workflow run attached');
+    const body = workflowApprovalBodySchema.parse(request.body ?? {});
+    const taskIds = body.taskIds?.length ? body.taskIds : body.taskId ? [body.taskId] : [];
+    if (!taskIds.length) {
+      throw new Error('At least one approval task id is required');
+    }
+    const run = await workflowRunExecutor.continueAfterApproval(history.workflowRunId, taskIds, body.decision);
+    return workflowRunToExecutionResult(run);
   });
 
   app.get('/api/files', async () => {
@@ -660,6 +977,7 @@ async function registerRoutes() {
 
   app.post('/api/files/upload', async (request, reply) => {
     let uploadedBy = 'Administrator';
+    let folderPrefix: string | undefined;
     let uploaded: { fileName: string; buffer: Buffer; mimeType: string } | null = null;
 
     for await (const part of request.parts()) {
@@ -671,6 +989,8 @@ async function registerRoutes() {
         };
       } else if (part.fieldname === 'uploadedBy' && typeof part.value === 'string' && part.value.trim()) {
         uploadedBy = part.value.trim();
+      } else if (part.fieldname === 'folderPrefix' && typeof part.value === 'string' && part.value.trim()) {
+        folderPrefix = part.value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
       }
     }
 
@@ -684,6 +1004,7 @@ async function registerRoutes() {
       buffer: uploaded.buffer,
       mimeType: uploaded.mimeType,
       uploadedBy,
+      folderPrefix,
     });
 
     return reply.code(201).send({
@@ -701,6 +1022,22 @@ async function registerRoutes() {
       file: toProductFile(file),
       sheets: summary.sheets,
     };
+  });
+
+  app.patch('/api/files/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const fileId = Number(id);
+    await getProductFileOrThrow(fileId);
+    const body = productFilePatchSchema.parse(request.body ?? {});
+    const row = await db.queryOne<Record<string, unknown>>(
+      `update product_files
+          set original_name = $2
+        where id = $1
+        returning *`,
+      [fileId, body.originalName],
+    );
+    if (!row) throw notFound('Product file not found');
+    return { file: toProductFile(row) };
   });
 
   app.get('/api/files/:id/content', async (request, reply) => {
@@ -1659,7 +1996,7 @@ async function registerRoutes() {
 
   if (fs.existsSync(config.clientDistDir)) {
     await app.register(fastifyStatic, { root: config.clientDistDir });
-    const spaPages = ['summary', 'monthly', 'files', 'workflow', 'holdings', 'employees', 'settings'];
+    const spaPages = ['summary', 'monthly', 'monthlyrun', 'files', 'workflow', 'holdings', 'employees', 'settings'];
     for (const page of spaPages) {
       app.get(`/${page}`, async (_request, reply) => reply.sendFile('index.html'));
     }

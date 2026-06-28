@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import XLSX from 'xlsx';
 import { config } from './config.js';
 import type { AppDb, DbClient } from './db.js';
+import { buildMonthlyWorkflowSeedDefinition } from './monthlyRun/workflowDefinition.js';
 import { workflowOperatorDefinitions } from './workflow/operators/registry.js';
 
 type PrototypeData = {
@@ -612,6 +613,39 @@ async function seedWorkflowData(db: DbClient) {
       'active',
       1,
       JSON.stringify(workflowTasks),
+    ],
+  );
+
+  await parameterizeMonthlyWorkflow(db);
+}
+
+async function parameterizeMonthlyWorkflow(db: DbClient): Promise<void> {
+  const workflow = buildMonthlyWorkflowSeedDefinition();
+
+  await db.execute(
+    `insert into workflow_definitions (
+        code, name, description, status, version, tasks_json,
+        runtime_params_schema_json, runtime_params_defaults_json
+      ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb)
+      on conflict (code) do update set
+            name = excluded.name,
+            description = excluded.description,
+            status = excluded.status,
+            version = excluded.version,
+            tasks_json = excluded.tasks_json,
+            runtime_params_schema_json = excluded.runtime_params_schema_json,
+            runtime_params_defaults_json = excluded.runtime_params_defaults_json,
+            updated_at = current_timestamp
+      where workflow_definitions.code = $1`,
+    [
+      workflow.code,
+      workflow.name,
+      workflow.description,
+      workflow.status,
+      workflow.version,
+      JSON.stringify(workflow.tasks),
+      JSON.stringify(workflow.runtimeParamsSchema),
+      JSON.stringify(workflow.runtimeParamsDefaults),
     ],
   );
 }

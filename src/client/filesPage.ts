@@ -29,6 +29,9 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   let openProductFileRequestId = 0;
   let filesLeftWidth = FILES_LEFT_DEFAULT;
   let filesLeftCollapsed = false;
+  let editingProductFileId: number | null = null;
+  let editingProductFileName = '';
+  let renamingProductFileId: number | null = null;
 
   async function init() {
     el('btnUploadProductFile').addEventListener('click', () => void uploadProductFile());
@@ -91,6 +94,12 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
           tabindex="0"
           title="${escapeHtml(file.originalName)}"
         >
+          <button class="workbook-item__edit" data-edit-file-id="${file.id}" type="button" aria-label="编辑文件名" title="编辑文件名">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"></path>
+            </svg>
+          </button>
           <button class="workbook-item__delete" data-delete-file-id="${file.id}" type="button" aria-label="删除文件" title="删除文件">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M3 6h18"></path>
@@ -100,7 +109,28 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
               <path d="M14 11v6"></path>
             </svg>
           </button>
-          <div class="workbook-item__name">${escapeHtml(file.originalName)}</div>
+          ${
+            editingProductFileId === file.id
+              ? `<div class="workbook-item__rename">
+                  <input
+                    class="workbook-item__rename-input"
+                    data-rename-input-file-id="${file.id}"
+                    type="text"
+                    value="${escapeHtml(editingProductFileName)}"
+                    maxlength="255"
+                    aria-label="文件名"
+                  />
+                  <div class="workbook-item__rename-actions">
+                    <button class="workbook-item__rename-btn workbook-item__rename-btn--primary" data-save-file-id="${file.id}" type="button" ${
+                      renamingProductFileId === file.id ? 'disabled' : ''
+                    }>${renamingProductFileId === file.id ? '保存中...' : '保存'}</button>
+                    <button class="workbook-item__rename-btn" data-cancel-file-id="${file.id}" type="button" ${
+                      renamingProductFileId === file.id ? 'disabled' : ''
+                    }>取消</button>
+                  </div>
+                </div>`
+              : `<div class="workbook-item__name">${escapeHtml(file.originalName)}</div>`
+          }
           <div class="workbook-item__meta">${formatFileSize(file.fileSizeBytes)} · ${file.workbookSheetCount} sheets · ${escapeHtml(formatDateTime(file.createdAt))}</div>
           ${
             productFileLoadError && selectedProductFileId === file.id
@@ -125,6 +155,51 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       });
     });
 
+    container.querySelectorAll<HTMLElement>('[data-edit-file-id]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        startRenamingProductFile(Number(button.dataset.editFileId));
+      });
+    });
+
+    container.querySelectorAll<HTMLInputElement>('[data-rename-input-file-id]').forEach((input) => {
+      input.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      input.addEventListener('input', () => {
+        editingProductFileName = input.value;
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+          void commitRenamingProductFile(Number(input.dataset.renameInputFileId));
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          cancelRenamingProductFile();
+        }
+      });
+    });
+
+    container.querySelectorAll<HTMLElement>('[data-save-file-id]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void commitRenamingProductFile(Number(button.dataset.saveFileId));
+      });
+    });
+
+    container.querySelectorAll<HTMLElement>('[data-cancel-file-id]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        cancelRenamingProductFile();
+      });
+    });
+
     container.querySelectorAll<HTMLElement>('[data-delete-file-id]').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.preventDefault();
@@ -132,6 +207,14 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
         void deleteProductFile(Number(button.dataset.deleteFileId));
       });
     });
+
+    if (editingProductFileId !== null) {
+      const input = container.querySelector<HTMLInputElement>(`[data-rename-input-file-id="${editingProductFileId}"]`);
+      if (input && document.activeElement !== input) {
+        input.focus();
+        input.select();
+      }
+    }
   }
 
   async function uploadProductFile() {
@@ -272,6 +355,61 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
 
     const nextFile = productFiles.find((item) => item.id !== fileId);
     await loadProductFiles(nextFile?.id);
+  }
+
+  function startRenamingProductFile(fileId: number) {
+    const file = productFiles.find((item) => item.id === fileId);
+    if (!file) return;
+    editingProductFileId = fileId;
+    editingProductFileName = file.originalName;
+    renderProductFilesList();
+  }
+
+  function cancelRenamingProductFile() {
+    editingProductFileId = null;
+    editingProductFileName = '';
+    renamingProductFileId = null;
+    renderProductFilesList();
+  }
+
+  async function commitRenamingProductFile(fileId: number) {
+    const file = productFiles.find((item) => item.id === fileId);
+    if (!file || renamingProductFileId === fileId) return;
+    const nextName = editingProductFileName.trim();
+    if (!nextName) {
+      alert('文件名不能为空');
+      return;
+    }
+    if (nextName === file.originalName) {
+      cancelRenamingProductFile();
+      return;
+    }
+
+    renamingProductFileId = fileId;
+    renderProductFilesList();
+
+    try {
+      const updated = await api<{ file: ProductFileRecord }>(`/api/files/${fileId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ originalName: nextName }),
+      });
+      productFiles = productFiles.map((item) => (item.id === fileId ? updated.file : item));
+      if (currentProductFileDetail?.file.id === fileId) {
+        currentProductFileDetail = {
+          ...currentProductFileDetail,
+          file: updated.file,
+        };
+      }
+      editingProductFileId = null;
+      editingProductFileName = '';
+      renamingProductFileId = null;
+      renderProductFilesList();
+      updateFileActionState();
+    } catch (error) {
+      renamingProductFileId = null;
+      renderProductFilesList();
+      alert(error instanceof Error ? error.message : '修改文件名失败');
+    }
   }
 
   function renderFileBrowserMessage(message: string) {

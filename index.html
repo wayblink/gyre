@@ -15,6 +15,39 @@
     </style>
 </head>
 <body class="app-booting">
+    <div class="auth-shell hidden" id="authShell">
+        <div class="auth-backdrop"></div>
+        <section class="auth-panel" aria-labelledby="authBrandTitle">
+            <div class="auth-brand">
+                <div class="logo-icon auth-logo-icon">CT</div>
+                <div>
+                    <h1 class="auth-title" id="authBrandTitle">CapTable Equity Management</h1>
+                </div>
+            </div>
+            <form class="auth-form" id="authForm">
+                <label class="auth-field">
+                    <span>用户名</span>
+                    <input id="authUsername" class="search-input" autocomplete="username" />
+                </label>
+                <label class="auth-field">
+                    <span>密码</span>
+                    <input id="authPassword" class="search-input" type="password" autocomplete="current-password" />
+                </label>
+                <label class="auth-field hidden" id="authDisplayNameField">
+                    <span>显示名称</span>
+                    <input id="authDisplayName" class="search-input" autocomplete="name" />
+                </label>
+                <label class="auth-field hidden" id="authBootstrapSecretField">
+                    <span>初始化密钥</span>
+                    <input id="authBootstrapSecret" class="search-input" type="password" autocomplete="off" />
+                </label>
+                <div class="auth-error hidden" id="authError"></div>
+                <div class="auth-actions">
+                    <button class="btn btn-primary" id="authSubmit" type="submit">登录</button>
+                </div>
+            </form>
+        </section>
+    </div>
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar">
@@ -42,6 +75,12 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     </span>
                     <span class="nav-text">Monthly Updates</span>
+                </div>
+                <div class="nav-item" data-page="monthlyrun">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h10"/><path d="M4 19h7"/><circle cx="18" cy="17" r="3"/><path d="M18 14v3l2 1"/></svg>
+                    </span>
+                    <span class="nav-text">Monthly Run</span>
                 </div>
                 <div class="nav-item" data-page="files">
                     <span class="nav-icon">
@@ -84,8 +123,9 @@
             <header class="top-bar">
                 <div class="page-title" id="pageTitle">Summary</div>
                 <div class="user-info">
-                    <span class="user-name">Administrator</span>
-                    <div class="user-avatar">A</div>
+                    <span class="user-name" id="currentUserName">Administrator</span>
+                    <button class="user-logout" id="btnLogout" type="button">退出登录</button>
+                    <div class="user-avatar" id="currentUserAvatar">A</div>
                 </div>
             </header>
 
@@ -97,32 +137,13 @@
                         <div class="search-group">
                             <label class="search-label">Month</label>
                             <input type="month" id="monthPicker" class="search-input" value="2026-05">
-                            <button class="btn btn-primary" id="btnSearch">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                Search
-                            </button>
-                            <button class="btn btn-secondary" id="btnReset">Reset</button>
                         </div>
                         <div class="search-actions">
                             <div class="summary-source-config">
                                 <select id="capitalizationSourceFile" class="search-input summary-source-select">
                                     <option value="">默认快照数据</option>
                                 </select>
-                                <input type="text" id="capitalizationSourceSheet" class="search-input summary-source-sheet" placeholder="Sheet 名，可选">
-                                <button class="btn btn-secondary" id="btnSaveCapitalizationSource" type="button">Set Source</button>
                             </div>
-                            <button class="btn btn-secondary" id="btnExport">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Export
-                            </button>
-                            <button class="btn btn-secondary" id="btnSaveSummaryToFiles">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                                Save to Files
-                            </button>
-                            <button class="btn btn-secondary" id="btnRefresh">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                                Refresh
-                            </button>
                         </div>
                     </div>
 
@@ -166,11 +187,19 @@
                     <!-- Table 2: Capitalization Table -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                                Capitalization Table (Summary View)
-                            </h3>
-                            <span class="card-subtitle">Capital Structure Overview</span>
+                            <div>
+                                <h3 class="card-title">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                                    Capitalization Table (Summary View)
+                                </h3>
+                                <span class="card-subtitle">Capital Structure Overview</span>
+                            </div>
+                            <div class="card-header-actions">
+                                <button class="btn btn-secondary btn-sm" id="btnExport">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    Export
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
                             <table class="data-table table-capitalization" id="capitalizationTable">
@@ -426,6 +455,107 @@
                         </div>
                     </div>
                 </section>
+
+                <section class="page-section" id="page-monthlyrun">
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label">Month</label>
+                            <input type="month" id="monthlyRunMonth" class="search-input" value="2026-06">
+                            <label class="search-label">Sources</label>
+                            <button class="btn btn-secondary monthly-run-source-trigger" id="btnMonthlyRunConfigureSources" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="M12 15v6"/><path d="M3 12h6"/><path d="M15 12h6"/><circle cx="12" cy="12" r="3"/></svg>
+                                Configure Sources
+                            </button>
+                            <button class="btn btn-secondary" id="btnMonthlyRunRefreshFiles" type="button">Refresh Files</button>
+                        </div>
+                        <div class="search-actions">
+                            <button class="btn btn-primary" id="btnTriggerMonthlyRun" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                Execute
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="info-banner">
+                        <span class="info-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        </span>
+                        <span class="info-text" id="monthlyRunSourceInfo">上传或选择一个源 xlsx 后可执行月度 workflow。</span>
+                    </div>
+
+                    <div class="card monthly-run-panel" id="monthlyRunPanel">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8"/><path d="M7.5 7.5l3 7"/><path d="M16.5 7.5l-3 7"/></svg>
+                                Execution
+                            </h3>
+                            <span class="card-subtitle" id="monthlyRunSummary">Ready</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="monthly-run-progress">
+                                <div class="monthly-run-progress__bar" id="monthlyRunProgressBar"></div>
+                            </div>
+                            <div class="monthly-run-progress__text" id="monthlyRunProgressText">0 / 0</div>
+                            <div class="monthly-run-task-list" id="monthlyRunTaskList"></div>
+                            <div class="monthly-run-actions hidden" id="monthlyRunActions">
+                                <button class="btn btn-primary" id="btnMonthlyRunContinue" type="button">Continue</button>
+                                <button class="btn btn-secondary" id="btnMonthlyRunSkip" type="button">Skip Downstream</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 2 5-6"/></svg>
+                                Run History
+                            </h3>
+                            <span class="card-subtitle">Business audit trail for monthly workflow executions</span>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Month</th>
+                                        <th>Source File</th>
+                                        <th>Run</th>
+                                        <th>Status</th>
+                                        <th>Produced File</th>
+                                        <th>Triggered At</th>
+                                        <th>Error</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="monthlyRunHistoryBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="modal-overlay hidden" id="monthlyRunSourceModal">
+                    <div class="modal-container modal-large monthly-run-source-modal">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title">Configure Monthly Sources</h3>
+                                <p class="modal-subtitle" id="monthlyRunSourceModalSubtitle">为本次月度执行配置每个 workflow 输入节点的文件来源。</p>
+                            </div>
+                            <button class="modal-close" id="btnCloseMonthlyRunSourceModal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="monthly-run-source-modal__meta">
+                                <div class="monthly-run-source-modal__month">
+                                    <span>Upload folder</span>
+                                    <strong id="monthlyRunSourceModalMonth">2026-06</strong>
+                                </div>
+                                <p>新上传文件会进入当前月份目录，但可继续复用历史月份已上传文件。</p>
+                            </div>
+                            <div class="monthly-run-source-list" id="monthlyRunSourceList"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" id="btnCancelMonthlyRunSourceModal" type="button">Cancel</button>
+                            <button class="btn btn-primary" id="btnSaveMonthlyRunSourceModal" type="button">Save Sources</button>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Files Page -->
                 <section class="page-section" id="page-files">

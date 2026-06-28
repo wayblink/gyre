@@ -1,4 +1,27 @@
 import { defineWorkflowOperator, normalizePersistExcelFileName, normalizeWorkflowTaskDependencies, requireInputDataFrame } from './types.js';
+import type { WorkflowDataFrame } from '../../../shared/types.js';
+
+function withPersistedSheetName(dataframe: WorkflowDataFrame, sheetName: string): WorkflowDataFrame {
+  return {
+    ...dataframe,
+    range: {
+      ...dataframe.range,
+      sheetName,
+    },
+    source: dataframe.source
+      ? {
+          ...dataframe.source,
+          sheetName,
+          range: dataframe.source.range
+            ? {
+                ...dataframe.source.range,
+                sheetName,
+              }
+            : dataframe.source.range,
+        }
+      : dataframe.source,
+  };
+}
 
 export const dataframePersistExcelOperator = defineWorkflowOperator({
   code: 'dataframe.persist.excel',
@@ -30,6 +53,7 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
     const sheetName = String(task.params.sheetName ?? '').trim() || dataframe.range.sheetName || 'Sheet1';
     const uploadedBy = String(task.params.uploadedBy ?? '').trim() || 'Workflow';
     const buffer = runtime.dataFrameToWorkbookBuffer(dataframe, { sheetName });
+    const persistedDataFrame = withPersistedSheetName(dataframe, sheetName);
 
     const file = await runtime.saveGeneratedWorkbook({
       originalName: fileName,
@@ -40,7 +64,7 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
     return {
       kind: 'file',
       file,
-      dataFrame: dataframe,
+      dataFrame: persistedDataFrame,
     };
   },
   async preview(context) {
@@ -48,12 +72,13 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
     const dataframe = await requireInputDataFrame(context, 'input1');
     const fileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
     const sheetName = String(task.params.sheetName ?? '').trim() || dataframe.range.sheetName || 'Sheet1';
+    const persistedDataFrame = withPersistedSheetName(dataframe, sheetName);
 
     return {
       kind: 'file-plan',
       fileName,
       sheetName,
-      dataFrame: dataframe,
+      dataFrame: persistedDataFrame,
     };
   },
 });
