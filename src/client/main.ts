@@ -1,4 +1,5 @@
 import type {
+  AccountProfile,
   AuthStatus,
   AuthenticatedUser,
   Employee,
@@ -21,12 +22,8 @@ import {
   applyThemeSelection,
   COLOR_OPTIONS,
   getStoredTheme,
-  getThemeColorOption,
-  getThemeStyleOption,
-  STYLE_OPTIONS,
   type ThemeColorName,
   type ThemeSelection,
-  type ThemeStyleName,
 } from './theme.js';
 import { createWorkflowPage } from './workflowPage.js';
 import '../../css/style.css';
@@ -61,6 +58,7 @@ const pageTitles: Record<string, string> = {
   workflow: 'Workflow',
   holdings: 'Holdings',
   employees: 'Employees',
+  account: 'Account',
   settings: 'Settings',
 };
 type PageKey = keyof typeof pageTitles;
@@ -68,9 +66,12 @@ const DEFAULT_PAGE: PageKey = 'summary';
 const FIXED_CAPITALIZATION_SUMMARY_SHEET = 'Capitalization Summary';
 const validPages = new Set<PageKey>(Object.keys(pageTitles) as PageKey[]);
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'captable.sidebar.collapsed';
+const MONTHLY_RUN_INPUT_COLLAPSED_STORAGE_KEY = 'captable.monthlyRun.inputCollapsed';
 let sidebarCollapsed = false;
+let monthlyRunInputCollapsed = false;
 let themeSelection: ThemeSelection = getStoredTheme();
 let appInitialized = false;
+let currentAccount: AccountProfile | null = null;
 
 let editingEmployeeId: number | null = null;
 
@@ -98,6 +99,11 @@ const monthlyRunPage = createMonthlyRunPage({
   formatDateTime,
   refreshProductFiles: () => filesPage.refreshProductFiles(),
   refreshSummary: (month) => renderSummaryPage(month),
+  getUpdatePlanId: () => currentPlan?.id ?? null,
+  onMonthChanged: (month) => {
+    if (getPageFromLocation() !== 'monthlyrun') return;
+    void openMonthlyRunMonthOnly(month);
+  },
 });
 
 function el<T extends HTMLElement>(id: string): T {
@@ -213,26 +219,6 @@ function initSidebarToggle() {
 }
 
 function renderThemeCards() {
-  el('themeStyleOptions').innerHTML = STYLE_OPTIONS.map(
-    (option) => `
-      <button
-        class="theme-card${themeSelection.style === option.name ? ' active' : ''}"
-        type="button"
-        data-theme-style="${option.name}"
-      >
-        <span class="theme-card-head">
-          <span>
-            <strong>${escapeHtml(option.label)}</strong>
-            <small>${escapeHtml(option.desc)}</small>
-          </span>
-          ${themeSelection.style === option.name ? '<span class="theme-check">当前</span>' : ''}
-        </span>
-        <span class="theme-swatches" aria-hidden="true">
-          ${option.swatches.map((color) => `<span class="theme-swatch" style="background-color:${escapeHtml(color)}"></span>`).join('')}
-        </span>
-      </button>`,
-  ).join('');
-
   el('themeColorOptions').innerHTML = COLOR_OPTIONS.map(
     (option) => `
       <button
@@ -253,38 +239,16 @@ function renderThemeCards() {
       </button>`,
   ).join('');
 
-  document.querySelectorAll<HTMLElement>('[data-theme-style]').forEach((button) => {
-    button.addEventListener('click', () => setThemeStyle(button.dataset.themeStyle as ThemeStyleName));
-  });
   document.querySelectorAll<HTMLElement>('[data-theme-color]').forEach((button) => {
     button.addEventListener('click', () => setThemeColor(button.dataset.themeColor as ThemeColorName));
   });
 }
 
-function renderThemeSummary() {
-  const styleOption = getThemeStyleOption(themeSelection.style);
-  const colorOption = getThemeColorOption(themeSelection.color);
-  el('settingsStyleStatus').textContent = styleOption.label;
-  el('settingsColorStatus').textContent = colorOption.label;
-  el('appearanceSummaryTitle').textContent = `${styleOption.label} ${colorOption.label}`;
-  el('appearanceSummaryText').textContent =
-    themeSelection.style === 'glass'
-      ? `${colorOption.label} 配色下启用玻璃高光与更强层次，适合更强调品牌感和视觉表现的工作台。`
-      : `${colorOption.label} 配色下保持克制、清晰的扁平企业风格，适合高频使用和长时间操作。`;
-}
-
 function applyTheme() {
   applyThemeSelection(themeSelection);
-  if (document.getElementById('themeStyleOptions')) {
+  if (document.getElementById('themeColorOptions')) {
     renderThemeCards();
-    renderThemeSummary();
   }
-}
-
-function setThemeStyle(style: ThemeStyleName) {
-  if (themeSelection.style === style) return;
-  themeSelection = { ...themeSelection, style };
-  applyTheme();
 }
 
 function setThemeColor(color: ThemeColorName) {
@@ -296,8 +260,24 @@ function setThemeColor(color: ThemeColorName) {
 function setCurrentUser(user: AuthenticatedUser | null) {
   const userName = user?.displayName || user?.username || '访客';
   const avatar = userName.trim().charAt(0).toUpperCase() || 'U';
-  el('currentUserName').textContent = userName;
   el('currentUserAvatar').textContent = avatar;
+}
+
+function closeUserMenu() {
+  el('userMenu').classList.add('hidden');
+  el('currentUserAvatar').setAttribute('aria-expanded', 'false');
+}
+
+function toggleUserMenu() {
+  const menu = el('userMenu');
+  const isOpening = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !isOpening);
+  el('currentUserAvatar').setAttribute('aria-expanded', String(isOpening));
+}
+
+async function openAccountPage() {
+  closeUserMenu();
+  await navigateToPage('account');
 }
 
 function showAuthError(message: string) {
@@ -407,12 +387,15 @@ function normalizePage(page: string | null | undefined): PageKey {
 }
 
 function buildPagePath(page: PageKey): string {
+  if (page === 'monthlyrun') return '/monthly/run';
   return page === DEFAULT_PAGE ? `/${DEFAULT_PAGE}` : `/${page}`;
 }
 
 function getPageFromLocation(): PageKey {
   const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
-  const page = path.split('/')[0]?.split('?')[0] ?? '';
+  const segments = path.split('/').filter(Boolean);
+  if (segments[0] === 'monthly' && segments[1] === 'run') return 'monthlyrun';
+  const page = segments[0]?.split('?')[0] ?? '';
   return normalizePage(page);
 }
 
@@ -425,8 +408,9 @@ function replacePagePath(page: PageKey) {
 
 function setActivePage(page: string) {
   const targetPage = normalizePage(page);
+  const navPage = targetPage === 'monthlyrun' ? 'monthly' : targetPage;
   document.querySelectorAll<HTMLElement>('.nav-item').forEach((node) => {
-    const isActive = node.dataset.page === targetPage;
+    const isActive = node.dataset.page === navPage;
     node.classList.toggle('active', isActive);
     if (isActive) {
       node.setAttribute('aria-current', 'page');
@@ -437,7 +421,7 @@ function setActivePage(page: string) {
   document.querySelectorAll<HTMLElement>('.page-section').forEach((node) => {
     node.classList.toggle('active', node.id === `page-${targetPage}`);
   });
-  el('pageTitle').textContent = pageTitles[targetPage];
+  el('pageTitle').textContent = targetPage === 'monthlyrun' ? 'Monthly Updates / Run' : pageTitles[targetPage];
 }
 
 async function activatePage(page: PageKey) {
@@ -453,12 +437,16 @@ async function activatePage(page: PageKey) {
   }
 
   if (page === 'monthlyrun') {
-    await monthlyRunPage.onActivate();
+    await openMonthlyRunFromUrl();
     return;
   }
 
   if (page === 'workflow') {
     workflowPage.onActivate();
+  }
+
+  if (page === 'account') {
+    await loadAccountPage();
   }
 }
 
@@ -482,6 +470,73 @@ async function navigateToPage(page: string) {
   window.history.pushState(null, '', targetPath);
   setActivePage(targetPage);
   await activatePage(targetPage);
+}
+
+async function openMonthlyRun(month: string) {
+  const targetPath = buildPagePath('monthlyrun');
+  const url = new URL(window.location.href);
+  url.pathname = targetPath;
+  url.search = '';
+  url.hash = '';
+  if (window.location.pathname !== targetPath || window.location.search) {
+    window.history.pushState(null, '', url);
+  }
+  setActivePage('monthlyrun');
+  await monthlyRunPage.openForMonth(month);
+}
+
+async function openMonthlyRunPlan(planId: number) {
+  const plan = updatePlans.find((item) => item.id === planId) ?? await api<UpdatePlan>(`/api/update-plans/${planId}`);
+  const targetPath = buildPagePath('monthlyrun');
+  const url = new URL(window.location.href);
+  url.pathname = targetPath;
+  url.searchParams.set('planId', String(planId));
+  url.hash = '';
+  if (window.location.pathname !== targetPath || window.location.search !== url.search) {
+    window.history.pushState(null, '', url);
+  }
+  setActivePage('monthlyrun');
+  await monthlyRunPage.openForMonth(plan.month);
+  await loadMonthlyRunInputs(planId, plan);
+}
+
+async function loadMonthlyRunInputs(planId: number, planOverride?: UpdatePlan) {
+  currentPlan = planOverride ?? updatePlans.find((plan) => plan.id === planId) ?? await api<UpdatePlan>(`/api/update-plans/${planId}`);
+  currentFileList = await api<SourceChecklist>(`/api/update-plans/${planId}/checklist`);
+  el<HTMLInputElement>('monthlyRunMonth').value = currentPlan.month;
+  el('monthlyRunInputMonth').textContent = formatMonthCN(currentPlan.month);
+  el('modalTitle').textContent = 'Input Configuration';
+  renderSourceTables();
+}
+
+async function openMonthlyRunMonthOnly(month: string) {
+  const targetPath = buildPagePath('monthlyrun');
+  const url = new URL(window.location.href);
+  url.pathname = targetPath;
+  url.search = '';
+  url.hash = '';
+  if (window.location.pathname !== targetPath || window.location.search) {
+    window.history.pushState(null, '', url);
+  }
+  currentPlan = null;
+  currentFileList = null;
+  el('monthlyRunInputMonth').textContent = formatMonthCN(month);
+  el('modalTitle').textContent = 'Input Configuration';
+  el('fixedValueBody').innerHTML = '<tr><td colspan="3" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  el('shareworksBody').innerHTML = '<tr><td colspan="7" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  el('futuBody').innerHTML = '<tr><td colspan="7" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  setActivePage('monthlyrun');
+  await monthlyRunPage.openForMonth(month);
+}
+
+async function openMonthlyRunFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const planId = Number(params.get('planId'));
+  if (Number.isFinite(planId) && planId > 0) {
+    await openMonthlyRunPlan(planId);
+    return;
+  }
+  await openMonthlyRunMonthOnly(el<HTMLInputElement>('monthlyRunMonth').value || currentMonth);
 }
 
 function initNavigation() {
@@ -693,11 +748,28 @@ async function initMonthlyPage() {
   el('btnCloseAddModal').addEventListener('click', () => el('addPlanModal').classList.add('hidden'));
   el('btnCancelAddModal').addEventListener('click', () => el('addPlanModal').classList.add('hidden'));
   el('btnSubmitAdd').addEventListener('click', submitNewPlan);
-  el('btnCloseModal').addEventListener('click', closeFileModal);
-  el('btnSkipUpload').addEventListener('click', skipWarnings);
-  el('btnSaveExit').addEventListener('click', closeFileModal);
-  el('btnConfirmUpdate').addEventListener('click', confirmUpdate);
   initFileUpload();
+}
+
+function applyMonthlyRunInputCollapsed() {
+  const card = el('monthlyRunInputCard');
+  const toggle = el<HTMLButtonElement>('btnToggleMonthlyRunInput');
+  card.classList.toggle('is-collapsed', monthlyRunInputCollapsed);
+  toggle.setAttribute('aria-expanded', String(!monthlyRunInputCollapsed));
+  toggle.setAttribute('title', monthlyRunInputCollapsed ? 'Expand Input Configuration' : 'Collapse Input Configuration');
+}
+
+function initMonthlyRunInputCard() {
+  const toggle = el<HTMLButtonElement>('btnToggleMonthlyRunInput');
+  if (toggle.dataset.bound === 'true') return;
+  toggle.dataset.bound = 'true';
+  monthlyRunInputCollapsed = localStorage.getItem(MONTHLY_RUN_INPUT_COLLAPSED_STORAGE_KEY) === 'true';
+  applyMonthlyRunInputCollapsed();
+  toggle.addEventListener('click', () => {
+    monthlyRunInputCollapsed = !monthlyRunInputCollapsed;
+    localStorage.setItem(MONTHLY_RUN_INPUT_COLLAPSED_STORAGE_KEY, String(monthlyRunInputCollapsed));
+    applyMonthlyRunInputCollapsed();
+  });
 }
 
 async function submitNewPlan() {
@@ -746,7 +818,7 @@ async function renderMonthlyPage(filterMonth: string) {
       </tr>`,
     )
     .join('');
-  tbody.querySelectorAll<HTMLElement>('[data-action="view"]').forEach((button) => button.addEventListener('click', () => void openFileModal(Number(button.dataset.id))));
+  tbody.querySelectorAll<HTMLElement>('[data-action="view"]').forEach((button) => button.addEventListener('click', () => void openMonthlyRunPlan(Number(button.dataset.id))));
   tbody.querySelectorAll<HTMLElement>('[data-action="edit"]').forEach((button) => button.addEventListener('click', () => void editUpdatePlan(Number(button.dataset.id))));
   tbody.querySelectorAll<HTMLElement>('[data-action="delete"]').forEach((button) => button.addEventListener('click', () => void deleteUpdatePlan(Number(button.dataset.id))));
 }
@@ -770,21 +842,7 @@ async function deleteUpdatePlan(id: number) {
 }
 
 async function openFileModal(planId: number) {
-  currentPlan = updatePlans.find((plan) => plan.id === planId) ?? null;
-  if (!currentPlan) return;
-  currentFileList = await api<SourceChecklist>(`/api/update-plans/${planId}/checklist`);
-  el('modalMonth').textContent = `${formatMonthCN(currentPlan.month)} (${currentPlan.monthLabel})`;
-  el('modalOperator').textContent = currentPlan.operator;
-  el('modalStatus').innerHTML = `<span class="status-badge ${statusClass(currentPlan.status)}">${escapeHtml(currentPlan.status)}</span>`;
-  el('modalTitle').textContent = `【${currentPlan.monthLabel}】数据更新 - 文件检查`;
-  renderSourceTables();
-  el('fileCheckModal').classList.remove('hidden');
-}
-
-function closeFileModal() {
-  el('fileCheckModal').classList.add('hidden');
-  currentPlan = null;
-  currentFileList = null;
+  await openMonthlyRunPlan(planId);
 }
 
 function renderSourceTables() {
@@ -902,7 +960,7 @@ async function confirmUpdate() {
   const passCount = rows.filter((item) => item.status === 'pass').length;
   if (!confirm(`共 ${rows.length} 个数据项，${passCount} 个检查通过。\n确认无误，开始执行数据更新？`)) return;
   await api(`/api/update-plans/${currentPlan.id}/generate-snapshot`, { method: 'POST' });
-  closeFileModal();
+  await loadMonthlyRunInputs(currentPlan.id);
   await renderMonthlyPage('');
   await renderSummaryPage(currentMonth);
 }
@@ -921,6 +979,97 @@ async function initEmployeesPage() {
   el('btnEmployeesPrevPage').addEventListener('click', () => changeEmployeesPage(-1));
   el('btnEmployeesNextPage').addEventListener('click', () => changeEmployeesPage(1));
   await loadEmployeesPage();
+}
+
+async function initAccountPage() {
+  el('btnSaveAccountProfile').addEventListener('click', () => void submitAccountProfile());
+  el('btnOpenChangePasswordModal').addEventListener('click', openAccountPasswordModal);
+  el('btnChangeAccountPassword').addEventListener('click', () => void submitAccountPassword());
+  document.querySelectorAll<HTMLElement>('[data-close="accountPasswordModal"]').forEach((button) => {
+    button.addEventListener('click', closeAccountPasswordModal);
+  });
+  el('accountPasswordModal').addEventListener('click', (event) => {
+    if (event.target === el('accountPasswordModal')) closeAccountPasswordModal();
+  });
+}
+
+async function loadAccountPage() {
+  const data = await api<{ account: AccountProfile }>('/api/account');
+  currentAccount = data.account;
+  el<HTMLInputElement>('accountUsername').value = data.account.username;
+  el<HTMLInputElement>('accountDisplayName').value = data.account.displayName;
+  el<HTMLInputElement>('accountEmail').value = data.account.email ?? '';
+  el<HTMLInputElement>('accountPhone').value = data.account.phone ?? '';
+}
+
+async function submitAccountProfile() {
+  const payload = {
+    username: el<HTMLInputElement>('accountUsername').value.trim(),
+    displayName: el<HTMLInputElement>('accountDisplayName').value.trim(),
+    email: el<HTMLInputElement>('accountEmail').value.trim() || null,
+    phone: el<HTMLInputElement>('accountPhone').value.trim() || null,
+  };
+  if (!payload.username || !payload.displayName) {
+    alert('账号名和显示名不能为空');
+    return;
+  }
+  try {
+    const data = await api<{ account: AccountProfile }>('/api/account', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    currentAccount = data.account;
+    authStatus = authStatus ? { ...authStatus, user: data.account } : authStatus;
+    setCurrentUser(data.account);
+    alert('账号信息已保存');
+  } catch (error) {
+    alert((error as Error).message);
+  }
+}
+
+async function submitAccountPassword() {
+  const currentPassword = el<HTMLInputElement>('accountCurrentPassword').value;
+  const newPassword = el<HTMLInputElement>('accountNewPassword').value;
+  const confirmNewPassword = el<HTMLInputElement>('accountConfirmNewPassword').value;
+  if (!currentPassword || !newPassword || !confirmNewPassword) {
+    alert('请填写当前密码、新密码和确认新密码');
+    return;
+  }
+  if (newPassword !== confirmNewPassword) {
+    alert('两次输入的新密码不一致');
+    return;
+  }
+  if (newPassword.length < 8) {
+    alert('新密码长度至少为 8 位');
+    return;
+  }
+  try {
+    await api('/api/account/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    resetAccountPasswordForm();
+    closeAccountPasswordModal();
+    alert('密码已更新');
+  } catch (error) {
+    alert((error as Error).message);
+  }
+}
+
+function resetAccountPasswordForm() {
+  el<HTMLInputElement>('accountCurrentPassword').value = '';
+  el<HTMLInputElement>('accountNewPassword').value = '';
+  el<HTMLInputElement>('accountConfirmNewPassword').value = '';
+}
+
+function openAccountPasswordModal() {
+  resetAccountPasswordForm();
+  el('accountPasswordModal').classList.remove('hidden');
+  el<HTMLInputElement>('accountCurrentPassword').focus();
+}
+
+function closeAccountPasswordModal() {
+  el('accountPasswordModal').classList.add('hidden');
 }
 
 
@@ -1114,7 +1263,6 @@ async function initSettingsPage() {
     button.addEventListener('click', () => el(button.dataset.close ?? '').classList.add('hidden'));
   });
   renderThemeCards();
-  renderThemeSummary();
 }
 
 async function loadEmployees() {
@@ -1375,6 +1523,7 @@ async function initializeApp() {
   initSidebarToggle();
   applyInitialRouteBeforeReveal();
   initNavigation();
+  initMonthlyRunInputCard();
   initMonthPicker();
   await initSummaryPage();
   await initMonthlyPage();
@@ -1383,9 +1532,24 @@ async function initializeApp() {
   await workflowPage.init();
   await initHoldingsPage();
   await initEmployeesPage();
+  await initAccountPage();
   await initSettingsPage();
   initLinkModal();
-  el('btnLogout').addEventListener('click', () => void logout());
+  el('currentUserAvatar').addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleUserMenu();
+  });
+  el('btnAccountPage').addEventListener('click', () => void openAccountPage());
+  el('btnLogout').addEventListener('click', () => {
+    closeUserMenu();
+    void logout();
+  });
+  document.addEventListener('click', (event) => {
+    const target = event.target as Node | null;
+    if (target && el('userMenu').contains(target)) return;
+    if (target && el('currentUserAvatar').contains(target)) return;
+    closeUserMenu();
+  });
   appInitialized = true;
 }
 

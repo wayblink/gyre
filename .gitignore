@@ -9,6 +9,8 @@ dist/
 # Runtime data and logs
 data/
 tmp/
+log/
+STATS/
 *.log
 
 # Database backups / dumps (large binaries, keep out of git)
@@ -25,3 +27,4 @@ backups/
 
 # Temporary local test files
 tmp-save-test.txt
+~$*.docx

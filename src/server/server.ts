@@ -16,6 +16,7 @@ import {
   deleteSessionByHash,
   findSessionUserByTokenHash,
   findUserByUsername,
+  getPublicAccount,
   hashPassword,
   hashSessionToken,
   hasAnyUsers,
@@ -24,6 +25,8 @@ import {
   toAuthStatus,
   touchSession,
   touchUserLastLogin,
+  updateAccountPassword,
+  updateAccountProfile,
   verifyPassword,
 } from './auth.js';
 import {
@@ -47,6 +50,10 @@ import {
   listMonthlyRuns,
   MONTHLY_WORKFLOW_CODE,
 } from './monthlyRun/store.js';
+import {
+  resolveMonthlyRunInputConfiguration,
+  type ProductFileBindingLookup,
+} from './monthlyRun/inputConfiguration.js';
 import { MONTHLY_RUN_SOURCE_DEFINITIONS, MONTHLY_WORKFLOW_NAME } from './monthlyRun/workflowDefinition.js';
 import { executeWorkflowTaskPreview } from './workflow/engine.js';
 import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
@@ -80,6 +87,8 @@ type RequestWithAuth = {
     username: string;
     display_name: string;
     role: string;
+    email: string | null;
+    phone: string | null;
     is_active: boolean;
     last_login_at: string | null;
   } | null;
@@ -150,8 +159,9 @@ const monthlyRunListQuerySchema = z.object({
 });
 
 const monthlyRunTriggerBodySchema = z.object({
-  month: z.string().regex(/^\d{4}-\d{2}$/),
-  sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() })),
+  updatePlanId: z.number().int().positive().optional(),
+  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() })).optional(),
   operator: z.string().trim().min(1).optional().default('Administrator'),
 });
 
@@ -189,6 +199,25 @@ const authLoginSchema = z.object({
   username: z.string().trim().min(1).max(64),
   password: z.string().min(1).max(128),
 });
+
+const accountProfilePatchSchema = z.object({
+  username: z.string().trim().min(1).max(80),
+  displayName: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(255).nullable().optional().or(z.literal('')),
+  phone: z.string().trim().max(50).nullable().optional(),
+});
+
+const accountPasswordPatchSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8).max(128),
+});
+
+function isUniqueConstraintViolation(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as { code?: unknown }).code === '23505';
+}
 
 function eomForMonth(monthKey: string): string {
   const [year, month] = monthKey.split('-').map(Number);
@@ -235,6 +264,8 @@ async function resolveAuthUser(request: { headers: Record<string, unknown> }): P
     username: user.username,
     display_name: user.display_name,
     role: user.role,
+    email: user.email,
+    phone: user.phone,
     is_active: user.is_active,
     last_login_at: user.last_login_at,
   };
@@ -339,6 +370,10 @@ function toChecklistItem(row: Record<string, unknown>) {
   const value = row.normalized_value === null || row.normalized_value === undefined ? null : Number(row.normalized_value);
   const common = {
     id: Number(row.id),
+    sourceFileId:
+      row.source_file_id === null || row.source_file_id === undefined ? null : Number(row.source_file_id),
+    productFileId:
+      row.product_file_id === null || row.product_file_id === undefined ? null : Number(row.product_file_id),
     fileName: String(raw.fileName ?? ''),
     isRequired: String(row.required ?? '') as 'Required' | 'Optional' | '',
     uploadedFile: String(row.uploaded_file ?? raw.uploadedFile ?? ''),
@@ -689,6 +724,76 @@ async function saveProductWorkbook(params: {
   };
 }
 
+function normalizeFileMatchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function fileMatchTokens(value: string): string[] {
+  return normalizeFileMatchText(value)
+    .split(/\s+/)
+    .filter((token) => token.length >= 2 && !/^\d+$/.test(token));
+}
+
+function fileNameMatchScore(candidate: string, target: string): number {
+  const normalizedCandidate = normalizeFileMatchText(candidate);
+  const normalizedTarget = normalizeFileMatchText(target);
+  if (!normalizedCandidate || !normalizedTarget) return 0;
+  if (normalizedCandidate === normalizedTarget) return 100;
+  if (normalizedCandidate.includes(normalizedTarget) || normalizedTarget.includes(normalizedCandidate)) return 80;
+
+  const targetTokens = fileMatchTokens(target);
+  if (!targetTokens.length) return 0;
+  const candidateTokens = new Set(fileMatchTokens(candidate));
+  const matched = targetTokens.filter((token) => candidateTokens.has(token)).length;
+  return matched / targetTokens.length;
+}
+
+async function productFileHasSheet(file: Record<string, unknown>, sheetName: string): Promise<boolean> {
+  try {
+    const buffer = await fileStorage.read(String(file.file_path));
+    const summary = summarizeWorkbook(buffer);
+    return summary.sheets.some((sheet) => sheet.sheetName.trim().toLowerCase() === sheetName.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+async function findProductFileForInputBinding(params: ProductFileBindingLookup): Promise<number | null> {
+  const files = await db.query<Record<string, unknown>>('select id, original_name, file_path from product_files order by id desc');
+  const uploadedFile = params.uploadedFile.trim();
+  const sheetName = params.defaultSheetName?.trim() ?? '';
+
+  if (params.currentProductFileId) {
+    const current = files.find((file) => Number(file.id) === params.currentProductFileId);
+    if (current && (!sheetName || (await productFileHasSheet(current, sheetName)))) {
+      return Number(current.id);
+    }
+  }
+
+  if (uploadedFile) {
+    const exact = files.find((file) => String(file.original_name).toLowerCase() === uploadedFile.toLowerCase());
+    if (exact && (!sheetName || (await productFileHasSheet(exact, sheetName)))) return Number(exact.id);
+
+    const scored = files
+      .map((file) => ({ file, score: fileNameMatchScore(String(file.original_name), uploadedFile) }))
+      .filter((item) => item.score >= 0.6)
+      .sort((a, b) => b.score - a.score);
+    for (const item of scored) {
+      if (!sheetName || (await productFileHasSheet(item.file, sheetName))) return Number(item.file.id);
+    }
+  }
+
+  if (!sheetName) return null;
+  for (const file of files) {
+    if (await productFileHasSheet(file, sheetName)) return Number(file.id);
+  }
+  return null;
+}
+
 async function updateProductWorkbook(params: {
   fileId: number;
   originalName: string;
@@ -858,6 +963,8 @@ async function registerRoutes() {
         username: user.username,
         display_name: user.display_name,
         role: user.role,
+        email: user.email,
+        phone: user.phone,
         is_active: user.is_active,
         last_login_at: user.last_login_at,
       },
@@ -875,6 +982,49 @@ async function registerRoutes() {
       serializeCookie(config.sessionCookieName, '', sessionCookieOptions(0)),
     );
     return reply.code(204).send();
+  });
+
+  app.get('/api/account', async (request) => {
+    const user = (request as typeof request & RequestWithAuth).currentUser;
+    if (!user) throw new Error('Authentication required');
+    const account = await getPublicAccount(db, user.id);
+    if (!account) throw new Error('Account not found');
+    return { account };
+  });
+
+  app.patch('/api/account', async (request, reply) => {
+    const user = (request as typeof request & RequestWithAuth).currentUser;
+    if (!user) throw new Error('Authentication required');
+    const body = accountProfilePatchSchema.parse(request.body ?? {});
+    try {
+      const account = await updateAccountProfile(db, user.id, {
+        username: body.username,
+        displayName: body.displayName,
+        email: body.email || null,
+        phone: body.phone || null,
+      });
+      return { account };
+    } catch (error) {
+      if (isUniqueConstraintViolation(error)) {
+        return reply.code(409).send({ error: '账号名已存在' });
+      }
+      throw error;
+    }
+  });
+
+  app.patch('/api/account/password', async (request, reply) => {
+    const user = (request as typeof request & RequestWithAuth).currentUser;
+    if (!user) throw new Error('Authentication required');
+    const body = accountPasswordPatchSchema.parse(request.body ?? {});
+    try {
+      await updateAccountPassword(db, user.id, body);
+      return reply.code(204).send();
+    } catch (error) {
+      if ((error as Error).message === 'Current password is incorrect') {
+        return reply.code(400).send({ error: 'Current password is incorrect' });
+      }
+      throw error;
+    }
   });
 
   app.get('/api/months', async () => {
@@ -902,41 +1052,75 @@ async function registerRoutes() {
 
   app.post('/api/monthly-runs', async (request, reply) => {
     const body = monthlyRunTriggerBodySchema.parse(request.body ?? {});
-    const requiredSources = MONTHLY_RUN_SOURCE_DEFINITIONS.filter((source) => source.required);
-    const resolvedSourceEntries = await Promise.all(
-      requiredSources.map(async (source) => {
-        const binding = body.sources[source.sourceKey];
-        if (!binding) throw new Error(`Missing source binding: ${source.sourceKey}`);
-        await getProductFileOrThrow(binding.fileId);
-        return [source.sourceKey, binding.fileId] as const;
-      }),
-    );
-    const monthId = await getOrCreateMonth(body.month);
+    const inputConfiguration = body.updatePlanId
+      ? await resolveMonthlyRunInputConfiguration(
+          db,
+          body.updatePlanId,
+          async (params) => {
+            const buffer = await fileStorage.read(params.filePath);
+            const saved = await saveProductWorkbook({
+              originalName: params.originalName,
+              buffer,
+              mimeType: params.mimeType,
+              uploadedBy: params.uploadedBy,
+              folderPrefix: params.folderPrefix,
+            });
+            return Number(saved.file.id);
+          },
+          findProductFileForInputBinding,
+        )
+      : null;
+    if (!inputConfiguration && !body.month) {
+      throw new Error('month is required when updatePlanId is not provided');
+    }
+    if (!inputConfiguration && !body.sources) {
+      throw new Error('sources are required when updatePlanId is not provided');
+    }
+
+    const resolvedRuntimeParameters: WorkflowRuntimeParameters = inputConfiguration
+      ? inputConfiguration.runtimeParameters
+      : {
+          month: body.month as string,
+          fileIds: Object.fromEntries(
+            await Promise.all(
+              MONTHLY_RUN_SOURCE_DEFINITIONS.filter((source) => source.required).map(async (source) => {
+                const binding = body.sources?.[source.sourceKey];
+                if (!binding) throw new Error(`Missing source binding: ${source.sourceKey}`);
+                await getProductFileOrThrow(binding.fileId);
+                return [source.sourceKey, binding.fileId] as const;
+              }),
+            ),
+          ),
+        };
+
+    const monthKey = String(resolvedRuntimeParameters.month);
+    const monthId = await getOrCreateMonth(monthKey);
     const workflowRow = await db.queryOne<Record<string, unknown>>(
       'select * from workflow_definitions where code = $1',
       [MONTHLY_WORKFLOW_CODE],
     );
     if (!workflowRow) throw notFound(`Workflow ${MONTHLY_WORKFLOW_CODE} not found`);
 
-    const runtimeParameters: WorkflowRuntimeParameters = {
-      month: body.month,
-      fileIds: Object.fromEntries(resolvedSourceEntries),
-    };
     const storedTasks = normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
     const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
       tasks: storedTasks,
       runtimeParamsSchema: parseJson(workflowRow.runtime_params_schema_json, {}),
       runtimeParamsDefaults: parseJson(workflowRow.runtime_params_defaults_json, {}),
-      runtimeParameters,
+      runtimeParameters: resolvedRuntimeParameters,
     });
 
-    const primarySourceFileId = body.sources.control_book?.fileId ?? resolvedSourceEntries[0]?.[1] ?? null;
+    const runtimeFileIds = runtimeConfiguration.runtimeParameters.fileIds;
+    const primarySourceFileId =
+      inputConfiguration?.primarySourceFileId ??
+      (runtimeFileIds && typeof runtimeFileIds === 'object' && !Array.isArray(runtimeFileIds)
+        ? Number((runtimeFileIds as Record<string, unknown>).control_book ?? Object.values(runtimeFileIds)[0] ?? null)
+        : null);
     const history = await createMonthlyRunHistory(db, {
       monthId,
-      monthKey: body.month,
+      monthKey,
       workflowId: Number(workflowRow.id),
-      sourceFileId: primarySourceFileId,
-      operator: body.operator,
+      sourceFileId: primarySourceFileId && Number.isInteger(primarySourceFileId) ? primarySourceFileId : null,
+      operator: inputConfiguration?.operator ?? body.operator,
       runtimeParameters: runtimeConfiguration.runtimeParameters,
     });
     const workflowRun = await workflowRunStore.createRun({
@@ -1129,12 +1313,11 @@ async function registerRoutes() {
       'select summary_json, formula_trace_json from calculation_snapshots where month_id = $1 and status = $2',
       [monthRow.id, 'current'],
     );
-    if (!snapshot) return reply.code(404).send({ error: `No summary snapshot for ${month}` });
-
-    const notes = await db.query('select id, created_at as time, content from notes where month_id = $1 order by id desc', [
-      monthRow.id,
-    ]);
-    const summary = parseJson<Record<string, unknown>>(snapshot.summary_json, {});
+    const notes = await db.query<{ id: number; time: string; content: string }>(
+      'select id, created_at as time, content from notes where month_id = $1 order by id desc',
+      [monthRow.id],
+    );
+    const summary = parseJson<Record<string, unknown>>(snapshot?.summary_json, {});
     let sourceFile: Record<string, unknown> | undefined;
     let capitalizationOverride: Pick<SummarySnapshot, 'capitalization' | 'totalFullyDiluted'> | null = null;
 
@@ -1160,15 +1343,33 @@ async function registerRoutes() {
       }
     }
 
-    return {
+    const fallbackSummary: SummarySnapshot = {
+      month,
+      eomDate: monthRow.eom_date,
+      reconciliation: {
+        item: 'No snapshot data',
+        lastMonth: 0,
+        newShares: 0,
+        eomBalance: 0,
+      },
+      capitalization: [],
+      totalFullyDiluted: 0,
+      formulaTrace: {},
+      notes: [],
+    };
+
+    const responseSummary: SummarySnapshot = {
+      ...fallbackSummary,
       ...summary,
       month,
-      eomDate: summary.eomDate ?? monthRow.eom_date,
+      eomDate: String(summary.eomDate ?? monthRow.eom_date),
       ...(capitalizationOverride ?? {}),
-      formulaTrace: parseJson(snapshot.formula_trace_json, {}),
+      formulaTrace: parseJson(snapshot?.formula_trace_json, {}),
       notes,
       capitalizationSource: buildCapitalizationSource(monthRow, sourceFile),
     };
+
+    return responseSummary;
   });
 
   app.put('/api/months/:month/capitalization-source', async (request, reply) => {
@@ -1290,6 +1491,19 @@ async function registerRoutes() {
     return { plans: rows.map(toUpdatePlan) };
   });
 
+  app.get('/api/update-plans/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const row = await db.queryOne<Record<string, unknown>>(
+      `select up.*, m.month_key
+       from update_plans up
+       join months m on m.id = up.month_id
+       where up.id = $1`,
+      [Number(id)],
+    );
+    if (!row) throw notFound('Update plan not found');
+    return toUpdatePlan(row);
+  });
+
   app.post('/api/update-plans', async (request, reply) => {
     const body = updatePlanSchema.parse(request.body);
     const row = await db.queryOne<{ id: number }>(
@@ -1357,7 +1571,11 @@ async function registerRoutes() {
     if (!existing) throw notFound('Source metric not found');
     const row = await db.queryOne(
       `update source_metrics
-       set normalized_value = $1, status = $2, uploaded_file = $3
+       set normalized_value = $1,
+           status = $2,
+           uploaded_file = $3,
+           source_file_id = case when $3 in ('', 'Not uploaded') then null else source_file_id end,
+           product_file_id = case when $3 in ('', 'Not uploaded') then null else product_file_id end
        where id = $4
        returning *`,
       [
@@ -1397,6 +1615,15 @@ async function registerRoutes() {
     const stored = await fileStorage.save('source', safeName, uploaded.buffer);
 
     const parsedRows = parseWorkbook(uploaded.buffer);
+    const savedProductFile = await saveProductWorkbook({
+      originalName: uploaded.fileName,
+      buffer: uploaded.buffer,
+      mimeType: uploaded.mimeType,
+      uploadedBy: 'Input Configuration',
+      folderPrefix: `sources/${updatePlanId}`,
+    });
+    const productFileId = Number(savedProductFile.file.id);
+
     const sourceFileId = await db.transaction(async (client) => {
       const fileRow = await client.queryOne<{ id: number }>(
         `insert into source_files (
@@ -1426,9 +1653,9 @@ async function registerRoutes() {
       if (metricId) {
         await client.execute(
           `update source_metrics
-           set source_file_id = $1, uploaded_file = $2, status = 'pass'
-           where id = $3 and update_plan_id = $4`,
-          [fileRow.id, uploaded.fileName, metricId, updatePlanId],
+           set source_file_id = $1, product_file_id = $2, uploaded_file = $3, status = 'pass'
+           where id = $4 and update_plan_id = $5`,
+          [fileRow.id, productFileId, uploaded.fileName, metricId, updatePlanId],
         );
       }
 
@@ -1437,6 +1664,7 @@ async function registerRoutes() {
 
     return reply.code(201).send({
       id: sourceFileId,
+      productFileId,
       originalName: uploaded.fileName,
       checksum,
       rowCount: parsedRows.length,
@@ -1996,10 +2224,11 @@ async function registerRoutes() {
 
   if (fs.existsSync(config.clientDistDir)) {
     await app.register(fastifyStatic, { root: config.clientDistDir });
-    const spaPages = ['summary', 'monthly', 'monthlyrun', 'files', 'workflow', 'holdings', 'employees', 'settings'];
+    const spaPages = ['summary', 'monthly', 'monthly/run', 'files', 'workflow', 'holdings', 'employees', 'account', 'settings'];
     for (const page of spaPages) {
       app.get(`/${page}`, async (_request, reply) => reply.sendFile('index.html'));
     }
+    app.get('/monthlyrun', async (_request, reply) => reply.redirect(301, '/monthly/run'));
     app.setNotFoundHandler((request, reply) => {
       if (request.raw.url?.startsWith('/api/')) return reply.code(404).send({ error: 'API route not found' });
       return reply.sendFile('index.html');

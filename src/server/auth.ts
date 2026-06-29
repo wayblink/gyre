@@ -10,8 +10,19 @@ export type AuthUserRecord = {
   username: string;
   display_name: string;
   role: string;
+  email: string | null;
+  phone: string | null;
   is_active: boolean;
   last_login_at: string | null;
+};
+
+export type PublicAccount = {
+  id: number;
+  username: string;
+  displayName: string;
+  role: string;
+  email: string | null;
+  phone: string | null;
 };
 
 export type AuthStatusPayload = {
@@ -22,6 +33,8 @@ export type AuthStatusPayload = {
     username: string;
     displayName: string;
     role: string;
+    email: string | null;
+    phone: string | null;
   } | null;
 };
 
@@ -125,7 +138,7 @@ export async function createUser(db: Queryable, params: {
      returning id, username, display_name, role, is_active, last_login_at`,
     [params.username, params.passwordHash, params.displayName, params.role],
   );
-  return row[0] as AuthUserRecord;
+  return { ...(row[0] as AuthUserRecord), email: null, phone: null };
 }
 
 export async function findUserByUsername(db: Queryable, username: string): Promise<(AuthUserRecord & { password_hash: string }) | null> {
@@ -135,10 +148,12 @@ export async function findUserByUsername(db: Queryable, username: string): Promi
     password_hash: string;
     display_name: string;
     role: string;
+    email: string | null;
+    phone: string | null;
     is_active: boolean;
     last_login_at: string | null;
   }>(
-    `select id, username, password_hash, display_name, role, is_active, last_login_at
+    `select id, username, password_hash, display_name, role, email, phone, is_active, last_login_at
      from app_users
      where username = $1`,
     [username],
@@ -170,11 +185,13 @@ export async function findSessionUserByTokenHash(db: Queryable, tokenHash: strin
     username: string;
     display_name: string;
     role: string;
+    email: string | null;
+    phone: string | null;
     is_active: boolean;
     last_login_at: string | null;
     expires_at: string;
   }>(
-    `select u.id, u.username, u.display_name, u.role, u.is_active, u.last_login_at, s.expires_at
+    `select u.id, u.username, u.display_name, u.role, u.email, u.phone, u.is_active, u.last_login_at, s.expires_at
      from app_sessions s
      join app_users u on u.id = s.user_id
      where s.session_token_hash = $1`,
@@ -189,6 +206,8 @@ export async function findSessionUserByTokenHash(db: Queryable, tokenHash: strin
     username: String(sessionUser.username),
     display_name: String(sessionUser.display_name),
     role: String(sessionUser.role),
+    email: sessionUser.email === null ? null : String(sessionUser.email),
+    phone: sessionUser.phone === null ? null : String(sessionUser.phone),
     is_active: Boolean(sessionUser.is_active),
     last_login_at: sessionUser.last_login_at,
   };
@@ -217,6 +236,107 @@ export async function touchUserLastLogin(db: Queryable, userId: number): Promise
   );
 }
 
+function toPublicAccount(row: {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  email: string | null;
+  phone: string | null;
+}): PublicAccount {
+  return {
+    id: Number(row.id),
+    username: String(row.username),
+    displayName: String(row.display_name),
+    role: String(row.role),
+    email: row.email === null ? null : String(row.email),
+    phone: row.phone === null ? null : String(row.phone),
+  };
+}
+
+export async function getPublicAccount(db: Queryable, userId: number): Promise<PublicAccount | null> {
+  const row = await db.query<{
+    id: number;
+    username: string;
+    display_name: string;
+    role: string;
+    email: string | null;
+    phone: string | null;
+  }>(
+    `select id, username, display_name, role, email, phone
+     from app_users
+     where id = $1 and is_active = true`,
+    [userId],
+  );
+  return row[0] ? toPublicAccount(row[0]) : null;
+}
+
+export async function updateAccountProfile(db: Queryable, userId: number, params: {
+  username: string;
+  displayName: string;
+  email?: string | null;
+  phone?: string | null;
+}): Promise<PublicAccount> {
+  const username = params.username.trim();
+  const displayName = params.displayName.trim() || username;
+  const email = params.email?.trim() || null;
+  const phone = params.phone?.trim() || null;
+  const row = await db.query<{
+    id: number;
+    username: string;
+    display_name: string;
+    role: string;
+    email: string | null;
+    phone: string | null;
+  }>(
+    `update app_users
+     set username = $2,
+         display_name = $3,
+         email = $4,
+         phone = $5,
+         updated_at = current_timestamp
+     where id = $1 and is_active = true
+     returning id, username, display_name, role, email, phone`,
+    [userId, username, displayName, email, phone],
+  );
+  if (!row[0]) throw new Error('Account not found');
+  return toPublicAccount(row[0]);
+}
+
+export async function updateAccountPassword(db: Queryable, userId: number, params: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<void> {
+  const row = await db.query<{
+    id: number;
+    username: string;
+    password_hash: string;
+    display_name: string;
+    role: string;
+    email: string | null;
+    phone: string | null;
+    is_active: boolean;
+    last_login_at: string | null;
+  }>(
+    `select id, username, password_hash, display_name, role, email, phone, is_active, last_login_at
+     from app_users
+     where id = $1 and is_active = true`,
+    [userId],
+  );
+  const user = row[0];
+  if (!user) throw new Error('Account not found');
+  if (!(await verifyPassword(params.currentPassword, user.password_hash))) {
+    throw new Error('Current password is incorrect');
+  }
+  await db.query(
+    `update app_users
+     set password_hash = $2,
+         updated_at = current_timestamp
+     where id = $1`,
+    [userId, await hashPassword(params.newPassword)],
+  );
+}
+
 export function toAuthStatus(user: AuthUserRecord | null, bootstrapRequired: boolean): AuthStatusPayload {
   if (!user) {
     return {
@@ -233,6 +353,8 @@ export function toAuthStatus(user: AuthUserRecord | null, bootstrapRequired: boo
       username: user.username,
       displayName: user.display_name,
       role: user.role,
+      email: user.email,
+      phone: user.phone,
     },
   };
 }

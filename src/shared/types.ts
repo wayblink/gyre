@@ -46,7 +46,11 @@ export type AuthenticatedUser = {
   username: string;
   displayName: string;
   role: string;
+  email: string | null;
+  phone: string | null;
 };
+
+export type AccountProfile = AuthenticatedUser;
 
 export type AuthStatus = {
   authenticated: boolean;
@@ -66,6 +70,8 @@ export type UpdatePlan = {
 
 export type SourceCheckItem = {
   id?: number;
+  sourceFileId?: number | null;
+  productFileId?: number | null;
   fileName: string;
   isRequired: 'Required' | 'Optional' | '';
   uploadedFile: string;
@@ -604,8 +610,9 @@ export type MonthlyRunSourceBinding = {
 };
 
 export type MonthlyRunTriggerRequest = {
-  month: string;
-  sources: Record<string, MonthlyRunSourceBinding>;
+  updatePlanId?: number;
+  month?: string;
+  sources?: Record<string, MonthlyRunSourceBinding>;
   operator?: string;
 };
 

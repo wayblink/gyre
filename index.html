@@ -76,12 +76,6 @@
                     </span>
                     <span class="nav-text">Monthly Updates</span>
                 </div>
-                <div class="nav-item" data-page="monthlyrun">
-                    <span class="nav-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h10"/><path d="M4 19h7"/><circle cx="18" cy="17" r="3"/><path d="M18 14v3l2 1"/></svg>
-                    </span>
-                    <span class="nav-text">Monthly Run</span>
-                </div>
                 <div class="nav-item" data-page="files">
                     <span class="nav-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M8 9h2"/></svg>
@@ -123,9 +117,11 @@
             <header class="top-bar">
                 <div class="page-title" id="pageTitle">Summary</div>
                 <div class="user-info">
-                    <span class="user-name" id="currentUserName">Administrator</span>
-                    <button class="user-logout" id="btnLogout" type="button">退出登录</button>
-                    <div class="user-avatar" id="currentUserAvatar">A</div>
+                    <button class="user-avatar" id="currentUserAvatar" type="button" aria-label="打开用户菜单" aria-expanded="false">A</button>
+                    <div class="user-menu hidden" id="userMenu">
+                        <button class="user-menu-item" id="btnAccountPage" type="button">账号</button>
+                        <button class="user-menu-item user-menu-item--danger" id="btnLogout" type="button">退出登录</button>
+                    </div>
                 </div>
             </header>
 
@@ -314,97 +310,6 @@
                         </div>
                     </div>
 
-                    <!-- File Check Modal -->
-                    <div class="modal-overlay hidden" id="fileCheckModal">
-                        <div class="modal-container modal-large">
-                            <div class="modal-header">
-                                <h3 class="modal-title" id="modalTitle">Data Update - File Check</h3>
-                                <button class="modal-close" id="btnCloseModal">&times;</button>
-                            </div>
-                            <div class="modal-body">
-                            <div class="step-tip">
-                                <span class="step-icon">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                                </span>
-                                <div class="step-text">
-                                    <strong>Tip:</strong> Upload the following files to complete data update check. File upload is <span class="highlight-blue">optional</span>.
-                                </div>
-                                <button class="btn btn-secondary btn-sm" id="btnSkipUpload">Skip Step &rarr;</button>
-                            </div>
-                            <div class="modal-info">
-                                <div class="info-item">
-                                    <span class="info-label">Month:</span>
-                                    <span class="info-value" id="modalMonth">-</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Operator:</span>
-                                    <span class="info-value" id="modalOperator">-</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Status:</span>
-                                    <span class="info-value" id="modalStatus">-</span>
-                                </div>
-                            </div>
-                            <div id="sourceTablesContainer">
-                                <!-- Table 1: Fixed Values -->
-                                <div class="source-table-section">
-                                    <div class="source-table-title">Fixed Value</div>
-                                    <table class="source-table" id="fixedValueTable">
-                                        <thead>
-                                            <tr>
-                                                <th>Item</th>
-                                                <th>Value</th>
-                                                <th style="width:80px;">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="fixedValueBody"></tbody>
-                                    </table>
-                                </div>
-                                <!-- Table 2: Table sourced from Shareworks -->
-                                <div class="source-table-section">
-                                    <div class="source-table-title">Table sourced from Shareworks</div>
-                                    <table class="source-table" id="shareworksTable">
-                                        <thead>
-                                            <tr>
-                                                <th>File Name</th>
-                                                <th style="width:80px;">Is required</th>
-                                                <th>Uploaded file</th>
-                                                <th>Item</th>
-                                                <th style="width:50px;">Status</th>
-                                                <th style="width:120px;">Value</th>
-                                                <th style="width:80px;">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="shareworksBody"></tbody>
-                                    </table>
-                                </div>
-                                <!-- Table 3: Table sourced from Futu -->
-                                <div class="source-table-section">
-                                    <div class="source-table-title">Table sourced from Futu</div>
-                                    <table class="source-table" id="futuTable">
-                                        <thead>
-                                            <tr>
-                                                <th>File Name</th>
-                                                <th style="width:80px;">Is required</th>
-                                                <th>Uploaded file</th>
-                                                <th>Extracted Value</th>
-                                                <th style="width:50px;">Status</th>
-                                                <th style="width:120px;">Value</th>
-                                                <th style="width:80px;">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="futuBody"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button class="btn btn-secondary" id="btnSaveExit">Save & Exit</button>
-                                <button class="btn btn-primary" id="btnConfirmUpdate">Confirm & Update Data</button>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Add Plan Modal -->
                     <div class="modal-overlay hidden" id="addPlanModal">
                         <div class="modal-container" style="max-width:560px;">
@@ -457,39 +362,94 @@
                 </section>
 
                 <section class="page-section" id="page-monthlyrun">
-                    <div class="search-bar">
-                        <div class="search-group">
-                            <label class="search-label">Month</label>
-                            <input type="month" id="monthlyRunMonth" class="search-input" value="2026-06">
-                            <label class="search-label">Sources</label>
-                            <button class="btn btn-secondary monthly-run-source-trigger" id="btnMonthlyRunConfigureSources" type="button">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><path d="M12 15v6"/><path d="M3 12h6"/><path d="M15 12h6"/><circle cx="12" cy="12" r="3"/></svg>
-                                Configure Sources
-                            </button>
-                            <button class="btn btn-secondary" id="btnMonthlyRunRefreshFiles" type="button">Refresh Files</button>
-                        </div>
-                        <div class="search-actions">
-                            <button class="btn btn-primary" id="btnTriggerMonthlyRun" type="button">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                                Execute
-                            </button>
-                        </div>
+                    <div class="monthly-run-hidden-controls hidden" aria-hidden="true">
+                        <input type="month" id="monthlyRunMonth" value="2026-06">
+                        <button id="btnMonthlyRunConfigureSources" type="button">Configure Sources</button>
+                        <button id="btnMonthlyRunRefreshFiles" type="button">Refresh Files</button>
+                        <span id="monthlyRunSourceInfo"></span>
                     </div>
 
-                    <div class="info-banner">
-                        <span class="info-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                        </span>
-                        <span class="info-text" id="monthlyRunSourceInfo">上传或选择一个源 xlsx 后可执行月度 workflow。</span>
+                    <div class="card monthly-run-input-card" id="monthlyRunInputCard">
+                        <div class="card-header">
+                            <div>
+                                <h3 class="card-title" id="modalTitle">Input Configuration</h3>
+                            </div>
+                            <div class="monthly-run-input-month">
+                                <span>Month</span>
+                                <strong id="monthlyRunInputMonth">-</strong>
+                            </div>
+                            <div class="monthly-run-input-actions">
+                                <button class="card-collapse__btn monthly-run-input-toggle" id="btnToggleMonthlyRunInput" type="button" aria-expanded="true" aria-controls="monthlyRunInputBody" title="Collapse Input Configuration">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body monthly-run-input-body" id="monthlyRunInputBody">
+                            <div id="sourceTablesContainer">
+                                <div class="source-table-section">
+                                    <div class="source-table-title">Fixed Value</div>
+                                    <table class="source-table" id="fixedValueTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Item</th>
+                                                <th>Value</th>
+                                                <th style="width:80px;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="fixedValueBody"></tbody>
+                                    </table>
+                                </div>
+                                <div class="source-table-section">
+                                    <div class="source-table-title">Table sourced from Shareworks</div>
+                                    <table class="source-table" id="shareworksTable">
+                                        <thead>
+                                            <tr>
+                                                <th>File Name</th>
+                                                <th style="width:80px;">Is required</th>
+                                                <th>Uploaded file</th>
+                                                <th>Item</th>
+                                                <th style="width:50px;">Status</th>
+                                                <th style="width:120px;">Value</th>
+                                                <th style="width:80px;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="shareworksBody"></tbody>
+                                    </table>
+                                </div>
+                                <div class="source-table-section">
+                                    <div class="source-table-title">Table sourced from Futu</div>
+                                    <table class="source-table" id="futuTable">
+                                        <thead>
+                                            <tr>
+                                                <th>File Name</th>
+                                                <th style="width:80px;">Is required</th>
+                                                <th>Uploaded file</th>
+                                                <th>Extracted Value</th>
+                                                <th style="width:50px;">Status</th>
+                                                <th style="width:120px;">Value</th>
+                                                <th style="width:80px;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="futuBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="card monthly-run-panel" id="monthlyRunPanel">
                         <div class="card-header">
-                            <h3 class="card-title">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8"/><path d="M7.5 7.5l3 7"/><path d="M16.5 7.5l-3 7"/></svg>
-                                Execution
-                            </h3>
-                            <span class="card-subtitle" id="monthlyRunSummary">Ready</span>
+                            <div>
+                                <h3 class="card-title">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8"/><path d="M7.5 7.5l3 7"/><path d="M16.5 7.5l-3 7"/></svg>
+                                    Execution
+                                </h3>
+                                <span class="card-subtitle" id="monthlyRunSummary">Ready</span>
+                            </div>
+                            <button class="btn btn-primary" id="btnTriggerMonthlyRun" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                Execute
+                            </button>
                         </div>
                         <div class="card-body">
                             <div class="monthly-run-progress">
@@ -1106,50 +1066,89 @@
                     </div>
                 </section>
 
-                <!-- Settings Page -->
-                <section class="page-section" id="page-settings">
-                    <div class="settings-shell">
-                        <div class="settings-quick-grid">
-                            <div class="card settings-quick-card">
-                                <div class="card-header">
-                                    <div>
-                                        <h3 class="card-title">风格</h3>
-                                        <span class="card-subtitle">控制组件的材质语言与层次表现</span>
-                                    </div>
-                                    <span class="settings-pill" id="settingsStyleStatus">Flat</span>
-                                </div>
-                                <div class="card-body settings-placeholder">
-                                    <label class="settings-placeholder__label">界面风格</label>
-                                    <div class="theme-grid" id="themeStyleOptions"></div>
-                                    <p class="settings-placeholder__hint">Flat 使用当前整站的扁平企业风格；Glass 会增强高光、分层和玻璃质感，适合更强的视觉表现。</p>
+                <!-- Account Page -->
+                <section class="page-section" id="page-account">
+                    <div class="account-shell">
+                        <div class="card account-card">
+                            <div class="card-header">
+                                <div>
+                                    <h3 class="card-title">账号信息</h3>
+                                    <span class="card-subtitle">管理当前登录账号的基础信息和联系方式</span>
                                 </div>
                             </div>
-                            <div class="card settings-quick-card">
-                                <div class="card-header">
-                                    <div>
-                                        <h3 class="card-title">配色</h3>
-                                        <span class="card-subtitle">控制品牌主色与强调色倾向</span>
+                            <div class="card-body">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label>账号名</label>
+                                        <input type="text" id="accountUsername" class="form-input" autocomplete="username">
                                     </div>
-                                    <span class="settings-pill" id="settingsColorStatus">Blue</span>
+                                    <div class="form-group">
+                                        <label>显示名</label>
+                                        <input type="text" id="accountDisplayName" class="form-input">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>邮箱</label>
+                                        <input type="email" id="accountEmail" class="form-input" placeholder="name@example.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>联系方式</label>
+                                        <input type="text" id="accountPhone" class="form-input" placeholder="Phone or IM">
+                                    </div>
                                 </div>
-                                <div class="card-body settings-placeholder">
-                                    <label class="settings-placeholder__label">配色方案</label>
-                                    <div class="theme-grid" id="themeColorOptions"></div>
-                                    <p class="settings-placeholder__hint">这里会作为后续全局配色设置入口。现在先把主色系统和关键组件接到统一的主题变量。</p>
+                                <div class="form-actions">
+                                    <button class="btn btn-secondary" id="btnOpenChangePasswordModal">修改密码</button>
+                                    <button class="btn btn-primary" id="btnSaveAccountProfile">保存账号信息</button>
                                 </div>
                             </div>
                         </div>
-                        <div class="card">
-                            <div class="card-header">
-                                <h3 class="card-title">Appearance</h3>
-                                <span class="card-subtitle">切换后立即生效，并保存在当前浏览器</span>
+                    </div>
+                </section>
+
+                <div class="modal-overlay hidden" id="accountPasswordModal">
+                    <div class="modal-container modal-small account-password-modal">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title">修改密码</h3>
+                                <span class="card-subtitle">请输入原密码，并确认两次新密码一致</span>
                             </div>
-                            <div class="card-body settings-appearance-summary">
-                                <div class="settings-appearance-summary__surface">
-                                    <div class="settings-appearance-summary__eyebrow">当前组合</div>
-                                    <div class="settings-appearance-summary__title" id="appearanceSummaryTitle">Flat Blue</div>
-                                    <p class="settings-appearance-summary__text" id="appearanceSummaryText">使用稳健的蓝色企业风格与扁平化表面，适合日常操作界面。</p>
+                            <button class="modal-close" data-close="accountPasswordModal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-grid account-password-form">
+                                <div class="form-group">
+                                    <label>当前密码</label>
+                                    <input type="password" id="accountCurrentPassword" class="form-input" autocomplete="current-password">
                                 </div>
+                                <div class="form-group">
+                                    <label>新密码</label>
+                                    <input type="password" id="accountNewPassword" class="form-input" autocomplete="new-password">
+                                </div>
+                                <div class="form-group">
+                                    <label>确认新密码</label>
+                                    <input type="password" id="accountConfirmNewPassword" class="form-input" autocomplete="new-password">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" data-close="accountPasswordModal">取消</button>
+                            <button class="btn btn-primary" id="btnChangeAccountPassword">更新密码</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Page -->
+                <section class="page-section" id="page-settings">
+                    <div class="settings-shell">
+                        <div class="card settings-quick-card">
+                            <div class="card-header">
+                                <div>
+                                    <h3 class="card-title">配色</h3>
+                                    <span class="card-subtitle">控制品牌主色与强调色倾向</span>
+                                </div>
+                            </div>
+                            <div class="card-body settings-placeholder">
+                                <label class="settings-placeholder__label">配色方案</label>
+                                <div class="theme-grid" id="themeColorOptions"></div>
                             </div>
                         </div>
                     </div>

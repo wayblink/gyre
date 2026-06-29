@@ -20,6 +20,8 @@ type MonthlyRunPageDeps = {
   formatDateTime: (value: string) => string;
   refreshProductFiles: () => Promise<unknown>;
   refreshSummary: (month: string) => Promise<unknown>;
+  getUpdatePlanId?: () => number | null;
+  onMonthChanged?: (month: string) => void;
 };
 
 type SourceDraftBindings = Record<string, MonthlyRunSourceBinding | null>;
@@ -55,6 +57,8 @@ export function createMonthlyRunPage({
   formatDateTime,
   refreshProductFiles,
   refreshSummary,
+  getUpdatePlanId,
+  onMonthChanged,
 }: MonthlyRunPageDeps) {
   const runClient = createWorkflowRunClient(api);
   let files: ProductFileRecord[] = [];
@@ -75,6 +79,7 @@ export function createMonthlyRunPage({
     el('btnMonthlyRunSkip').addEventListener('click', () => void approveActiveRun('skipped'));
     el('monthlyRunMonth').addEventListener('change', () => {
       renderSourceInfo();
+      onMonthChanged?.(el<HTMLInputElement>('monthlyRunMonth').value);
       if (!el('monthlyRunSourceModal').classList.contains('hidden')) {
         renderSourceModal();
       }
@@ -89,6 +94,14 @@ export function createMonthlyRunPage({
     if (activeRun && !isWorkflowRunTerminalStatus(activeRun.status)) {
       await refreshActiveRun();
     }
+  }
+
+  async function openForMonth(month: string) {
+    if (month) {
+      el<HTMLInputElement>('monthlyRunMonth').value = month;
+      renderSourceInfo();
+    }
+    await onActivate();
   }
 
   function bindSourceModalEvents() {
@@ -281,8 +294,9 @@ export function createMonthlyRunPage({
 
   async function triggerMonthlyRun() {
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
+    const updatePlanId = getUpdatePlanId?.() ?? null;
     if (!month) return alert('请选择月份');
-    if (!sourceDefinitions.every((source) => !source.required || selectedSources[source.sourceKey]?.fileId)) {
+    if (!updatePlanId && !sourceDefinitions.every((source) => !source.required || selectedSources[source.sourceKey]?.fileId)) {
       return alert('请先完成 source 配置');
     }
     if (isRunning) return;
@@ -292,15 +306,23 @@ export function createMonthlyRunPage({
     activeRun = null;
     expandedWarningTaskIds.clear();
     renderRunPanel('Submitting monthly run...');
+    let failedMessage: string | null = null;
 
     try {
       const response = await api<MonthlyRunTriggerResponse>('/api/monthly-runs', {
         method: 'POST',
-        body: JSON.stringify({
-          month,
-          sources: selectedSources,
-          operator: 'Administrator',
-        }),
+        body: JSON.stringify(
+          updatePlanId
+            ? {
+                updatePlanId,
+                operator: 'Administrator',
+              }
+            : {
+                month,
+                sources: selectedSources,
+                operator: 'Administrator',
+              },
+        ),
       });
       activeHistoryId = response.history.id;
       activeRun = response.executionResult.run ?? null;
@@ -316,12 +338,12 @@ export function createMonthlyRunPage({
         await finalizeAfterRun(month);
       }
     } catch (error) {
-      renderRunPanel(error instanceof Error ? error.message : 'Monthly run failed');
-      throw error;
+      failedMessage = error instanceof Error ? error.message : 'Monthly run failed';
+      renderRunPanel(failedMessage);
     } finally {
       isRunning = false;
       await refreshHistory(month);
-      renderRunPanel();
+      renderRunPanel(failedMessage ?? undefined);
     }
   }
 
@@ -401,7 +423,8 @@ export function createMonthlyRunPage({
     panel.classList.remove('hidden');
     const run = activeRun;
     if (!run) {
-      summary.innerHTML = `<span class="monthly-run-status monthly-run-status--idle">${escapeHtml(overrideMessage ?? 'Ready')}</span>`;
+      const isError = Boolean(overrideMessage && !/submitting|submitted|ready/i.test(overrideMessage));
+      summary.innerHTML = `<span class="monthly-run-status monthly-run-status--${isError ? 'failed' : 'idle'}">${escapeHtml(overrideMessage ?? 'Ready')}</span>`;
       taskList.innerHTML = '<div class="monthly-run-empty">执行后会在这里显示节点状态。</div>';
       progressBar.style.width = '0%';
       progressText.textContent = '0 / 0';
@@ -487,5 +510,6 @@ export function createMonthlyRunPage({
   return {
     init,
     onActivate,
+    openForMonth,
   };
 }
