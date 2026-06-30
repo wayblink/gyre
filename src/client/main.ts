@@ -198,6 +198,9 @@ function parseTagInput(value: string): string[] {
 function statusClass(status: string): string {
   if (status === '已完成') return 'status-completed';
   if (status === '进行中') return 'status-inprogress';
+  if (status === '待复核') return 'status-review';
+  if (status === '失败') return 'status-failed';
+  if (status === '已取消') return 'status-cancelled';
   return 'status-pending';
 }
 
@@ -815,7 +818,7 @@ async function renderMonthlyPage(filterMonth: string) {
   el('planTotalCount').textContent = String(updatePlans.length);
   el('planCompletedCount').textContent = String(updatePlans.filter((plan) => plan.status === '已完成').length);
   el('planInProgressCount').textContent = String(updatePlans.filter((plan) => plan.status === '进行中').length);
-  el('planPendingCount').textContent = String(updatePlans.filter((plan) => plan.status === '待启动').length);
+  el('planPendingCount').textContent = String(updatePlans.filter((plan) => plan.status === '待启动' || plan.status === '待复核').length);
 
   const tbody = el('monthlyUpdateBody');
   if (updatePlans.length === 0) {

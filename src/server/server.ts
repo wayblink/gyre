@@ -49,6 +49,7 @@ import {
   getMonthlyRun,
   listMonthlyRuns,
   MONTHLY_WORKFLOW_CODE,
+  reconcileMonthlyUpdatePlanStatuses,
 } from './monthlyRun/store.js';
 import {
   resolveMonthlyRunInputConfiguration,
@@ -115,7 +116,7 @@ const updatePlanSchema = z.object({
 const updatePlanPatchSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   operator: z.string().min(1).optional(),
-  status: z.enum(['待启动', '进行中', '已完成']).optional(),
+  status: z.enum(['待启动', '进行中', '待复核', '已完成', '失败', '已取消']).optional(),
   remark: z.string().optional(),
 });
 
@@ -1299,6 +1300,7 @@ async function registerRoutes() {
     const history = await createMonthlyRunHistory(db, {
       monthId,
       monthKey,
+      updatePlanId: body.updatePlanId ?? null,
       workflowId: Number(workflowRow.id),
       sourceFileId: primarySourceFileId && Number.isInteger(primarySourceFileId) ? primarySourceFileId : null,
       operator: inputConfiguration?.operator ?? body.operator,
@@ -1669,6 +1671,7 @@ async function registerRoutes() {
 
   app.get('/api/update-plans', async (request) => {
     const { month } = request.query as { month?: string };
+    await reconcileMonthlyUpdatePlanStatuses(db);
     const rows = await db.query<Record<string, unknown>>(
       `select up.*, m.month_key
        from update_plans up
@@ -1682,6 +1685,7 @@ async function registerRoutes() {
 
   app.get('/api/update-plans/:id', async (request) => {
     const { id } = request.params as { id: string };
+    await reconcileMonthlyUpdatePlanStatuses(db);
     const row = await db.queryOne<Record<string, unknown>>(
       `select up.*, m.month_key
        from update_plans up
