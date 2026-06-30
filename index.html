@@ -12,6 +12,18 @@
         body.app-booting .app-container {
             visibility: hidden;
         }
+
+        #authShell {
+            display: none;
+        }
+
+        body.auth-required #authShell {
+            display: flex;
+        }
+
+        body.auth-required .app-container {
+            display: none;
+        }
     </style>
 </head>
 <body class="app-booting">
@@ -302,7 +314,7 @@
                                         <th>Operation Time</th>
                                         <th>Operator</th>
                                         <th>Status</th>
-                                        <th style="width:280px;">Actions</th>
+                                        <th style="width:200px;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="monthlyUpdateBody"></tbody>
@@ -312,45 +324,21 @@
 
                     <!-- Add Plan Modal -->
                     <div class="modal-overlay hidden" id="addPlanModal">
-                        <div class="modal-container" style="max-width:560px;">
+                        <div class="modal-container monthly-plan-modal">
                             <div class="modal-header">
                                 <h3 class="modal-title">New Monthly Update Plan</h3>
                                 <button class="modal-close" id="btnCloseAddModal">&times;</button>
                             </div>
                             <div class="modal-body">
-                                <div class="form-group">
-                                    <label>Month <span style="color:var(--danger-500);">*</span></label>
-                                    <input type="month" id="newPlanMonth" class="form-input">
-                                </div>
-                                <div class="form-group">
-                                    <label>Operator <span style="color:var(--danger-500);">*</span></label>
-                                    <input type="text" id="newPlanOperator" class="form-input" value="Gu" placeholder="Enter operator name">
-                                </div>
-                                <div class="form-group">
-                                    <label>Remark</label>
-                                    <textarea id="newPlanRemark" class="form-input" rows="3" placeholder="Optional description..."></textarea>
-                                </div>
-
-                                <!-- Upload Files Section -->
-                                <div class="upload-section" id="uploadSection">
-                                    <div class="upload-section-header">
-                                        <label class="upload-section-title">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;vertical-align:middle;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                            Upload Files
-                                        </label>
-                                        <span class="upload-hint">Supports multiple files</span>
+                                <div class="monthly-plan-modal__body">
+                                    <div class="form-group">
+                                        <label>Month <span style="color:var(--danger-500);">*</span></label>
+                                        <input type="month" id="newPlanMonth" class="form-input">
                                     </div>
-                                    <div class="upload-dropzone" id="uploadDropzone">
-                                        <input type="file" id="fileInput" multiple style="display:none;">
-                                        <div class="upload-dropzone-content" id="dropzoneContent">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="upload-dropzone-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                            <div class="upload-dropzone-text">
-                                                <span class="upload-dropzone-main">Drag & drop files here, or <span class="upload-browse-link">browse</span></span>
-                                                <span class="upload-dropzone-sub">All file types accepted</span>
-                                            </div>
-                                        </div>
+                                    <div class="form-group">
+                                        <label>Remark</label>
+                                        <textarea id="newPlanRemark" class="form-input" rows="5" placeholder="Optional description..."></textarea>
                                     </div>
-                                    <div class="upload-file-list" id="uploadFileList"></div>
                                 </div>
                             </div>
                             <div class="modal-footer">
@@ -392,6 +380,7 @@
                                         <thead>
                                             <tr>
                                                 <th>Item</th>
+                                                <th>Note</th>
                                                 <th>Value</th>
                                                 <th style="width:80px;">Actions</th>
                                             </tr>
@@ -401,16 +390,17 @@
                                 </div>
                                 <div class="source-table-section">
                                     <div class="source-table-title">Table sourced from Shareworks</div>
-                                    <table class="source-table" id="shareworksTable">
+                                    <table class="source-table source-table--inputs" id="shareworksTable">
+                                        <colgroup>
+                                            <col class="source-table__col-file">
+                                            <col class="source-table__col-required">
+                                            <col class="source-table__col-uploaded">
+                                        </colgroup>
                                         <thead>
                                             <tr>
                                                 <th>File Name</th>
                                                 <th style="width:80px;">Is required</th>
                                                 <th>Uploaded file</th>
-                                                <th>Item</th>
-                                                <th style="width:50px;">Status</th>
-                                                <th style="width:120px;">Value</th>
-                                                <th style="width:80px;">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="shareworksBody"></tbody>
@@ -418,16 +408,17 @@
                                 </div>
                                 <div class="source-table-section">
                                     <div class="source-table-title">Table sourced from Futu</div>
-                                    <table class="source-table" id="futuTable">
+                                    <table class="source-table source-table--inputs" id="futuTable">
+                                        <colgroup>
+                                            <col class="source-table__col-file">
+                                            <col class="source-table__col-required">
+                                            <col class="source-table__col-uploaded">
+                                        </colgroup>
                                         <thead>
                                             <tr>
                                                 <th>File Name</th>
                                                 <th style="width:80px;">Is required</th>
                                                 <th>Uploaded file</th>
-                                                <th>Extracted Value</th>
-                                                <th style="width:50px;">Status</th>
-                                                <th style="width:120px;">Value</th>
-                                                <th style="width:80px;">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="futuBody"></tbody>
@@ -439,17 +430,15 @@
 
                     <div class="card monthly-run-panel" id="monthlyRunPanel">
                         <div class="card-header">
-                            <div>
-                                <h3 class="card-title">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8"/><path d="M7.5 7.5l3 7"/><path d="M16.5 7.5l-3 7"/></svg>
-                                    Execution
-                                </h3>
-                                <span class="card-subtitle" id="monthlyRunSummary">Ready</span>
-                            </div>
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8"/><path d="M7.5 7.5l3 7"/><path d="M16.5 7.5l-3 7"/></svg>
+                                Execution
+                            </h3>
                             <button class="btn btn-primary" id="btnTriggerMonthlyRun" type="button">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                                 Execute
                             </button>
+                            <span class="card-subtitle hidden" id="monthlyRunSummary"></span>
                         </div>
                         <div class="card-body">
                             <div class="monthly-run-progress">
@@ -459,7 +448,7 @@
                             <div class="monthly-run-task-list" id="monthlyRunTaskList"></div>
                             <div class="monthly-run-actions hidden" id="monthlyRunActions">
                                 <button class="btn btn-primary" id="btnMonthlyRunContinue" type="button">Continue</button>
-                                <button class="btn btn-secondary" id="btnMonthlyRunSkip" type="button">Skip Downstream</button>
+                                <button class="btn btn-secondary" id="btnMonthlyRunSkip" type="button">Cancel</button>
                             </div>
                         </div>
                     </div>
@@ -476,13 +465,13 @@
                             <table class="data-table">
                                 <thead>
                                     <tr>
-                                        <th>Month</th>
-                                        <th>Source File</th>
                                         <th>Run</th>
+                                        <th>Input</th>
                                         <th>Status</th>
-                                        <th>Produced File</th>
+                                        <th>Output</th>
                                         <th>Triggered At</th>
                                         <th>Error</th>
+                                        <th style="width:96px;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="monthlyRunHistoryBody"></tbody>
@@ -625,6 +614,7 @@
                                         </button>
                                     </div>
                                     <textarea id="workflowDescriptionInput" class="workflow-toolbar__description-input hidden" rows="3" placeholder="Description"></textarea>
+                                    <div class="workflow-runtime-summary hidden" id="workflowRuntimeParamsSummary"></div>
                                 </div>
                             </header>
 
@@ -729,7 +719,7 @@
                                 <div class="workflow-structured hidden" id="workflowStructuredParams">
                                     <div class="workflow-structured__title">Structured Params</div>
                                     <div class="workflow-structured__row" id="workflowStructuredFileRow">
-                                        <label class="workflow-structured__label" for="workflowPreviewFileId">File</label>
+                                        <label class="workflow-structured__label" for="workflowPreviewFileId">File Source</label>
                                         <select id="workflowPreviewFileId" class="search-input workflow-select"></select>
                                     </div>
                                     <div class="workflow-structured__row" id="workflowStructuredSheetRow">
@@ -862,6 +852,8 @@
                         </div>
                         <div class="modal-footer">
                             <button class="btn btn-secondary" id="btnRemoveWorkflowTask" type="button">Remove Task</button>
+                            <button class="btn btn-secondary hidden" id="btnRetryWorkflowUnfinished" type="button">Retry Unfinished</button>
+                            <button class="btn btn-secondary hidden" id="btnRunWorkflowTaskStep" type="button">Retry Step</button>
                             <button class="btn btn-primary" id="btnDoneWorkflowTask" type="button">Done</button>
                         </div>
                     </div>
@@ -1171,6 +1163,24 @@
                 <button class="btn btn-secondary" id="btnCloseLinkModalFooter">Close</button>
             </div>
         </div>
+    </div>
+
+    <div class="app-notice-host" id="appNoticeHost" aria-live="polite" aria-atomic="true"></div>
+
+    <div class="app-confirm-overlay hidden" id="appConfirmOverlay">
+        <section class="app-confirm" id="appConfirmDialog" role="dialog" aria-modal="true" aria-labelledby="appConfirmTitle" tabindex="-1">
+            <div class="app-confirm__header">
+                <div>
+                    <h3 class="app-confirm__title" id="appConfirmTitle">确认操作</h3>
+                </div>
+                <button class="app-confirm__close" id="appConfirmClose" type="button" aria-label="关闭">&times;</button>
+            </div>
+            <div class="app-confirm__body" id="appConfirmMessage"></div>
+            <div class="app-confirm__footer">
+                <button class="btn btn-secondary" id="appConfirmCancel" type="button">取消</button>
+                <button class="btn btn-primary" id="appConfirmAction" type="button">确认</button>
+            </div>
+        </section>
     </div>
 
     <script type="module" src="/src/client/main.ts"></script>

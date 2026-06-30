@@ -1,4 +1,5 @@
 import type { ProductFileDetail, ProductFileRecord } from '../shared/types.js';
+import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { createWorkbookViewer } from './univer/createWorkbookViewer.js';
 import { bufferToUniverWorkbook } from './univer/xlsxToUniver.js';
 
@@ -11,14 +12,17 @@ type FilesPageDeps = {
   escapeHtml: (text: unknown) => string;
   formatDateTime: (value: string) => string;
   formatFileSize: (bytes: number) => string;
+  notify: NotifyFn;
+  confirmAction: ConfirmActionFn;
 };
 
 const FILES_LEFT_MIN = 200;
 const FILES_LEFT_MAX = 480;
 const FILES_LEFT_DEFAULT = 280;
 const FILES_LEFT_COLLAPSED_WIDTH = 28;
+const FILES_MOBILE_MEDIA = '(max-width: 768px)';
 
-export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime, formatFileSize }: FilesPageDeps) {
+export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime, formatFileSize, notify, confirmAction }: FilesPageDeps) {
   let productFiles: ProductFileRecord[] = [];
   let currentProductFileDetail: ProductFileDetail | null = null;
   let workbookViewer: { dispose: () => void; exportXlsxBlob: () => Blob | null } | null = null;
@@ -299,7 +303,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
 
     const blob = workbookViewer.exportXlsxBlob();
     if (!blob) {
-      alert('当前工作簿无法导出');
+      notify('当前工作簿无法导出', { type: 'warning' });
       return;
     }
 
@@ -331,14 +335,14 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       productFileLoadError = error instanceof Error ? error.message : '保存失败';
       renderProductFilesList();
       updateFileActionState();
-      alert(productFileLoadError);
+      notify(productFileLoadError, { type: 'error' });
     }
   }
 
   async function deleteProductFile(fileId: number) {
     const file = productFiles.find((item) => item.id === fileId);
     if (!file) return;
-    if (!confirm(`确定删除文件 ${file.originalName} 吗？`)) return;
+    if (!(await confirmAction(`确定删除文件 ${file.originalName} 吗？`, { title: '删除文件', confirmText: '删除', tone: 'danger' }))) return;
 
     await api(`/api/files/${fileId}`, { method: 'DELETE' });
 
@@ -377,7 +381,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     if (!file || renamingProductFileId === fileId) return;
     const nextName = editingProductFileName.trim();
     if (!nextName) {
-      alert('文件名不能为空');
+      notify('文件名不能为空', { type: 'warning' });
       return;
     }
     if (nextName === file.originalName) {
@@ -408,7 +412,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     } catch (error) {
       renamingProductFileId = null;
       renderProductFilesList();
-      alert(error instanceof Error ? error.message : '修改文件名失败');
+      notify(error instanceof Error ? error.message : '修改文件名失败', { type: 'error' });
     }
   }
 
@@ -440,6 +444,13 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     const leftPane = el('filesLeftPane');
     const rail = el('filesCollapsedRail');
     const divider = el('filesWorkspaceDivider');
+    if (window.matchMedia(FILES_MOBILE_MEDIA).matches) {
+      workspace.style.gridTemplateColumns = '';
+      leftPane.classList.remove('hidden');
+      rail.classList.add('hidden');
+      divider.classList.add('divider--disabled');
+      return;
+    }
     workspace.style.gridTemplateColumns = filesLeftCollapsed
       ? `${FILES_LEFT_COLLAPSED_WIDTH}px 6px minmax(0, 1fr)`
       : `${filesLeftWidth}px 6px minmax(0, 1fr)`;
@@ -455,7 +466,9 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
 
   function initFilesWorkspaceResize() {
     const divider = el('filesWorkspaceDivider');
+    window.matchMedia(FILES_MOBILE_MEDIA).addEventListener('change', applyFilesWorkspaceLayout);
     divider.addEventListener('pointerdown', (event: PointerEvent) => {
+      if (window.matchMedia(FILES_MOBILE_MEDIA).matches) return;
       if (filesLeftCollapsed) return;
       event.preventDefault();
       const target = event.currentTarget as HTMLElement;

@@ -25,6 +25,7 @@ import {
   type ThemeColorName,
   type ThemeSelection,
 } from './theme.js';
+import { confirmAction, notify } from './uiFeedback.js';
 import { createWorkflowPage } from './workflowPage.js';
 import '../../css/style.css';
 import '@univerjs/design/lib/index.css';
@@ -37,7 +38,6 @@ let authStatus: AuthStatus | null = null;
 let updatePlans: UpdatePlan[] = [];
 let currentPlan: UpdatePlan | null = null;
 let currentFileList: SourceChecklist | null = null;
-let uploadedFiles: File[] = [];
 let employees: Employee[] = [];
 let employeeMappings: EmployeeMapping[] = [];
 let planManagements: TrackedPlan[] = [];
@@ -82,6 +82,8 @@ const filesPage = createFilesPage({
   escapeHtml,
   formatDateTime,
   formatFileSize,
+  notify,
+  confirmAction,
 });
 
 const workflowPage = createWorkflowPage({
@@ -90,6 +92,8 @@ const workflowPage = createWorkflowPage({
   escapeHtml,
   getProductFiles: () => filesPage.getProductFiles(),
   refreshProductFiles: () => filesPage.refreshProductFiles(),
+  notify,
+  confirmAction,
 });
 
 const monthlyRunPage = createMonthlyRunPage({
@@ -100,6 +104,8 @@ const monthlyRunPage = createMonthlyRunPage({
   refreshProductFiles: () => filesPage.refreshProductFiles(),
   refreshSummary: (month) => renderSummaryPage(month),
   getUpdatePlanId: () => currentPlan?.id ?? null,
+  notify,
+  confirmAction,
   onMonthChanged: (month) => {
     if (getPageFromLocation() !== 'monthlyrun') return;
     void openMonthlyRunMonthOnly(month);
@@ -432,7 +438,7 @@ async function activatePage(page: PageKey) {
   }
 
   if (page === 'files') {
-    await filesPage.refreshProductFiles();
+    await filesPage.refreshProductFiles(getFileIdFromLocation());
     return;
   }
 
@@ -470,6 +476,23 @@ async function navigateToPage(page: string) {
   window.history.pushState(null, '', targetPath);
   setActivePage(targetPage);
   await activatePage(targetPage);
+}
+
+function getFileIdFromLocation(): number | undefined {
+  const fileId = Number(new URLSearchParams(window.location.search).get('fileId'));
+  return Number.isInteger(fileId) && fileId > 0 ? fileId : undefined;
+}
+
+async function navigateToProductFile(fileId: number) {
+  const targetPath = buildPagePath('files');
+  const url = new URL(window.location.href);
+  url.pathname = targetPath;
+  url.search = '';
+  url.searchParams.set('fileId', String(fileId));
+  url.hash = '';
+  window.history.pushState(null, '', url);
+  setActivePage('files');
+  await filesPage.refreshProductFiles(fileId);
 }
 
 async function openMonthlyRun(month: string) {
@@ -522,9 +545,9 @@ async function openMonthlyRunMonthOnly(month: string) {
   currentFileList = null;
   el('monthlyRunInputMonth').textContent = formatMonthCN(month);
   el('modalTitle').textContent = 'Input Configuration';
-  el('fixedValueBody').innerHTML = '<tr><td colspan="3" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
-  el('shareworksBody').innerHTML = '<tr><td colspan="7" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
-  el('futuBody').innerHTML = '<tr><td colspan="7" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  el('fixedValueBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  el('shareworksBody').innerHTML = '<tr><td colspan="3" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  el('futuBody').innerHTML = '<tr><td colspan="3" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
   setActivePage('monthlyrun');
   await monthlyRunPage.openForMonth(month);
 }
@@ -574,7 +597,10 @@ function initMonthPicker() {
 
   el('monthPicker').addEventListener('change', () => {
     const month = el<HTMLInputElement>('monthPicker').value;
-    if (!month) return alert('请选择月份');
+    if (!month) {
+      notify('请选择月份', { type: 'warning' });
+      return;
+    }
     currentMonth = month;
     void renderSummaryPage(month);
     void renderHoldingsPage(month);
@@ -598,7 +624,10 @@ async function initSummaryPage() {
   el('btnSaveNote').addEventListener('click', async () => {
     const input = el<HTMLTextAreaElement>('noteContent');
     const content = input.value.trim();
-    if (!content) return alert('请输入备注内容');
+    if (!content) {
+      notify('请输入备注内容', { type: 'warning' });
+      return;
+    }
     await api(`/api/months/${currentMonth}/notes`, { method: 'POST', body: JSON.stringify({ content }) });
     input.value = '';
     el('addNoteForm').classList.add('hidden');
@@ -701,7 +730,7 @@ async function saveCapitalizationSource() {
     });
     await renderSummaryPage(targetMonth);
   } catch (error) {
-    alert((error as Error).message);
+    notify((error as Error).message, { type: 'error' });
     await renderSummaryPage(targetMonth);
   } finally {
     select.disabled = false;
@@ -728,7 +757,7 @@ function renderNotes(notes: SummarySnapshot['notes']) {
     .join('');
   container.querySelectorAll<HTMLElement>('[data-action="delete"]').forEach((button) => {
     button.addEventListener('click', async () => {
-      if (!confirm('确定删除此备注吗？')) return;
+      if (!(await confirmAction('确定删除此备注吗？', { title: '删除备注', confirmText: '删除', tone: 'danger' }))) return;
       await api(`/api/notes/${button.dataset.id}`, { method: 'DELETE' });
       await renderSummaryPage(currentMonth);
     });
@@ -738,17 +767,13 @@ function renderNotes(notes: SummarySnapshot['notes']) {
 async function initMonthlyPage() {
   await renderMonthlyPage('');
   el('btnAddUpdate').addEventListener('click', () => {
-    el<HTMLInputElement>('newPlanMonth').value = '2026-06';
-    el<HTMLInputElement>('newPlanOperator').value = 'Gu';
+    el<HTMLInputElement>('newPlanMonth').value = currentMonth;
     el<HTMLTextAreaElement>('newPlanRemark').value = '';
-    uploadedFiles = [];
-    renderUploadFileList();
     el('addPlanModal').classList.remove('hidden');
   });
   el('btnCloseAddModal').addEventListener('click', () => el('addPlanModal').classList.add('hidden'));
   el('btnCancelAddModal').addEventListener('click', () => el('addPlanModal').classList.add('hidden'));
   el('btnSubmitAdd').addEventListener('click', submitNewPlan);
-  initFileUpload();
 }
 
 function applyMonthlyRunInputCollapsed() {
@@ -774,16 +799,12 @@ function initMonthlyRunInputCard() {
 
 async function submitNewPlan() {
   const month = el<HTMLInputElement>('newPlanMonth').value;
-  const operator = el<HTMLInputElement>('newPlanOperator').value.trim();
   const remark = el<HTMLTextAreaElement>('newPlanRemark').value.trim();
-  if (!month || !operator) return alert('请填写月份和操作人');
-  const plan = await api<UpdatePlan>('/api/update-plans', { method: 'POST', body: JSON.stringify({ month, operator, remark }) });
-  for (const file of uploadedFiles) {
-    const form = new FormData();
-    form.append('sourceGroup', 'initial');
-    form.append('file', file);
-    await api(`/api/update-plans/${plan.id}/source-files`, { method: 'POST', body: form });
+  if (!month) {
+    notify('请填写月份', { type: 'warning' });
+    return;
   }
+  await api<UpdatePlan>('/api/update-plans', { method: 'POST', body: JSON.stringify({ month, remark }) });
   el('addPlanModal').classList.add('hidden');
   await renderMonthlyPage('');
 }
@@ -806,37 +827,25 @@ async function renderMonthlyPage(filterMonth: string) {
       (plan, index) => `
       <tr>
         <td>${index + 1}</td>
-        <td><strong>${escapeHtml(plan.monthLabel)}</strong><br><span class="text-muted" style="font-size:11px;">${escapeHtml(plan.month)}</span></td>
+        <td><button class="table-link-button" data-action="view" data-id="${plan.id}" type="button">${escapeHtml(plan.month)}</button></td>
         <td>${escapeHtml(plan.operationTime)}</td>
         <td>${escapeHtml(plan.operator)}</td>
         <td><span class="status-badge ${statusClass(plan.status)}">${escapeHtml(plan.status)}</span></td>
         <td><div class="action-buttons">
           <button class="btn btn-primary" data-action="view" data-id="${plan.id}">查看详情</button>
-          <button class="btn btn-secondary" data-action="edit" data-id="${plan.id}">编辑</button>
           <button class="btn btn-danger" data-action="delete" data-id="${plan.id}">删除</button>
         </div></td>
       </tr>`,
     )
     .join('');
   tbody.querySelectorAll<HTMLElement>('[data-action="view"]').forEach((button) => button.addEventListener('click', () => void openMonthlyRunPlan(Number(button.dataset.id))));
-  tbody.querySelectorAll<HTMLElement>('[data-action="edit"]').forEach((button) => button.addEventListener('click', () => void editUpdatePlan(Number(button.dataset.id))));
   tbody.querySelectorAll<HTMLElement>('[data-action="delete"]').forEach((button) => button.addEventListener('click', () => void deleteUpdatePlan(Number(button.dataset.id))));
-}
-
-async function editUpdatePlan(id: number) {
-  const plan = updatePlans.find((item) => item.id === id);
-  if (!plan) return;
-  const month = prompt('修改月份（格式：YYYY-MM）：', plan.month);
-  if (month === null) return;
-  const operator = prompt('修改操作人：', plan.operator);
-  if (operator === null) return;
-  await api(`/api/update-plans/${id}`, { method: 'PATCH', body: JSON.stringify({ month, operator }) });
-  await renderMonthlyPage('');
 }
 
 async function deleteUpdatePlan(id: number) {
   const plan = updatePlans.find((item) => item.id === id);
-  if (!plan || !confirm(`确定删除【${plan.monthLabel}】的更新计划吗？此操作不可撤销。`)) return;
+  if (!plan) return;
+  if (!(await confirmAction(`确定删除【${plan.month}】的更新计划吗？此操作不可撤销。`, { title: '删除更新计划', confirmText: '删除', tone: 'danger' }))) return;
   await api(`/api/update-plans/${id}`, { method: 'DELETE' });
   await renderMonthlyPage('');
 }
@@ -852,8 +861,9 @@ function renderSourceTables() {
       (item) => `
       <tr>
         <td style="text-align:left;">${escapeHtml(item.item)}</td>
+        <td style="text-align:left;">${escapeHtml(item.note || '-')}</td>
         <td class="col-number">${formatNumber(item.value)}</td>
-        <td>${item.action === 'edit' ? `<a href="javascript:void(0)" class="source-edit-link" data-table="fixed" data-id="${item.id}">edit</a>` : '<span class="source-empty-value">-</span>'}</td>
+        <td><a href="javascript:void(0)" class="source-edit-link" data-table="fixed" data-id="${item.id}">edit</a></td>
       </tr>`,
     )
     .join('');
@@ -870,33 +880,35 @@ function renderSourceTables() {
   document.querySelectorAll<HTMLElement>('.source-file-delete').forEach((button) => {
     button.addEventListener('click', () => void clearMetricFile(Number(button.dataset.id)));
   });
+  document.querySelectorAll<HTMLElement>('.source-file-link[data-product-file-id]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      void navigateToProductFile(Number(link.dataset.productFileId));
+    });
+  });
 }
 
 function sourceMetricRow(item: SourceChecklist['shareworksData'][number], table: 'shareworks' | 'futu'): string {
-  const statusIcon =
-    item.status === 'pass'
-      ? '<span class="source-status-icon source-status-pass" title="Pass">&#10003;</span>'
-      : item.status === 'warning'
-        ? '<span class="source-status-icon source-status-warning" title="Warning">&#9888;</span>'
-        : '<span class="source-empty-value">-</span>';
+  const isMissingFile = !item.uploadedFile || item.uploadedFile === 'Not uploaded';
+  const hasUnboundFile = !isMissingFile && !item.productFileId;
+  const hasInputIssue = item.isRequired === 'Required' && (isMissingFile || hasUnboundFile);
   const required = !item.isRequired
     ? '<span class="source-empty-value">-</span>'
     : item.isRequired === 'Required'
       ? '<span class="source-required-badge">Required</span>'
       : '<span class="source-optional-badge">Optional</span>';
   const uploaded =
-    !item.uploadedFile || item.uploadedFile === 'Not uploaded'
+    isMissingFile
       ? `<span class="source-not-uploaded">Not uploaded</span> ${item.fileName ? `<button class="source-upload-btn" data-table="${table}" data-id="${item.id}">Upload</button>` : ''}`
-      : `<div class="source-file-actions"><a href="javascript:void(0)" class="source-file-link" title="${escapeHtml(item.uploadedFile)}">${escapeHtml(item.uploadedFile)}</a><button class="source-file-delete" data-id="${item.id}" title="Delete file">&times;</button></div>`;
-  const label = table === 'shareworks' ? escapeHtml(item.item ?? '') : escapeHtml(item.metric ?? '');
-  return `<tr>
+      : `<div class="source-file-actions">${
+          item.productFileId
+            ? `<a href="/files?fileId=${item.productFileId}" class="source-file-link" data-product-file-id="${item.productFileId}" title="${escapeHtml(item.uploadedFile)}">${escapeHtml(item.uploadedFile)}</a>`
+            : `<span class="source-file-link source-file-link--unbound" title="${escapeHtml(item.uploadedFile)}">${escapeHtml(item.uploadedFile)}</span><span class="source-file-warning">未绑定</span>`
+        }<button class="source-file-delete" data-id="${item.id}" title="Delete file">&times;</button></div>`;
+  return `<tr class="${hasInputIssue ? 'source-row--issue' : ''}">
     <td style="text-align:left;${item.fileName ? ' font-weight:600;' : ''}">${escapeHtml(item.fileName)}</td>
     <td>${required}</td>
     <td>${uploaded}</td>
-    <td style="text-align:left;">${label || '<span class="source-empty-value">-</span>'}</td>
-    <td style="text-align:center;">${statusIcon}</td>
-    <td>${item.value === null || item.value === undefined ? '<span class="source-empty-value">-</span>' : `<span class="col-number">${formatNumber(item.value)}</span>`}</td>
-    <td>${item.action === 'edit' ? `<a href="javascript:void(0)" class="source-edit-link" data-id="${item.id}">edit</a>` : '<span class="source-empty-value">-</span>'}</td>
   </tr>`;
 }
 
@@ -906,7 +918,10 @@ async function editMetric(metricId: number) {
   const next = prompt('Enter new value:', current?.value === null || current?.value === undefined ? '' : String(current.value));
   if (next === null) return;
   const value = Number(next);
-  if (!Number.isFinite(value)) return alert('请输入有效数字');
+  if (!Number.isFinite(value)) {
+    notify('请输入有效数字', { type: 'warning' });
+    return;
+  }
   await api(`/api/source-metrics/${metricId}`, { method: 'PATCH', body: JSON.stringify({ value, status: 'pass' }) });
   if (currentPlan) {
     currentFileList = await api<SourceChecklist>(`/api/update-plans/${currentPlan.id}/checklist`);
@@ -958,7 +973,7 @@ async function confirmUpdate() {
   if (!currentPlan || !currentFileList) return;
   const rows = [...currentFileList.shareworksData, ...currentFileList.futuData].filter((item) => item.status);
   const passCount = rows.filter((item) => item.status === 'pass').length;
-  if (!confirm(`共 ${rows.length} 个数据项，${passCount} 个检查通过。\n确认无误，开始执行数据更新？`)) return;
+  if (!(await confirmAction(`共 ${rows.length} 个数据项，${passCount} 个检查通过。\n确认无误，开始执行数据更新？`, { title: '执行数据更新', confirmText: '开始执行' }))) return;
   await api(`/api/update-plans/${currentPlan.id}/generate-snapshot`, { method: 'POST' });
   await loadMonthlyRunInputs(currentPlan.id);
   await renderMonthlyPage('');
@@ -1010,7 +1025,7 @@ async function submitAccountProfile() {
     phone: el<HTMLInputElement>('accountPhone').value.trim() || null,
   };
   if (!payload.username || !payload.displayName) {
-    alert('账号名和显示名不能为空');
+    notify('账号名和显示名不能为空', { type: 'warning' });
     return;
   }
   try {
@@ -1021,9 +1036,9 @@ async function submitAccountProfile() {
     currentAccount = data.account;
     authStatus = authStatus ? { ...authStatus, user: data.account } : authStatus;
     setCurrentUser(data.account);
-    alert('账号信息已保存');
+    notify('账号信息已保存', { type: 'success' });
   } catch (error) {
-    alert((error as Error).message);
+    notify((error as Error).message, { type: 'error' });
   }
 }
 
@@ -1032,15 +1047,15 @@ async function submitAccountPassword() {
   const newPassword = el<HTMLInputElement>('accountNewPassword').value;
   const confirmNewPassword = el<HTMLInputElement>('accountConfirmNewPassword').value;
   if (!currentPassword || !newPassword || !confirmNewPassword) {
-    alert('请填写当前密码、新密码和确认新密码');
+    notify('请填写当前密码、新密码和确认新密码', { type: 'warning' });
     return;
   }
   if (newPassword !== confirmNewPassword) {
-    alert('两次输入的新密码不一致');
+    notify('两次输入的新密码不一致', { type: 'warning' });
     return;
   }
   if (newPassword.length < 8) {
-    alert('新密码长度至少为 8 位');
+    notify('新密码长度至少为 8 位', { type: 'warning' });
     return;
   }
   try {
@@ -1050,9 +1065,9 @@ async function submitAccountPassword() {
     });
     resetAccountPasswordForm();
     closeAccountPasswordModal();
-    alert('密码已更新');
+    notify('密码已更新', { type: 'success' });
   } catch (error) {
-    alert((error as Error).message);
+    notify((error as Error).message, { type: 'error' });
   }
 }
 
@@ -1231,7 +1246,10 @@ async function submitEmployeesPage() {
   const employeeNumber = el<HTMLInputElement>('employeesPageNumber').value.trim();
   const userId = el<HTMLInputElement>('employeesPageUserId').value.trim();
   const tags = parseTagInput(el<HTMLInputElement>('employeesPageTags').value);
-  if (!employeeName || !employeeNumber) return alert('请填写员工姓名和工号');
+  if (!employeeName || !employeeNumber) {
+    notify('请填写员工姓名和工号', { type: 'warning' });
+    return;
+  }
 
   const payload = { employeeName, employeeNumber, userId, tags };
   if (editingEmployeeId) {
@@ -1246,7 +1264,8 @@ async function submitEmployeesPage() {
 
 async function deleteEmployeesPage(id: number) {
   const item = employees.find((row) => row.id === id);
-  if (!item || !confirm(`确定删除员工【${item.employeeName}】吗？`)) return;
+  if (!item) return;
+  if (!(await confirmAction(`确定删除员工【${item.employeeName}】吗？`, { title: '删除员工', confirmText: '删除', tone: 'danger' }))) return;
   await api(`/api/employees/${id}`, { method: 'DELETE' });
   await loadEmployeesPage();
 }
@@ -1329,7 +1348,10 @@ function renderShareholderTable() {
 async function submitEmployee() {
   const name = el<HTMLInputElement>('newEmpName').value.trim();
   const empId = el<HTMLInputElement>('newEmpId').value.trim();
-  if (!name || !empId) return alert('请填写员工姓名和身份ID');
+  if (!name || !empId) {
+    notify('请填写员工姓名和身份ID', { type: 'warning' });
+    return;
+  }
   await api('/api/settings/employee-mappings', {
     method: 'POST',
     body: JSON.stringify({ name, empId, futuId: el<HTMLInputElement>('newEmpFutu').value.trim(), shareworksId: el<HTMLInputElement>('newEmpShare').value.trim() }),
@@ -1353,14 +1375,18 @@ async function editEmployee(id: number) {
 
 async function deleteEmployee(id: number) {
   const item = employeeMappings.find((row) => row.id === id);
-  if (!item || !confirm(`确定删除员工【${item.name}】吗？`)) return;
+  if (!item) return;
+  if (!(await confirmAction(`确定删除员工【${item.name}】吗？`, { title: '删除员工映射', confirmText: '删除', tone: 'danger' }))) return;
   await api(`/api/settings/employee-mappings/${id}`, { method: 'DELETE' });
   await loadEmployees();
 }
 
 async function submitTrackedPlan() {
   const name = el<HTMLInputElement>('newPlanName').value.trim();
-  if (!name) return alert('请填写计划名称');
+  if (!name) {
+    notify('请填写计划名称', { type: 'warning' });
+    return;
+  }
   await api('/api/settings/tracked-plans', { method: 'POST', body: JSON.stringify({ name, description: el<HTMLTextAreaElement>('newPlanDesc').value.trim() }) });
   el('addPlanManageModal').classList.add('hidden');
   await loadPlans();
@@ -1377,7 +1403,8 @@ async function editTrackedPlan(id: number) {
 
 async function deleteTrackedPlan(id: number) {
   const item = planManagements.find((row) => row.id === id);
-  if (!item || !confirm(`确定删除计划【${item.name}】吗？`)) return;
+  if (!item) return;
+  if (!(await confirmAction(`确定删除计划【${item.name}】吗？`, { title: '删除计划', confirmText: '删除', tone: 'danger' }))) return;
   await api(`/api/settings/tracked-plans/${id}`, { method: 'DELETE' });
   await loadPlans();
 }
@@ -1385,7 +1412,10 @@ async function deleteTrackedPlan(id: number) {
 async function submitShareholder() {
   const name = el<HTMLInputElement>('newShName').value.trim();
   const identity = el<HTMLInputElement>('newShId').value.trim();
-  if (!name || !identity) return alert('请填写股东姓名和身份信息');
+  if (!name || !identity) {
+    notify('请填写股东姓名和身份信息', { type: 'warning' });
+    return;
+  }
   await api('/api/settings/shareholders', { method: 'POST', body: JSON.stringify({ name, identity, track: el<HTMLSelectElement>('newShTrack').value === 'true' }) });
   el('addShareholderModal').classList.add('hidden');
   await loadShareholders();
@@ -1408,59 +1438,10 @@ async function editShareholder(id: number) {
 
 async function deleteShareholder(id: number) {
   const item = shareholders.find((row) => row.id === id);
-  if (!item || !confirm(`确定删除股东【${item.name}】吗？`)) return;
+  if (!item) return;
+  if (!(await confirmAction(`确定删除股东【${item.name}】吗？`, { title: '删除股东', confirmText: '删除', tone: 'danger' }))) return;
   await api(`/api/settings/shareholders/${id}`, { method: 'DELETE' });
   await loadShareholders();
-}
-
-function initFileUpload() {
-  const dropzone = el('uploadDropzone');
-  const fileInput = el<HTMLInputElement>('fileInput');
-  el('dropzoneContent').addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files) addFiles(fileInput.files);
-    fileInput.value = '';
-  });
-  dropzone.addEventListener('dragover', (event) => {
-    event.preventDefault();
-    dropzone.classList.add('drag-over');
-  });
-  dropzone.addEventListener('dragleave', (event) => {
-    event.preventDefault();
-    dropzone.classList.remove('drag-over');
-  });
-  dropzone.addEventListener('drop', (event) => {
-    event.preventDefault();
-    dropzone.classList.remove('drag-over');
-    if (event.dataTransfer?.files) addFiles(event.dataTransfer.files);
-  });
-}
-
-function addFiles(fileList: FileList) {
-  for (const file of Array.from(fileList)) {
-    if (!uploadedFiles.some((existing) => existing.name === file.name && existing.size === file.size)) uploadedFiles.push(file);
-  }
-  renderUploadFileList();
-}
-
-function renderUploadFileList() {
-  const container = el('uploadFileList');
-  container.innerHTML = uploadedFiles
-    .map((file, index) => {
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'file';
-      return `<div class="upload-file-item">
-        <div class="upload-file-icon ${escapeHtml(ext)}">${escapeHtml(ext.slice(0, 4))}</div>
-        <div class="upload-file-info"><div class="upload-file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div><div class="upload-file-size">${formatFileSize(file.size)}</div></div>
-        <button class="upload-file-remove" data-remove="${index}" title="Remove">x</button>
-      </div>`;
-    })
-    .join('');
-  container.querySelectorAll<HTMLElement>('[data-remove]').forEach((button) => {
-    button.addEventListener('click', () => {
-      uploadedFiles.splice(Number(button.dataset.remove), 1);
-      renderUploadFileList();
-    });
-  });
 }
 
 function formatFileSize(bytes: number) {
@@ -1471,7 +1452,10 @@ function formatFileSize(bytes: number) {
 }
 
 function exportData() {
-  if (!currentSummary) return alert('当前月份没有可导出的摘要数据');
+  if (!currentSummary) {
+    notify('当前月份没有可导出的摘要数据', { type: 'warning' });
+    return;
+  }
   let csv = '\ufeff';
   csv += `CapTable 股权数据 - ${formatMonthCN(currentMonth)}\n\n`;
   csv += '【流通股份对账】\n项目,截至日期,上月末,本月新增,本月末\n';
@@ -1568,6 +1552,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initializeApp();
   } catch (error) {
     console.error(error);
-    alert((error as Error).message);
+    notify((error as Error).message, { type: 'error' });
   }
 });

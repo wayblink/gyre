@@ -20,12 +20,18 @@ import type {
   WorkflowTaskPreviewRequest,
 } from '../shared/types.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
+import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { renderOperatorConfigForm, syncOperatorConfigForm } from './workflow/operatorConfigForm.js';
 import {
   applyTaskOperatorDefaults,
+  collectWorkflowTaskParamInputUsages,
   buildDefaultTaskParams,
   buildWorkflowTask,
+  collectWorkflowRuntimeReferences,
+  decodeWorkflowFileParamSelection,
+  encodeWorkflowFileParamSelection,
   getAssertFailureStrategy,
+  getWorkflowFileParamRuntimePath,
   getSheetSections,
   getSqlTableBindings,
   getTaskInputSlots,
@@ -45,6 +51,7 @@ import {
   normalizePersistExcelTask,
   normalizeSchemaAssertTask,
   normalizeShapeAssertTask,
+  normalizeSheetRangeExtractTask,
   normalizeSheetSectionsExtractTask,
   normalizeSqlTask,
   normalizeTaskDependencies,
@@ -58,12 +65,16 @@ type WorkflowPageDeps = {
   escapeHtml: (text: unknown) => string;
   getProductFiles: () => ProductFileRecord[];
   refreshProductFiles: () => Promise<unknown>;
+  notify: NotifyFn;
+  confirmAction: ConfirmActionFn;
 };
 
-export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refreshProductFiles }: WorkflowPageDeps) {
-  const WORKFLOW_NODE_WIDTH = 248;
-  const WORKFLOW_NODE_HEADER_HEIGHT = 78;
-  const WORKFLOW_SLOT_ROW_HEIGHT = 26;
+export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refreshProductFiles, notify, confirmAction }: WorkflowPageDeps) {
+  const WORKFLOW_NODE_WIDTH = 300;
+  const WORKFLOW_NODE_HEADER_BASE_HEIGHT = 80;
+  const WORKFLOW_SLOT_ROW_MIN_HEIGHT = 34;
+  const WORKFLOW_SLOT_LINE_HEIGHT = 13;
+  const WORKFLOW_SLOT_COLUMN_GAP = 6;
   const WORKFLOW_CANVAS_PADDING = 48;
   const WORKFLOW_LAYOUT_COLUMN_GAP = 120;
   const WORKFLOW_LAYOUT_ROW_GAP = 56;
@@ -236,7 +247,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       const target = event.target instanceof HTMLElement ? event.target : null;
       const button = target?.closest<HTMLButtonElement>('[data-continue-workflow-warning]');
       const skipButton = target?.closest<HTMLButtonElement>('[data-skip-workflow-warning]');
-      if (!button && !skipButton) return;
+      const cancelButton = target?.closest<HTMLButtonElement>('[data-cancel-workflow-run]');
+      if (!button && !skipButton && !cancelButton) return;
+      event.preventDefault();
+      if (cancelButton) {
+        void cancelWorkflowRun();
+        return;
+      }
       void continueWorkflowAfterWarning(skipButton ? 'skipped' : 'approved');
     });
     el('btnConfirmWorkflowOperatorPicker').addEventListener('click', confirmAddWorkflowTask);
@@ -250,6 +267,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       renderWorkflowOperatorPickerSummary();
     });
     el('btnRemoveWorkflowTask').addEventListener('click', removeWorkflowTask);
+    el('btnRunWorkflowTaskStep').addEventListener('click', () => void runActiveWorkflowTaskStep());
+    el('btnRetryWorkflowUnfinished').addEventListener('click', () => void retryUnfinishedWorkflowRun());
     el('btnDoneWorkflowTask').addEventListener('click', closeWorkflowTaskModal);
     el('btnCloseWorkflowTaskModal').addEventListener('click', closeWorkflowTaskModal);
     el('workflowTaskModal').addEventListener('click', (event) => {
@@ -475,6 +494,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     if (!workflowDefinitions.find((item) => item.id === workflowRunState.workflowId)) {
       resetWorkflowRunState(activeWorkflowId);
     }
+    applyAutoLayoutToWorkflow(getActiveWorkflow());
     renderWorkflowList();
     renderWorkflowEditor();
   }
@@ -544,7 +564,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   async function exportWorkflow(workflowId: number | null = activeWorkflowId) {
     const workflow = workflowDefinitions.find((item) => item.id === workflowId) ?? null;
-    if (!workflow) return alert('请先选择一个工作流');
+    if (!workflow) {
+      notify('请先选择一个工作流', { type: 'warning' });
+      return;
+    }
     const bundle = await api<WorkflowImportExportBundle>(`/api/workflows/${workflow.id}/export`);
     const safeName = (workflow.code || workflow.name || 'workflow').trim().replace(/[^a-zA-Z0-9-_]+/g, '-');
     downloadJsonFile(`${safeName || 'workflow'}.json`, bundle);
@@ -565,10 +588,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       resetWorkflowRunState(created.id);
       await loadWorkflows(created.id);
       if (created.code !== bundle.workflow.code) {
-        alert(`工作流已导入，code 已调整为 ${created.code}`);
+        notify(`工作流已导入，code 已调整为 ${created.code}`, { type: 'success' });
       }
     } catch (error) {
-      alert(error instanceof Error ? error.message : '导入工作流失败');
+      notify(error instanceof Error ? error.message : '导入工作流失败', { type: 'error' });
     } finally {
       if (input) input.value = '';
     }
@@ -690,7 +713,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   function openWorkflowOperatorPickerModal() {
     if (!workflowOperators.length) {
-      alert('暂无可用算子');
+      notify('暂无可用算子', { type: 'warning' });
       return;
     }
     if (!pendingWorkflowOperatorKey || !workflowOperators.some((item) => getWorkflowOperatorKey(item) === pendingWorkflowOperatorKey)) {
@@ -748,10 +771,338 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     return workflowOperators.find((item) => item.code === task.operatorCode && item.version === task.operatorVersion) ?? null;
   }
 
-  function getWorkflowNodeHeight(task: WorkflowTask, operator?: WorkflowOperator | null) {
-    const slotRows = Math.max(getTaskInputSlots(task, operator).length, getTaskOutputSlots(task, operator).length, 1);
-    return WORKFLOW_NODE_HEADER_HEIGHT + slotRows * WORKFLOW_SLOT_ROW_HEIGHT + 18;
+  function getTaskRuntimeReferenceUsages(task: WorkflowTask) {
+    return collectWorkflowRuntimeReferences(task.params ?? {});
   }
+
+  function getWorkflowFileLabel(fileId: number) {
+    return getProductFiles().find((file) => file.id === fileId)?.originalName ?? `File #${fileId}`;
+  }
+
+  function getTaskParameterInputUsages(task: WorkflowTask) {
+    const paramInputs = collectWorkflowTaskParamInputUsages(task);
+    const consumedRuntimePaths = new Set(
+      paramInputs.filter((usage) => usage.kind === 'runtime').map((usage) => usage.paramPath),
+    );
+    const extraRuntimeRefs = getTaskRuntimeReferenceUsages(task).filter((ref) => !consumedRuntimePaths.has(ref.paramPath));
+    return { paramInputs, extraRuntimeRefs };
+  }
+
+  function estimateWorkflowTextLines(value: unknown, charsPerLine: number) {
+    const text = String(value ?? '').trim();
+    if (!text) return 1;
+    return Math.max(1, Math.ceil(text.length / charsPerLine));
+  }
+
+  function getWorkflowNodeBadge(operator: WorkflowOperator | null) {
+    const category = operator?.category ?? 'Transform';
+    const code =
+      category === 'Input'
+        ? 'input'
+        : category === 'Output'
+          ? 'output'
+          : category === 'Validation'
+            ? 'validation'
+            : 'transform';
+    return {
+      code,
+      label: operator?.code ?? 'unknown.operator',
+      title: operator ? `${operator.name} · ${operator.code}` : 'Unknown operator',
+    };
+  }
+
+  function getWorkflowNodeSlotRows(task: WorkflowTask, operator?: WorkflowOperator | null) {
+    const { paramInputs, extraRuntimeRefs } = getTaskParameterInputUsages(task);
+    const inputSlots = getTaskInputSlots(task, operator).map((slot) => {
+      const binding = task.inputs?.[slot];
+      return {
+        name: slot,
+        binding: binding?.from ? `${binding.from}.${binding.slot}` : 'Not connected',
+      };
+    });
+    const paramRows = paramInputs.map((usage) => ({
+      name: usage.paramPath,
+      binding: usage.kind === 'runtime' ? usage.runtimePath : getWorkflowFileLabel(usage.fileId),
+    }));
+    const runtimeRows = extraRuntimeRefs.map((ref) => ({
+      name: ref.paramPath,
+      binding: ref.runtimePath,
+    }));
+    const inputs = [...inputSlots, ...paramRows, ...runtimeRows];
+    const outputs = getTaskOutputSlots(task, operator).map((slot) => ({ name: slot, binding: '' }));
+    return {
+      inputs,
+      outputs,
+      rowCount: Math.max(inputs.length, outputs.length, 1),
+    };
+  }
+
+  function estimateWorkflowSlotHeight(row: { name: string; binding: string }) {
+    const nameLines = estimateWorkflowTextLines(row.name, 20);
+    const bindingLines = row.binding ? estimateWorkflowTextLines(row.binding, 18) : 0;
+    const contentLines = nameLines + bindingLines;
+    return Math.max(WORKFLOW_SLOT_ROW_MIN_HEIGHT, contentLines * WORKFLOW_SLOT_LINE_HEIGHT + 10);
+  }
+
+  function getWorkflowNodeHeight(task: WorkflowTask, operator?: WorkflowOperator | null) {
+    const { inputs, outputs, rowCount } = getWorkflowNodeSlotRows(task, operator);
+    const taskNameHeight = estimateWorkflowTextLines(task.name, 24) * 16;
+    const operatorHeight = estimateWorkflowTextLines(operator?.name ?? task.operatorCode, 36) * 13;
+    const metaHeight = estimateWorkflowTextLines(task.id, 42) * 12;
+    const slotHeight = Array.from({ length: rowCount }).reduce<number>((sum, _, index) => {
+      const inputHeight = inputs[index] ? estimateWorkflowSlotHeight(inputs[index]) : WORKFLOW_SLOT_ROW_MIN_HEIGHT;
+      const outputHeight = outputs[index] ? estimateWorkflowSlotHeight(outputs[index]) : WORKFLOW_SLOT_ROW_MIN_HEIGHT;
+      return sum + Math.max(inputHeight, outputHeight);
+    }, 0);
+    const slotGaps = Math.max(0, rowCount - 1) * WORKFLOW_SLOT_COLUMN_GAP;
+    return WORKFLOW_NODE_HEADER_BASE_HEIGHT + taskNameHeight + operatorHeight + metaHeight + slotHeight + slotGaps;
+  }
+
+  function getNestedValueAtPath(source: Record<string, unknown>, path: string): unknown {
+    return path
+      .split('.')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .reduce<unknown>((current, segment) => {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+        return (current as Record<string, unknown>)[segment];
+      }, source);
+  }
+
+  function setNestedValueAtPath(source: Record<string, unknown>, path: string, value: unknown) {
+    const segments = path
+      .split('.')
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    if (!segments.length) return;
+    let current: Record<string, unknown> = source;
+    segments.slice(0, -1).forEach((segment) => {
+      const existing = current[segment];
+      if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
+        current[segment] = {};
+      }
+      current = current[segment] as Record<string, unknown>;
+    });
+    current[segments[segments.length - 1] as string] = value;
+  }
+
+  function flattenWorkflowRuntimeSchema(
+    schema: WorkflowDefinition['runtimeParamsSchema'],
+    parentPath = '',
+  ): Array<{ path: string; required: boolean; type: string; label: string }> {
+    return Object.entries(schema ?? {}).flatMap(([key, field]) => {
+      const nextPath = parentPath ? `${parentPath}.${key}` : key;
+      if (field.type === 'object' && field.properties) {
+        return flattenWorkflowRuntimeSchema(field.properties, nextPath);
+      }
+      return [
+        {
+          path: nextPath,
+          required: field.required === true,
+          type: field.type,
+          label: field.label ?? nextPath,
+        },
+      ];
+    });
+  }
+
+  function formatRuntimeSummaryValue(value: unknown): string {
+    if (value === undefined) return 'No default';
+    if (value === null) return 'null';
+    if (typeof value === 'string') return value || '""';
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  function stringifyWorkflowJson(value: unknown): string {
+    return JSON.stringify(value ?? {}, null, 2);
+  }
+
+  function isRuntimeFileParameter(entry: { path: string; type: string }) {
+    return entry.type === 'object' && entry.path.startsWith('fileRefs.');
+  }
+
+  function runtimeProductFileId(value: unknown): number | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const record = value as Record<string, unknown>;
+    if (record.provider !== 'product-files') return null;
+    const fileId = Number(record.id);
+    return Number.isInteger(fileId) && fileId > 0 ? fileId : null;
+  }
+
+  function workflowRuntimeDefaultFileId(workflow: WorkflowDefinition, runtimePath: string): number | null {
+    return runtimeProductFileId(getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, runtimePath));
+  }
+
+  function setWorkflowRuntimeDefaultFileId(workflow: WorkflowDefinition, runtimePath: string, fileId: number | null) {
+    const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
+    setNestedValueAtPath(defaults, runtimePath, fileId ? { provider: 'product-files', id: fileId } : undefined);
+    workflow.runtimeParamsDefaults = defaults;
+  }
+
+  function formatRuntimeDefaultDisplay(entry: { path: string; type: string }, value: unknown): string {
+    if (isRuntimeFileParameter(entry)) {
+      const fileId = runtimeProductFileId(value);
+      if (!fileId) return 'No default';
+      const file = getProductFiles().find((item) => item.id === fileId);
+      return file ? `${file.originalName} (#${fileId})` : `File #${fileId}`;
+    }
+    return formatRuntimeSummaryValue(value);
+  }
+
+  function getRuntimeParameterLabel(path: string): string {
+    const workflow = getActiveWorkflow();
+    if (!workflow) return path;
+    return flattenWorkflowRuntimeSchema(workflow.runtimeParamsSchema).find((entry) => entry.path === path)?.label ?? path;
+  }
+
+  function formatRuntimeFileSelectionLabel(runtimePath: string): string {
+    const label = getRuntimeParameterLabel(runtimePath);
+    return label === runtimePath ? `Default file · ${runtimePath}` : `Default file · ${label}`;
+  }
+
+  function renderRuntimeDefaultEditor(entry: { path: string; type: string }, value: unknown) {
+    const pathAttr = escapeHtml(entry.path);
+    if (isRuntimeFileParameter(entry)) {
+      const currentValue = runtimeProductFileId(value);
+      const options = [
+        `<option value="">No default</option>`,
+        ...getProductFiles().map(
+          (file) =>
+            `<option value="${file.id}"${file.id === currentValue ? ' selected' : ''}>${escapeHtml(file.originalName)} (#${file.id})</option>`,
+        ),
+      ];
+      return `<select class="workflow-runtime-summary__control" data-runtime-default-path="${pathAttr}" data-runtime-default-type="fileRef">${options.join('')}</select>`;
+    }
+    if (entry.type === 'number') {
+      return `<input class="workflow-runtime-summary__control" type="number" value="${escapeHtml(value ?? '')}" data-runtime-default-path="${pathAttr}" data-runtime-default-type="number">`;
+    }
+    if (entry.type === 'boolean') {
+      return `
+        <select class="workflow-runtime-summary__control" data-runtime-default-path="${pathAttr}" data-runtime-default-type="boolean">
+          <option value="">No default</option>
+          <option value="true"${value === true ? ' selected' : ''}>true</option>
+          <option value="false"${value === false ? ' selected' : ''}>false</option>
+        </select>`;
+    }
+    return `<input class="workflow-runtime-summary__control" value="${escapeHtml(value ?? '')}" data-runtime-default-path="${pathAttr}" data-runtime-default-type="string">`;
+  }
+
+  function syncRuntimeDefaultFromControl(control: HTMLInputElement | HTMLSelectElement) {
+    const workflow = getActiveWorkflow();
+    const path = control.dataset.runtimeDefaultPath ?? '';
+    const type = control.dataset.runtimeDefaultType ?? '';
+    if (!workflow || !path) return;
+
+    const rawValue = control.value.trim();
+    let value: unknown = rawValue;
+    if (rawValue === '') {
+      value = undefined;
+    } else if (type === 'number') {
+      value = Number(rawValue);
+    } else if (type === 'fileRef') {
+      value = { provider: 'product-files', id: Number(rawValue) };
+    } else if (type === 'boolean') {
+      value = rawValue === 'true';
+    }
+
+    const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
+    setNestedValueAtPath(defaults, path, value);
+    workflow.runtimeParamsDefaults = defaults;
+    resetWorkflowRunState(workflow.id);
+    renderWorkflowRuntimeParamsSummary(workflow);
+  }
+
+  function applyRuntimeJsonFromTextareas() {
+    const workflow = getActiveWorkflow();
+    if (!workflow) return;
+    try {
+      const schema = JSON.parse(
+        (document.querySelector('[data-workflow-runtime-json="schema"]') as HTMLTextAreaElement | null)?.value || '{}',
+      ) as WorkflowDefinition['runtimeParamsSchema'];
+      const defaults = JSON.parse(
+        (document.querySelector('[data-workflow-runtime-json="defaults"]') as HTMLTextAreaElement | null)?.value || '{}',
+      ) as WorkflowDefinition['runtimeParamsDefaults'];
+      workflow.runtimeParamsSchema = schema;
+      workflow.runtimeParamsDefaults = defaults;
+      resetWorkflowRunState(workflow.id);
+      renderWorkflowEditor();
+      notify('Runtime parameters 已应用，点击 Save 后保存到工作流', { type: 'success' });
+    } catch (error) {
+      notify(`Runtime parameters JSON 格式错误：${(error as Error).message}`, { type: 'error' });
+    }
+  }
+
+  function renderWorkflowRuntimeParamsSummary(workflow: WorkflowDefinition | null) {
+    const container = el('workflowRuntimeParamsSummary');
+    if (!workflow) {
+      container.classList.add('hidden');
+      container.innerHTML = '';
+      return;
+    }
+
+    const entries = flattenWorkflowRuntimeSchema(workflow.runtimeParamsSchema);
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+      <div class="workflow-runtime-summary__header">
+        <div class="workflow-runtime-summary__title">Runtime Parameters</div>
+        <button class="btn btn-secondary btn-sm" type="button" data-workflow-runtime-json-apply>Apply JSON</button>
+      </div>
+      <div class="workflow-runtime-summary__list">
+        ${
+          entries.length
+            ? entries
+                .map((entry) => {
+                  const rawDefaultValue = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, entry.path);
+                  const defaultValue = formatRuntimeDefaultDisplay(entry, rawDefaultValue);
+                  return `
+                    <div class="workflow-runtime-summary__item">
+                      <div class="workflow-runtime-summary__item-top">
+                        <span class="workflow-runtime-summary__path">${escapeHtml(entry.path)}</span>
+                        <span class="workflow-runtime-summary__type">${escapeHtml(entry.type)}</span>
+                        ${entry.required ? '<span class="workflow-runtime-summary__required">required</span>' : ''}
+                      </div>
+                      <div class="workflow-runtime-summary__default">default: ${escapeHtml(defaultValue)}</div>
+                      ${renderRuntimeDefaultEditor(entry, rawDefaultValue)}
+                    </div>`;
+                })
+                .join('')
+            : '<div class="workflow-runtime-summary__empty">No runtime parameter schema</div>'
+        }
+      </div>
+      <details class="workflow-runtime-summary__raw">
+        <summary>Runtime parameters JSON</summary>
+        <div class="workflow-runtime-summary__raw-grid">
+          <label>
+            <span>schema</span>
+            <textarea class="workflow-runtime-summary__raw-textarea" spellcheck="false" data-workflow-runtime-json="schema">${escapeHtml(
+              stringifyWorkflowJson(workflow.runtimeParamsSchema),
+            )}</textarea>
+          </label>
+          <label>
+            <span>defaults</span>
+            <textarea class="workflow-runtime-summary__raw-textarea" spellcheck="false" data-workflow-runtime-json="defaults">${escapeHtml(
+              stringifyWorkflowJson(workflow.runtimeParamsDefaults),
+            )}</textarea>
+          </label>
+        </div>
+      </details>
+    `;
+
+    container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]').forEach((control) => {
+      control.addEventListener('change', () => syncRuntimeDefaultFromControl(control));
+      control.addEventListener('input', () => {
+        if (control instanceof HTMLInputElement) syncRuntimeDefaultFromControl(control);
+      });
+    });
+    container.querySelector<HTMLElement>('[data-workflow-runtime-json-apply]')?.addEventListener('click', applyRuntimeJsonFromTextareas);
+  }
+
 
   function getEdgePath(startX: number, startY: number, endX: number, endY: number) {
     const deltaX = Math.max((endX - startX) * 0.45, 48);
@@ -997,20 +1348,6 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     return workflowRunState.taskStates[taskId] ?? 'pending';
   }
 
-  function getWorkflowNodeCategoryBadge(operator: WorkflowOperator | null) {
-    const category = operator?.category ?? 'Transform';
-    if (category === 'Input') {
-      return { code: 'input', label: '输入' };
-    }
-    if (category === 'Output') {
-      return { code: 'output', label: '输出' };
-    }
-    if (category === 'Validation') {
-      return { code: 'validation', label: '断言' };
-    }
-    return { code: 'transform', label: '计算' };
-  }
-
   function renderWorkflowRunPanel() {
     const panel = el('workflowRunPanel');
     const summary = el('workflowRunSummary');
@@ -1112,7 +1449,11 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       .join('');
 
     if (workflowRunState.errorMessage) {
-      footer.innerHTML = `<span class="workflow-run-panel__error">${escapeHtml(workflowRunState.errorMessage)}</span>`;
+      footer.innerHTML = `
+        <div class="workflow-run-panel__review">
+          <span class="workflow-run-panel__error">${escapeHtml(workflowRunState.errorMessage)}</span>
+        </div>
+      `;
       return;
     }
     if (!workflowRunState.isRunning && hasWaitingWarning) {
@@ -1120,9 +1461,23 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         .map((taskId) => orderedTasks.find((task) => task.id === taskId)?.name ?? taskId)
         .join(', ');
       footer.innerHTML = `
-        <span class="workflow-run-panel__warning">Warning requires review: ${escapeHtml(waitingNames)}</span>
-        <button class="btn btn-warning btn-sm" type="button" data-continue-workflow-warning>Continue</button>
-        <button class="btn btn-secondary btn-sm" type="button" data-skip-workflow-warning>Skip Downstream</button>
+        <div class="workflow-run-panel__review">
+          <span class="workflow-run-panel__warning">Warning requires review: ${escapeHtml(waitingNames)}</span>
+          <div class="workflow-run-panel__actions">
+            <button class="btn btn-warning btn-sm" type="button" data-continue-workflow-warning>Continue</button>
+            <button class="btn btn-secondary btn-sm" type="button" data-cancel-workflow-run>Cancel</button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+    if (workflowRunState.isRunning && workflowRunState.runId) {
+      footer.innerHTML = `
+        <div class="workflow-run-panel__review">
+          <div class="workflow-run-panel__actions">
+            <button class="btn btn-secondary btn-sm" type="button" data-cancel-workflow-run>Cancel</button>
+          </div>
+        </div>
       `;
       return;
     }
@@ -1134,10 +1489,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         : '<span class="workflow-run-panel__hint">节点会按依赖顺序显示执行状态。</span>';
   }
 
-  function autoLayoutActiveWorkflow() {
-    const workflow = getActiveWorkflow();
-    if (!workflow || workflow.tasks.length <= 1) return;
-
+  function applyAutoLayoutToWorkflow(workflow: WorkflowDefinition | null) {
+    if (!workflow || workflow.tasks.length <= 1) return false;
     const taskMap = getWorkflowTaskMap(workflow);
     const inDegree = new Map<string, number>();
     const outgoing = new Map<string, string[]>();
@@ -1210,6 +1563,11 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           });
       });
 
+    return true;
+  }
+
+  function autoLayoutActiveWorkflow() {
+    if (!applyAutoLayoutToWorkflow(getActiveWorkflow())) return;
     activeWorkflowPreview = null;
     workflowPreviewPage = 1;
     renderWorkflowEditor();
@@ -1283,9 +1641,11 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const dag = el('workflowDag');
     if (!workflow) {
       dag.innerHTML = '<div class="workflow-empty">请先创建或选择工作流</div>';
+      renderWorkflowRuntimeParamsSummary(null);
       renderTaskEditor();
       return;
     }
+    renderWorkflowRuntimeParamsSummary(workflow);
 
     const operatorsByTaskId = new Map(workflow.tasks.map((task) => [task.id, getWorkflowOperator(task)]));
     const { width: canvasWidth, height: canvasHeight } = getWorkflowCanvasSize(workflow);
@@ -1297,13 +1657,22 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           ${workflow.tasks
             .map((task) => {
               const operator = operatorsByTaskId.get(task.id) ?? null;
-              const categoryBadge = getWorkflowNodeCategoryBadge(operator);
+              const operatorBadge = getWorkflowNodeBadge(operator);
               const inputs = Object.entries(task.inputs ?? {});
               const inputSlots = getTaskInputSlots(task, operator);
               const outputSlots = getTaskOutputSlots(task, operator);
-              const slotRows = Math.max(inputSlots.length, outputSlots.length, 1);
+              const { paramInputs, extraRuntimeRefs } = getTaskParameterInputUsages(task);
+              const runtimeCount =
+                paramInputs.filter((usage) => usage.kind === 'runtime').length + extraRuntimeRefs.length;
+              const renderedInputRows = inputSlots.length + paramInputs.length + extraRuntimeRefs.length;
+              const slotRows = Math.max(renderedInputRows, outputSlots.length, 1);
               const runState = getWorkflowRunTaskState(task.id);
               const controlDependencyCount = getWorkflowControlDependencies(task).length;
+              const metaParts = [
+                renderedInputRows ? `${renderedInputRows} inputs` : '',
+                runtimeCount ? `${runtimeCount} runtime` : '',
+                `${controlDependencyCount} deps`,
+              ].filter(Boolean);
               return `
               <div
                 class="workflow-node ${task.id === activeWorkflowTaskId ? 'is-active' : ''} ${runState ? `workflow-node--${runState}` : ''}"
@@ -1315,10 +1684,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
               >
                 <div class="workflow-node__title">
                   <div class="workflow-node__id">${escapeHtml(task.name)}</div>
-                  <span class="workflow-node__category workflow-node__category--${escapeHtml(categoryBadge.code)}">${escapeHtml(categoryBadge.label)}</span>
+                  <span class="workflow-node__category workflow-node__category--${escapeHtml(operatorBadge.code)}" title="${escapeHtml(operatorBadge.title)}">${escapeHtml(operatorBadge.label)}</span>
                 </div>
                 <div class="workflow-node__step">${escapeHtml(operator?.name ?? task.operatorCode)}</div>
-                <div class="workflow-node__meta">${escapeHtml(task.id)} · ${inputs.length} inputs · ${controlDependencyCount} deps</div>
+                <div class="workflow-node__meta">${escapeHtml(task.id)} · ${escapeHtml(metaParts.join(' · '))}</div>
                 <div class="workflow-node__slots" style="--workflow-slot-count:${slotRows};">
                   <div class="workflow-node__slot-column workflow-node__slot-column--inputs">
                     ${inputSlots.length
@@ -1340,7 +1709,40 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                             </div>`;
                           })
                           .join('')
-                      : '<div class="workflow-node__slot workflow-node__slot--empty">No inputs</div>'}
+                      : ''}
+                    ${
+                      paramInputs.length
+                        ? paramInputs
+                            .map(
+                              (usage) => `
+                              <div class="workflow-node__slot workflow-node__slot--${usage.kind === 'runtime' ? 'runtime' : 'parameter'}">
+                                <span class="workflow-node__slot-name">${escapeHtml(usage.paramPath)}</span>
+                                <span class="workflow-node__slot-binding">${escapeHtml(
+                                  usage.kind === 'runtime' ? usage.runtimePath : getWorkflowFileLabel(usage.fileId),
+                                )}</span>
+                              </div>`,
+                            )
+                            .join('')
+                        : ''
+                    }
+                    ${
+                      extraRuntimeRefs.length
+                        ? extraRuntimeRefs
+                            .map(
+                              (ref) => `
+                              <div class="workflow-node__slot workflow-node__slot--runtime">
+                                <span class="workflow-node__slot-name">${escapeHtml(ref.paramPath)}</span>
+                                <span class="workflow-node__slot-binding">${escapeHtml(ref.runtimePath)}</span>
+                              </div>`,
+                            )
+                            .join('')
+                        : ''
+                    }
+                    ${
+                      !inputSlots.length && !paramInputs.length && !extraRuntimeRefs.length
+                        ? '<div class="workflow-node__slot workflow-node__slot--empty">No inputs</div>'
+                        : ''
+                    }
                   </div>
                   <div class="workflow-node__slot-column workflow-node__slot-column--outputs">
                     ${outputSlots
@@ -1382,6 +1784,14 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       });
       node.addEventListener('click', (event) => {
         event.preventDefault();
+        if (workflowDragState?.moved) return;
+        const taskId = node.dataset.taskId ?? '';
+        if (!taskId) return;
+        activeWorkflowTaskId = taskId;
+        activeWorkflowPreview = null;
+        workflowPreviewPage = 1;
+        renderWorkflowEditor();
+        openWorkflowTaskModal();
       });
     });
 
@@ -1461,6 +1871,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       structured.classList.add('hidden');
       dependencies.classList.add('hidden');
       preview.classList.add('hidden');
+      el<HTMLButtonElement>('btnRunWorkflowTaskStep').classList.add('hidden');
+      el<HTMLButtonElement>('btnRetryWorkflowUnfinished').classList.add('hidden');
       closeWorkflowTaskModal();
       return;
     }
@@ -1468,6 +1880,20 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el<HTMLInputElement>('taskNameInput').value = task.name;
     el<HTMLTextAreaElement>('taskDescriptionInput').value = task.description ?? '';
     el<HTMLTextAreaElement>('taskParamsInput').value = JSON.stringify(task.params ?? {}, null, 2);
+    const stepState = getWorkflowRunTaskState(task.id);
+    const canRetryStep =
+      Boolean(workflowRunState.runId) &&
+      workflowRunState.workflowId === getActiveWorkflow()?.id &&
+      !workflowRunState.isRunning &&
+      (stepState === 'failed' || stepState === 'blocked' || stepState === 'skipped' || stepState === 'pending');
+    const runStepButton = el<HTMLButtonElement>('btnRunWorkflowTaskStep');
+    runStepButton.classList.toggle('hidden', !canRetryStep);
+    runStepButton.textContent = stepState === 'pending' ? 'Run Step' : 'Retry Step';
+    const retryUnfinishedButton = el<HTMLButtonElement>('btnRetryWorkflowUnfinished');
+    retryUnfinishedButton.classList.toggle(
+      'hidden',
+      !workflowRunState.runId || workflowRunState.workflowId !== getActiveWorkflow()?.id || workflowRunState.isRunning,
+    );
     renderStructuredTaskParams(task);
     dependencies.classList.remove('hidden');
     renderTaskDependencies(task);
@@ -1840,7 +2266,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       ${bindings
         .map(
           (binding, index) => `
-          <div class="workflow-structured__grid" data-sql-table-row="${index}">
+          <div class="workflow-structured__grid workflow-structured__grid--sql-table" data-sql-table-row="${index}">
             <div>
               <label class="workflow-structured__label">Table Name</label>
               <input class="search-input workflow-input" data-sql-table-name="${index}" value="${escapeHtml(binding.tableName)}" placeholder="tablea">
@@ -1857,9 +2283,22 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                   .join('')}
               </select>
             </div>
-            <div class="workflow-structured__actions">
-              <button class="btn btn-secondary btn-sm" type="button" data-preview-sql-table="${index}">Preview</button>
-              <button class="btn btn-secondary btn-sm" type="button" data-remove-sql-table="${index}">Remove</button>
+            <div class="workflow-structured__actions workflow-structured__actions--sql-table">
+              <button class="workflow-icon-btn" type="button" data-preview-sql-table="${index}" aria-label="Preview table" title="Preview table">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6"></circle>
+                  <path d="M16 16l5 5"></path>
+                </svg>
+              </button>
+              <button class="workflow-icon-btn workflow-icon-btn--danger" type="button" data-remove-sql-table="${index}" aria-label="Remove table" title="Remove table">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18"></path>
+                  <path d="M8 6V4h8v2"></path>
+                  <path d="M19 6l-1 14H6L5 6"></path>
+                  <path d="M10 11v6"></path>
+                  <path d="M14 11v6"></path>
+                </svg>
+              </button>
             </div>
           </div>`,
         )
@@ -2177,11 +2616,11 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const keys = new Set<string>();
 
     if (isSheetRangeExtractTask(task)) {
-      ['fileId', 'sheetName', 'range', 'headerRow'].forEach((key) => keys.add(key));
+      ['fileRef', 'fileId', 'sheetName', 'range', 'headerRow'].forEach((key) => keys.add(key));
     }
 
     if (isSheetSectionsExtractTask(task)) {
-      ['fileId', 'sheetName', 'sectionMode', 'sections', 'splitByColumn'].forEach((key) => keys.add(key));
+      ['fileRef', 'fileId', 'sheetName', 'sectionMode', 'sections', 'splitByColumn'].forEach((key) => keys.add(key));
     }
 
     if (isSqlTableBackedTask(task)) {
@@ -2244,13 +2683,21 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
     structured.classList.remove('hidden');
 
+    const workflow = getActiveWorkflow();
     const fileSelect = el<HTMLSelectElement>('workflowPreviewFileId');
+    const runtimeFilePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
+    const runtimeDefaultFileId = workflow && runtimeFilePath ? workflowRuntimeDefaultFileId(workflow, runtimeFilePath) : null;
     fileSelect.innerHTML = [
-      '<option value="">Select file</option>',
+      `<option value="">${runtimeFilePath ? 'No default file' : 'Select file'}</option>`,
       ...getProductFiles().map((file) => `<option value="${file.id}">${escapeHtml(file.originalName)}</option>`),
-    ].join('');
+    ]
+      .join('');
+    fileSelect.dataset.runtimeDefaultPath = runtimeFilePath ?? '';
+    fileSelect.dataset.fileParamMode = runtimeFilePath ? 'runtime-default' : 'direct';
+    fileSelect.title = runtimeFilePath ? formatRuntimeFileSelectionLabel(runtimeFilePath) : '';
 
     const fileRow = el('workflowStructuredFileRow');
+    fileRow.querySelector('label')!.textContent = runtimeFilePath ? 'Default file' : 'File Source';
     const sheetRow = el('workflowStructuredSheetRow');
     const rangeRow = el('workflowStructuredRangeRow');
     const headerRow = el('workflowStructuredHeaderRow');
@@ -2295,13 +2742,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     inputGuardsRow.classList.add('hidden');
 
     if (isSheetRangeExtractTask(task)) {
+      normalizeSheetRangeExtractTask(task);
       fileRow.classList.remove('hidden');
       sheetRow.classList.remove('hidden');
       rangeRow.classList.remove('hidden');
       headerRow.classList.remove('hidden');
 
-      const fileId = typeof task.params.fileId === 'number' && Number.isFinite(task.params.fileId) ? task.params.fileId : null;
-      fileSelect.value = fileId ? String(fileId) : '';
+      fileSelect.value = runtimeFilePath ? String(runtimeDefaultFileId ?? '') : encodeWorkflowFileParamSelection(task.params.fileRef ?? task.params.fileId);
       el<HTMLInputElement>('workflowPreviewSheetName').value = String(task.params.sheetName ?? '');
       el<HTMLInputElement>('workflowPreviewRange').value = String(task.params.range ?? '');
       el<HTMLInputElement>('workflowPreviewHeaderRow').value =
@@ -2314,8 +2761,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       sheetRow.classList.remove('hidden');
       sectionsRow.classList.remove('hidden');
 
-      const fileId = typeof task.params.fileId === 'number' && Number.isFinite(task.params.fileId) ? task.params.fileId : null;
-      fileSelect.value = fileId ? String(fileId) : '';
+      fileSelect.value = runtimeFilePath ? String(runtimeDefaultFileId ?? '') : encodeWorkflowFileParamSelection(task.params.fileRef ?? task.params.fileId);
       el<HTMLInputElement>('workflowPreviewSheetName').value = String(task.params.sheetName ?? '');
       renderSheetSections(task);
     }
@@ -2401,6 +2847,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   function syncStructuredTaskParamsToState() {
     const task = getActiveWorkflowTask();
     if (!task) return;
+    const workflow = getActiveWorkflow();
     const operator = getWorkflowOperator(task);
     const genericSyncResult = syncOperatorConfigForm({
       container: el('workflowStructuredGenericParamsRow'),
@@ -2414,8 +2861,17 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
 
     if (isSheetRangeExtractTask(task)) {
-      const selected = el<HTMLSelectElement>('workflowPreviewFileId').value;
-      task.params.fileId = selected ? Number(selected) : null;
+      const fileSelect = el<HTMLSelectElement>('workflowPreviewFileId');
+      const selected = fileSelect.value;
+      const runtimePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
+      if (workflow && runtimePath) {
+        setWorkflowRuntimeDefaultFileId(workflow, runtimePath, selected ? Number(selected) : null);
+        task.params.fileRef = { $fromRuntime: runtimePath };
+        delete task.params.fileId;
+      } else {
+        task.params.fileRef = decodeWorkflowFileParamSelection(selected);
+        delete task.params.fileId;
+      }
       task.params.sheetName = el<HTMLInputElement>('workflowPreviewSheetName').value.trim();
       task.params.range = el<HTMLInputElement>('workflowPreviewRange').value.trim();
       const headerRowValue = el<HTMLInputElement>('workflowPreviewHeaderRow').value.trim();
@@ -2423,8 +2879,17 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
 
     if (isSheetSectionsExtractTask(task)) {
-      const selected = el<HTMLSelectElement>('workflowPreviewFileId').value;
-      task.params.fileId = selected ? Number(selected) : null;
+      const fileSelect = el<HTMLSelectElement>('workflowPreviewFileId');
+      const selected = fileSelect.value;
+      const runtimePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
+      if (workflow && runtimePath) {
+        setWorkflowRuntimeDefaultFileId(workflow, runtimePath, selected ? Number(selected) : null);
+        task.params.fileRef = { $fromRuntime: runtimePath };
+        delete task.params.fileId;
+      } else {
+        task.params.fileRef = decodeWorkflowFileParamSelection(selected);
+        delete task.params.fileId;
+      }
       task.params.sheetName = el<HTMLInputElement>('workflowPreviewSheetName').value.trim();
       task.params.sectionMode = el<HTMLSelectElement>('workflowSectionMode')?.value ?? 'manual';
       task.params.splitByColumn = el<HTMLInputElement>('workflowSectionSplitByColumn')?.value.trim() ?? '';
@@ -2574,14 +3039,23 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       workflowId: workflow.id,
       taskId: task.id,
       tasks: workflow.tasks,
+      runtimeParamsSchema: workflow.runtimeParamsSchema,
+      runtimeParamsDefaults: workflow.runtimeParamsDefaults,
+      runtimeParameters: workflow.runtimeParamsDefaults,
     };
 
-    activeWorkflowPreview = await api<WorkflowTaskPreviewResult>('/api/workflows/preview-task', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    workflowPreviewPage = 1;
-    renderWorkflowPreview();
+    try {
+      activeWorkflowPreview = await api<WorkflowTaskPreviewResult>('/api/workflows/preview-task', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      workflowPreviewPage = 1;
+      renderWorkflowPreview();
+    } catch (error) {
+      activeWorkflowPreview = null;
+      renderWorkflowPreview();
+      notify(`预览失败：${error instanceof Error ? error.message : '未知错误'}`, { type: 'error' });
+    }
   }
 
   function getWorkflowRunLastResult(run: WorkflowRunRecord): WorkflowTaskPreviewResult | null {
@@ -2681,12 +3155,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       if (run.status === 'completed' || run.status === 'completed_with_warnings' || run.status === 'skipped') {
         window.setTimeout(() => {
           if (workflowRunState.runId === runId && !workflowRunState.isRunning) {
-            alert(
+            notify(
               run.status === 'skipped'
                 ? '任务已跳过后续流程'
                 : run.status === 'completed_with_warnings'
                   ? '任务完成（包含 Warning）'
                   : '任务完成',
+              { type: run.status === 'completed_with_warnings' ? 'warning' : 'success' },
             );
           }
         }, 120);
@@ -2699,7 +3174,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const workflow = getActiveWorkflow();
     if (!workflow) return;
     if (!workflow.tasks.length) {
-      alert('当前工作流没有任务');
+      notify('当前工作流没有任务', { type: 'warning' });
       return;
     }
 
@@ -2744,7 +3219,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const waitingTaskIds = workflowRunState.waitingForApprovalTaskIds.filter(Boolean);
     if (!waitingTaskIds.length) return;
     if (!workflowRunState.runId) {
-      alert('当前没有可继续的工作流运行');
+      notify('当前没有可继续的工作流运行', { type: 'warning' });
       return;
     }
 
@@ -2763,6 +3238,102 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     await pollWorkflowRunUntilSettled(result.run.id, workflow, { minimumPollCount: 2 });
   }
 
+  async function cancelWorkflowRun() {
+    const workflow = getActiveWorkflow();
+    if (!workflow || !workflowRunState.runId) return;
+    workflowRunState.isRunning = true;
+    workflowRunState.message = `Cancelling ${workflow.name}`;
+    workflowRunState.errorMessage = null;
+    renderWorkflowEditor();
+
+    try {
+      const result = await api<WorkflowExecutionResult>(`/api/workflow-runs/${workflowRunState.runId}/cancel`, {
+        method: 'POST',
+      });
+      if (!result.run) throw new Error('Workflow run was not returned');
+      applyWorkflowRunRecord(result.run, workflow);
+    } catch (error) {
+      workflowRunState.isRunning = false;
+      workflowRunState.message = 'Workflow cancel failed';
+      workflowRunState.errorMessage = error instanceof Error ? error.message : 'Unknown cancel error';
+      renderWorkflowEditor();
+      throw error;
+    }
+  }
+
+  async function retryUnfinishedWorkflowRun() {
+    const workflow = getActiveWorkflow();
+    if (!workflow || !workflowRunState.runId) return;
+    workflowRunState.isOpen = true;
+    workflowRunState.isRunning = true;
+    workflowRunState.message = `Retrying unfinished steps for ${workflow.name}`;
+    workflowRunState.errorMessage = null;
+    renderWorkflowEditor();
+
+    try {
+      await api<WorkflowExecutionResult>(`/api/workflow-runs/${workflowRunState.runId}/retry-unfinished`, {
+        method: 'POST',
+        body: JSON.stringify({ tasks: workflow.tasks }),
+      });
+      await pollWorkflowRunUntilSettled(workflowRunState.runId, workflow, { minimumPollCount: 2 });
+    } catch (error) {
+      workflowRunState.isRunning = false;
+      workflowRunState.message = 'Workflow retry failed';
+      workflowRunState.errorMessage = error instanceof Error ? error.message : 'Unknown retry error';
+      renderWorkflowEditor();
+      throw error;
+    }
+  }
+
+  async function runActiveWorkflowTaskStep() {
+    const workflow = getActiveWorkflow();
+    const task = getActiveWorkflowTask();
+    if (!workflow || !task) return;
+    if (!workflowRunState.runId || workflowRunState.workflowId !== workflow.id) {
+      notify('请先执行工作流，创建当前 Run 后再单步执行节点', { type: 'warning' });
+      return;
+    }
+    if (workflowRunState.isRunning) {
+      notify('工作流正在执行中，不能同时单步执行', { type: 'warning' });
+      return;
+    }
+
+    syncTaskEditorToState();
+    workflowRunState.isOpen = true;
+    workflowRunState.isRunning = true;
+    workflowRunState.activeTaskId = task.id;
+    workflowRunState.message = `Running ${task.name}`;
+    workflowRunState.errorMessage = null;
+    workflowRunState.taskStates = {
+      ...workflowRunState.taskStates,
+      [task.id]: 'running',
+    };
+    closeWorkflowTaskModal();
+    renderWorkflowEditor();
+
+    try {
+      await api<WorkflowExecutionResult>(
+        `/api/workflow-runs/${workflowRunState.runId}/steps/${encodeURIComponent(task.id)}/execute`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ tasks: workflow.tasks }),
+        },
+      );
+      await pollWorkflowRunUntilSettled(workflowRunState.runId, workflow, { minimumPollCount: 2 });
+    } catch (error) {
+      workflowRunState.isRunning = false;
+      workflowRunState.activeTaskId = null;
+      workflowRunState.taskStates = {
+        ...workflowRunState.taskStates,
+        [task.id]: 'failed',
+      };
+      workflowRunState.message = `Step ${task.name} failed`;
+      workflowRunState.errorMessage = error instanceof Error ? error.message : 'Unknown step execution error';
+      renderWorkflowEditor();
+      throw error;
+    }
+  }
+
   async function previewSqlBinding(bindingIndex: number) {
     const task = getActiveWorkflowTask();
     const workflow = getActiveWorkflow();
@@ -2775,13 +3346,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const inputRef = task.inputs?.[binding.inputSlot];
     const sourceTaskId = inputRef?.from?.trim() ?? '';
     if (!sourceTaskId) {
-      alert('当前绑定还没有关联上游任务');
+      notify('当前绑定还没有关联上游任务', { type: 'warning' });
       return;
     }
 
     const sourceTask = workflow.tasks.find((item) => item.id === sourceTaskId);
     if (!sourceTask) {
-      alert('未找到绑定的上游任务');
+      notify('未找到绑定的上游任务', { type: 'warning' });
       return;
     }
 
@@ -2789,25 +3360,34 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       workflowId: workflow.id,
       taskId: sourceTask.id,
       tasks: workflow.tasks,
+      runtimeParamsSchema: workflow.runtimeParamsSchema,
+      runtimeParamsDefaults: workflow.runtimeParamsDefaults,
+      runtimeParameters: workflow.runtimeParamsDefaults,
     };
 
-    const preview = await api<WorkflowTaskPreviewResult>('/api/workflows/preview-task', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    if (preview.kind !== 'dataframe' && preview.kind !== 'file' && preview.kind !== 'assert') {
-      throw new Error('Unsupported preview result');
+    try {
+      const preview = await api<WorkflowTaskPreviewResult>('/api/workflows/preview-task', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (preview.kind !== 'dataframe' && preview.kind !== 'file' && preview.kind !== 'assert') {
+        throw new Error('Unsupported preview result');
+      }
+
+      activeWorkflowBindingPreview = {
+        dataFrame: preview.dataFrame,
+        tableName: binding.tableName,
+        inputSlot: binding.inputSlot,
+        sourceTaskName: sourceTask.name,
+      };
+      workflowBindingPreviewPage = 1;
+      renderWorkflowBindingPreview();
+      openWorkflowBindingPreviewModal();
+    } catch (error) {
+      activeWorkflowBindingPreview = null;
+      renderWorkflowBindingPreview();
+      notify(`预览失败：${error instanceof Error ? error.message : '未知错误'}`, { type: 'error' });
     }
-
-    activeWorkflowBindingPreview = {
-      dataFrame: preview.dataFrame,
-      tableName: binding.tableName,
-      inputSlot: binding.inputSlot,
-      sourceTaskName: sourceTask.name,
-    };
-    workflowBindingPreviewPage = 1;
-    renderWorkflowBindingPreview();
-    openWorkflowBindingPreviewModal();
   }
 
   function clampWorkflowPreviewPage(page: number, totalRows: number) {
@@ -3061,7 +3641,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   async function duplicateWorkflow(workflowId: number | null = activeWorkflowId) {
     const workflow = workflowDefinitions.find((item) => item.id === workflowId) ?? null;
-    if (!workflow) return alert('请先选择一个工作流');
+    if (!workflow) {
+      notify('请先选择一个工作流', { type: 'warning' });
+      return;
+    }
     const suffix = Date.now();
     const baseCode = (workflow.code || 'workflow').trim().replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'workflow';
     const created = await api<WorkflowDefinition>('/api/workflows', {
@@ -3091,7 +3674,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     if (!workflow) return;
     const operatorKey = pendingWorkflowOperatorKey ?? el<HTMLSelectElement>('workflowOperatorPickerSelect').value;
     const operator = workflowOperators.find((item) => getWorkflowOperatorKey(item) === operatorKey);
-    if (!operator) return alert('请选择一个算子');
+    if (!operator) {
+      notify('请选择一个算子', { type: 'warning' });
+      return;
+    }
     const nextIndex = workflow.tasks.length + 1;
     workflow.tasks.push(buildWorkflowTask(operator, nextIndex));
     activeWorkflowTaskId = workflow.tasks[workflow.tasks.length - 1]?.id ?? null;
@@ -3137,7 +3723,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const workflow = getActiveWorkflow();
     if (!workflow) return;
     const name = el<HTMLInputElement>('workflowNameInput').value.trim();
-    if (!name) return alert('Workflow name 不能为空');
+    if (!name) {
+      notify('Workflow name 不能为空', { type: 'warning' });
+      return;
+    }
 
     workflow.name = name;
 
@@ -3148,7 +3737,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   async function deleteWorkflow() {
     const workflow = getActiveWorkflow();
     if (!workflow) return;
-    if (!confirm(`确定删除工作流 ${workflow.name} 吗？`)) return;
+    if (!(await confirmAction(`确定删除工作流 ${workflow.name} 吗？`, { title: '删除工作流', confirmText: '删除', tone: 'danger' }))) return;
     await api(`/api/workflows/${workflow.id}`, { method: 'DELETE' });
     resetWorkflowRunState();
     await loadWorkflows();

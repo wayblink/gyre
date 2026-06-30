@@ -9,6 +9,7 @@ import type {
   WorkflowRunRecord,
 } from '../shared/types.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
+import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { createWorkflowRunClient } from './workflow/runClient.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
@@ -21,6 +22,8 @@ type MonthlyRunPageDeps = {
   refreshProductFiles: () => Promise<unknown>;
   refreshSummary: (month: string) => Promise<unknown>;
   getUpdatePlanId?: () => number | null;
+  notify: NotifyFn;
+  confirmAction: ConfirmActionFn;
   onMonthChanged?: (month: string) => void;
 };
 
@@ -46,6 +49,14 @@ function taskStateLabel(status: WorkflowExecutionTaskState): string {
   return 'Pending';
 }
 
+function isMonthlyRunAttentionStatus(status: string): boolean {
+  return status === 'failed' || status === 'waiting_approval' || status === 'completed_with_warnings';
+}
+
+function isMonthlyRunAttentionMessage(message?: string): boolean {
+  return Boolean(message && !/submitting|submitted|ready|continuing|skipping/i.test(message));
+}
+
 function monthFolder(month: string): string {
   return /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7);
 }
@@ -58,10 +69,13 @@ export function createMonthlyRunPage({
   refreshProductFiles,
   refreshSummary,
   getUpdatePlanId,
+  notify,
+  confirmAction,
   onMonthChanged,
 }: MonthlyRunPageDeps) {
   const runClient = createWorkflowRunClient(api);
   let files: ProductFileRecord[] = [];
+  let monthlyWorkflowCode = '';
   let sourceDefinitions: MonthlyRunSourceDefinition[] = [];
   let selectedSources: Record<string, MonthlyRunSourceBinding> = {};
   let draftSources: SourceDraftBindings = {};
@@ -115,6 +129,7 @@ export function createMonthlyRunPage({
 
   async function refreshSourceConfig() {
     const data = await api<MonthlyRunSourceConfigResponse>('/api/monthly-runs/source-config');
+    monthlyWorkflowCode = data.workflowCode;
     sourceDefinitions = data.sources;
     ensureSelectedSourceBindings();
     renderSourceInfo();
@@ -278,7 +293,7 @@ export function createMonthlyRunPage({
   async function saveSourceModal() {
     const missing = sourceDefinitions.find((source) => source.required && !draftSources[source.sourceKey]?.fileId);
     if (missing) {
-      alert(`请先为 ${missing.label} 选择文件`);
+      notify(`请先为 ${missing.label} 选择文件`, { type: 'warning' });
       return;
     }
     isSavingSources = true;
@@ -295,9 +310,13 @@ export function createMonthlyRunPage({
   async function triggerMonthlyRun() {
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
     const updatePlanId = getUpdatePlanId?.() ?? null;
-    if (!month) return alert('请选择月份');
+    if (!month) {
+      notify('请选择月份', { type: 'warning' });
+      return;
+    }
     if (!updatePlanId && !sourceDefinitions.every((source) => !source.required || selectedSources[source.sourceKey]?.fileId)) {
-      return alert('请先完成 source 配置');
+      notify('请先完成 source 配置', { type: 'warning' });
+      return;
     }
     if (isRunning) return;
 
@@ -315,9 +334,11 @@ export function createMonthlyRunPage({
           updatePlanId
             ? {
                 updatePlanId,
+                workflowCode: monthlyWorkflowCode,
                 operator: 'Administrator',
               }
             : {
+                workflowCode: monthlyWorkflowCode,
                 month,
                 sources: selectedSources,
                 operator: 'Administrator',
@@ -423,8 +444,13 @@ export function createMonthlyRunPage({
     panel.classList.remove('hidden');
     const run = activeRun;
     if (!run) {
-      const isError = Boolean(overrideMessage && !/submitting|submitted|ready/i.test(overrideMessage));
-      summary.innerHTML = `<span class="monthly-run-status monthly-run-status--${isError ? 'failed' : 'idle'}">${escapeHtml(overrideMessage ?? 'Ready')}</span>`;
+      if (isMonthlyRunAttentionMessage(overrideMessage)) {
+        summary.classList.remove('hidden');
+        summary.innerHTML = `<span class="monthly-run-status monthly-run-status--failed">${escapeHtml(overrideMessage)}</span>`;
+      } else {
+        summary.classList.add('hidden');
+        summary.innerHTML = '';
+      }
       taskList.innerHTML = '<div class="monthly-run-empty">执行后会在这里显示节点状态。</div>';
       progressBar.style.width = '0%';
       progressText.textContent = '0 / 0';
@@ -438,7 +464,16 @@ export function createMonthlyRunPage({
     const ratio = total ? Math.min(1, reached / total) : 0;
     const pendingApprovals = run.approvals.filter((approval) => approval.status === 'pending');
     const statusCode = run.status === 'completed_with_warnings' ? 'warning' : run.status;
-    summary.innerHTML = `<span class="monthly-run-status monthly-run-status--${escapeHtml(statusCode)}">${escapeHtml(statusLabel(run.status))}</span><span>${escapeHtml(overrideMessage ?? run.errorMessage ?? `Run #${run.id}`)}</span>`;
+    const shouldShowSummary = isMonthlyRunAttentionMessage(overrideMessage) || Boolean(run.errorMessage) || isMonthlyRunAttentionStatus(run.status);
+    if (shouldShowSummary) {
+      summary.classList.remove('hidden');
+      summary.innerHTML = `<span class="monthly-run-status monthly-run-status--${escapeHtml(statusCode)}">${escapeHtml(statusLabel(run.status))}</span>${
+        overrideMessage || run.errorMessage ? `<span>${escapeHtml(overrideMessage ?? run.errorMessage)}</span>` : ''
+      }`;
+    } else {
+      summary.classList.add('hidden');
+      summary.innerHTML = '';
+    }
     progressBar.style.width = `${ratio * 100}%`;
     progressText.textContent = pendingApprovals.length ? `${reached} / ${total} · review required` : `${reached} / ${total}`;
     taskList.innerHTML = run.steps
@@ -494,17 +529,67 @@ export function createMonthlyRunPage({
       return;
     }
     body.innerHTML = items
-      .map((item) => `
-        <tr>
-          <td>${escapeHtml(item.monthKey)}</td>
-          <td>${escapeHtml(item.sourceFileName ?? `#${item.sourceFileId ?? '-'}`)}</td>
-          <td>${item.workflowRunId ? `#${item.workflowRunId}` : '-'}</td>
+      .map((item) => {
+        const inputSummary = item.inputFiles.length
+          ? `${escapeHtml(item.inputFiles.filter((input) => input.fileId || input.fileName).length.toString())}/${escapeHtml(item.inputFiles.length.toString())} files`
+          : '-';
+        const inputDetails = item.inputFiles.length
+          ? item.inputFiles
+              .map(
+                (input) => `
+                  <div class="monthly-run-history__input-item">
+                    <span class="monthly-run-history__input-label">${escapeHtml(input.label)}</span>
+                    <span class="monthly-run-history__input-value">${escapeHtml(input.fileName ?? (input.fileId ? `#${input.fileId}` : '-'))}</span>
+                  </div>`,
+              )
+              .join('')
+          : '<div class="monthly-run-history__input-empty">No input snapshot</div>';
+        return `
+        <tr class="monthly-run-history__row">
+          <td class="monthly-run-history__run-cell">
+            <button class="table-link-button table-link-button--subtle" data-history-toggle="${item.id}" type="button">
+              ${item.workflowRunId ? `#${item.workflowRunId}` : `History #${item.id}`}
+            </button>
+          </td>
+          <td>
+            <button class="table-link-button table-link-button--subtle" data-history-toggle="${item.id}" type="button">${inputSummary}</button>
+          </td>
           <td><span class="monthly-run-status monthly-run-status--${escapeHtml(item.status === 'completed_with_warnings' ? 'warning' : item.status)}">${escapeHtml(statusLabel(item.status))}</span></td>
           <td>${escapeHtml(item.producedFileName ?? (item.producedFileId ? `#${item.producedFileId}` : '-'))}</td>
           <td>${escapeHtml(formatDateTime(item.triggeredAt))}</td>
           <td>${escapeHtml(item.errorMessage ?? '-')}</td>
-        </tr>`)
+          <td><button class="btn btn-danger btn-sm" data-history-delete="${item.id}" type="button">删除</button></td>
+        </tr>
+        <tr class="monthly-run-history__detail-row hidden" data-history-detail="${item.id}">
+          <td colspan="7">
+            <div class="monthly-run-history__detail">
+              <div class="monthly-run-history__detail-header">
+                <strong>Input</strong>
+                <span>${escapeHtml(item.monthKey)}</span>
+              </div>
+              <div class="monthly-run-history__input-list">${inputDetails}</div>
+            </div>
+          </td>
+        </tr>`;
+      })
       .join('');
+
+    body.querySelectorAll<HTMLElement>('[data-history-toggle]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const historyId = button.dataset.historyToggle;
+        if (!historyId) return;
+        body.querySelector(`[data-history-detail="${historyId}"]`)?.classList.toggle('hidden');
+      });
+    });
+    body.querySelectorAll<HTMLElement>('[data-history-delete]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const historyId = Number(button.dataset.historyDelete);
+        if (!historyId) return;
+        if (!(await confirmAction('确定删除这条运行历史吗？', { title: '删除运行历史', confirmText: '删除', tone: 'danger' }))) return;
+        await api(`/api/monthly-runs/${historyId}`, { method: 'DELETE' });
+        await refreshHistory();
+      });
+    });
   }
 
   return {
