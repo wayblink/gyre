@@ -3747,8 +3747,11 @@ body.sidebar-collapsed .sidebar-toggle {
 }
 
 .table-scroll {
+  position: relative;
   overflow-x: auto;
   overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
 }
 
 .table-pagination {
@@ -4352,7 +4355,7 @@ textarea.form-input {
 
 .status-review {
   background-color: var(--warning-50);
-  color: var(--warning-700);
+  color: var(--warning-600);
 }
 
 .status-review::before { background-color: var(--warning-500); }
@@ -4365,11 +4368,11 @@ textarea.form-input {
 .status-failed::before { background-color: var(--danger-500); }
 
 .status-cancelled {
-  background-color: var(--gray-100);
-  color: var(--gray-600);
+  background-color: var(--slate-100);
+  color: var(--slate-600);
 }
 
-.status-cancelled::before { background-color: var(--gray-500); }
+.status-cancelled::before { background-color: var(--slate-500); }
 
 /* ============ 15. Modals ============ */
 .modal-overlay {
@@ -5174,6 +5177,7 @@ textarea.form-input {
   }
   .search-group {
     flex-direction: column;
+    gap: var(--space-2);
   }
   .search-input,
   .workflow-input,
@@ -5194,7 +5198,25 @@ textarea.form-input {
     grid-template-columns: 1fr;
   }
   .stats-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+  .stat-card {
+    min-height: 86px;
+    padding: var(--space-3);
+    border-radius: var(--radius-lg);
+  }
+  .stat-card:hover {
+    box-shadow: var(--shadow-sm);
+    transform: none;
+  }
+  .stat-label {
+    margin-bottom: var(--space-1);
+    font-size: var(--text-xs);
+  }
+  .stat-value {
+    font-size: var(--text-xl);
   }
   .modal-info, .step-tip, .no-shadow {
     margin-left: var(--space-4);
@@ -5218,12 +5240,54 @@ textarea.form-input {
   .card-body {
     padding: var(--space-3);
   }
+  #page-summary .card-body {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #page-summary .data-table {
+    width: 720px;
+    min-width: 720px;
+    table-layout: fixed;
+  }
+  #page-summary .data-table th,
+  #page-summary .data-table td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  #page-summary .table-capitalization th:nth-child(1),
+  #page-summary .table-capitalization td:nth-child(1) {
+    width: 64px;
+  }
+  #page-summary .table-capitalization th:nth-child(2),
+  #page-summary .table-capitalization td:nth-child(2) {
+    width: 260px;
+  }
+  #page-summary .table-capitalization th:nth-child(3),
+  #page-summary .table-capitalization td:nth-child(3) {
+    width: 160px;
+  }
+  #page-summary .table-capitalization th:nth-child(4),
+  #page-summary .table-capitalization td:nth-child(4) {
+    width: 110px;
+  }
+  #page-summary .table-capitalization th:nth-child(5),
+  #page-summary .table-capitalization td:nth-child(5) {
+    width: 126px;
+  }
   .card-body--with-pagination {
     overflow-x: hidden;
   }
   .table-scroll {
     margin: 0 calc(var(--space-3) * -1);
     padding: 0 var(--space-3);
+    max-width: calc(100vw - var(--space-8));
+    border-radius: var(--radius-md);
+    background:
+      linear-gradient(90deg, var(--bg-card) 0, rgba(255, 255, 255, 0)) left center / 18px 100% no-repeat,
+      linear-gradient(270deg, var(--bg-card) 0, rgba(255, 255, 255, 0)) right center / 18px 100% no-repeat,
+      linear-gradient(90deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0)) left center / 10px 100% no-repeat,
+      linear-gradient(270deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0)) right center / 10px 100% no-repeat;
+    background-attachment: local, local, scroll, scroll;
   }
   .data-table {
     min-width: 720px;
@@ -5242,6 +5306,7 @@ textarea.form-input {
     align-items: stretch;
     gap: var(--space-2);
     padding: var(--space-3);
+    max-width: calc(100vw - var(--space-8));
   }
   .pagination-actions,
   .workflow-preview__pagination-actions {
@@ -5284,7 +5349,7 @@ textarea.form-input {
   }
   .workflow-sidebar,
   .workflow-inspector {
-    max-height: 38dvh;
+    max-height: 30dvh;
   }
   .workflow-sidebar.hidden,
   .workflow-inspector.hidden {
@@ -5295,6 +5360,7 @@ textarea.form-input {
   }
   .workflow-toolbar {
     padding: var(--space-3);
+    gap: var(--space-3);
   }
   .workflow-toolbar__meta,
   .workflow-toolbar__actions,
@@ -5302,7 +5368,46 @@ textarea.form-input {
     width: 100%;
   }
   .workflow-toolbar__actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+  .workflow-toolbar__actions .btn {
+    width: 100%;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+  .workflow-toolbar__actions {
     justify-content: flex-start;
+  }
+  .workflow-toolbar__description {
+    padding-top: 0;
+  }
+  .workflow-runtime-summary {
+    margin-top: var(--space-2);
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+  }
+  .workflow-runtime-summary__header {
+    margin-bottom: var(--space-2);
+  }
+  .workflow-runtime-summary__list {
+    grid-template-columns: 1fr;
+    max-height: 156px;
+    overflow: auto;
+    padding-right: 2px;
+  }
+  .workflow-runtime-summary__item {
+    padding: 8px 10px;
+  }
+  .workflow-runtime-summary__path {
+    font-size: var(--text-xs);
+  }
+  .workflow-runtime-summary__control {
+    min-height: 34px;
+  }
+  .workflow-runtime-summary__raw {
+    display: none;
   }
   .workflow-run-panel {
     margin: var(--space-3);
@@ -5391,6 +5496,81 @@ textarea.form-input {
     right: 10px;
     left: 10px;
     width: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-container {
+    padding: var(--space-3);
+  }
+
+  .top-bar {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+
+  .top-bar h1 {
+    font-size: var(--text-lg);
+  }
+
+  .stats-row {
+    gap: var(--space-2);
+  }
+
+  .stat-card {
+    min-height: 76px;
+    padding: 10px;
+  }
+
+  .stat-value {
+    font-size: var(--text-lg);
+  }
+
+  .card-header {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+
+  .card-title svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .table-scroll,
+  .table-pagination,
+  .workflow-preview__pagination {
+    max-width: calc(100vw - var(--space-6));
+  }
+
+  .pagination-summary {
+    text-align: center;
+  }
+
+  .workflow-toolbar__actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .workflow-toolbar__actions .btn {
+    font-size: var(--text-xs);
+    gap: 4px;
+  }
+
+  .workflow-toolbar__description-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .workflow-dag-shell {
+    margin: var(--space-2);
+    min-height: 520px;
+  }
+
+  .workflow-canvas-actions {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
   }
 }
 
@@ -6604,5 +6784,104 @@ textarea.form-input {
 
     .monthly-run-source-card__controls {
         grid-template-columns: 1fr;
+    }
+}
+
+/* Final mobile overrides for sections defined late in this stylesheet. */
+@media (max-width: 768px) {
+    .source-table-section {
+        border-radius: var(--radius-md);
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #sourceTablesContainer {
+        gap: var(--space-3);
+        margin-top: var(--space-3);
+    }
+
+    .source-table-title {
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--text-sm);
+    }
+
+    .source-table {
+        font-size: var(--text-sm);
+    }
+
+    .source-table--inputs {
+        min-width: 760px;
+    }
+
+    .source-table th,
+    .source-table td {
+        padding: 9px 10px;
+    }
+
+    .monthly-run-input-card {
+        margin-bottom: var(--space-4);
+    }
+
+    .monthly-run-input-card .card-header {
+        gap: var(--space-3);
+    }
+
+    .monthly-run-input-actions,
+    .monthly-run-input-card .monthly-run-input-actions {
+        width: 100%;
+        justify-content: space-between;
+        margin-left: 0;
+    }
+
+    .monthly-run-input-month {
+        flex: 1;
+        justify-content: center;
+        min-width: 0;
+    }
+
+    .monthly-run-panel .card-header {
+        grid-template-columns: 1fr;
+    }
+
+    .monthly-run-panel #monthlyRunSummary {
+        min-height: 38px;
+        font-size: var(--text-md);
+    }
+
+    .monthly-run-task {
+        grid-template-columns: 28px minmax(0, 1fr);
+        gap: var(--space-2);
+        padding: var(--space-3);
+    }
+
+    .monthly-run-task__status {
+        grid-column: 2;
+        justify-self: start;
+    }
+
+    .monthly-run-task__warning-detail {
+        grid-column: 1 / -1;
+    }
+
+    .monthly-run-actions {
+        justify-content: stretch;
+    }
+
+    .monthly-run-actions .btn {
+        flex: 1 1 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .monthly-run-source-card {
+        padding: var(--space-3);
+    }
+
+    .monthly-run-source-modal__meta {
+        padding: var(--space-3);
+        margin-bottom: var(--space-3);
+    }
+
+    .monthly-run-source-card__controls {
+        gap: var(--space-2);
     }
 }

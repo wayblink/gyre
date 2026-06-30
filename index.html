@@ -306,19 +306,21 @@
                             <span class="card-subtitle">Manage data update plans by month</span>
                         </div>
                         <div class="card-body">
-                            <table class="data-table" id="monthlyUpdateTable">
-                                <thead>
-                                    <tr>
-                                        <th style="width:60px;">No.</th>
-                                        <th>Month</th>
-                                        <th>Operation Time</th>
-                                        <th>Operator</th>
-                                        <th>Status</th>
-                                        <th style="width:200px;">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="monthlyUpdateBody"></tbody>
-                            </table>
+                            <div class="table-scroll">
+                                <table class="data-table" id="monthlyUpdateTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:60px;">No.</th>
+                                            <th>Month</th>
+                                            <th>Operation Time</th>
+                                            <th>Operator</th>
+                                            <th>Status</th>
+                                            <th style="width:200px;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="monthlyUpdateBody"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
@@ -1012,21 +1014,23 @@
                             </h3>
                             <span class="card-subtitle">Employee master records used by Holdings</span>
                         </div>
-                        <div class="card-body">
-                            <table class="data-table" id="employeesPageTable">
-                                <thead>
-                                    <tr>
-                                        <th style="width:60px;">No.</th>
-                                        <th>Employee Name</th>
-                                        <th>Employee No.</th>
-                                        <th>User ID</th>
-                                        <th>Tags</th>
-                                        <th style="width:120px;">Grant Count</th>
-                                        <th style="width:180px;">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="employeesPageBody"></tbody>
-                            </table>
+                        <div class="card-body card-body--with-pagination">
+                            <div class="table-scroll">
+                                <table class="data-table" id="employeesPageTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:60px;">No.</th>
+                                            <th>Employee Name</th>
+                                            <th>Employee No.</th>
+                                            <th>User ID</th>
+                                            <th>Tags</th>
+                                            <th style="width:120px;">Grant Count</th>
+                                            <th style="width:180px;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="employeesPageBody"></tbody>
+                                </table>
+                            </div>
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="employeesPaginationSummary">-</div>
                                 <div class="pagination-actions">
