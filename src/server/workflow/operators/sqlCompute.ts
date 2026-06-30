@@ -24,6 +24,13 @@ export const sqlComputeOperator = defineWorkflowOperator({
       description: '将 SQL 中的 {tablea} 这类占位符映射到 input1/input2 等输入槽位。',
       default: [{ tableName: 'source', inputSlot: 'input1' }],
     },
+    constants: {
+      type: 'object',
+      label: 'SQL Constants',
+      required: false,
+      description: '可在 SQL 中通过 {constants.name} 引用的常量，支持运行时参数注入。',
+      default: {},
+    },
   },
   normalizeTask(task) {
     const rawInputs = task.inputs ?? {};

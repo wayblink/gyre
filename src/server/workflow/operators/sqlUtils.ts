@@ -41,6 +41,31 @@ function bindDataFrameTable(database: AlaSqlDatabase, tableName: string, datafra
   database.tables[tableName].data = dataframe.rows;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toSqlLiteral(value: unknown): string {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('SQL constant number must be finite');
+    return String(value);
+  }
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'string') return `'${value.replaceAll("'", "''")}'`;
+  throw new Error('SQL constants must be string, number, boolean, or null');
+}
+
+function replaceSqlConstants(sql: string, constants: unknown): string {
+  const normalizedConstants = isRecord(constants) ? constants : {};
+  return sql.replace(/\{constants\.([A-Za-z_][A-Za-z0-9_]*)\}/g, (placeholder, constantName: string) => {
+    if (!Object.prototype.hasOwnProperty.call(normalizedConstants, constantName)) {
+      throw new Error(`SQL constant placeholder is not configured: ${placeholder}`);
+    }
+    return toSqlLiteral(normalizedConstants[constantName]);
+  });
+}
+
 export async function executeSqlDataFrameQuery(
   task: WorkflowTask,
   runtime: WorkflowOperatorRuntime,
@@ -53,7 +78,7 @@ export async function executeSqlDataFrameQuery(
   const bindings = normalizeSqlTableBindings(task.params.tableBindings);
   if (!bindings.length) throw new Error(`Task ${task.name} requires at least one table binding`);
 
-  let compiledSql = sql;
+  let compiledSql = replaceSqlConstants(sql, task.params.constants);
   const tableNames = new Set<string>();
   let firstInputDataFrame: WorkflowDataFrame | null = null;
   const database = createIsolatedSqlDatabase();

@@ -39,6 +39,9 @@ export const MONTHLY_WORKFLOW_NAME = 'Gyre Cap Table Summary';
 export const MONTHLY_WORKFLOW_DESCRIPTION =
   '基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算草稿：从 !!Gyre Cap Table 05.31.26.xlsx 提取 Control Book/Futu/Option Plans，按 Control Book 口径生成 Summary View；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 的 1 股差异作为 warning 人工确认点。';
 
+export const MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN = 4_156_815;
+export const MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN = 10_994;
+
 export const MONTHLY_RUNTIME_PARAMS_SCHEMA: WorkflowRuntimeParametersSchema = {
   fileRefs: {
     type: 'object',
@@ -51,6 +54,23 @@ export const MONTHLY_RUNTIME_PARAMS_SCHEMA: WorkflowRuntimeParametersSchema = {
       summary_source: { type: 'object', label: 'Merged summary source workbook', required: false },
     },
   },
+  fixedValues: {
+    type: 'object',
+    label: 'Fixed Values',
+    required: true,
+    properties: {
+      optionsOutstandingCullgen: {
+        type: 'number',
+        label: 'Options Outstanding - Cullgen',
+        required: true,
+      },
+      optionsAvailableCullgen: {
+        type: 'number',
+        label: 'Options Available - Cullgen',
+        required: true,
+      },
+    },
+  },
 };
 
 export const MONTHLY_RUNTIME_PARAMS_DEFAULTS: WorkflowRuntimeParameters = {
@@ -59,6 +79,10 @@ export const MONTHLY_RUNTIME_PARAMS_DEFAULTS: WorkflowRuntimeParameters = {
     futu_exercises: { provider: 'product-files', id: 7 },
     option_plans: { provider: 'product-files', id: 7 },
     summary_source: { provider: 'product-files', id: 7 },
+  },
+  fixedValues: {
+    optionsOutstandingCullgen: MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
+    optionsAvailableCullgen: MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
   },
 };
 
@@ -459,11 +483,15 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
         },
       },
       params: {
-        sql: 'select\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(s.bc_subplan_transfer_summary) as bc_subplan_transfer_summary,\n  max(s.warrants_for_convertible_preferred_stock) as warrants_for_convertible_preferred_stock,\n  4156815 as options_outstanding_cullgen,\n  10994 as options_available_cullgen,\n  max(s.source_total_fully_diluted) + 4156815 + 10994 as total_fully_diluted\nfrom {control_metrics} c, {summary_source} s',
+        sql: 'select\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(s.bc_subplan_transfer_summary) as bc_subplan_transfer_summary,\n  max(s.warrants_for_convertible_preferred_stock) as warrants_for_convertible_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  max(s.source_total_fully_diluted) + {constants.optionsOutstandingCullgen} + {constants.optionsAvailableCullgen} as total_fully_diluted\nfrom {control_metrics} c, {summary_source} s',
         tableBindings: [
           { inputSlot: 'control_metrics', tableName: 'control_metrics' },
           { inputSlot: 'summary_source', tableName: 'summary_source' },
         ],
+        constants: {
+          optionsOutstandingCullgen: { $fromRuntime: 'fixedValues.optionsOutstandingCullgen' },
+          optionsAvailableCullgen: { $fromRuntime: 'fixedValues.optionsAvailableCullgen' },
+        },
       },
       dependsOn: [],
       description: '汇总 Summary 计算所需业务输入；可从源 workbook 取到的值来自上游抽取，Cullgen option 两个值暂按测试期固定输入保留在此节点。',

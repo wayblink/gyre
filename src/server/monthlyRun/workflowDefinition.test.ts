@@ -7,9 +7,12 @@ import {
   buildMonthlyCapitalizationSummarySql,
   buildMonthlyWorkflowSeedDefinition,
   buildMonthlyWorkflowTasks,
+  MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
+  MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
   MONTHLY_SUMMARY_COLUMNS,
   MONTHLY_SUMMARY_TOTAL_FULLY_DILUTED,
 } from './workflowDefinition.js';
+import { resolveWorkflowRuntimeConfiguration } from '../workflow/runtimeParameters.js';
 
 const metricFrames = {
   control_metrics: rowsToDataFrame(
@@ -140,12 +143,84 @@ test('monthly control book metrics extract Futu SubPlan total from source rows i
 test('monthly workflow seed definition derives month runtime parameter from output constant requirements', () => {
   const workflow = buildMonthlyWorkflowSeedDefinition();
   const persistTask = workflow.tasks.find((item) => item.id === 'persist_capitalization_summary');
+  const businessInputsTask = workflow.tasks.find((item) => item.id === 'calc_business_inputs');
 
   assert.deepEqual(persistTask?.params.fileNamePrefix, { $fromRuntime: 'month' });
   assert.equal(persistTask?.params.fileName, 'Capitalization_Table_Summary_View.xlsx');
   assert.equal(workflow.runtimeParamsSchema.month?.label, 'Month');
   assert.equal(workflow.runtimeParamsSchema.month?.required, true);
+  assert.equal(workflow.runtimeParamsSchema.fixedValues?.type, 'object');
+  assert.equal(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsOutstandingCullgen?.type, 'number');
+  assert.equal(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsAvailableCullgen?.type, 'number');
+  assert.equal(
+    (workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsOutstandingCullgen,
+    MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
+  );
+  assert.equal(
+    (workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsAvailableCullgen,
+    MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
+  );
+  assert.deepEqual(businessInputsTask?.params.constants, {
+    optionsOutstandingCullgen: { $fromRuntime: 'fixedValues.optionsOutstandingCullgen' },
+    optionsAvailableCullgen: { $fromRuntime: 'fixedValues.optionsAvailableCullgen' },
+  });
   assert.match(String(workflow.runtimeParamsDefaults.month ?? ''), /^\d{4}-\d{2}$/);
+});
+
+test('monthly business inputs resolves configurable Cullgen option constants from runtime parameters', async () => {
+  const workflow = buildMonthlyWorkflowSeedDefinition();
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: workflow.tasks,
+    runtimeParamsSchema: workflow.runtimeParamsSchema,
+    runtimeParamsDefaults: workflow.runtimeParamsDefaults,
+    runtimeParameters: {
+      fixedValues: {
+        optionsOutstandingCullgen: 10,
+        optionsAvailableCullgen: 5,
+      },
+    },
+  });
+  const task = resolved.tasks.find((item) => item.id === 'calc_business_inputs');
+  assert.ok(task);
+
+  assert.equal(String(task.params.sql).includes('4156815'), false);
+  assert.equal(String(task.params.sql).includes('10994'), false);
+  assert.deepEqual(task.params.constants, {
+    optionsOutstandingCullgen: 10,
+    optionsAvailableCullgen: 5,
+  });
+
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot === 'control_metrics') {
+      return rowsToDataFrame(
+        [
+          {
+            eom_eq_balance_os: 100,
+            cullgen_common_stock: 20,
+            gyre_2023_china_subplan_total: 30,
+          },
+        ],
+        { sheetName: 'control_metrics', a1Range: '' },
+      );
+    }
+    if (slot === 'summary_source') {
+      return rowsToDataFrame(
+        [
+          {
+            bc_subplan_transfer_summary: 3,
+            warrants_for_convertible_preferred_stock: 2,
+            source_total_fully_diluted: 1000,
+          },
+        ],
+        { sheetName: 'summary_source', a1Range: '' },
+      );
+    }
+    throw new Error(`Unexpected input slot ${slot}`);
+  });
+
+  assert.equal(result.dataFrame.rows[0].options_outstanding_cullgen, 10);
+  assert.equal(result.dataFrame.rows[0].options_available_cullgen, 5);
+  assert.equal(result.dataFrame.rows[0].total_fully_diluted, 1015);
 });
 
 test('persist excel operator prefixes output filename with resolved month constant', async () => {
