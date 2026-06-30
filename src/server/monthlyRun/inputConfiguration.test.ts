@@ -44,7 +44,7 @@ class FakeDb implements MonthlyRunDb {
   }
 }
 
-test('resolveMonthlyRunInputConfiguration builds workflow runtime fileIds from Input Configuration metrics', async () => {
+test('resolveMonthlyRunInputConfiguration builds workflow runtime fileRefs from Input Configuration metrics', async () => {
   const result = await resolveMonthlyRunInputConfiguration(new FakeDb(), 12);
 
   assert.deepEqual(result, {
@@ -53,10 +53,10 @@ test('resolveMonthlyRunInputConfiguration builds workflow runtime fileIds from I
     operator: 'Gu',
     runtimeParameters: {
       month: '2026-06',
-      fileIds: {
-        control_book: 101,
-        futu_exercises: 303,
-        option_plans: 202,
+      fileRefs: {
+        control_book: { provider: 'product-files', id: 101 },
+        futu_exercises: { provider: 'product-files', id: 303 },
+        option_plans: { provider: 'product-files', id: 202 },
       },
     },
     primarySourceFileId: 101,
@@ -118,7 +118,7 @@ test('resolveMonthlyRunInputConfiguration backfills product file id for legacy s
       folderPrefix: 'sources/12',
     },
   ]);
-  assert.equal((result.runtimeParameters.fileIds as Record<string, number>).control_book, 777);
+  assert.deepEqual((result.runtimeParameters.fileRefs as Record<string, unknown>).control_book, { provider: 'product-files', id: 777 });
   assert.deepEqual(db.updates, [{ productFileId: 777, metricId: 1 }]);
 });
 
@@ -143,36 +143,57 @@ test('resolveMonthlyRunInputConfiguration resolves legacy uploaded_file text aga
     return params.uploadedFile.includes('Control_Books_Detail_Data') ? 888 : params.currentProductFileId ?? null;
   });
 
-  assert.deepEqual(lookups, [
-    {
-      sourceKey: 'input_metric_1',
-      label: 'EQ Control Book',
-      uploadedFile: 'Control_Books_Detail_Data_02.06.2026_16.42.xlsx',
-      defaultSheetName: null,
-      currentProductFileId: null,
-    },
-    {
-      sourceKey: 'control_book',
-      label: 'EQ Control Book',
-      uploadedFile: 'Control_Books_Detail_Data_02.06.2026_16.42.xlsx',
-      defaultSheetName: 'EQ Control Book',
-      currentProductFileId: 888,
-    },
-    {
-      sourceKey: 'futu_exercises',
-      label: 'Futu BCI Exercises',
-      uploadedFile: 'futu.xlsx',
-      defaultSheetName: 'Futu BCI Exercises to Date',
-      currentProductFileId: 303,
-    },
-    {
-      sourceKey: 'option_plans',
-      label: 'Option Plans Summary',
-      uploadedFile: 'options.xlsx',
-      defaultSheetName: 'Option Plans Summary',
-      currentProductFileId: 202,
-    },
-  ]);
-  assert.equal((result.runtimeParameters.fileIds as Record<string, number>).control_book, 888);
+  assert.ok(
+    lookups.some((item) =>
+      JSON.stringify(item) === JSON.stringify({
+        sourceKey: 'input_metric_1',
+        label: 'EQ Control Book',
+        uploadedFile: 'Control_Books_Detail_Data_02.06.2026_16.42.xlsx',
+        defaultSheetName: null,
+        currentProductFileId: null,
+      }),
+    ),
+  );
+  assert.ok(
+    lookups.some((item) =>
+      JSON.stringify(item) === JSON.stringify({
+        sourceKey: 'control_book',
+        label: 'EQ Control Book',
+        uploadedFile: 'Control_Books_Detail_Data_02.06.2026_16.42.xlsx',
+        defaultSheetName: 'EQ Control Book',
+        currentProductFileId: 888,
+      }),
+    ),
+  );
+  assert.deepEqual((result.runtimeParameters.fileRefs as Record<string, unknown>).control_book, { provider: 'product-files', id: 888 });
   assert.deepEqual(db.updates, [{ productFileId: 888, metricId: 1 }]);
+});
+
+test('resolveMonthlyRunInputConfiguration corrects stale product_file_id using uploaded_file binding', async () => {
+  const db = new FakeDb();
+  db.metrics = db.metrics.map((row) =>
+    row.label === 'EQ Control Book'
+      ? {
+          ...row,
+          product_file_id: 7,
+          uploaded_file: 'Control_Books_Detail_Data_02.06.2026_16.42.xlsx',
+        }
+      : row,
+  );
+  const lookups: unknown[] = [];
+
+  const result = await resolveMonthlyRunInputConfiguration(db, 12, undefined, async (params) => {
+    lookups.push(params);
+    return params.uploadedFile.includes('Control_Books_Detail_Data') ? 2 : params.currentProductFileId ?? null;
+  });
+
+  assert.deepEqual((result.runtimeParameters.fileRefs as Record<string, unknown>).control_book, { provider: 'product-files', id: 2 });
+  assert.deepEqual(db.updates, [{ productFileId: 2, metricId: 1 }]);
+  assert.deepEqual(lookups[0], {
+    sourceKey: 'input_metric_1',
+    label: 'EQ Control Book',
+    uploadedFile: 'Control_Books_Detail_Data_02.06.2026_16.42.xlsx',
+    defaultSheetName: null,
+    currentProductFileId: 7,
+  });
 });

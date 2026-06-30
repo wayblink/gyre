@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { rowsToDataFrame } from '../excel.js';
+import { dataframePersistExcelOperator } from '../workflow/operators/dataframePersistExcel.js';
 import { executeSqlDataFrameQuery } from '../workflow/operators/sqlUtils.js';
 import {
+  buildMonthlyCapitalizationSummarySql,
+  buildMonthlyWorkflowSeedDefinition,
   buildMonthlyWorkflowTasks,
   MONTHLY_SUMMARY_COLUMNS,
   MONTHLY_SUMMARY_TOTAL_FULLY_DILUTED,
@@ -35,6 +38,21 @@ const metricFrames = {
       },
     ],
     { sheetName: 'option_metrics', a1Range: '' },
+  ),
+  business_inputs: rowsToDataFrame(
+    [
+      {
+        eom_eq_balance_os: 111_488_849,
+        cullgen_common_stock: 14_450_527,
+        gyre_2023_china_subplan_total: 7_815_396,
+        bc_subplan_transfer_summary: 695_164,
+        warrants_for_convertible_preferred_stock: 540_666,
+        options_outstanding_cullgen: 4_156_815,
+        options_available_cullgen: 10_994,
+        total_fully_diluted: 133_527_448,
+      },
+    ],
+    { sheetName: 'business_inputs', a1Range: '' },
   ),
 };
 
@@ -80,4 +98,70 @@ test('monthly capitalization summary workflow SQL matches expected workbook stru
   assert.equal(optionsOutstanding?.['Common Shares Equivalent'], 13_690_894);
   assert.equal(total?.['Common Shares Equivalent'], MONTHLY_SUMMARY_TOTAL_FULLY_DILUTED);
   assert.equal(total?.['% of fully diluted'], 1);
+});
+
+test('monthly workflow exposes source extraction and business input calculation before summary build', () => {
+  const tasks = buildMonthlyWorkflowTasks();
+  const controlExtract = tasks.find((item) => item.id === 'extract_control_book');
+  const summaryExtract = tasks.find((item) => item.id === 'extract_cap_table_summary');
+  const optionExtract = tasks.find((item) => item.id === 'extract_option_plans');
+  const optionMetrics = tasks.find((item) => item.id === 'calc_option_metrics');
+  const sourceMetrics = tasks.find((item) => item.id === 'calc_cap_table_summary_source_metrics');
+  const businessInputs = tasks.find((item) => item.id === 'calc_business_inputs');
+  const summaryBuild = tasks.find((item) => item.id === 'build_capitalization_summary');
+
+  assert.equal(controlExtract?.operatorCode, 'sheet.range.extract');
+  assert.equal(controlExtract?.params.sheetName, 'EQ Control Book');
+  assert.equal(controlExtract?.params.range, 'A9:L124');
+  assert.equal(summaryExtract?.operatorCode, 'sheet.range.extract');
+  assert.equal(summaryExtract?.params.sheetName, 'Detailed Cap Table');
+  assert.deepEqual(summaryExtract?.params.fileRef, { $fromRuntime: 'fileRefs.summary_source' });
+  assert.equal(optionExtract?.operatorCode, 'sheet.sections.extract');
+  assert.equal(optionExtract?.params.sheetName, 'Option Plans Summary');
+  assert.equal(optionExtract?.params.splitByColumn, undefined);
+  assert.equal(Array.isArray(optionExtract?.params.sections) ? optionExtract.params.sections.length : 0, 6);
+  assert.equal(String(optionMetrics?.params.sql ?? '').includes('- 28170'), false);
+  assert.equal(sourceMetrics?.inputs.summary_source?.from, 'extract_cap_table_summary');
+  assert.equal(businessInputs?.inputs.summary_source?.from, 'calc_cap_table_summary_source_metrics');
+  assert.equal(summaryBuild?.inputs.business_inputs?.from, 'calc_business_inputs');
+  assert.ok(!buildMonthlyCapitalizationSummarySql.includes('14450527'));
+  assert.ok(!buildMonthlyCapitalizationSummarySql.includes('4156815'));
+  assert.ok(!buildMonthlyCapitalizationSummarySql.includes('10994'));
+});
+
+test('monthly control book metrics extract Futu SubPlan total from source rows instead of hardcoding it', () => {
+  const task = buildMonthlyWorkflowTasks().find((item) => item.id === 'calc_control_book_metrics');
+  const sql = String(task?.params.sql ?? '');
+
+  assert.ok(sql.includes("Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology'"));
+  assert.ok(!sql.includes('7815396 as gyre_2023_china_subplan_total'));
+});
+
+test('monthly workflow seed definition derives month runtime parameter from output constant requirements', () => {
+  const workflow = buildMonthlyWorkflowSeedDefinition();
+  const persistTask = workflow.tasks.find((item) => item.id === 'persist_capitalization_summary');
+
+  assert.deepEqual(persistTask?.params.fileNamePrefix, { $fromRuntime: 'month' });
+  assert.equal(persistTask?.params.fileName, 'Capitalization_Table_Summary_View.xlsx');
+  assert.equal(workflow.runtimeParamsSchema.month?.label, 'Month');
+  assert.equal(workflow.runtimeParamsSchema.month?.required, true);
+  assert.match(String(workflow.runtimeParamsDefaults.month ?? ''), /^\d{4}-\d{2}$/);
+});
+
+test('persist excel operator prefixes output filename with resolved month constant', async () => {
+  const task = buildMonthlyWorkflowTasks().find((item) => item.id === 'persist_capitalization_summary');
+  assert.ok(task);
+  task.params.fileNamePrefix = '2026-05';
+
+  const preview = await dataframePersistExcelOperator.preview?.({
+    task,
+    executed: new Map(),
+    taskMap: new Map([[task.id, task]]),
+    runtime: {} as never,
+    executeTask: async () => metricFrames.business_inputs,
+    resolveInputDataFrame: async () => metricFrames.business_inputs,
+  });
+
+  assert.equal(preview?.kind, 'file-plan');
+  assert.equal(preview?.fileName, '2026-05-Capitalization_Table_Summary_View.xlsx');
 });

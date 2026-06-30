@@ -1,6 +1,7 @@
 import type { WorkflowRuntimeParameters } from '../../shared/types.js';
 import type { MonthlyRunDb } from './store.js';
 import { MONTHLY_RUN_SOURCE_DEFINITIONS } from './workflowDefinition.js';
+import { productFileRef } from '../workflow/fileSources.js';
 
 type UpdatePlanInputRow = Record<string, unknown>;
 type ValidationError = Error & { statusCode?: number };
@@ -144,6 +145,17 @@ async function resolveRequiredInputRows(
       }
     }
 
+    if (lookupProductFile && rowUploadedFile(row)) {
+      const lookedUpFileId = await lookupProductFile({
+        sourceKey: `input_metric_${String(row.id ?? label)}`,
+        label,
+        uploadedFile: rowUploadedFile(row),
+        defaultSheetName: null,
+        currentProductFileId: fileId,
+      });
+      if (lookedUpFileId) fileId = lookedUpFileId;
+    }
+
     if (!fileId && lookupProductFile) {
       fileId = await lookupProductFile({
         sourceKey: `input_metric_${String(row.id ?? label)}`,
@@ -237,7 +249,7 @@ export async function resolveMonthlyRunInputConfiguration(
     operator: String(plan.operator ?? 'Administrator'),
     runtimeParameters: {
       month: String(plan.month_key),
-      fileIds,
+      fileRefs: Object.fromEntries(Object.entries(fileIds).map(([sourceKey, fileId]) => [sourceKey, productFileRef(fileId)])),
     },
     primarySourceFileId: fileIds.control_book ?? Object.values(fileIds)[0] ?? null,
   };

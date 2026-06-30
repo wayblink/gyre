@@ -54,8 +54,10 @@ import {
   resolveMonthlyRunInputConfiguration,
   type ProductFileBindingLookup,
 } from './monthlyRun/inputConfiguration.js';
+import { monthlyWorkflowSelectionLabel, resolveMonthlyWorkflowDefinition } from './monthlyRun/workflowSelection.js';
 import { MONTHLY_RUN_SOURCE_DEFINITIONS, MONTHLY_WORKFLOW_NAME } from './monthlyRun/workflowDefinition.js';
 import { executeWorkflowTaskPreview } from './workflow/engine.js';
+import { WorkflowFileSourceRegistry, productFileRef } from './workflow/fileSources.js';
 import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
 import {
   normalizeWorkflowRuntimeParameters,
@@ -68,7 +70,9 @@ import { WorkflowRunExecutor, workflowRunToExecutionResult } from './workflow/ru
 import { WorkflowRunStore } from './workflow/runStore.js';
 import type {
   AuthStatus,
+  FixedValueItem,
   MonthlyRunSourceConfigResponse,
+  SourceCheckItem,
   SummarySnapshot,
   SummaryCapitalizationSource,
   WorkflowDataFrame,
@@ -105,7 +109,6 @@ function toIsoTimestamp(value: unknown): string {
 
 const updatePlanSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
-  operator: z.string().min(1),
   remark: z.string().optional().default(''),
 });
 
@@ -140,6 +143,9 @@ const workflowTaskPreviewBodySchema = z.object({
   workflowId: z.number().int().positive(),
   taskId: z.string().trim().min(1),
   tasks: z.array(z.any()).optional(),
+  runtimeParamsSchema: z.record(z.string(), z.unknown()).optional(),
+  runtimeParamsDefaults: z.record(z.string(), z.unknown()).optional(),
+  runtimeParameters: z.record(z.string(), z.unknown()).optional(),
 });
 
 const workflowExecuteBodySchema = z.object({
@@ -153,6 +159,10 @@ const workflowApprovalBodySchema = z.object({
   decision: z.enum(['approved', 'skipped']).optional().default('approved'),
 });
 
+const workflowRunRetryBodySchema = z.object({
+  tasks: z.array(z.any()).optional(),
+});
+
 const monthlyRunListQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
@@ -160,6 +170,8 @@ const monthlyRunListQuerySchema = z.object({
 
 const monthlyRunTriggerBodySchema = z.object({
   updatePlanId: z.number().int().positive().optional(),
+  workflowId: z.number().int().positive().optional(),
+  workflowCode: z.string().trim().min(1).optional(),
   month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() })).optional(),
   operator: z.string().trim().min(1).optional().default('Administrator'),
@@ -225,7 +237,7 @@ function eomForMonth(monthKey: string): string {
 }
 
 function labelForMonth(monthKey: string): string {
-  return `${Number(monthKey.slice(5, 7))}月`;
+  return monthKey;
 }
 
 function maskDatabaseUrl(databaseUrl: string): string {
@@ -364,33 +376,123 @@ function toUpdatePlan(row: Record<string, unknown>) {
   };
 }
 
-function toChecklistItem(row: Record<string, unknown>) {
+const FIXED_VALUE_EXPECTED_SOURCE_BY_ITEM: Record<string, string> = {
+  EOM: 'EQ Control Book',
+  '2025 BC Subplan shares transferred to Futu': 'EQ Control Book',
+  'Σ all option plan outstanding shares': 'Option Plans Summary',
+  'Σ all option plan available shares': 'Option Plans Summary',
+  'Exercises to Date': 'Futu BCI Exercises to Date',
+  'GYRE 2025 BC Subplan canceled': 'Futu BCI Exercises to Date',
+};
+
+const EXTRA_FIXED_VALUE_ITEMS = new Set([
+  'EOM',
+  '2025 BC Subplan shares transferred to Futu',
+  'Σ all option plan outstanding shares',
+  'Σ all option plan available shares',
+  'Exercises to Date',
+  'GYRE 2025 BC Subplan canceled',
+]);
+
+function checklistText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function checklistSourceLabel(row: Record<string, unknown>, raw: Record<string, unknown>): string {
+  const itemLabel = checklistText(raw.item ?? raw.metric ?? row.label);
+  return (
+    checklistText(raw.fileName) ||
+    FIXED_VALUE_EXPECTED_SOURCE_BY_ITEM[itemLabel] ||
+    checklistText(row.label) ||
+    itemLabel
+  );
+}
+
+function normalizeChecklistKey(value: unknown): string {
+  return checklistText(value).toLowerCase();
+}
+
+function isMissingChecklistUpload(value: unknown): boolean {
+  const text = normalizeChecklistKey(value);
+  return !text || text === 'not uploaded';
+}
+
+function toChecklistItem(row: Record<string, unknown>, options: { forceFixed?: boolean } = {}): FixedValueItem | SourceCheckItem {
   const raw = parseJson<Record<string, unknown>>(row.raw_value, {});
-  const label = String(row.label ?? '');
+  const label = checklistText(row.label);
+  const itemLabel = checklistText(raw.item ?? raw.metric ?? label);
+  const fallbackExpectedSource = checklistText(raw.fileName ?? row.display_file_name ?? row.uploaded_file) || '-';
   const value = row.normalized_value === null || row.normalized_value === undefined ? null : Number(row.normalized_value);
   const common = {
     id: Number(row.id),
     sourceFileId:
-      row.source_file_id === null || row.source_file_id === undefined ? null : Number(row.source_file_id),
+      row.display_source_file_id !== null && row.display_source_file_id !== undefined
+        ? Number(row.display_source_file_id)
+        : row.source_file_id === null || row.source_file_id === undefined
+          ? null
+          : Number(row.source_file_id),
     productFileId:
-      row.product_file_id === null || row.product_file_id === undefined ? null : Number(row.product_file_id),
-    fileName: String(raw.fileName ?? ''),
+      row.display_product_file_id !== null && row.display_product_file_id !== undefined
+        ? Number(row.display_product_file_id)
+        : row.product_file_id === null || row.product_file_id === undefined
+          ? null
+          : Number(row.product_file_id),
+    fileName: checklistText(row.display_file_name) || checklistSourceLabel(row, raw),
     isRequired: String(row.required ?? '') as 'Required' | 'Optional' | '',
-    uploadedFile: String(row.uploaded_file ?? raw.uploadedFile ?? ''),
+    uploadedFile: checklistText(row.display_uploaded_file) || checklistText(row.uploaded_file ?? raw.uploadedFile),
     status: String(row.status ?? '') as 'pass' | 'warning' | '',
     value,
-    action: asBoolean(row.editable) ? 'edit' : '-',
+    action: (asBoolean(row.editable) ? 'edit' : '-') as 'edit' | '-',
   };
 
-  if (row.source_group === 'fixed') {
-    return { id: common.id, item: String(raw.item ?? label), value: value ?? 0, action: common.action };
+  if (row.source_group === 'fixed' || options.forceFixed) {
+    const expectedSource = FIXED_VALUE_EXPECTED_SOURCE_BY_ITEM[itemLabel] ?? fallbackExpectedSource;
+    return {
+      id: common.id,
+      item: itemLabel,
+      note: expectedSource && expectedSource !== '-' ? `from ${expectedSource}` : '-',
+      value: value ?? 0,
+      action: 'edit',
+    };
   }
 
   return {
     ...common,
-    item: String(raw.item ?? ''),
-    metric: String(raw.metric ?? ''),
+    item: checklistText(raw.item),
+    metric: checklistText(raw.metric),
   };
+}
+
+function mergeSourceChecklistItems(items: SourceCheckItem[]): SourceCheckItem[] {
+  const grouped = new Map<string, SourceCheckItem[]>();
+  for (const item of items) {
+    const key = normalizeChecklistKey(item.fileName);
+    const existing = grouped.get(key);
+    if (existing) existing.push(item);
+    else grouped.set(key, [item]);
+  }
+
+  return [...grouped.values()].map((group) => {
+    const representative =
+      group.find((item) => item.isRequired === 'Required') ??
+      group.find((item) => item.productFileId || item.sourceFileId) ??
+      group[0];
+    const uploadedSource =
+      group.find((item) => !isMissingChecklistUpload(item.uploadedFile) && (item.productFileId || item.sourceFileId)) ??
+      group.find((item) => !isMissingChecklistUpload(item.uploadedFile)) ??
+      representative;
+    return {
+      ...representative,
+      isRequired: group.some((item) => item.isRequired === 'Required')
+        ? 'Required'
+        : group.some((item) => item.isRequired === 'Optional')
+          ? 'Optional'
+          : '',
+      uploadedFile: uploadedSource.uploadedFile,
+      productFileId: uploadedSource.productFileId ?? representative.productFileId,
+      sourceFileId: uploadedSource.sourceFileId ?? representative.sourceFileId,
+    };
+  });
 }
 
 function toProductFile(row: Record<string, unknown>) {
@@ -433,16 +535,77 @@ async function getProductFileOrThrow(id: number) {
 
 async function checklistForPlan(updatePlanId: number) {
   const rows = await db.query<Record<string, unknown>>(
-    `select * from source_metrics
-     where update_plan_id = $1
-     order by case source_group when 'fixed' then 1 when 'shareworks' then 2 else 3 end, sort_order`,
+    `select sm.*,
+            pf.original_name as product_file_name,
+            sf.original_name as source_file_name
+     from source_metrics sm
+     left join product_files pf on pf.id = sm.product_file_id
+     left join source_files sf on sf.id = sm.source_file_id
+     where sm.update_plan_id = $1
+     order by case sm.source_group when 'fixed' then 1 when 'shareworks' then 2 else 3 end, sm.sort_order`,
     [updatePlanId],
   );
 
+  const displayRows = rows.map((row) => ({ ...row }));
+  const uploadedBySource = new Map<
+    string,
+    { uploadedFile: string; productFileId: unknown; sourceFileId: unknown }
+  >();
+
+  for (const row of displayRows) {
+    if (row.source_group !== 'shareworks' && row.source_group !== 'futu') continue;
+    const raw = parseJson<Record<string, unknown>>(row.raw_value, {});
+    const sourceLabel = checklistSourceLabel(row, raw);
+    const uploadedFile =
+      checklistText(row.uploaded_file) ||
+      checklistText(row.product_file_name ?? row.source_file_name) ||
+      checklistText(raw.uploadedFile);
+    if (isMissingChecklistUpload(uploadedFile)) continue;
+    uploadedBySource.set(normalizeChecklistKey(sourceLabel), {
+      uploadedFile,
+      productFileId: row.product_file_id,
+      sourceFileId: row.source_file_id,
+    });
+  }
+
+  for (const row of displayRows) {
+    if (row.source_group !== 'shareworks' && row.source_group !== 'futu') continue;
+    const raw = parseJson<Record<string, unknown>>(row.raw_value, {});
+    const sourceLabel = checklistSourceLabel(row, raw);
+    row.display_file_name = sourceLabel;
+
+    const directUploadedFile =
+      checklistText(row.uploaded_file) ||
+      checklistText(row.product_file_name ?? row.source_file_name) ||
+      checklistText(raw.uploadedFile);
+    if (!isMissingChecklistUpload(directUploadedFile)) {
+      row.display_uploaded_file = directUploadedFile;
+      continue;
+    }
+
+    const inherited = uploadedBySource.get(normalizeChecklistKey(sourceLabel));
+    if (!inherited) continue;
+    row.display_uploaded_file = inherited.uploadedFile;
+    row.display_product_file_id = inherited.productFileId;
+    row.display_source_file_id = inherited.sourceFileId;
+  }
+
+  const isExtraFixedValueRow = (row: Record<string, unknown>) => {
+    const raw = parseJson<Record<string, unknown>>(row.raw_value, {});
+    const itemLabel = String(raw.item ?? raw.metric ?? row.label ?? '').trim();
+    return EXTRA_FIXED_VALUE_ITEMS.has(itemLabel);
+  };
+
   return {
-    fixedValues: rows.filter((row) => row.source_group === 'fixed').map(toChecklistItem),
-    shareworksData: rows.filter((row) => row.source_group === 'shareworks').map(toChecklistItem),
-    futuData: rows.filter((row) => row.source_group === 'futu').map(toChecklistItem),
+    fixedValues: displayRows
+      .filter((row) => row.source_group === 'fixed' || isExtraFixedValueRow(row))
+      .map((row) => toChecklistItem(row, { forceFixed: true }) as FixedValueItem),
+    shareworksData: mergeSourceChecklistItems(
+      displayRows.filter((row) => row.source_group === 'shareworks').map((row) => toChecklistItem(row) as SourceCheckItem),
+    ),
+    futuData: mergeSourceChecklistItems(
+      displayRows.filter((row) => row.source_group === 'futu').map((row) => toChecklistItem(row) as SourceCheckItem),
+    ),
   };
 }
 
@@ -767,23 +930,27 @@ async function findProductFileForInputBinding(params: ProductFileBindingLookup):
   const uploadedFile = params.uploadedFile.trim();
   const sheetName = params.defaultSheetName?.trim() ?? '';
 
-  if (params.currentProductFileId) {
-    const current = files.find((file) => Number(file.id) === params.currentProductFileId);
-    if (current && (!sheetName || (await productFileHasSheet(current, sheetName)))) {
-      return Number(current.id);
-    }
-  }
-
   if (uploadedFile) {
     const exact = files.find((file) => String(file.original_name).toLowerCase() === uploadedFile.toLowerCase());
-    if (exact && (!sheetName || (await productFileHasSheet(exact, sheetName)))) return Number(exact.id);
+    if (exact) return Number(exact.id);
 
     const scored = files
       .map((file) => ({ file, score: fileNameMatchScore(String(file.original_name), uploadedFile) }))
       .filter((item) => item.score >= 0.6)
       .sort((a, b) => b.score - a.score);
-    for (const item of scored) {
-      if (!sheetName || (await productFileHasSheet(item.file, sheetName))) return Number(item.file.id);
+    if (scored[0]) return Number(scored[0].file.id);
+
+    const current = params.currentProductFileId ? files.find((file) => Number(file.id) === params.currentProductFileId) : null;
+    if (current && fileNameMatchScore(String(current.original_name), uploadedFile) >= 0.6) {
+      return Number(current.id);
+    }
+    return null;
+  }
+
+  if (params.currentProductFileId) {
+    const current = files.find((file) => Number(file.id) === params.currentProductFileId);
+    if (current && (!sheetName || (await productFileHasSheet(current, sheetName)))) {
+      return Number(current.id);
     }
   }
 
@@ -849,13 +1016,24 @@ async function updateProductWorkbook(params: {
   };
 }
 
+const workflowFileSources = new WorkflowFileSourceRegistry();
+workflowFileSources.register({
+  provider: 'product-files',
+  async read(ref) {
+    const fileId = Number(ref.id);
+    if (!Number.isInteger(fileId) || fileId <= 0) throw new Error('product-files source requires a positive id');
+    const file = await getProductFileOrThrow(fileId);
+    return fileStorage.read(String(file.file_path));
+  },
+});
+
 const workflowOperatorRuntime: WorkflowOperatorRuntime = {
   extractSheetRangeAsDataFrame,
   rowsToDataFrame,
   dataFrameToWorkbookBuffer,
+  readFile: (ref) => workflowFileSources.read(ref),
   async getProductFileBufferById(fileId) {
-    const file = await getProductFileOrThrow(fileId);
-    return fileStorage.read(String(file.file_path));
+    return workflowFileSources.read(productFileRef(fileId));
   },
   async saveGeneratedWorkbook(params) {
     const saved = await saveProductWorkbook(params);
@@ -1078,28 +1256,28 @@ async function registerRoutes() {
     }
 
     const resolvedRuntimeParameters: WorkflowRuntimeParameters = inputConfiguration
-      ? inputConfiguration.runtimeParameters
-      : {
-          month: body.month as string,
-          fileIds: Object.fromEntries(
-            await Promise.all(
-              MONTHLY_RUN_SOURCE_DEFINITIONS.filter((source) => source.required).map(async (source) => {
-                const binding = body.sources?.[source.sourceKey];
-                if (!binding) throw new Error(`Missing source binding: ${source.sourceKey}`);
-                await getProductFileOrThrow(binding.fileId);
-                return [source.sourceKey, binding.fileId] as const;
-              }),
+        ? inputConfiguration.runtimeParameters
+        : {
+            month: body.month as string,
+            fileRefs: Object.fromEntries(
+              await Promise.all(
+                MONTHLY_RUN_SOURCE_DEFINITIONS.filter((source) => source.required).map(async (source) => {
+                  const binding = body.sources?.[source.sourceKey];
+                  if (!binding) throw new Error(`Missing source binding: ${source.sourceKey}`);
+                  await getProductFileOrThrow(binding.fileId);
+                  return [source.sourceKey, productFileRef(binding.fileId)] as const;
+                }),
+              ),
             ),
-          ),
-        };
+          };
 
     const monthKey = String(resolvedRuntimeParameters.month);
     const monthId = await getOrCreateMonth(monthKey);
-    const workflowRow = await db.queryOne<Record<string, unknown>>(
-      'select * from workflow_definitions where code = $1',
-      [MONTHLY_WORKFLOW_CODE],
-    );
-    if (!workflowRow) throw notFound(`Workflow ${MONTHLY_WORKFLOW_CODE} not found`);
+    const workflowRow = await resolveMonthlyWorkflowDefinition(db, {
+      workflowId: body.workflowId,
+      workflowCode: body.workflowCode,
+    });
+    if (!workflowRow) throw notFound(`Workflow ${monthlyWorkflowSelectionLabel(body)} not found`);
 
     const storedTasks = normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
     const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
@@ -1109,11 +1287,14 @@ async function registerRoutes() {
       runtimeParameters: resolvedRuntimeParameters,
     });
 
-    const runtimeFileIds = runtimeConfiguration.runtimeParameters.fileIds;
+    const runtimeFileRefs = runtimeConfiguration.runtimeParameters.fileRefs;
     const primarySourceFileId =
       inputConfiguration?.primarySourceFileId ??
-      (runtimeFileIds && typeof runtimeFileIds === 'object' && !Array.isArray(runtimeFileIds)
-        ? Number((runtimeFileIds as Record<string, unknown>).control_book ?? Object.values(runtimeFileIds)[0] ?? null)
+      (runtimeFileRefs && typeof runtimeFileRefs === 'object' && !Array.isArray(runtimeFileRefs)
+        ? Number(
+            ((runtimeFileRefs as Record<string, unknown>).control_book as Record<string, unknown> | undefined)?.id ??
+              ((Object.values(runtimeFileRefs)[0] as Record<string, unknown> | undefined)?.id ?? null),
+          )
         : null);
     const history = await createMonthlyRunHistory(db, {
       monthId,
@@ -1152,6 +1333,14 @@ async function registerRoutes() {
     }
     const run = await workflowRunExecutor.continueAfterApproval(history.workflowRunId, taskIds, body.decision);
     return workflowRunToExecutionResult(run);
+  });
+
+  app.delete('/api/monthly-runs/:id', async (request, reply) => {
+    const historyId = Number((request.params as { id: string }).id);
+    const history = await getMonthlyRun(db, historyId);
+    if (!history) throw notFound('Monthly run not found');
+    await db.execute('delete from monthly_run_history where id = $1', [historyId]);
+    return reply.code(204).send();
   });
 
   app.get('/api/files', async () => {
@@ -1505,12 +1694,14 @@ async function registerRoutes() {
   });
 
   app.post('/api/update-plans', async (request, reply) => {
+    const currentUser = (request as typeof request & RequestWithAuth).currentUser;
+    if (!currentUser) throw new Error('Authentication required');
     const body = updatePlanSchema.parse(request.body);
     const row = await db.queryOne<{ id: number }>(
       `insert into update_plans (month_id, operation_time, operator, status, remark)
        values ($1, $2, $3, $4, $5)
        returning id`,
-      [await getOrCreateMonth(body.month), new Date().toLocaleDateString('zh-CN'), body.operator, '待启动', body.remark],
+      [await getOrCreateMonth(body.month), new Date().toLocaleDateString('zh-CN'), currentUser.username, '待启动', body.remark],
     );
     if (!row) throw new Error('Failed to create update plan');
 
@@ -2143,8 +2334,14 @@ async function registerRoutes() {
     const workflowRow = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [body.workflowId]);
     if (!workflowRow) throw notFound('Workflow not found');
 
-    const tasks = body.tasks ? normalizeWorkflowTasks(body.tasks) : normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
-    const taskMap = new Map(tasks.map((task) => [task.id, task]));
+    const sourceTasks = body.tasks ? normalizeWorkflowTasks(body.tasks) : normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
+    const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
+      tasks: sourceTasks,
+      runtimeParamsSchema: body.runtimeParamsSchema ?? parseJson(workflowRow.runtime_params_schema_json, {}),
+      runtimeParamsDefaults: body.runtimeParamsDefaults ?? parseJson(workflowRow.runtime_params_defaults_json, {}),
+      runtimeParameters: body.runtimeParameters,
+    });
+    const taskMap = new Map(runtimeConfiguration.tasks.map((task) => [task.id, task]));
     const task = taskMap.get(body.taskId);
     if (!task) throw notFound('Workflow task not found');
 
@@ -2197,10 +2394,24 @@ async function registerRoutes() {
     return workflowRunToExecutionResult(run);
   });
 
+  app.post('/api/workflow-runs/:id/cancel', async (request) => {
+    const runId = Number((request.params as { id: string }).id);
+    const run = await workflowRunExecutor.cancelRun(runId);
+    return workflowRunToExecutionResult(run);
+  });
+
+  app.post('/api/workflow-runs/:id/retry-unfinished', async (request) => {
+    const runId = Number((request.params as { id: string }).id);
+    const body = workflowRunRetryBodySchema.parse(request.body ?? {});
+    await workflowRunExecutor.retryUnfinishedAsync(runId, body.tasks ? normalizeWorkflowTasks(body.tasks) : undefined);
+    return workflowRunToExecutionResult(await workflowRunStore.getRun(runId));
+  });
+
   app.post('/api/workflow-runs/:id/steps/:taskId/execute', async (request) => {
     const { id, taskId } = request.params as { id: string; taskId: string };
     const runId = Number(id);
-    workflowRunExecutor.startSingleStepAsync(runId, taskId);
+    const body = workflowRunRetryBodySchema.parse(request.body ?? {});
+    await workflowRunExecutor.startSingleStepAsync(runId, taskId, body.tasks ? normalizeWorkflowTasks(body.tasks) : undefined);
     return workflowRunToExecutionResult(await workflowRunStore.getRun(runId));
   });
 
