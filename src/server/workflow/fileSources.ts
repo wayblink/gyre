@@ -1,0 +1,27 @@
+import type { WorkflowFileReference } from '../../shared/types.js';
+
+export type WorkflowFileSourceProvider = {
+  provider: string;
+  read: (ref: WorkflowFileReference) => Promise<Buffer>;
+};
+
+export class WorkflowFileSourceRegistry {
+  private readonly providers = new Map<string, WorkflowFileSourceProvider>();
+
+  register(provider: WorkflowFileSourceProvider): void {
+    const key = provider.provider.trim();
+    if (!key) throw new Error('Workflow file source provider cannot be empty');
+    this.providers.set(key, { ...provider, provider: key });
+  }
+
+  async read(ref: WorkflowFileReference): Promise<Buffer> {
+    const provider = this.providers.get(ref.provider);
+    if (!provider) throw new Error(`Workflow file source provider not registered: ${ref.provider}`);
+    return provider.read(ref);
+  }
+}
+
+export function productFileRef(fileId: number): WorkflowFileReference {
+  return { provider: 'product-files', id: fileId };
+}
+

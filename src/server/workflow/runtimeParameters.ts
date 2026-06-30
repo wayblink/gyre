@@ -36,7 +36,7 @@ export function normalizeWorkflowRuntimeParametersSchema(value: unknown): Workfl
       required: rawField.required === true,
       description: typeof rawField.description === 'string' ? rawField.description : undefined,
       enum: Array.isArray(rawField.enum) ? rawField.enum.map((item) => String(item)).filter(Boolean) : undefined,
-      properties: fieldType === 'object' ? normalizeWorkflowRuntimeParametersSchema(rawField.properties) : undefined,
+      properties: fieldType === 'object' && isRecord(rawField.properties) ? normalizeWorkflowRuntimeParametersSchema(rawField.properties) : undefined,
     };
   }
 
@@ -114,6 +114,7 @@ function validateRuntimeValue(
     throw new Error(`Runtime parameter ${keyPath} must be an object`);
   }
 
+  if (!field.properties) return;
   validateRuntimeParameters(value, field.properties ?? {}, keyPath, options);
 }
 
@@ -165,8 +166,8 @@ export function resolveWorkflowRuntimeConfiguration(params: {
   runtimeParameters?: WorkflowRuntimeParameters;
 }): { runtimeParameters: WorkflowRuntimeParameters; tasks: WorkflowTask[] } {
   const provided = normalizeWorkflowRuntimeParameters(params.runtimeParameters);
-  const defaults = normalizeWorkflowRuntimeParameters(params.runtimeParamsDefaults);
   const schema = normalizeWorkflowRuntimeParametersSchema(params.runtimeParamsSchema);
+  const defaults = normalizeWorkflowRuntimeParameters(params.runtimeParamsDefaults);
   const mergedRuntimeParameters = mergeRuntimeParameters(defaults, provided);
 
   validateRuntimeParameters(defaults, schema, '', { enforceRequired: false });

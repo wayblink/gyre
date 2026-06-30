@@ -1,5 +1,18 @@
-import { defineWorkflowOperator, normalizePersistExcelFileName, normalizeWorkflowTaskDependencies, requireInputDataFrame } from './types.js';
+import {
+  defineWorkflowOperator,
+  isWorkflowRuntimeReference,
+  normalizePersistExcelFileName,
+  normalizeWorkflowTaskDependencies,
+  prefixPersistExcelFileName,
+  requireInputDataFrame,
+} from './types.js';
 import type { WorkflowDataFrame } from '../../../shared/types.js';
+
+function currentMonthKey(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
 
 function withPersistedSheetName(dataframe: WorkflowDataFrame, sheetName: string): WorkflowDataFrame {
   return {
@@ -33,9 +46,23 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {
     fileName: { type: 'string', label: '文件名', required: true, placeholder: 'workflow-output.xlsx', default: 'workflow-output.xlsx' },
+    fileNamePrefix: { type: 'string', label: '文件名前缀', required: false, placeholder: '2026-05', default: '' },
     sheetName: { type: 'string', label: 'Sheet 名称', required: false, placeholder: 'Sheet1', default: 'Sheet1' },
     uploadedBy: { type: 'string', label: '上传人', required: false, placeholder: 'Workflow', default: 'Workflow' },
   },
+  runtimeParameters: [
+    {
+      path: 'month',
+      field: {
+        type: 'string',
+        label: 'Month',
+        required: true,
+        description: '用于生成月度输出文件名前缀，例如 2026-05-Capitalization_Table_Summary_View.xlsx。',
+      },
+      defaultValue: currentMonthKey,
+      appliesTo: (task) => isWorkflowRuntimeReference(task.params.fileNamePrefix),
+    },
+  ],
   normalizeTask(task) {
     task.inputs = {
       input1: {
@@ -49,7 +76,8 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
   async execute(context) {
     const { task, runtime } = context;
     const dataframe = await requireInputDataFrame(context, 'input1');
-    const fileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
+    const baseFileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
+    const fileName = prefixPersistExcelFileName(baseFileName, task.params.fileNamePrefix);
     const sheetName = String(task.params.sheetName ?? '').trim() || dataframe.range.sheetName || 'Sheet1';
     const uploadedBy = String(task.params.uploadedBy ?? '').trim() || 'Workflow';
     const buffer = runtime.dataFrameToWorkbookBuffer(dataframe, { sheetName });
@@ -70,7 +98,8 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
   async preview(context) {
     const { task } = context;
     const dataframe = await requireInputDataFrame(context, 'input1');
-    const fileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
+    const baseFileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
+    const fileName = prefixPersistExcelFileName(baseFileName, task.params.fileNamePrefix);
     const sheetName = String(task.params.sheetName ?? '').trim() || dataframe.range.sheetName || 'Sheet1';
     const persistedDataFrame = withPersistedSheetName(dataframe, sheetName);
 

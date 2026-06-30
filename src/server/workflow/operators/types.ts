@@ -1,8 +1,10 @@
 import type {
   ProductFileRecord,
   WorkflowDataFrame,
+  WorkflowFileReference,
   WorkflowOperatorCategory,
   WorkflowOperatorParamsSchema,
+  WorkflowRuntimeParameterField,
   WorkflowOperatorSlot,
   WorkflowSqlTableBinding,
   WorkflowTask,
@@ -20,6 +22,13 @@ export type WorkflowOperatorSeedDefinition = {
   paramsSchema: WorkflowOperatorParamsSchema;
 };
 
+export type WorkflowOperatorRuntimeParameterRequirement = {
+  path: string;
+  field: WorkflowRuntimeParameterField;
+  defaultValue?: unknown | (() => unknown);
+  appliesTo?: (task: WorkflowTask) => boolean;
+};
+
 export type WorkflowOperatorRuntime = {
   extractSheetRangeAsDataFrame: (
     buffer: Buffer,
@@ -31,7 +40,8 @@ export type WorkflowOperatorRuntime = {
     options: { sheetName: string; a1Range: string },
   ) => WorkflowDataFrame;
   dataFrameToWorkbookBuffer: (dataframe: WorkflowDataFrame, options: { sheetName: string }) => Buffer;
-  getProductFileBufferById: (fileId: number) => Promise<Buffer>;
+  readFile: (ref: WorkflowFileReference) => Promise<Buffer>;
+  getProductFileBufferById?: (fileId: number) => Promise<Buffer>;
   saveGeneratedWorkbook: (params: {
     originalName: string;
     buffer: Buffer;
@@ -52,6 +62,7 @@ export type WorkflowOperatorExecutionContext = {
 export type WorkflowOperatorExecuteResult = WorkflowDataFrame | WorkflowTaskPreviewResult;
 
 export type WorkflowOperatorDefinition = WorkflowOperatorSeedDefinition & {
+  runtimeParameters?: WorkflowOperatorRuntimeParameterRequirement[];
   normalizeTask?: (task: WorkflowTask) => void;
   execute: (context: WorkflowOperatorExecutionContext) => Promise<WorkflowOperatorExecuteResult>;
   preview?: (context: WorkflowOperatorExecutionContext) => Promise<WorkflowTaskPreviewResult>;
@@ -81,6 +92,47 @@ export function normalizeSqlTableBindings(value: unknown): WorkflowSqlTableBindi
 export function normalizePersistExcelFileName(raw: unknown, fallback: string) {
   const base = String(raw ?? '').trim() || fallback;
   return /\.xlsx$/i.test(base) ? base : `${base}.xlsx`;
+}
+
+export function prefixPersistExcelFileName(fileName: string, rawPrefix: unknown): string {
+  const prefix = String(rawPrefix ?? '').trim();
+  if (!prefix) return fileName;
+  return `${prefix}-${fileName.replace(/^-+/, '')}`;
+}
+
+export function isWorkflowRuntimeReference(value: unknown): value is { $fromRuntime: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).$fromRuntime === 'string' &&
+    Object.keys(value as Record<string, unknown>).length === 1
+  );
+}
+
+export function normalizeWorkflowFileReference(value: unknown): WorkflowFileReference | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return { provider: 'product-files', id: value };
+  }
+
+  if (!isRecord(value)) return null;
+  const provider = String(value.provider ?? '').trim();
+  if (!provider) return null;
+
+  if (provider === 'product-files') {
+    const id = Number(value.id);
+    return Number.isInteger(id) && id > 0 ? { provider, id } : null;
+  }
+
+  return { ...value, provider };
+}
+
+export async function readWorkflowFile(runtime: WorkflowOperatorRuntime, ref: WorkflowFileReference): Promise<Buffer> {
+  if (runtime.readFile) return runtime.readFile(ref);
+  if (ref.provider === 'product-files' && typeof ref.id === 'number' && runtime.getProductFileBufferById) {
+    return runtime.getProductFileBufferById(ref.id);
+  }
+  throw new Error(`Workflow file provider not configured: ${ref.provider}`);
 }
 
 export function normalizeWorkflowTaskDependencies(task: WorkflowTask) {

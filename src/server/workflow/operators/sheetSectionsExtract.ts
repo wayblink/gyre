@@ -6,7 +6,12 @@ import type {
   WorkflowDataFrameColumnSchema,
   WorkflowDataFrameSection,
 } from '../../../shared/types.js';
-import { defineWorkflowOperator, normalizeWorkflowTaskDependencies } from './types.js';
+import {
+  defineWorkflowOperator,
+  normalizeWorkflowFileReference,
+  normalizeWorkflowTaskDependencies,
+  readWorkflowFile,
+} from './types.js';
 
 type SectionEndMode = 'blank-row' | 'next-anchor' | 'fixed-row-count';
 
@@ -170,7 +175,7 @@ function getSourceCellMap(dataframe: WorkflowDataFrame, rowIndex: number): Map<s
 
 function buildSectionDataFrame(params: {
   sheetName: string;
-  fileId: number;
+  fileId: number | null;
   sourceRanges: string[];
   columns: string[];
   sectionRows: SectionRow[];
@@ -470,7 +475,8 @@ export const sheetSectionsExtractOperator = defineWorkflowOperator({
   inputSlots: [],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {
-    fileId: { type: 'number', label: '文件 ID', required: true, default: null },
+    fileRef: { type: 'object', label: '文件引用', required: true, default: null },
+    fileId: { type: 'number', label: '文件 ID（兼容）', required: false, default: null },
     sheetName: { type: 'string', label: 'Sheet 名称', required: true, default: '' },
     sectionMode: { type: 'string', label: '区块发现模式', required: false, enum: ['manual', 'auto'], default: 'manual' },
     sections: {
@@ -495,12 +501,12 @@ export const sheetSectionsExtractOperator = defineWorkflowOperator({
     normalizeWorkflowTaskDependencies(task);
   },
   async execute({ task, runtime }) {
-    const fileId = typeof task.params.fileId === 'number' && Number.isFinite(task.params.fileId) ? task.params.fileId : null;
+    const fileRef = normalizeWorkflowFileReference(task.params.fileRef ?? task.params.fileId);
     const sheetName = String(task.params.sheetName ?? '').trim();
     const configuredSections = normalizeSections(task.params.sections);
     const sectionMode = String(task.params.sectionMode ?? 'manual').trim();
 
-    if (!fileId) throw new Error(`Task ${task.name} is missing fileId`);
+    if (!fileRef) throw new Error(`Task ${task.name} is missing fileRef`);
     if (!sheetName) throw new Error(`Task ${task.name} requires sheetName`);
 
     const sectionColumn = metadataColumnName(task.params.sectionColumn, 'section');
@@ -508,7 +514,7 @@ export const sheetSectionsExtractOperator = defineWorkflowOperator({
     const sourceRangeColumn = metadataColumnName(task.params.sourceRangeColumn, 'sourceRange');
     const splitByColumn = String(task.params.splitByColumn ?? '').trim();
 
-    const buffer = await runtime.getProductFileBufferById(fileId);
+    const buffer = await readWorkflowFile(runtime, fileRef);
     const workbook = readWorkbook(buffer);
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) throw new Error(`Sheet ${sheetName} not found`);
@@ -598,7 +604,7 @@ export const sheetSectionsExtractOperator = defineWorkflowOperator({
 
     return buildSectionDataFrame({
       sheetName,
-      fileId,
+      fileId: fileRef.provider === 'product-files' && typeof fileRef.id === 'number' ? fileRef.id : null,
       sourceRanges,
       columns,
       sectionRows,

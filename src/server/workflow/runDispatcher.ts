@@ -1,6 +1,7 @@
 export type WorkflowRunMode =
   | { kind: 'all' }
-  | { kind: 'single'; taskId: string };
+  | { kind: 'single'; taskId: string }
+  | { kind: 'retry_unfinished' };
 
 export interface WorkflowRunDispatcher {
   enqueue(runId: number, mode: WorkflowRunMode): void;

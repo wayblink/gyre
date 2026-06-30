@@ -26,8 +26,29 @@ export class WorkflowRunExecutor {
     this.dispatcher.enqueue(runId, { kind: 'all' });
   }
 
-  startSingleStepAsync(runId: number, taskId: string): void {
+  async startSingleStepAsync(runId: number, taskId: string, tasks?: WorkflowRunRecord['tasksSnapshot']): Promise<void> {
+    if (tasks) {
+      await this.store.updateRunTasksSnapshot(runId, tasks);
+    }
+    const run = await this.store.getRun(runId);
+    if (!run.tasksSnapshot.some((task) => task.id === taskId)) {
+      throw new Error(`Workflow run ${runId} does not contain task ${taskId}`);
+    }
+    await this.store.updateRunStatus({ runId, status: 'running', errorMessage: null });
     this.dispatcher.enqueue(runId, { kind: 'single', taskId });
+  }
+
+  async retryUnfinishedAsync(runId: number, tasks?: WorkflowRunRecord['tasksSnapshot']): Promise<void> {
+    if (tasks) {
+      await this.store.updateRunTasksSnapshot(runId, tasks);
+    }
+    await this.store.updateRunStatus({ runId, status: 'running', errorMessage: null });
+    this.dispatcher.enqueue(runId, { kind: 'retry_unfinished' });
+  }
+
+  async cancelRun(runId: number): Promise<WorkflowRunRecord> {
+    await this.scheduler.cancelRun(runId);
+    return this.store.getRun(runId);
   }
 
   async continueAfterApproval(runId: number, taskIds: string[], decision: 'approved' | 'skipped' = 'approved'): Promise<WorkflowRunRecord> {

@@ -1,4 +1,4 @@
-import { defineWorkflowOperator, normalizeWorkflowTaskDependencies } from './types.js';
+import { defineWorkflowOperator, normalizeWorkflowFileReference, normalizeWorkflowTaskDependencies, readWorkflowFile } from './types.js';
 
 export const sheetRangeExtractOperator = defineWorkflowOperator({
   code: 'sheet.range.extract',
@@ -10,7 +10,8 @@ export const sheetRangeExtractOperator = defineWorkflowOperator({
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {
     range: { type: 'string', label: 'A1 范围', required: true, placeholder: 'B3:F20', default: '' },
-    fileId: { type: 'number', label: '文件 ID', required: true, default: null },
+    fileRef: { type: 'object', label: '文件引用', required: true, default: null },
+    fileId: { type: 'number', label: '文件 ID（兼容）', required: false, default: null },
     headerRow: { type: 'number', label: '表头行号', required: false, description: 'Excel 中的绝对行号，例如 3', default: null },
     sheetName: { type: 'string', label: 'Sheet 名称', required: true, default: '' },
   },
@@ -19,17 +20,17 @@ export const sheetRangeExtractOperator = defineWorkflowOperator({
     normalizeWorkflowTaskDependencies(task);
   },
   async execute({ task, runtime }) {
-    const fileId = typeof task.params.fileId === 'number' && Number.isFinite(task.params.fileId) ? task.params.fileId : null;
+    const fileRef = normalizeWorkflowFileReference(task.params.fileRef ?? task.params.fileId);
     const sheetName = String(task.params.sheetName ?? '').trim();
     const range = String(task.params.range ?? '').trim();
     const rawHeaderRow = task.params.headerRow;
     const headerRow =
       typeof rawHeaderRow === 'number' && Number.isFinite(rawHeaderRow) ? rawHeaderRow : rawHeaderRow === null ? null : undefined;
 
-    if (!fileId) throw new Error(`Task ${task.name} is missing fileId`);
+    if (!fileRef) throw new Error(`Task ${task.name} is missing fileRef`);
     if (!sheetName || !range) throw new Error(`Task ${task.name} requires sheetName and range`);
 
-    const buffer = await runtime.getProductFileBufferById(fileId);
+    const buffer = await readWorkflowFile(runtime, fileRef);
     return runtime.extractSheetRangeAsDataFrame(buffer, sheetName, { range, headerRow });
   },
 });

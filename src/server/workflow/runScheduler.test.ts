@@ -16,6 +16,7 @@ import type {
 } from '../../shared/types.js';
 import { executeWorkflowTaskOutputStrict, executeWorkflowTaskPreview } from './engine.js';
 import type { WorkflowOperatorRuntime } from './operators/types.js';
+import { WorkflowRunExecutor } from './runExecutor.js';
 import type {
   WorkflowRunCreateInput,
   WorkflowRunEventInput,
@@ -79,6 +80,7 @@ function createRuntime(overrides: Partial<WorkflowOperatorRuntime> = {}): Workfl
       },
     }),
     dataFrameToWorkbookBuffer: () => Buffer.from('test'),
+    readFile: async () => Buffer.from('xlsx'),
     getProductFileBufferById: async () => Buffer.from('xlsx'),
     saveGeneratedWorkbook: async () => productFileRecord(),
     ...overrides,
@@ -222,6 +224,16 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
     return this.run;
   }
 
+  async updateRunTasksSnapshot(_runId: number, tasks: WorkflowTask[]): Promise<void> {
+    this.run.tasksSnapshot = tasks;
+    for (const task of tasks) {
+      const step = this.run.steps.find((item) => item.taskId === task.id);
+      if (!step) continue;
+      step.taskName = task.name;
+      step.operatorCode = task.operatorCode;
+    }
+  }
+
   async createEvent(params: WorkflowRunEventInput): Promise<void> {
     this.run.events.push({
       id: this.nextEventId++,
@@ -237,7 +249,10 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
   }
 
   async claimStep(_runId: number, task: WorkflowTask): Promise<WorkflowRunStepClaim | null> {
-    const step = this.run.steps.find((item) => item.taskId === task.id && (item.status === 'pending' || item.status === 'warning' || item.status === 'blocked'));
+    const step = this.run.steps.find((item) =>
+      item.taskId === task.id &&
+      (item.status === 'pending' || item.status === 'warning' || item.status === 'blocked' || item.status === 'failed' || item.status === 'skipped')
+    );
     if (!step) return null;
     const lockToken = `lock-${task.id}-${step.attemptCount + 1}`;
     step.status = 'running';
@@ -326,8 +341,8 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
     }
   }
 
-  async createRunFinishedEvent(runId: number, status: WorkflowRunStatus): Promise<void> {
-    await this.createEvent({ runId, eventType: 'run_finished', message: status, payload: { status } });
+  async createRunFinishedEvent(runId: number, status: WorkflowRunStatus, payload: Record<string, unknown> = {}): Promise<void> {
+    await this.createEvent({ runId, eventType: 'run_finished', message: status, payload: { status, ...payload } });
   }
 
   private finishStep(step: WorkflowRunStepRecord, params: WorkflowRunStepFinishInput): WorkflowRunStepRecord {
@@ -408,6 +423,138 @@ test('warning approval unblocks and runs downstream steps in the same run', asyn
   assert.equal(store.run.steps.find((step) => step.taskId === 'persist')?.status, 'completed');
   assert.equal(store.run.steps.find((step) => step.taskId === 'persist')?.result?.kind, 'file');
   assert.equal(saveCount, 1);
+});
+
+test('cancelRun marks unfinished steps skipped and finalizes the run', async () => {
+  const source = sourceTask();
+  const sql = sqlTask({ inputs: { input1: { from: 'source', slot: 'dataframe' } } });
+  const persist = persistTask({ inputs: { input1: { from: 'sql', slot: 'dataframe' } } });
+  const store = new FakeWorkflowRunStore(
+    [source, sql, persist],
+    [{ task: source, status: 'completed', result: dataframeResult() }],
+  );
+  const scheduler = new WorkflowRunScheduler(store, runtime);
+
+  await scheduler.cancelRun(store.run.id);
+
+  assert.equal(store.run.status, 'skipped');
+  assert.equal(store.run.finishedAt !== null, true);
+  assert.equal(store.run.steps.find((step) => step.taskId === 'source')?.status, 'completed');
+  assert.equal(store.run.steps.find((step) => step.taskId === 'sql')?.status, 'skipped');
+  assert.equal(store.run.steps.find((step) => step.taskId === 'persist')?.status, 'skipped');
+  assert.ok(store.run.events.some((event) => event.eventType === 'run_finished' && event.payload.cancelled === true));
+});
+
+test('cancelRun preserves a running claimed step so its worker lock remains valid', async () => {
+  const source = sourceTask();
+  const sql = sqlTask({ inputs: { input1: { from: 'source', slot: 'dataframe' } } });
+  const persist = persistTask({ inputs: { input1: { from: 'sql', slot: 'dataframe' } } });
+  const store = new FakeWorkflowRunStore(
+    [source, sql, persist],
+    [
+      { task: source, status: 'completed', result: dataframeResult() },
+      { task: sql, status: 'running' },
+    ],
+  );
+  const runningStep = store.run.steps.find((step) => step.taskId === 'sql');
+  if (!runningStep) throw new Error('missing running step');
+  runningStep.lockToken = 'active-lock';
+  const scheduler = new WorkflowRunScheduler(store, runtime);
+
+  await scheduler.cancelRun(store.run.id);
+
+  assert.equal(store.run.status, 'skipped');
+  assert.equal(store.run.steps.find((step) => step.taskId === 'sql')?.status, 'running');
+  assert.equal(store.run.steps.find((step) => step.taskId === 'sql')?.lockToken, 'active-lock');
+  assert.equal(store.run.steps.find((step) => step.taskId === 'persist')?.status, 'skipped');
+});
+
+test('single-step execution rejects task ids outside the run snapshot', async () => {
+  const source = sourceTask();
+  const store = new FakeWorkflowRunStore([source]);
+  const executor = new WorkflowRunExecutor(store, runtime);
+
+  await assert.rejects(
+    () => executor.startSingleStepAsync(store.run.id, 'missing-task'),
+    /does not contain task missing-task/,
+  );
+});
+
+test('single-step and retry-unfinished mark the run running before dispatch', async () => {
+  const source = sourceTask();
+  const store = new FakeWorkflowRunStore([source], [{ task: source, status: 'failed' }]);
+  store.run.status = 'failed';
+  const enqueued: unknown[] = [];
+  const executor = new WorkflowRunExecutor(store, runtime, {
+    enqueue(_runId, mode) {
+      enqueued.push(mode);
+    },
+  });
+
+  await executor.startSingleStepAsync(store.run.id, 'source');
+  assert.equal(store.run.status, 'running');
+  assert.deepEqual(enqueued[0], { kind: 'single', taskId: 'source' });
+
+  store.run.status = 'failed';
+  await executor.retryUnfinishedAsync(store.run.id);
+  assert.equal(store.run.status, 'running');
+  assert.deepEqual(enqueued[1], { kind: 'retry_unfinished' });
+});
+
+test('single-step retry can replace the current run task snapshot before dispatch', async () => {
+  const source = sourceTask();
+  const store = new FakeWorkflowRunStore([source], [{ task: source, status: 'failed' }]);
+  const executor = new WorkflowRunExecutor(store, runtime, {
+    enqueue() {},
+  });
+  const updatedSource = sourceTask({ name: 'Updated Source', params: { fileId: 99, sheetName: 'Sheet1', range: 'A1:A1' } });
+
+  await executor.startSingleStepAsync(store.run.id, 'source', [updatedSource]);
+
+  assert.equal(store.run.tasksSnapshot[0]?.name, 'Updated Source');
+  assert.equal(store.run.tasksSnapshot[0]?.params.fileId, 99);
+  assert.equal(store.run.steps.find((step) => step.taskId === 'source')?.taskName, 'Updated Source');
+});
+
+test('single-step execution can retry a failed task without rerunning completed dependencies', async () => {
+  const source = sourceTask();
+  const sql = sqlTask({ inputs: { input1: { from: 'source', slot: 'dataframe' } } });
+  const store = new FakeWorkflowRunStore(
+    [source, sql],
+    [
+      { task: source, status: 'completed', result: dataframeResult() },
+      { task: sql, status: 'failed' },
+    ],
+  );
+  const scheduler = new WorkflowRunScheduler(store, runtime);
+
+  await scheduler.execute(store.run.id, { kind: 'single', taskId: 'sql' });
+
+  assert.equal(store.run.steps.find((step) => step.taskId === 'source')?.attemptCount, 1);
+  assert.equal(store.run.steps.find((step) => step.taskId === 'sql')?.status, 'completed');
+  assert.equal(store.run.steps.find((step) => step.taskId === 'sql')?.attemptCount, 2);
+});
+
+test('retry_unfinished reruns failed and blocked steps while preserving completed outputs', async () => {
+  const source = sourceTask();
+  const sql = sqlTask({ inputs: { input1: { from: 'source', slot: 'dataframe' } } });
+  const persist = persistTask({ inputs: { input1: { from: 'sql', slot: 'dataframe' } } });
+  const store = new FakeWorkflowRunStore(
+    [source, sql, persist],
+    [
+      { task: source, status: 'completed', result: dataframeResult() },
+      { task: sql, status: 'failed' },
+      { task: persist, status: 'blocked' },
+    ],
+  );
+  const scheduler = new WorkflowRunScheduler(store, runtime);
+
+  await scheduler.execute(store.run.id, { kind: 'retry_unfinished' });
+
+  assert.equal(store.run.steps.find((step) => step.taskId === 'source')?.attemptCount, 1);
+  assert.equal(store.run.steps.find((step) => step.taskId === 'sql')?.status, 'completed');
+  assert.equal(store.run.steps.find((step) => step.taskId === 'persist')?.status, 'completed');
+  assert.equal(store.run.status, 'completed');
 });
 
 test('failed dependencies block downstream steps in the same run', async () => {
@@ -732,4 +879,47 @@ test('claimed step finish scopes SQL by run and task so Postgres can infer all p
   assert.ok(updateSql);
   assert.match(updateSql, /run_id = \$1/);
   assert.match(updateSql, /task_id = \$2/);
+});
+
+test('unclaimed step finish uses only the SQL parameters referenced by its update statement', async () => {
+  const source = sourceTask();
+  const captured: Array<{ sql: string; params: unknown[] }> = [];
+  const fakeDb = {
+    async queryOne(sql: string, params: unknown[]) {
+      captured.push({ sql, params });
+      return {
+        id: 10,
+        run_id: 100,
+        task_id: source.id,
+        task_name: source.name,
+        operator_code: source.operatorCode,
+        status: 'blocked',
+        lock_token: null,
+        locked_at: null,
+        attempt_count: 1,
+        started_at: new Date(0).toISOString(),
+        finished_at: new Date(1).toISOString(),
+        duration_ms: 1,
+        error_message: 'blocked',
+        result_json: null,
+      };
+    },
+    async execute(sql: string, params: unknown[]) {
+      captured.push({ sql, params });
+    },
+  };
+  const store = new WorkflowRunStore(fakeDb as never);
+
+  await store.markStepFinished({
+    runId: 100,
+    task: source,
+    status: 'blocked',
+    errorMessage: 'blocked',
+    startedAt: new Date(0).toISOString(),
+  });
+
+  const update = captured.find((item) => item.sql.includes('update workflow_run_steps'));
+  assert.ok(update);
+  assert.equal(update.params.length, 8);
+  assert.doesNotMatch(update.sql, /\$9|\$10/);
 });

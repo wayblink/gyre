@@ -56,6 +56,7 @@ export type WorkflowRunStatusUpdateInput = {
 export interface WorkflowRunRepository {
   createRun(params: WorkflowRunCreateInput): Promise<WorkflowRunRecord>;
   getRun(runId: number): Promise<WorkflowRunRecord>;
+  updateRunTasksSnapshot(runId: number, tasks: WorkflowTask[]): Promise<void>;
   createEvent(params: WorkflowRunEventInput): Promise<void>;
   // Claim/finish are the worker ownership boundary. A distributed worker must
   // finish with the same lock token it claimed, regardless of persistence backend.

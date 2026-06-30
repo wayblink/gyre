@@ -2,6 +2,7 @@ import type {
   WorkflowAssertFailureStrategy,
   WorkflowAssertOperator,
   WorkflowOperator,
+  WorkflowRuntimeParameterReference,
   WorkflowSqlTableBinding,
   WorkflowTask,
 } from '../../shared/types.js';
@@ -14,6 +15,112 @@ const DATAFRAME_ASSERT_CODE = 'dataframe.assert';
 const DATAFRAME_SQL_ASSERT_CODE = 'dataframe.sql.assert';
 const DATAFRAME_SCHEMA_ASSERT_CODE = 'dataframe.schema.assert';
 const DATAFRAME_SHAPE_ASSERT_CODE = 'dataframe.shape.assert';
+const WORKFLOW_RUNTIME_FILE_SELECT_PREFIX = '__runtime__:';
+
+export function isWorkflowRuntimeParameterReference(value: unknown): value is WorkflowRuntimeParameterReference {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).$fromRuntime === 'string' &&
+    Object.keys(value as Record<string, unknown>).length === 1
+  );
+}
+
+function cloneRuntimeParameterReference(value: WorkflowRuntimeParameterReference): WorkflowRuntimeParameterReference {
+  return { $fromRuntime: value.$fromRuntime };
+}
+
+export function normalizeWorkflowFileParamValue(value: unknown): number | WorkflowRuntimeParameterReference | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (isWorkflowRuntimeParameterReference(value)) return cloneRuntimeParameterReference(value);
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (record.provider === 'product-files') {
+      const id = Number(record.id);
+      return Number.isFinite(id) && id > 0 ? id : null;
+    }
+  }
+  return null;
+}
+
+export function getWorkflowFileParamRuntimePath(value: unknown): string | null {
+  return isWorkflowRuntimeParameterReference(value) ? value.$fromRuntime : null;
+}
+
+export function encodeWorkflowFileParamSelection(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return String(value);
+  if (isWorkflowRuntimeParameterReference(value)) return `${WORKFLOW_RUNTIME_FILE_SELECT_PREFIX}${value.$fromRuntime}`;
+  return '';
+}
+
+export function decodeWorkflowFileParamSelection(value: string): number | WorkflowRuntimeParameterReference | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith(WORKFLOW_RUNTIME_FILE_SELECT_PREFIX)) {
+    const runtimePath = trimmed.slice(WORKFLOW_RUNTIME_FILE_SELECT_PREFIX.length).trim();
+    return runtimePath ? { $fromRuntime: runtimePath } : null;
+  }
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+export type WorkflowRuntimeReferenceUsage = {
+  paramPath: string;
+  runtimePath: string;
+};
+
+export type WorkflowTaskParamInputUsage =
+  | {
+      paramPath: string;
+      kind: 'file';
+      fileId: number;
+    }
+  | {
+      paramPath: string;
+      kind: 'runtime';
+      runtimePath: string;
+    };
+
+export function collectWorkflowRuntimeReferences(
+  value: unknown,
+  currentPath = '',
+): WorkflowRuntimeReferenceUsage[] {
+  if (isWorkflowRuntimeParameterReference(value)) {
+    return [
+      {
+        paramPath: currentPath || '$',
+        runtimePath: value.$fromRuntime,
+      },
+    ];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => collectWorkflowRuntimeReferences(item, `${currentPath}[${index}]`));
+  }
+
+  if (!value || typeof value !== 'object') return [];
+
+  return Object.entries(value as Record<string, unknown>).flatMap(([key, nestedValue]) =>
+    collectWorkflowRuntimeReferences(nestedValue, currentPath ? `${currentPath}.${key}` : key),
+  );
+}
+
+export function collectWorkflowTaskParamInputUsages(task: WorkflowTask): WorkflowTaskParamInputUsage[] {
+  if (!isSheetRangeExtractTask(task) && !isSheetSectionsExtractTask(task)) {
+    return [];
+  }
+
+  const fileParam = normalizeWorkflowFileParamValue(task.params.fileRef ?? task.params.fileId);
+  const paramPath = task.params.fileRef === undefined ? 'fileId' : 'fileRef';
+  if (typeof fileParam === 'number') {
+    return [{ paramPath, kind: 'file', fileId: fileParam }];
+  }
+  if (isWorkflowRuntimeParameterReference(fileParam)) {
+    return [{ paramPath, kind: 'runtime', runtimePath: fileParam.$fromRuntime }];
+  }
+  return [];
+}
 
 export function isSheetRangeExtractTask(task: WorkflowTask | null): boolean {
   return task?.operatorCode === SHEET_RANGE_EXTRACT_CODE;
@@ -93,7 +200,7 @@ export function buildWorkflowTask(operator: WorkflowOperator, nextIndex: number)
     operatorCode: operator.code,
     operatorVersion: operator.version,
     description: '',
-    x: 48 + ((nextIndex - 1) % 3) * 280,
+    x: 48 + ((nextIndex - 1) % 3) * 340,
     y: 48 + Math.floor((nextIndex - 1) / 3) * 184,
     params: buildDefaultTaskParams(operator),
     inputs: buildDefaultTaskInputs(operator),
@@ -184,7 +291,8 @@ export function normalizeSheetSectionsExtractTask(task: WorkflowTask) {
   if (!isSheetSectionsExtractTask(task)) return;
   task.inputs = {};
   task.params.sheetName = typeof task.params.sheetName === 'string' ? task.params.sheetName : '';
-  task.params.fileId = typeof task.params.fileId === 'number' && Number.isFinite(task.params.fileId) ? task.params.fileId : null;
+  task.params.fileRef = normalizeWorkflowFileParamValue(task.params.fileRef ?? task.params.fileId);
+  delete task.params.fileId;
   const sections = getSheetSections(task);
   task.params.sectionMode = typeof task.params.sectionMode === 'string' ? task.params.sectionMode : 'manual';
   task.params.splitByColumn = typeof task.params.splitByColumn === 'string' ? task.params.splitByColumn : '';
@@ -297,6 +405,16 @@ export function normalizePersistExcelTask(task: WorkflowTask) {
       guards: task.inputs?.input1?.guards,
     },
   };
+  normalizeTaskDependencies(task);
+}
+
+export function normalizeSheetRangeExtractTask(task: WorkflowTask) {
+  if (!isSheetRangeExtractTask(task)) return;
+  task.inputs = {};
+  task.params.sheetName = typeof task.params.sheetName === 'string' ? task.params.sheetName : '';
+  task.params.range = typeof task.params.range === 'string' ? task.params.range : '';
+  task.params.fileRef = normalizeWorkflowFileParamValue(task.params.fileRef ?? task.params.fileId);
+  delete task.params.fileId;
   normalizeTaskDependencies(task);
 }
 
@@ -419,6 +537,10 @@ export function applyTaskOperatorDefaults(task: WorkflowTask) {
   }
   if (isSheetSectionsExtractTask(task)) {
     normalizeSheetSectionsExtractTask(task);
+    return;
+  }
+  if (isSheetRangeExtractTask(task)) {
+    normalizeSheetRangeExtractTask(task);
     return;
   }
   normalizeTaskDependencies(task);

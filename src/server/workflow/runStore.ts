@@ -254,6 +254,25 @@ export class WorkflowRunStore implements WorkflowRunRepository {
     return toWorkflowRunRecord(runRow, steps, artifacts, events, approvals);
   }
 
+  async updateRunTasksSnapshot(runId: number, tasks: WorkflowTask[]): Promise<void> {
+    await this.db.execute(
+      `update workflow_runs
+       set tasks_snapshot_json = $2::jsonb
+       where id = $1`,
+      [runId, JSON.stringify(tasks)],
+    );
+    for (const task of tasks) {
+      await this.db.execute(
+        `update workflow_run_steps
+         set task_name = $3,
+             operator_code = $4,
+             task_snapshot_json = $5::jsonb
+         where run_id = $1 and task_id = $2`,
+        [runId, task.id, task.name, task.operatorCode, JSON.stringify(task)],
+      );
+    }
+  }
+
   async listSteps(runId: number): Promise<WorkflowRunStepRecord[]> {
     const rows = await this.db.query<Record<string, unknown>>(
       'select * from workflow_run_steps where run_id = $1 order by id asc',
@@ -323,7 +342,7 @@ export class WorkflowRunStore implements WorkflowRunRepository {
          from workflow_run_steps
          where run_id = $1
            and task_id = $2
-           and status in ('pending', 'warning', 'blocked')
+           and status in ('pending', 'warning', 'blocked', 'failed', 'skipped')
          order by id desc
          limit 1
          for update skip locked
@@ -396,6 +415,16 @@ export class WorkflowRunStore implements WorkflowRunRepository {
       : `id = (
          select id from workflow_run_steps where run_id = $1 and task_id = $2 order by id desc limit 1
        )`;
+    const baseParams = [
+      params.runId,
+      params.task.id,
+      params.status,
+      params.result ? JSON.stringify(params.result) : null,
+      params.errorMessage ?? null,
+      startedAt,
+      finishedAt,
+      durationMs,
+    ];
     const row = await this.db.queryOne<Record<string, unknown>>(
       `update workflow_run_steps
        set status = $3,
@@ -408,18 +437,7 @@ export class WorkflowRunStore implements WorkflowRunRepository {
            duration_ms = $8
        where ${claimedWhere}
        returning *`,
-      [
-        params.runId,
-        params.task.id,
-        params.status,
-        params.result ? JSON.stringify(params.result) : null,
-        params.errorMessage ?? null,
-        startedAt,
-        finishedAt,
-        durationMs,
-        claim?.stepId ?? null,
-        claim?.lockToken ?? null,
-      ],
+      claim ? [...baseParams, claim.stepId, claim.lockToken] : baseParams,
     );
     if (!row) {
       throw new Error(

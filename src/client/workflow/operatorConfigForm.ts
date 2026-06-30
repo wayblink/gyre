@@ -62,14 +62,15 @@ function renderInputField(key: string, field: WorkflowOperatorParamField, value:
       </div>`;
   }
 
-  if (field.type === 'array') {
+  if (field.type === 'array' || field.type === 'object') {
     const textValue = Array.isArray(value) || (value && typeof value === 'object') ? JSON.stringify(value, null, 2) : String(value ?? '');
+    const expectedLabel = field.type === 'array' ? 'array' : 'object';
     return `
       <div class="workflow-generic-param">
         ${label}
         <textarea class="workflow-code-input workflow-code-input--compact" ${commonAttrs} spellcheck="false"${placeholder}>${escapeHtml(textValue)}</textarea>
         ${fieldHint(field, escapeHtml)}
-        <div class="workflow-generic-param__error hidden" data-workflow-generic-param-error="${escapeHtml(key)}">Invalid JSON array.</div>
+        <div class="workflow-generic-param__error hidden" data-workflow-generic-param-error="${escapeHtml(key)}">Invalid JSON ${expectedLabel}.</div>
       </div>`;
   }
 
@@ -154,14 +155,17 @@ export function syncOperatorConfigForm({ container, operator, task, excludedPara
       return;
     }
 
-    if (field.type === 'array') {
+    if (field.type === 'array' || field.type === 'object') {
       if (rawValue === '') {
-        task.params[key] = [];
+        task.params[key] = field.type === 'array' ? [] : {};
         return;
       }
       try {
         const parsed = JSON.parse(rawValue) as unknown;
-        if (!Array.isArray(parsed)) throw new Error('Expected array');
+        if (field.type === 'array' && !Array.isArray(parsed)) throw new Error('Expected array');
+        if (field.type === 'object' && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))) {
+          throw new Error('Expected object');
+        }
         task.params[key] = parsed;
       } catch {
         hasInvalidValue = true;

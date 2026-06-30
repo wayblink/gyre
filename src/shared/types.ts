@@ -1,4 +1,4 @@
-export type PlanStatus = '待启动' | '进行中' | '已完成';
+export type PlanStatus = '待启动' | '进行中' | '待复核' | '已完成' | '失败' | '已取消';
 export type SourceStatus = 'pass' | 'warning' | '';
 
 export type Reconciliation = {
@@ -85,6 +85,7 @@ export type SourceCheckItem = {
 export type FixedValueItem = {
   id?: number;
   item: string;
+  note: string;
   value: number;
   action: 'edit' | '-';
 };
@@ -332,7 +333,7 @@ export type WorkflowOperatorSlot = {
 export type WorkflowOperatorCategory = 'Input' | 'Transform' | 'Validation' | 'Output';
 
 export type WorkflowOperatorParamField = {
-  type: 'string' | 'number' | 'boolean' | 'array';
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
   label: string;
   required?: boolean;
   placeholder?: string;
@@ -358,6 +359,19 @@ export type WorkflowRuntimeParameters = Record<string, unknown>;
 export type WorkflowRuntimeParameterReference = {
   $fromRuntime: string;
 };
+
+export type WorkflowFileReference =
+  | {
+      provider: 'product-files';
+      id: number;
+    }
+  | {
+      provider: string;
+      key?: string;
+      path?: string;
+      id?: string | number;
+      [key: string]: unknown;
+    };
 
 export type WorkflowOperator = {
   id: number;
@@ -428,6 +442,9 @@ export type WorkflowTaskPreviewRequest = {
   workflowId: number;
   taskId: string;
   tasks?: WorkflowTask[];
+  runtimeParamsSchema?: WorkflowRuntimeParametersSchema;
+  runtimeParamsDefaults?: WorkflowRuntimeParameters;
+  runtimeParameters?: WorkflowRuntimeParameters;
 };
 
 export type WorkflowTaskPreviewResult =
@@ -594,6 +611,12 @@ export type MonthlyRunHistoryRecord = {
   triggeredAt: string;
   finishedAt: string | null;
   runtimeParameters: WorkflowRuntimeParameters;
+  inputFiles: Array<{
+    sourceKey: string;
+    label: string;
+    fileId: number | null;
+    fileName: string | null;
+  }>;
 };
 
 export type MonthlyRunSourceDefinition = {
@@ -611,6 +634,8 @@ export type MonthlyRunSourceBinding = {
 
 export type MonthlyRunTriggerRequest = {
   updatePlanId?: number;
+  workflowId?: number;
+  workflowCode?: string;
   month?: string;
   sources?: Record<string, MonthlyRunSourceBinding>;
   operator?: string;

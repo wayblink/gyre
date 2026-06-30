@@ -49,6 +49,7 @@ export class WorkflowRunScheduler {
   async execute(runId: number, mode: WorkflowRunMode): Promise<void> {
     try {
       await this.releaseExpiredLocks(runId);
+      if ((await this.store.getRun(runId)).status === 'skipped' && mode.kind !== 'retry_unfinished') return;
       await this.store.updateRunStatus({ runId, status: 'running', errorMessage: null });
       await this.executeRunnableSteps(runId, mode);
     } catch (error) {
@@ -102,6 +103,26 @@ export class WorkflowRunScheduler {
     await this.notifyRunFinalized(runId);
   }
 
+  async cancelRun(runId: number): Promise<void> {
+    const run = await this.store.getRun(runId);
+    const preservedStatuses = new Set<WorkflowExecutionTaskState>(['completed', 'running', 'failed', 'warning', 'skipped']);
+    for (const task of run.tasksSnapshot) {
+      const step = run.steps.find((item) => item.taskId === task.id);
+      if (step && preservedStatuses.has(step.status)) continue;
+      await this.store.markStepFinished({
+        runId,
+        task,
+        status: 'skipped',
+        errorMessage: `${task.name} cancelled by user`,
+      });
+    }
+    const latestRun = await this.store.getRun(runId);
+    const result = workflowRunToExecutionResult(latestRun);
+    await this.store.updateRunStatus({ runId, status: 'skipped', result, errorMessage: null, finish: true });
+    await this.store.createRunFinishedEvent(runId, 'skipped', { cancelled: true });
+    await this.notifyRunFinalized(runId);
+  }
+
   private async executeRunnableSteps(runId: number, mode: WorkflowRunMode): Promise<void> {
     let run = await this.store.getRun(runId);
     const orderedTasks = getWorkflowExecutionOrder(run.tasksSnapshot);
@@ -113,6 +134,7 @@ export class WorkflowRunScheduler {
       if (mode.kind === 'single' && task.id !== mode.taskId) continue;
 
       run = await this.store.getRun(runId);
+      if (run.status === 'skipped' && mode.kind !== 'retry_unfinished') return;
       ({ executed, taskResults } = hydrateRunOutputs(run, taskMap));
       stepStates = getStepStates(run);
       if (run.approvals.some((approval) => approval.status === 'pending')) {
@@ -122,10 +144,11 @@ export class WorkflowRunScheduler {
 
       const currentState = stepStates[task.id] ?? 'pending';
       const currentStep = run.steps.find((step) => step.taskId === task.id) ?? null;
+      const isRetryTarget = mode.kind === 'retry_unfinished' || (mode.kind === 'single' && task.id === mode.taskId);
       if (currentState === 'completed') continue;
       if (currentState === 'running') continue;
       if (currentState === 'warning' && isApprovedWarning(run, task.id) && isReusableStepOutput(currentStep, task)) continue;
-      if (currentState === 'failed' || currentState === 'skipped') continue;
+      if ((currentState === 'failed' || currentState === 'skipped') && !isRetryTarget) continue;
 
       const readiness = await this.resolveTaskReadiness(runId, task, run, stepStates, executed);
       if (readiness.kind === 'blocked') continue;
@@ -238,7 +261,7 @@ export class WorkflowRunScheduler {
   private async finalizeRun(runId: number, mode: WorkflowRunMode): Promise<void> {
     const latestRun = await this.store.getRun(runId);
     const status = mode.kind === 'single' ? getRunStatusFromSteps(latestRun) : this.getTerminalRunStatus(latestRun);
-    const shouldFinish = mode.kind === 'all' && status !== 'running' && status !== 'waiting_approval';
+    const shouldFinish = mode.kind !== 'single' && status !== 'running' && status !== 'waiting_approval';
     const result = workflowRunToExecutionResult(latestRun);
     await this.store.updateRunStatus({
       runId,
