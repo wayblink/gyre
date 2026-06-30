@@ -257,6 +257,40 @@ export async function updateMonthlyUpdatePlanStatus(
   );
 }
 
+export async function reconcileMonthlyUpdatePlanStatuses(db: MonthlyRunDb): Promise<void> {
+  await db.execute(
+    `with latest_runs as (
+       select distinct on (h.update_plan_id)
+              h.update_plan_id,
+              wr.status
+         from monthly_run_history h
+         join workflow_runs wr on wr.id = h.workflow_run_id
+        where h.update_plan_id is not null
+        order by h.update_plan_id, h.triggered_at desc, h.id desc
+     )
+     update update_plans up
+        set status = case latest_runs.status
+          when 'completed' then '已完成'
+          when 'completed_with_warnings' then '已完成'
+          when 'waiting_approval' then '待复核'
+          when 'failed' then '失败'
+          when 'skipped' then '已取消'
+          else '进行中'
+        end,
+            updated_at = current_timestamp
+       from latest_runs
+      where up.id = latest_runs.update_plan_id
+        and up.status is distinct from case latest_runs.status
+          when 'completed' then '已完成'
+          when 'completed_with_warnings' then '已完成'
+          when 'waiting_approval' then '待复核'
+          when 'failed' then '失败'
+          when 'skipped' then '已取消'
+          else '进行中'
+        end`,
+  );
+}
+
 async function reconcileMonthlyRunStatuses(
   db: MonthlyRunDb,
   rows: Array<Record<string, unknown>>,
