@@ -110,6 +110,7 @@ const monthlyRunPage = createMonthlyRunPage({
     if (getPageFromLocation() !== 'monthlyrun') return;
     void openMonthlyRunMonthOnly(month);
   },
+  onPlanStatusChanged: () => renderMonthlyPage(''),
 });
 
 function el<T extends HTMLElement>(id: string): T {

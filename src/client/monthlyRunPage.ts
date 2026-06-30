@@ -25,6 +25,7 @@ type MonthlyRunPageDeps = {
   notify: NotifyFn;
   confirmAction: ConfirmActionFn;
   onMonthChanged?: (month: string) => void;
+  onPlanStatusChanged?: () => void | Promise<void>;
 };
 
 type SourceDraftBindings = Record<string, MonthlyRunSourceBinding | null>;
@@ -72,6 +73,7 @@ export function createMonthlyRunPage({
   notify,
   confirmAction,
   onMonthChanged,
+  onPlanStatusChanged,
 }: MonthlyRunPageDeps) {
   const runClient = createWorkflowRunClient(api);
   let files: ProductFileRecord[] = [];
@@ -364,6 +366,7 @@ export function createMonthlyRunPage({
     } finally {
       isRunning = false;
       await refreshHistory(month);
+      await onPlanStatusChanged?.();
       renderRunPanel(failedMessage ?? undefined);
     }
   }
@@ -391,6 +394,7 @@ export function createMonthlyRunPage({
     isRunning = false;
     await finalizeAfterRun(el<HTMLInputElement>('monthlyRunMonth').value);
     await refreshHistory(el<HTMLInputElement>('monthlyRunMonth').value);
+    await onPlanStatusChanged?.();
     renderRunPanel();
   }
 
