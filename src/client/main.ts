@@ -51,9 +51,18 @@ let employeesTotal = 0;
 const employeesPageSize = 20;
 
 const pageTitles: Record<string, string> = {
-  summary: 'Summary',
+  captable: 'Captable',
   monthly: 'Monthly Updates',
   monthlyrun: 'Monthly Run',
+  'esop-detail': 'ESOP Detail',
+  'grant-record': 'Grant Record',
+  'exercise-record': 'Exercise to Date',
+  'sold-shares': 'Sold Shares',
+  'transfer-plan': '2025 Transfer to Futu',
+  'employee-management': 'Employee Management',
+  'plan-summary': 'Plan Summary',
+  'five-percent-holders': '5% Holders',
+  'fixed-value': 'Fixed Value',
   files: 'Files',
   workflow: 'Workflow',
   holdings: 'Holdings',
@@ -62,7 +71,7 @@ const pageTitles: Record<string, string> = {
   settings: 'Settings',
 };
 type PageKey = keyof typeof pageTitles;
-const DEFAULT_PAGE: PageKey = 'summary';
+const DEFAULT_PAGE: PageKey = 'captable';
 const FIXED_CAPITALIZATION_SUMMARY_SHEET = 'Capitalization Summary';
 const validPages = new Set<PageKey>(Object.keys(pageTitles) as PageKey[]);
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'captable.sidebar.collapsed';
@@ -393,6 +402,7 @@ async function logout() {
 
 function normalizePage(page: string | null | undefined): PageKey {
   const value = page?.trim().toLowerCase() ?? '';
+  if (value === 'summary') return 'captable';
   return validPages.has(value as PageKey) ? (value as PageKey) : DEFAULT_PAGE;
 }
 
@@ -435,7 +445,7 @@ function setActivePage(page: string) {
 }
 
 async function activatePage(page: PageKey) {
-  if (page === 'summary') {
+  if (page === 'captable') {
     await refreshSummarySourceFileOptions();
     await renderSummaryPage(currentMonth);
     return;
