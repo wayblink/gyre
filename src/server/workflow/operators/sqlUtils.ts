@@ -38,7 +38,11 @@ function assertSafeReadOnlySql(sql: string) {
 
 function bindDataFrameTable(database: AlaSqlDatabase, tableName: string, dataframe: WorkflowDataFrame) {
   database.exec(`CREATE TABLE ${tableName}`);
-  database.tables[tableName].data = dataframe.rows;
+  database.tables[tableName].data = dataframe.rows.map((row, index) => ({
+    ...row,
+    __workflow_row_number: index + 1,
+    __workflow_source_row: dataframe.index?.[index] ?? index + 1,
+  }));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -472,6 +472,22 @@ export const sheetSectionsExtractOperator = defineWorkflowOperator({
   version: '1.0.0',
   category: 'Input',
   description: '从同一个 Excel Sheet 中提取多个不连续区块，支持固定范围、锚点、空行分段和自动识别表头。',
+  documentation: {
+    usage: '从同一个 sheet 中读取多个不连续区块，并合并为一个 dataframe。适合 Option Plans Summary 这种按计划分段展示的表。',
+    steps: [
+      '配置 fileRef 和 sheetName。',
+      '在 sections 中为每个区块指定 key、title、range 和 headerRow。',
+      '使用 sectionColumn、sourceRangeColumn、sectionIndexColumn 保留来源元数据，方便后续 SQL 分组。',
+    ],
+    example: `{
+  "fileRef": { "$fromRuntime": "fileRefs.option_plans" },
+  "sheetName": "Option Plans Summary",
+  "sections": [
+    { "key": "bc_subplan_2025", "title": "GYRE 2025 BC Subplan", "range": "A4:E10", "headerRow": 2 }
+  ],
+  "sectionColumn": "section"
+}`,
+  },
   inputSlots: [],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {

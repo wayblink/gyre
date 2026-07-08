@@ -73,6 +73,7 @@ export type SourceCheckItem = {
   sourceFileId?: number | null;
   productFileId?: number | null;
   fileName: string;
+  used: boolean;
   isRequired: 'Required' | 'Optional' | '';
   uploadedFile: string;
   item?: string;
@@ -87,6 +88,7 @@ export type FixedValueItem = {
   item: string;
   note: string;
   value: number;
+  used: boolean;
   action: 'edit' | '-';
 };
 
@@ -344,6 +346,12 @@ export type WorkflowOperatorParamField = {
 
 export type WorkflowOperatorParamsSchema = Record<string, WorkflowOperatorParamField>;
 
+export type WorkflowOperatorDocumentation = {
+  usage: string;
+  steps: string[];
+  example: string;
+};
+
 export type WorkflowRuntimeParameterField = {
   type: 'string' | 'number' | 'boolean' | 'array' | 'object';
   label: string;
@@ -358,6 +366,11 @@ export type WorkflowRuntimeParameters = Record<string, unknown>;
 
 export type WorkflowRuntimeParameterReference = {
   $fromRuntime: string;
+  $type?: WorkflowRuntimeParameterField['type'];
+  $label?: string;
+  $description?: string;
+  $enum?: string[];
+  $default?: unknown;
 };
 
 export type WorkflowFileReference =
@@ -383,6 +396,7 @@ export type WorkflowOperator = {
   inputSlots: WorkflowOperatorSlot[];
   outputSlots: WorkflowOperatorSlot[];
   paramsSchema: WorkflowOperatorParamsSchema;
+  documentation?: WorkflowOperatorDocumentation;
   createdAt: string;
   updatedAt: string;
 };

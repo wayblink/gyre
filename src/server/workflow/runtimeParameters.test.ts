@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { resolveWorkflowRuntimeConfiguration } from './runtimeParameters.js';
+import { normalizeWorkflowRuntimeParametersSchema, resolveWorkflowRuntimeConfiguration } from './runtimeParameters.js';
+import { deriveWorkflowRuntimeConfigFromTasks } from './runtimeParameterRequirements.js';
 import type { WorkflowTask, WorkflowRuntimeParametersSchema } from '../../shared/types.js';
 
 const baseTask = (overrides: Partial<WorkflowTask>): WorkflowTask => ({
@@ -122,20 +123,18 @@ test('resolveWorkflowRuntimeConfiguration supports preview runtime defaults for 
   });
 });
 
-test('resolveWorkflowRuntimeConfiguration throws when required runtime parameter is missing', () => {
-  assert.throws(
-    () =>
-      resolveWorkflowRuntimeConfiguration({
-        tasks: [extractTask()],
-        runtimeParamsSchema: { month: { type: 'string', label: '月份', required: true } },
-        runtimeParamsDefaults: {},
-        runtimeParameters: {},
-      }),
-    /Missing runtime parameter: month/,
-  );
+test('resolveWorkflowRuntimeConfiguration ignores required metadata on runtime schema', () => {
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [baseTask({ params: {} })],
+    runtimeParamsSchema: { month: { type: 'string', label: '月份', required: true } },
+    runtimeParamsDefaults: {},
+    runtimeParameters: {},
+  });
+
+  assert.deepEqual(resolved.runtimeParameters, {});
 });
 
-test('resolveWorkflowRuntimeConfiguration throws when required nested runtime parameter is missing', () => {
+test('resolveWorkflowRuntimeConfiguration throws when a referenced nested runtime parameter is missing', () => {
   assert.throws(
     () =>
       resolveWorkflowRuntimeConfiguration({
@@ -144,11 +143,11 @@ test('resolveWorkflowRuntimeConfiguration throws when required nested runtime pa
         runtimeParamsDefaults: {},
         runtimeParameters: { month: '2026-05', fileRefs: {} },
       }),
-    /Missing runtime parameter: fileRefs\.control_book/,
+    /Runtime parameter reference not found: fileRefs\.control_book/,
   );
 });
 
-test('resolveWorkflowRuntimeConfiguration throws when the whole required object is missing', () => {
+test('resolveWorkflowRuntimeConfiguration throws when a referenced runtime object is missing', () => {
   assert.throws(
     () =>
       resolveWorkflowRuntimeConfiguration({
@@ -157,7 +156,7 @@ test('resolveWorkflowRuntimeConfiguration throws when the whole required object 
         runtimeParamsDefaults: {},
         runtimeParameters: { month: '2026-05' },
       }),
-    /Missing runtime parameter: fileRefs/,
+    /Runtime parameter reference not found: fileRefs\.control_book/,
   );
 });
 
@@ -216,4 +215,150 @@ test('resolveWorkflowRuntimeConfiguration resolves runtime constants into output
 
   assert.equal(resolved.tasks[0].params.fileNamePrefix, '2026-05');
   assert.deepEqual(resolved.runtimeParameters, { month: '2026-05' });
+});
+
+test('normalizeWorkflowRuntimeParametersSchema strips required metadata from workflow runtime schema', () => {
+  const schema = normalizeWorkflowRuntimeParametersSchema({
+    optionalMonth: { type: 'string', label: 'Optional Month' },
+    requiredMonth: { type: 'string', label: 'Required Month', required: true },
+  });
+
+  assert.equal(schema.optionalMonth.required, undefined);
+  assert.equal(schema.requiredMonth.required, undefined);
+});
+
+test('deriveWorkflowRuntimeConfigFromTasks does not inject workflow-level required metadata', () => {
+  const outputTask = baseTask({
+    id: 'persist_capitalization_summary',
+    name: 'Persist Capitalization Summary',
+    operatorCode: 'dataframe.persist.excel',
+    params: {
+      fileName: 'Capitalization_Table_Summary_View.xlsx',
+      fileNamePrefix: { $fromRuntime: 'month' },
+      sheetName: 'Capitalization Summary',
+    },
+  });
+
+  const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
+    tasks: [outputTask],
+    runtimeParamsSchema: {},
+    runtimeParamsDefaults: {},
+  });
+
+  assert.equal(runtimeConfig.runtimeParamsSchema.month?.label, 'Month');
+  assert.equal(runtimeConfig.runtimeParamsSchema.month?.required, undefined);
+});
+
+test('deriveWorkflowRuntimeConfigFromTasks derives schema from task runtime references', () => {
+  const extractTask = baseTask({
+    id: 'task_extract_range',
+    name: 'Extract Excel Range',
+    operatorCode: 'sheet.range.extract',
+    params: {
+      fileRef: { $fromRuntime: 'fileRefs.source' },
+      sheetName: 'Detailed Cap Table',
+      range: 'A1:Z50',
+    },
+  });
+
+  const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
+    tasks: [extractTask],
+    runtimeParamsSchema: {},
+    runtimeParamsDefaults: {},
+  });
+
+  assert.equal(runtimeConfig.runtimeParamsSchema.fileRefs?.type, 'object');
+  assert.equal(runtimeConfig.runtimeParamsSchema.fileRefs?.properties?.source?.type, 'object');
+  assert.equal(runtimeConfig.runtimeParamsSchema.fileRefs?.properties?.source?.label, 'Extract Excel Range file');
+  assert.equal(runtimeConfig.runtimeParamsSchema.fileRefs?.required, undefined);
+  assert.equal(runtimeConfig.runtimeParamsSchema.fileRefs?.properties?.source?.required, undefined);
+  assert.deepEqual(runtimeConfig.runtimeParamsDefaults, {});
+});
+
+test('deriveWorkflowRuntimeConfigFromTasks derives typed schema and defaults from runtime reference metadata', () => {
+  const computeTask = baseTask({
+    id: 'calc_business_inputs',
+    name: 'Calc Business Inputs',
+    operatorCode: 'sql.compute',
+    params: {
+      sql: 'select {constants.optionsOutstandingCullgen} as total',
+      tableBindings: [{ tableName: 'source', inputSlot: 'source' }],
+      constants: {
+        optionsOutstandingCullgen: {
+          $fromRuntime: 'fixedValues.optionsOutstandingCullgen',
+          $type: 'number',
+          $label: 'Options Outstanding - Cullgen',
+          $default: 4156815,
+        },
+      },
+    },
+  });
+
+  const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
+    tasks: [computeTask],
+    runtimeParamsSchema: {},
+    runtimeParamsDefaults: {},
+  });
+
+  assert.equal(runtimeConfig.runtimeParamsSchema.fixedValues?.type, 'object');
+  assert.equal(runtimeConfig.runtimeParamsSchema.fixedValues?.properties?.optionsOutstandingCullgen?.type, 'number');
+  assert.equal(
+    runtimeConfig.runtimeParamsSchema.fixedValues?.properties?.optionsOutstandingCullgen?.label,
+    'Options Outstanding - Cullgen',
+  );
+  assert.deepEqual(runtimeConfig.runtimeParamsDefaults, {
+    fixedValues: {
+      optionsOutstandingCullgen: 4156815,
+    },
+  });
+});
+
+test('deriveWorkflowRuntimeConfigFromTasks drops schema and defaults that are not referenced by workflow tasks', () => {
+  const extractTask = baseTask({
+    id: 'task_extract_range',
+    name: 'Extract Excel Range',
+    operatorCode: 'sheet.range.extract',
+    params: {
+      fileRef: { $fromRuntime: 'fileRefs.source' },
+      sheetName: 'Detailed Cap Table',
+      range: 'A1:Z50',
+    },
+  });
+
+  const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
+    tasks: [extractTask],
+    runtimeParamsSchema: {
+      fileRefs: {
+        type: 'object',
+        label: 'File refs',
+        properties: {
+          source: { type: 'object', label: 'Source file' },
+          stale: { type: 'object', label: 'Stale file' },
+        },
+      },
+      businessRequiredOnly: { type: 'string', label: 'Should not persist' },
+    },
+    runtimeParamsDefaults: {
+      fileRefs: {
+        source: { provider: 'product-files', id: 7 },
+        stale: { provider: 'product-files', id: 8 },
+      },
+      businessRequiredOnly: 'required',
+    },
+  });
+
+  assert.deepEqual(runtimeConfig.runtimeParamsSchema, {
+    fileRefs: {
+      type: 'object',
+      label: 'fileRefs',
+      properties: {
+        source: { type: 'object', label: 'Source file' },
+      },
+    },
+  });
+  assert.deepEqual(runtimeConfig.runtimeParamsDefaults, {
+    fileRefs: {
+      source: { provider: 'product-files', id: 7 },
+    },
+  });
 });

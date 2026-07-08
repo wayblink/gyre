@@ -42,6 +42,20 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
   version: '1.0.0',
   category: 'Output',
   description: '将输入 dataframe 导出为 Excel 文件并写入 Files，供后续下载和预览。',
+  documentation: {
+    usage: '把输入 dataframe 写成一个 Excel 文件并保存到 Files。适合作为工作流最终输出节点，也可以用于中间结果落盘审计。',
+    steps: [
+      '连接需要导出的 dataframe 输入。',
+      '配置 fileName 和 sheetName；fileName 会自动补齐 .xlsx 后缀。',
+      '如需月度文件名前缀，把 fileNamePrefix 配置为 { "$fromRuntime": "month" }，运行时会生成 2026-05-xxx.xlsx 这类文件名。',
+    ],
+    example: `{
+  "fileName": "Capitalization_Table_Summary_View.xlsx",
+  "fileNamePrefix": { "$fromRuntime": "month" },
+  "sheetName": "Capitalization Summary",
+  "uploadedBy": "Workflow"
+}`,
+  },
   inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'DataFrame', required: true }],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {
@@ -56,7 +70,6 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
       field: {
         type: 'string',
         label: 'Month',
-        required: true,
         description: '用于生成月度输出文件名前缀，例如 2026-05-Capitalization_Table_Summary_View.xlsx。',
       },
       defaultValue: currentMonthKey,

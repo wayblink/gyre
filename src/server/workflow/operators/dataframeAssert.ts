@@ -64,6 +64,20 @@ export const dataframeAssertOperator = defineWorkflowOperator({
   version: '1.0.0',
   category: 'Validation',
   description: '针对 dataframe 做断言，当前先支持 1 行 1 列场景的值比较，可配置失败是否阻断执行。',
+  documentation: {
+    usage: '对输入 dataframe 的 1 行 1 列结果做比较断言。适合放在 SQL 汇总节点之后，检查某个指标是否等于预期。',
+    steps: [
+      '上游通常连接一个只返回 1 行 1 列的 sql.compute 节点。',
+      '配置 operator 和 expectedValue。',
+      'failureStrategy 选择 block 阻断执行，或 warning 进入人工复核。',
+    ],
+    example: `{
+  "operator": "=",
+  "expectedValue": 111488849,
+  "failureStrategy": "warning",
+  "failureMessage": "EOM outstanding shares does not match expected control total"
+}`,
+  },
   inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'DataFrame', required: true }],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {

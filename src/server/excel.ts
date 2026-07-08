@@ -33,13 +33,50 @@ export type WorkbookSummary = {
 export type ExtractSheetRangeOptions = {
   range: string;
   headerRow?: number | null;
+  dropTrailingEmptyRows?: boolean;
 };
 
 export type ResolvedSheetRangeDataFrameOptions = {
   range: XLSX.Range;
   headerRow?: number | null;
   sourceRange?: string;
+  dropTrailingEmptyRows?: boolean;
 };
+
+function decodeSheetRangeRef(sheet: XLSX.WorkSheet, sheetName: string): XLSX.Range {
+  const ref = sheet['!ref'];
+  if (!ref) throw new Error(`Sheet ${sheetName} has no usable range`);
+  return XLSX.utils.decode_range(ref);
+}
+
+function decodeExtractRange(range: string, sheet: XLSX.WorkSheet, sheetName: string): XLSX.Range {
+  const openEndedRowRange = range.match(/^([A-Z]+)(\d+):([A-Z]+)$/i);
+  if (openEndedRowRange) {
+    const [, startColumn, startRowText, endColumn] = openEndedRowRange;
+    const sheetRange = decodeSheetRangeRef(sheet, sheetName);
+    return {
+      s: {
+        c: XLSX.utils.decode_col(startColumn),
+        r: Number(startRowText) - 1,
+      },
+      e: {
+        c: XLSX.utils.decode_col(endColumn),
+        r: sheetRange.e.r,
+      },
+    };
+  }
+  return XLSX.utils.decode_range(range);
+}
+
+function isBlankDataFrameValue(value: unknown): boolean {
+  return value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+}
+
+function trimTrailingBlankRows(matrix: unknown[][]): unknown[][] {
+  let end = matrix.length;
+  while (end > 0 && matrix[end - 1].every(isBlankDataFrameValue)) end -= 1;
+  return matrix.slice(0, end);
+}
 
 export type DataFrameWorkbookOptions = {
   sheetName?: string;
@@ -354,7 +391,7 @@ export function extractSheetRangeAsDataFrame(
 
   let decodedRange: XLSX.Range;
   try {
-    decodedRange = XLSX.utils.decode_range(normalizedRange);
+    decodedRange = decodeExtractRange(normalizedRange, sheet, sheetName);
   } catch {
     throw new Error(`Invalid range: ${options.range}`);
   }
@@ -363,6 +400,7 @@ export function extractSheetRangeAsDataFrame(
     range: decodedRange,
     headerRow: options.headerRow,
     sourceRange: normalizedRange,
+    dropTrailingEmptyRows: options.dropTrailingEmptyRows,
   });
 }
 
@@ -407,7 +445,11 @@ export function extractResolvedSheetRangeAsDataFrame(
   const columns = uniqueColumnNames(headerSource);
   const dataStartIndex = externalHeaderSource ? 0 : headerMatrixIndex === null ? 1 : headerMatrixIndex + 1;
 
-  const dataMatrix = matrix.slice(dataStartIndex);
+  const dataMatrix =
+    options.dropTrailingEmptyRows === false
+      ? matrix.slice(dataStartIndex)
+      : trimTrailingBlankRows(matrix.slice(dataStartIndex));
+  const effectiveMatrix = matrix.slice(0, dataStartIndex).concat(dataMatrix);
   const rows = dataMatrix.map((rowValues) =>
     Object.fromEntries(columns.map((column, index) => [column, rowValues[index] ?? null])),
   );
@@ -418,11 +460,15 @@ export function extractResolvedSheetRangeAsDataFrame(
     return columns.map((column, columnIndex) => buildDataFrameCell(sheet, sheetName, absoluteRowIndex, decodedRange.s.c + columnIndex, column));
   });
   const schema = inferColumnSchema(columns, cells);
+  const effectiveEndRow = dataMatrix.length > 0 ? startRow + dataStartIndex + dataMatrix.length - 1 : startRow + dataStartIndex - 1;
   const dataframeRange: WorkflowDataFrameRange = {
     sheetName,
-    a1Range: XLSX.utils.encode_range(decodedRange),
+    a1Range: XLSX.utils.encode_range({
+      s: decodedRange.s,
+      e: { r: Math.max(decodedRange.s.r, effectiveEndRow - 1), c: decodedRange.e.c },
+    }),
     startRow,
-    endRow,
+    endRow: Math.max(startRow, effectiveEndRow),
     startCol,
     endCol,
   };
@@ -431,7 +477,7 @@ export function extractResolvedSheetRangeAsDataFrame(
     columns,
     rows,
     index,
-    matrix,
+    matrix: effectiveMatrix,
     range: dataframeRange,
     schema,
     cells,

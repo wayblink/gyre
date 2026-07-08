@@ -7,6 +7,19 @@ export const sqlComputeOperator = defineWorkflowOperator({
   version: '1.0.0',
   category: 'Transform',
   description: '通用 SQL 算子：将上游 dataframe 绑定为表后执行 SQL，输出 dataframe。',
+  documentation: {
+    usage: '把上游 dataframe 绑定成 SQL 表，执行查询并输出新的 dataframe。适合聚合、清洗、union、计算业务指标。',
+    steps: [
+      '把 input1/input2 等输入槽连接到上游 dataframe。',
+      '在 tableBindings 中把输入槽命名成 SQL 中可引用的表名。',
+      'SQL 中使用 {tableName} 引用绑定表；使用 {constants.name} 引用运行时常量。',
+    ],
+    example: `{
+  "tableBindings": [{ "inputSlot": "control_book", "tableName": "control_book" }],
+  "constants": { "cullgenCommonStock": { "$fromRuntime": "constants.cullgenCommonStock" } },
+  "sql": "select max([Issued & Outstanding]) as eom_eq_balance_os from {control_book}"
+}`,
+  },
   inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'Input 1', required: false }],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {

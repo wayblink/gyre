@@ -37,59 +37,111 @@ export const MONTHLY_RUN_SOURCE_DEFINITIONS: MonthlyRunSourceDefinition[] = [
 export const MONTHLY_WORKFLOW_NAME = 'Gyre Cap Table Summary';
 
 export const MONTHLY_WORKFLOW_DESCRIPTION =
-  '基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算草稿：从 !!Gyre Cap Table 05.31.26.xlsx 提取 Control Book/Futu/Option Plans，按 Control Book 口径生成 Summary View；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 的 1 股差异作为 warning 人工确认点。';
+  '基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算草稿：从独立 EQ Control Book、Futu BCI Exercises、Option Plans Summary 源文件提取输入，并使用合并 cap table 的 Summary View 做测试期对账；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 的 1 股差异作为 warning 人工确认点。';
 
 export const MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN = 4_156_815;
 export const MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN = 10_994;
+const MONTHLY_RUNTIME_FILE_REF_DEFAULTS = {
+  control_book: { provider: 'product-files', id: 53 },
+  futu_exercises: { provider: 'product-files', id: 54 },
+  option_plans: { provider: 'product-files', id: 55 },
+  summary_source: { provider: 'product-files', id: 7 },
+} as const;
 
 export const MONTHLY_RUNTIME_PARAMS_SCHEMA: WorkflowRuntimeParametersSchema = {
   fileRefs: {
     type: 'object',
     label: 'File References',
-    required: true,
     properties: {
-      control_book: { type: 'object', label: 'EQ Control Book workbook', required: true },
-      futu_exercises: { type: 'object', label: 'Futu exercises workbook', required: true },
-      option_plans: { type: 'object', label: 'Option plans workbook', required: true },
-      summary_source: { type: 'object', label: 'Merged summary source workbook', required: false },
+      control_book: { type: 'object', label: 'EQ Control Book workbook' },
+      futu_exercises: { type: 'object', label: 'Futu exercises workbook' },
+      option_plans: { type: 'object', label: 'Option plans workbook' },
+      summary_source: { type: 'object', label: 'Merged summary source workbook' },
     },
   },
   fixedValues: {
     type: 'object',
     label: 'Fixed Values',
-    required: true,
     properties: {
       optionsOutstandingCullgen: {
         type: 'number',
         label: 'Options Outstanding - Cullgen',
-        required: true,
       },
       optionsAvailableCullgen: {
         type: 'number',
         label: 'Options Available - Cullgen',
-        required: true,
       },
     },
   },
 };
 
 export const MONTHLY_RUNTIME_PARAMS_DEFAULTS: WorkflowRuntimeParameters = {
-  fileRefs: {
-    control_book: { provider: 'product-files', id: 7 },
-    futu_exercises: { provider: 'product-files', id: 7 },
-    option_plans: { provider: 'product-files', id: 7 },
-    summary_source: { provider: 'product-files', id: 7 },
-  },
+  fileRefs: MONTHLY_RUNTIME_FILE_REF_DEFAULTS,
   fixedValues: {
     optionsOutstandingCullgen: MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
     optionsAvailableCullgen: MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
   },
 };
 
-const controlBookRuntimeFileRef = { $fromRuntime: 'fileRefs.control_book' };
-const futuExercisesRuntimeFileRef = { $fromRuntime: 'fileRefs.futu_exercises' };
-const optionPlansRuntimeFileRef = { $fromRuntime: 'fileRefs.option_plans' };
-const summarySourceRuntimeFileRef = { $fromRuntime: 'fileRefs.summary_source' };
+function cloneMonthlyRuntimeParameters(value: WorkflowRuntimeParameters): WorkflowRuntimeParameters {
+  return JSON.parse(JSON.stringify(value)) as WorkflowRuntimeParameters;
+}
+
+function mergeMonthlyRuntimeParameters(
+  base: WorkflowRuntimeParameters,
+  override: WorkflowRuntimeParameters,
+): WorkflowRuntimeParameters {
+  const merged = cloneMonthlyRuntimeParameters(base);
+  for (const [key, value] of Object.entries(override)) {
+    if (value === undefined) continue;
+    const current = merged[key];
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      current &&
+      typeof current === 'object' &&
+      !Array.isArray(current)
+    ) {
+      merged[key] = mergeMonthlyRuntimeParameters(
+        current as WorkflowRuntimeParameters,
+        value as WorkflowRuntimeParameters,
+      );
+      continue;
+    }
+    merged[key] = JSON.parse(JSON.stringify(value)) as unknown;
+  }
+  return merged;
+}
+
+export function buildMonthlyRuntimeParameters(overrides: WorkflowRuntimeParameters = {}): WorkflowRuntimeParameters {
+  return mergeMonthlyRuntimeParameters(MONTHLY_RUNTIME_PARAMS_DEFAULTS, overrides);
+}
+
+const controlBookRuntimeFileRef = {
+  $fromRuntime: 'fileRefs.control_book',
+  $type: 'object',
+  $label: 'EQ Control Book workbook',
+  $default: MONTHLY_RUNTIME_FILE_REF_DEFAULTS.control_book,
+};
+const futuExercisesRuntimeFileRef = {
+  $fromRuntime: 'fileRefs.futu_exercises',
+  $type: 'object',
+  $label: 'Futu exercises workbook',
+  $default: MONTHLY_RUNTIME_FILE_REF_DEFAULTS.futu_exercises,
+};
+const optionPlansRuntimeFileRef = {
+  $fromRuntime: 'fileRefs.option_plans',
+  $type: 'object',
+  $label: 'Option plans workbook',
+  $default: MONTHLY_RUNTIME_FILE_REF_DEFAULTS.option_plans,
+};
+const summarySourceRuntimeFileRef = {
+  $fromRuntime: 'fileRefs.summary_source',
+  $type: 'object',
+  $label: 'Merged summary source workbook',
+  $default: MONTHLY_RUNTIME_FILE_REF_DEFAULTS.summary_source,
+};
 
 export const MONTHLY_SUMMARY_TOTAL_FULLY_DILUTED = 133_527_448;
 export const MONTHLY_SUMMARY_CONTROL_BOOK_TOTAL = 111_488_849;
@@ -100,74 +152,60 @@ export const MONTHLY_SUMMARY_COLUMNS = [
   'Description',
   'Common Shares Equivalent',
   '% of fully diluted',
-  'Formula',
 ];
 
 export const buildMonthlyCapitalizationSummarySql = `
 select '' as Number, 'Issued Shares -Equity Asset Class' as Description,
   null as [Common Shares Equivalent],
-  null as [% of fully diluted],
-  '' as Formula
+  null as [% of fully diluted]
 from {business_inputs}
 union all select '' as Number, 'Asset Class Summary: EOM' as Description,
   b.eom_eq_balance_os as [Common Shares Equivalent],
-  null as [% of fully diluted],
-  'value=1+2+3+4, sourced from <span class="link-blue" data-link="control-book">Control book</span>' as Formula
+  null as [% of fully diluted]
 from {business_inputs} b
 union all select '1' as Number, 'Common Shares OS' as Description,
   b.eom_eq_balance_os - b.cullgen_common_stock - f.bci_shares_held_by_futu - b.bc_subplan_transfer_summary as [Common Shares Equivalent],
-  (b.eom_eq_balance_os - b.cullgen_common_stock - f.bci_shares_held_by_futu - b.bc_subplan_transfer_summary) / b.total_fully_diluted as [% of fully diluted],
-  'value=EOM-2-3-4-5' as Formula
+  (b.eom_eq_balance_os - b.cullgen_common_stock - f.bci_shares_held_by_futu - b.bc_subplan_transfer_summary) / b.total_fully_diluted as [% of fully diluted]
 from {futu_metrics} f, {business_inputs} b
 union all select '2' as Number, 'Cullgen common stock' as Description,
   b.cullgen_common_stock as [Common Shares Equivalent],
-  b.cullgen_common_stock / b.total_fully_diluted as [% of fully diluted],
-  'Fixed value' as Formula
+  b.cullgen_common_stock / b.total_fully_diluted as [% of fully diluted]
 from {business_inputs} b
 union all select '3' as Number, 'BCI Shares Held by Futu' as Description,
   f.bci_shares_held_by_futu as [Common Shares Equivalent],
-  f.bci_shares_held_by_futu / b.total_fully_diluted as [% of fully diluted],
-  'value=ΣGyre Gyre granted options(1) - utu exercises to date(2)<br><span class="formula-indent">(1) Fixed value</span><br><span class="formula-indent">(2) is aggregated from Futu exercise reports(<span class="link-blue" data-link="futu-exercise">Futu BCI Exercises to Date</span>)</span>' as Formula
+  f.bci_shares_held_by_futu / b.total_fully_diluted as [% of fully diluted]
 from {futu_metrics} f, {business_inputs} b
 union all select '4' as Number, '2025 BC Subplan shares transferred to Futu' as Description,
   b.bc_subplan_transfer_summary as [Common Shares Equivalent],
-  b.bc_subplan_transfer_summary / b.total_fully_diluted as [% of fully diluted],
-  'value =aggregated from <span class="link-blue" data-link="control-detail-1">Control Book</span> monthly report, with note ''Omnibus Inc. Pl''' as Formula
+  b.bc_subplan_transfer_summary / b.total_fully_diluted as [% of fully diluted]
 from {business_inputs} b
 union all select '' as Number, 'Derivative Equity Incentives' as Description,
   null as [Common Shares Equivalent],
-  null as [% of fully diluted],
-  '' as Formula
+  null as [% of fully diluted]
 from {business_inputs}
 union all select '5' as Number, 'Warrants for Convertible Preferred Stock' as Description,
   b.warrants_for_convertible_preferred_stock as [Common Shares Equivalent],
-  b.warrants_for_convertible_preferred_stock / b.total_fully_diluted as [% of fully diluted],
-  'Fixed value' as Formula
+  b.warrants_for_convertible_preferred_stock / b.total_fully_diluted as [% of fully diluted]
 from {business_inputs} b
 union all select '6' as Number, 'Options Outstanding- Gyre' as Description,
   o.total_options_outstanding - b.bc_subplan_transfer_summary as [Common Shares Equivalent],
-  (o.total_options_outstanding - b.bc_subplan_transfer_summary) / b.total_fully_diluted as [% of fully diluted],
-  'value=Σ <span class="link-blue" data-link="option-outstanding">all option plan outstanding shares</span>(1) - 2025 BC Subplan shares transferred to Futu(2)<br><span class="formula-indent">(1) Fixed value</span><br><span class="formula-indent">(2) is Item 4</span>' as Formula
+  (o.total_options_outstanding - b.bc_subplan_transfer_summary) / b.total_fully_diluted as [% of fully diluted]
 from {option_metrics} o, {business_inputs} b
 union all select '7' as Number, 'Options Available- Gyre' as Description,
   o.total_options_available as [Common Shares Equivalent],
-  o.total_options_available / b.total_fully_diluted as [% of fully diluted],
-  'value=Σ <span class="link-blue" data-link="option-available">all option plan available shares</span>' as Formula
+  o.total_options_available / b.total_fully_diluted as [% of fully diluted]
 from {option_metrics} o, {business_inputs} b
 union all select '8' as Number, 'Options Outstanding- Cullgen' as Description,
   b.options_outstanding_cullgen as [Common Shares Equivalent],
-  b.options_outstanding_cullgen / b.total_fully_diluted as [% of fully diluted],
-  'Fixed value' as Formula
+  b.options_outstanding_cullgen / b.total_fully_diluted as [% of fully diluted]
 from {business_inputs} b
 union all select '9' as Number, 'Options Available- Cullgen' as Description,
   b.options_available_cullgen as [Common Shares Equivalent],
-  b.options_available_cullgen / b.total_fully_diluted as [% of fully diluted],
-  'Fixed value' as Formula
+  b.options_available_cullgen / b.total_fully_diluted as [% of fully diluted]
 from {business_inputs} b
 union all select '' as Number, 'Total Fully Diluted Shares Outstand' as Description,
   b.total_fully_diluted as [Common Shares Equivalent],
-  1 as [% of fully diluted],
-  '' as Formula
+  1 as [% of fully diluted]
 from {business_inputs} b`;
 
 export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
@@ -179,9 +217,10 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
       name: 'Extract EQ Control Book',
       inputs: {},
       params: {
-        range: 'A9:L124',
+        range: 'A9:L',
         fileRef: controlBookRuntimeFileRef,
         headerRow: 9,
+        dropTrailingEmptyRows: true,
         sheetName: 'EQ Control Book',
       },
       dependsOn: [],
@@ -276,7 +315,7 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
         },
       },
       params: {
-        sql: "select\n  max([Issued & Outstanding]) as eom_eq_balance_os,\n  sum(case when [Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.') then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}\nwhere [Issued & Outstanding] is not null",
+        sql: "select\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  sum(case when [Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.') then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}",
         tableBindings: [{ inputSlot: 'control_book', tableName: 'control_book' }],
       },
       dependsOn: [],
@@ -489,8 +528,18 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
           { inputSlot: 'summary_source', tableName: 'summary_source' },
         ],
         constants: {
-          optionsOutstandingCullgen: { $fromRuntime: 'fixedValues.optionsOutstandingCullgen' },
-          optionsAvailableCullgen: { $fromRuntime: 'fixedValues.optionsAvailableCullgen' },
+          optionsOutstandingCullgen: {
+            $fromRuntime: 'fixedValues.optionsOutstandingCullgen',
+            $type: 'number',
+            $label: 'Options Outstanding - Cullgen',
+            $default: MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
+          },
+          optionsAvailableCullgen: {
+            $fromRuntime: 'fixedValues.optionsAvailableCullgen',
+            $type: 'number',
+            $label: 'Options Available - Cullgen',
+            $default: MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
+          },
         },
       },
       dependsOn: [],
@@ -708,15 +757,15 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
               enabled: true,
             },
             {
-              id: 'guard_assert_summary_total_formula',
-              name: 'Assert Summary Total Formula',
+              id: 'guard_assert_summary_total_calculation',
+              name: 'Assert Summary Total Calculation',
               type: 'dataframe.sql.assert',
               params: {
                 sql: "select sum([Common Shares Equivalent]) as actual from {summary} where [Number] <> ''",
                 operator: '=',
                 expectedValue: MONTHLY_SUMMARY_TOTAL_FULLY_DILUTED,
                 tableBindings: [{ inputSlot: 'summary', tableName: 'summary' }],
-                failureMessage: 'Assert Summary Total Formula failed',
+                failureMessage: 'Assert Summary Total Calculation failed',
                 failureStrategy: 'block',
               },
               enabled: true,
@@ -768,8 +817,8 @@ export function buildMonthlyWorkflowSeedDefinition() {
   const tasks = buildMonthlyWorkflowTasks();
   const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
     tasks,
-    runtimeParamsSchema: MONTHLY_RUNTIME_PARAMS_SCHEMA,
-    runtimeParamsDefaults: MONTHLY_RUNTIME_PARAMS_DEFAULTS,
+    runtimeParamsSchema: {},
+    runtimeParamsDefaults: {},
   });
 
   return {

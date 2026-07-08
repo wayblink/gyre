@@ -30,14 +30,14 @@ export function normalizeWorkflowRuntimeParametersSchema(value: unknown): Workfl
     const key = String(rawKey ?? '').trim();
     if (!key || !isRecord(rawField)) continue;
     const fieldType = readRuntimeFieldType(rawField.type);
-    schema[key] = {
+    const field: WorkflowRuntimeParameterField = {
       type: fieldType,
       label: String(rawField.label ?? key).trim() || key,
-      required: rawField.required === true,
       description: typeof rawField.description === 'string' ? rawField.description : undefined,
       enum: Array.isArray(rawField.enum) ? rawField.enum.map((item) => String(item)).filter(Boolean) : undefined,
       properties: fieldType === 'object' && isRecord(rawField.properties) ? normalizeWorkflowRuntimeParametersSchema(rawField.properties) : undefined,
     };
+    schema[key] = field;
   }
 
   return schema;
@@ -69,19 +69,15 @@ function getRuntimePathValue(runtimeParameters: WorkflowRuntimeParameters, runti
 }
 
 function isRuntimeReference(value: unknown): value is WorkflowRuntimeParameterReference {
-  return isRecord(value) && typeof value.$fromRuntime === 'string' && Object.keys(value).length === 1;
+  return isRecord(value) && typeof value.$fromRuntime === 'string';
 }
 
 function validateRuntimeValue(
   keyPath: string,
   value: unknown,
   field: WorkflowRuntimeParameterField,
-  options?: { enforceRequired?: boolean },
 ): void {
   if (value === undefined) {
-    if (field.required && options?.enforceRequired !== false) {
-      throw new Error(`Missing runtime parameter: ${keyPath}`);
-    }
     return;
   }
 
@@ -115,14 +111,13 @@ function validateRuntimeValue(
   }
 
   if (!field.properties) return;
-  validateRuntimeParameters(value, field.properties ?? {}, keyPath, options);
+  validateRuntimeParameters(value, field.properties ?? {}, keyPath);
 }
 
 export function validateRuntimeParameters(
   runtimeParameters: WorkflowRuntimeParameters,
   schema: WorkflowRuntimeParametersSchema,
   parentPath = '',
-  options?: { enforceRequired?: boolean },
 ): void {
   for (const key of Object.keys(runtimeParameters)) {
     if (!schema[key]) {
@@ -133,7 +128,7 @@ export function validateRuntimeParameters(
 
   for (const [key, field] of Object.entries(schema)) {
     const qualifiedKey = parentPath ? `${parentPath}.${key}` : key;
-    validateRuntimeValue(qualifiedKey, runtimeParameters[key], field, options);
+    validateRuntimeValue(qualifiedKey, runtimeParameters[key], field);
   }
 }
 
@@ -170,7 +165,7 @@ export function resolveWorkflowRuntimeConfiguration(params: {
   const defaults = normalizeWorkflowRuntimeParameters(params.runtimeParamsDefaults);
   const mergedRuntimeParameters = mergeRuntimeParameters(defaults, provided);
 
-  validateRuntimeParameters(defaults, schema, '', { enforceRequired: false });
+  validateRuntimeParameters(defaults, schema);
   validateRuntimeParameters(mergedRuntimeParameters, schema);
 
   return {

@@ -200,7 +200,6 @@
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                                     Capitalization Table (Summary View)
                                 </h3>
-                                <span class="card-subtitle">Capital Structure Overview</span>
                             </div>
                             <div class="card-header-actions">
                                 <button class="btn btn-secondary btn-sm" id="btnExport">
@@ -217,7 +216,6 @@
                                         <th class="col-description">Description</th>
                                         <th class="col-number">Common Shares Equivalent</th>
                                         <th class="col-percent">% of fully diluted</th>
-                                        <th class="col-formula">Formula</th>
                                     </tr>
                                 </thead>
                                 <tbody id="capitalizationBody"></tbody>
@@ -227,7 +225,6 @@
                                         <td style="text-align:left; font-weight:var(--font-bold);">Total Fully Diluted Shares Outstand</td>
                                         <td id="totalShares" style="font-weight:var(--font-bold);">133,527,448</td>
                                         <td style="font-weight:var(--font-bold);">100%</td>
-                                        <td></td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -384,6 +381,7 @@
                                                 <th>Item</th>
                                                 <th>Note</th>
                                                 <th>Value</th>
+                                                <th style="width:72px;">Used</th>
                                                 <th style="width:80px;">Actions</th>
                                             </tr>
                                         </thead>
@@ -395,12 +393,14 @@
                                     <table class="source-table source-table--inputs" id="shareworksTable">
                                         <colgroup>
                                             <col class="source-table__col-file">
+                                            <col class="source-table__col-used">
                                             <col class="source-table__col-required">
                                             <col class="source-table__col-uploaded">
                                         </colgroup>
                                         <thead>
                                             <tr>
                                                 <th>File Name</th>
+                                                <th style="width:72px;">Used</th>
                                                 <th style="width:80px;">Is required</th>
                                                 <th>Uploaded file</th>
                                             </tr>
@@ -413,12 +413,14 @@
                                     <table class="source-table source-table--inputs" id="futuTable">
                                         <colgroup>
                                             <col class="source-table__col-file">
+                                            <col class="source-table__col-used">
                                             <col class="source-table__col-required">
                                             <col class="source-table__col-uploaded">
                                         </colgroup>
                                         <thead>
                                             <tr>
                                                 <th>File Name</th>
+                                                <th style="width:72px;">Used</th>
                                                 <th style="width:80px;">Is required</th>
                                                 <th>Uploaded file</th>
                                             </tr>
@@ -744,7 +746,14 @@
                                     </div>
                                     <div class="workflow-structured__row hidden" id="workflowStructuredSqlRow">
                                         <label class="workflow-structured__label" for="workflowSqlInput">SQL</label>
-                                        <textarea id="workflowSqlInput" class="workflow-code-input" spellcheck="false" placeholder="select count(*) as total from {source}"></textarea>
+                                        <div class="workflow-sql-editor-shell">
+                                            <textarea id="workflowSqlInput" class="workflow-code-input" spellcheck="false" placeholder="select count(*) as total from {source}"></textarea>
+                                            <button class="workflow-sql-fullscreen-button" id="btnOpenWorkflowSqlFullscreen" type="button" title="Fullscreen SQL editor" aria-label="Fullscreen SQL editor">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                    <path d="M8 3H4a1 1 0 0 0-1 1v4h2V5h3V3Zm8 0v2h3v3h2V4a1 1 0 0 0-1-1h-4ZM5 16H3v4a1 1 0 0 0 1 1h4v-2H5v-3Zm14 3h-3v2h4a1 1 0 0 0 1-1v-4h-2v3Z"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
                                     </div>
                                     <div class="workflow-structured__row hidden" id="workflowStructuredPersistInputRow">
                                         <label class="workflow-structured__label" for="workflowPersistInputSource">Input</label>
@@ -839,9 +848,6 @@
                                         <div id="workflowInputGuardsEditor"></div>
                                     </div>
                                 </div>
-                                <div class="workflow-dependencies-panel hidden" id="workflowDependenciesPanel">
-                                    <div id="workflowDependenciesEditor"></div>
-                                </div>
                                 <div class="workflow-preview hidden" id="workflowPreviewPanel">
                                     <div class="workflow-inspector__title-row">
                                         <h3>Preview</h3>
@@ -850,6 +856,9 @@
                                     <div class="workflow-preview__summary" id="workflowPreviewSummary"></div>
                                     <div class="workflow-preview__table-wrap" id="workflowPreviewTable"></div>
                                 </div>
+                                <div class="workflow-dependencies-panel hidden" id="workflowDependenciesPanel">
+                                    <div id="workflowDependenciesEditor"></div>
+                                </div>
                             </div>
                         </div>
                         <div class="modal-footer">
@@ -857,6 +866,22 @@
                             <button class="btn btn-secondary hidden" id="btnRetryWorkflowUnfinished" type="button">Retry Unfinished</button>
                             <button class="btn btn-secondary hidden" id="btnRunWorkflowTaskStep" type="button">Retry Step</button>
                             <button class="btn btn-primary" id="btnDoneWorkflowTask" type="button">Done</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay workflow-sql-fullscreen-overlay hidden" id="workflowSqlFullscreenModal">
+                    <div class="modal-container workflow-sql-fullscreen-modal">
+                        <div class="modal-header">
+                            <h3 class="modal-title">SQL</h3>
+                            <button class="modal-close" id="btnCloseWorkflowSqlFullscreen" type="button">&times;</button>
+                        </div>
+                        <div class="modal-body workflow-sql-fullscreen-modal__body">
+                            <textarea id="workflowSqlFullscreenInput" class="workflow-code-input workflow-sql-fullscreen-input" spellcheck="false" placeholder="select count(*) as total from {source}"></textarea>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" id="btnCancelWorkflowSqlFullscreen" type="button">Cancel</button>
+                            <button class="btn btn-primary" id="btnApplyWorkflowSqlFullscreen" type="button">Apply</button>
                         </div>
                     </div>
                 </div>
@@ -888,6 +913,24 @@
                         <div class="modal-footer">
                             <button class="btn btn-secondary" id="btnEditWorkflowEdgeGuards" type="button">Edit in Task</button>
                             <button class="btn btn-primary" id="btnDoneWorkflowEdgeGuards" type="button">Done</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay hidden" id="workflowOperatorDetailsModal">
+                    <div class="modal-container workflow-operator-details-modal">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title" id="workflowOperatorDetailsTitle">Operator</h3>
+                                <p class="modal-subtitle" id="workflowOperatorDetailsSubtitle"></p>
+                            </div>
+                            <button class="modal-close" id="btnCloseWorkflowOperatorDetailsModal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="workflowOperatorDetailsBody"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-primary" id="btnDoneWorkflowOperatorDetails" type="button">Done</button>
                         </div>
                     </div>
                 </div>

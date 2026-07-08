@@ -70,6 +70,22 @@ export const dataframeShapeAssertOperator = defineWorkflowOperator({
   version: '1.0.0',
   category: 'Validation',
   description: '校验 dataframe 的行数和列数，适合检查提取范围、过滤结果或汇总结果的规模。',
+  documentation: {
+    usage: '校验输入 dataframe 的行数和列数。适合检查提取范围是否为空、SQL 结果规模是否符合预期，或防止异常大表继续流转。',
+    steps: [
+      '连接需要校验规模的 dataframe 输入。',
+      '分别配置 rowOperator/expectedRows 和 columnOperator/expectedColumns。',
+      '如果某一维不需要校验，将对应 operator 设置为 any。',
+    ],
+    example: `{
+  "rowOperator": ">=",
+  "expectedRows": 1,
+  "columnOperator": ">=",
+  "expectedColumns": 3,
+  "failureStrategy": "warning",
+  "failureMessage": "Extracted dataframe shape is unexpected"
+}`,
+  },
   inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'DataFrame', required: true }],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {

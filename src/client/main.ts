@@ -549,9 +549,9 @@ async function openMonthlyRunMonthOnly(month: string) {
   currentFileList = null;
   el('monthlyRunInputMonth').textContent = formatMonthCN(month);
   el('modalTitle').textContent = 'Input Configuration';
-  el('fixedValueBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
-  el('shareworksBody').innerHTML = '<tr><td colspan="3" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
-  el('futuBody').innerHTML = '<tr><td colspan="3" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  el('fixedValueBody').innerHTML = '<tr><td colspan="5" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  el('shareworksBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  el('futuBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
   setActivePage('monthlyrun');
   await monthlyRunPage.openForMonth(month);
 }
@@ -660,13 +660,13 @@ async function renderSummaryPage(month: string) {
     capBody.innerHTML = data.capitalization
       .map((item) => {
         if (item.type === 'cat-header-blue' || item.type === 'cat-header-gray') {
-          return `<tr class="cat-header-blue"><td></td><td colspan="4" style="text-align:left;">${escapeHtml(item.description)}</td></tr>`;
+          return `<tr class="cat-header-blue"><td></td><td colspan="3" style="text-align:left;">${escapeHtml(item.description)}</td></tr>`;
         }
         if (item.type === 'cat-sub-label') {
           const sharesHtml = item.shares === undefined ? '' : item.highlightShares ? `<span class="highlight-yellow">${formatNumber(item.shares)}</span>` : formatNumber(item.shares);
           return `<tr class="cat-sub-label">
             <td></td><td style="text-align:left;">${escapeHtml(item.description)}</td>
-            <td class="col-number">${sharesHtml}</td><td></td><td class="col-formula">${item.formula ?? ''}</td>
+            <td class="col-number">${sharesHtml}</td><td></td>
           </tr>`;
         }
         const percent = item.percent === null || item.percent === undefined ? '' : item.percent < 1 ? `${(item.percent * 100).toFixed(2)}%` : `${item.percent.toFixed(2)}%`;
@@ -675,7 +675,6 @@ async function renderSummaryPage(month: string) {
           <td style="text-align:left;">${escapeHtml(item.description)}</td>
           <td class="col-number">${formatNumber(item.shares)}</td>
           <td class="col-percent">${percent}</td>
-          <td class="col-formula">${item.formula ?? ''}</td>
         </tr>`;
       })
       .join('');
@@ -867,6 +866,7 @@ function renderSourceTables() {
         <td style="text-align:left;">${escapeHtml(item.item)}</td>
         <td style="text-align:left;">${escapeHtml(item.note || '-')}</td>
         <td class="col-number">${formatNumber(item.value)}</td>
+        <td>${renderUsedValue(item.used)}</td>
         <td><a href="javascript:void(0)" class="source-edit-link" data-table="fixed" data-id="${item.id}">edit</a></td>
       </tr>`,
     )
@@ -911,9 +911,14 @@ function sourceMetricRow(item: SourceChecklist['shareworksData'][number], table:
         }<button class="source-file-delete" data-id="${item.id}" title="Delete file">&times;</button></div>`;
   return `<tr class="${hasInputIssue ? 'source-row--issue' : ''}">
     <td style="text-align:left;${item.fileName ? ' font-weight:600;' : ''}">${escapeHtml(item.fileName)}</td>
+    <td>${renderUsedValue(item.used)}</td>
     <td>${required}</td>
     <td>${uploaded}</td>
   </tr>`;
+}
+
+function renderUsedValue(used: boolean): string {
+  return used ? '<span class="source-used source-used--true">true</span>' : '<span class="source-used source-used--false">false</span>';
 }
 
 async function editMetric(metricId: number) {

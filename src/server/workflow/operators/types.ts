@@ -3,6 +3,7 @@ import type {
   WorkflowDataFrame,
   WorkflowFileReference,
   WorkflowOperatorCategory,
+  WorkflowOperatorDocumentation,
   WorkflowOperatorParamsSchema,
   WorkflowRuntimeParameterField,
   WorkflowOperatorSlot,
@@ -20,6 +21,7 @@ export type WorkflowOperatorSeedDefinition = {
   inputSlots: WorkflowOperatorSlot[];
   outputSlots: WorkflowOperatorSlot[];
   paramsSchema: WorkflowOperatorParamsSchema;
+  documentation?: WorkflowOperatorDocumentation;
 };
 
 export type WorkflowOperatorRuntimeParameterRequirement = {
@@ -33,7 +35,7 @@ export type WorkflowOperatorRuntime = {
   extractSheetRangeAsDataFrame: (
     buffer: Buffer,
     sheetName: string,
-    options: { range: string; headerRow?: number | null },
+    options: { range: string; headerRow?: number | null; dropTrailingEmptyRows?: boolean },
   ) => WorkflowDataFrame;
   rowsToDataFrame: (
     rows: Array<Record<string, unknown>>,
@@ -105,8 +107,7 @@ export function isWorkflowRuntimeReference(value: unknown): value is { $fromRunt
     typeof value === 'object' &&
     value !== null &&
     !Array.isArray(value) &&
-    typeof (value as Record<string, unknown>).$fromRuntime === 'string' &&
-    Object.keys(value as Record<string, unknown>).length === 1
+    typeof (value as Record<string, unknown>).$fromRuntime === 'string'
   );
 }
 

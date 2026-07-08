@@ -72,6 +72,20 @@ export const dataframeSchemaAssertOperator = defineWorkflowOperator({
   version: '1.0.0',
   category: 'Validation',
   description: '校验 dataframe 的列名结构，支持包含指定列或完全匹配列顺序。',
+  documentation: {
+    usage: '校验输入 dataframe 是否具备预期列结构。适合在提取或 SQL 转换之后确认字段没有缺失、改名或顺序异常。',
+    steps: [
+      '连接需要校验结构的 dataframe 输入。',
+      'mode 选择 contains 只要求包含指定列，或 exact 要求列集合和顺序完全一致。',
+      '在 expectedColumns 中填写逗号或换行分隔的列名，并配置失败策略。',
+    ],
+    example: `{
+  "mode": "contains",
+  "expectedColumns": "Shareholder, Security Type, Shares",
+  "failureStrategy": "block",
+  "failureMessage": "Capitalization summary schema changed"
+}`,
+  },
   inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'DataFrame', required: true }],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as XLSX from 'xlsx';
 import type { WorkflowDataFrame } from '../shared/types.js';
-import { dataFrameToWorkbookBuffer, rowsToDataFrame } from './excel.js';
+import { dataFrameToWorkbookBuffer, extractSheetRangeAsDataFrame, rowsToDataFrame } from './excel.js';
 
 function dataframeFixture(): WorkflowDataFrame {
   return {
@@ -101,4 +101,78 @@ test('rowsToDataFrame normalizes inferable numeric values and keeps ambiguous st
   assert.equal(dataframe.schema?.find((column) => column.name === 'Number')?.type, 'mixed');
   assert.equal(dataframe.schema?.find((column) => column.name === 'Employee Number')?.type, 'string');
   assert.equal(dataframe.schema?.find((column) => column.name === '% of fully diluted')?.type, 'mixed');
+});
+
+test('extractSheetRangeAsDataFrame supports open-ended row ranges to the sheet bottom', () => {
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    ['ignore', 'ignore'],
+    ['Name', 'Value'],
+    ['A', 1],
+    ['B', 2],
+    ['C', 3],
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Variable');
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+  const dataframe = extractSheetRangeAsDataFrame(buffer, 'Variable', { range: 'A2:B', headerRow: 2 });
+
+  assert.deepEqual(dataframe.columns, ['Name', 'Value']);
+  assert.deepEqual(
+    dataframe.rows.map((row) => row.Name),
+    ['A', 'B', 'C'],
+  );
+  assert.equal(dataframe.range.startRow, 2);
+  assert.equal(dataframe.range.endRow, 5);
+  assert.equal(dataframe.range.a1Range, 'A2:B5');
+});
+
+test('extractSheetRangeAsDataFrame trims trailing blank rows from extracted data', () => {
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    ['ignore', 'ignore'],
+    ['Name', 'Value'],
+    ['A', 1],
+    ['', ''],
+    ['B', 2],
+  ]);
+  worksheet.A8 = { t: 's', v: '' };
+  worksheet['!ref'] = 'A1:B8';
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Trailing blanks');
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+  const dataframe = extractSheetRangeAsDataFrame(buffer, 'Trailing blanks', { range: 'A2:B', headerRow: 2 });
+
+  assert.equal(dataframe.rows.length, 3);
+  assert.deepEqual(
+    dataframe.rows.map((row) => row.Name),
+    ['A', '', 'B'],
+  );
+  assert.equal(dataframe.range.endRow, 5);
+  assert.equal(dataframe.range.a1Range, 'A2:B5');
+});
+
+test('extractSheetRangeAsDataFrame can keep trailing blank rows when configured', () => {
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    ['ignore', 'ignore'],
+    ['Name', 'Value'],
+    ['A', 1],
+    ['', ''],
+    ['B', 2],
+  ]);
+  worksheet.A8 = { t: 's', v: '' };
+  worksheet['!ref'] = 'A1:B8';
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Keep trailing blanks');
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+  const dataframe = extractSheetRangeAsDataFrame(buffer, 'Keep trailing blanks', {
+    range: 'A2:B',
+    headerRow: 2,
+    dropTrailingEmptyRows: false,
+  });
+
+  assert.equal(dataframe.rows.length, 6);
+  assert.equal(dataframe.range.endRow, 8);
+  assert.equal(dataframe.range.a1Range, 'A2:B8');
 });

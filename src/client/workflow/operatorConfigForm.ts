@@ -116,7 +116,7 @@ export function renderOperatorConfigForm({
 
   container.innerHTML = `
     <div class="workflow-structured__section-head">
-      <div class="workflow-structured__label">Operator Params</div>
+      <div class="workflow-structured__label">Advanced Params</div>
     </div>
     <div class="workflow-generic-param-grid">
       ${fields.map(([key, field]) => renderInputField(key, field, fieldValue(task, key, field), escapeHtml)).join('')}

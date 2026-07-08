@@ -56,7 +56,11 @@ import {
   type ProductFileBindingLookup,
 } from './monthlyRun/inputConfiguration.js';
 import { monthlyWorkflowSelectionLabel, resolveMonthlyWorkflowDefinition } from './monthlyRun/workflowSelection.js';
-import { MONTHLY_RUN_SOURCE_DEFINITIONS, MONTHLY_WORKFLOW_NAME } from './monthlyRun/workflowDefinition.js';
+import { buildMonthlyRuntimeParameters, MONTHLY_RUN_SOURCE_DEFINITIONS, MONTHLY_WORKFLOW_NAME } from './monthlyRun/workflowDefinition.js';
+import {
+  monthlyRunWorkflowFileRuntimeKeyForName,
+  monthlyRunWorkflowFixedRuntimeKeyForRow,
+} from './monthlyRun/inputUsage.js';
 import { executeWorkflowTaskPreview } from './workflow/engine.js';
 import { WorkflowFileSourceRegistry, productFileRef } from './workflow/fileSources.js';
 import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
@@ -66,6 +70,7 @@ import {
   validateRuntimeParameters,
   resolveWorkflowRuntimeConfiguration,
 } from './workflow/runtimeParameters.js';
+import { deriveWorkflowRuntimeConfigFromTasks } from './workflow/runtimeParameterRequirements.js';
 import type { WorkflowOperatorRuntime } from './workflow/operators/types.js';
 import { WorkflowRunExecutor, workflowRunToExecutionResult } from './workflow/runExecutor.js';
 import { WorkflowRunStore } from './workflow/runStore.js';
@@ -175,6 +180,7 @@ const monthlyRunTriggerBodySchema = z.object({
   workflowCode: z.string().trim().min(1).optional(),
   month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() })).optional(),
+  fixedValues: z.record(z.string(), z.number()).optional(),
   operator: z.string().trim().min(1).optional().default('Administrator'),
 });
 
@@ -439,6 +445,7 @@ function toChecklistItem(row: Record<string, unknown>, options: { forceFixed?: b
           ? null
           : Number(row.product_file_id),
     fileName: checklistText(row.display_file_name) || checklistSourceLabel(row, raw),
+    used: false,
     isRequired: String(row.required ?? '') as 'Required' | 'Optional' | '',
     uploadedFile: checklistText(row.display_uploaded_file) || checklistText(row.uploaded_file ?? raw.uploadedFile),
     status: String(row.status ?? '') as 'pass' | 'warning' | '',
@@ -453,6 +460,7 @@ function toChecklistItem(row: Record<string, unknown>, options: { forceFixed?: b
       item: itemLabel,
       note: expectedSource && expectedSource !== '-' ? `from ${expectedSource}` : '-',
       value: value ?? 0,
+      used: monthlyRunWorkflowFixedRuntimeKeyForRow(row) !== null,
       action: 'edit',
     };
   }
@@ -492,6 +500,7 @@ function mergeSourceChecklistItems(items: SourceCheckItem[]): SourceCheckItem[] 
       uploadedFile: uploadedSource.uploadedFile,
       productFileId: uploadedSource.productFileId ?? representative.productFileId,
       sourceFileId: uploadedSource.sourceFileId ?? representative.sourceFileId,
+      used: monthlyRunWorkflowFileRuntimeKeyForName(representative.fileName) !== null,
     };
   });
 }
@@ -721,6 +730,7 @@ function toWorkflowOperator(row: Record<string, unknown>) {
     inputSlots: parseJson(row.input_slots_json, []),
     outputSlots: parseJson(row.output_slots_json, []),
     paramsSchema: parseJson(row.params_schema_json, {}),
+    documentation: parseJson(row.documentation_json, undefined),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -814,12 +824,20 @@ function toWorkflowImportExportBundle(workflow: WorkflowPortableDefinition): Wor
 }
 
 function normalizeWorkflowRuntimeConfig(params: {
+  tasks: WorkflowTask[];
   runtimeParamsSchema: unknown;
   runtimeParamsDefaults: unknown;
 }): { runtimeParamsSchema: Record<string, unknown>; runtimeParamsDefaults: WorkflowRuntimeParameters } {
-  const runtimeParamsSchema = normalizeWorkflowRuntimeParametersSchema(params.runtimeParamsSchema);
-  const runtimeParamsDefaults = normalizeWorkflowRuntimeParameters(params.runtimeParamsDefaults);
-  validateRuntimeParameters(runtimeParamsDefaults, runtimeParamsSchema, '', { enforceRequired: false });
+  const runtimeParamsSchemaHints = normalizeWorkflowRuntimeParametersSchema(params.runtimeParamsSchema);
+  const runtimeParamsDefaultHints = normalizeWorkflowRuntimeParameters(params.runtimeParamsDefaults);
+  const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
+    tasks: params.tasks,
+    runtimeParamsSchema: runtimeParamsSchemaHints,
+    runtimeParamsDefaults: runtimeParamsDefaultHints,
+  });
+  const runtimeParamsSchema = normalizeWorkflowRuntimeParametersSchema(runtimeConfig.runtimeParamsSchema);
+  const runtimeParamsDefaults = normalizeWorkflowRuntimeParameters(runtimeConfig.runtimeParamsDefaults);
+  validateRuntimeParameters(runtimeParamsDefaults, runtimeParamsSchema);
   return {
     runtimeParamsSchema,
     runtimeParamsDefaults,
@@ -1257,20 +1275,26 @@ async function registerRoutes() {
     }
 
     const resolvedRuntimeParameters: WorkflowRuntimeParameters = inputConfiguration
-        ? inputConfiguration.runtimeParameters
-        : {
-            month: body.month as string,
-            fileRefs: Object.fromEntries(
+      ? inputConfiguration.runtimeParameters
+      : buildMonthlyRuntimeParameters({
+          month: body.month as string,
+          fileRefs: Object.fromEntries(
+            (
               await Promise.all(
-                MONTHLY_RUN_SOURCE_DEFINITIONS.filter((source) => source.required).map(async (source) => {
+                MONTHLY_RUN_SOURCE_DEFINITIONS.map(async (source) => {
                   const binding = body.sources?.[source.sourceKey];
-                  if (!binding) throw new Error(`Missing source binding: ${source.sourceKey}`);
+                  if (!binding) {
+                    if (source.required) throw new Error(`Missing source binding: ${source.sourceKey}`);
+                    return null;
+                  }
                   await getProductFileOrThrow(binding.fileId);
                   return [source.sourceKey, productFileRef(binding.fileId)] as const;
                 }),
-              ),
-            ),
-          };
+              )
+            ).filter((entry): entry is readonly [string, ReturnType<typeof productFileRef>] => Boolean(entry)),
+          ),
+          fixedValues: body.fixedValues,
+        });
 
     const monthKey = String(resolvedRuntimeParameters.month);
     const monthId = await getOrCreateMonth(monthKey);
@@ -2210,6 +2234,7 @@ async function registerRoutes() {
     const imported = toWorkflowPortableDefinition(body.workflow);
     const uniqueCode = await ensureUniqueWorkflowCode(imported.code);
     const runtimeConfig = normalizeWorkflowRuntimeConfig({
+      tasks: imported.tasks,
       runtimeParamsSchema: imported.runtimeParamsSchema,
       runtimeParamsDefaults: imported.runtimeParamsDefaults,
     });
@@ -2251,6 +2276,7 @@ async function registerRoutes() {
 
     const normalizedTasks = normalizeWorkflowTasks(body.tasks);
     const runtimeConfig = normalizeWorkflowRuntimeConfig({
+      tasks: normalizedTasks,
       runtimeParamsSchema: body.runtimeParamsSchema,
       runtimeParamsDefaults: body.runtimeParamsDefaults,
     });
@@ -2298,6 +2324,7 @@ async function registerRoutes() {
     const normalizedTasks =
       body.tasks === undefined ? normalizeWorkflowTasks(parseJson(existing.tasks_json, [])) : normalizeWorkflowTasks(body.tasks);
     const runtimeConfig = normalizeWorkflowRuntimeConfig({
+      tasks: normalizedTasks,
       runtimeParamsSchema:
         body.runtimeParamsSchema === undefined ? parseJson(existing.runtime_params_schema_json, {}) : body.runtimeParamsSchema,
       runtimeParamsDefaults:

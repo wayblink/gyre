@@ -72,6 +72,21 @@ export const dataframeSqlAssertOperator = defineWorkflowOperator({
   version: '1.0.0',
   category: 'Validation',
   description: '对一个或多个输入 dataframe 执行 SQL，要求 SQL 返回 1 行 1 列，并对结果做值比较断言。',
+  documentation: {
+    usage: '先对一个或多个 dataframe 执行 SQL，再对 SQL 返回的 1 行 1 列结果做断言。适合跨表校验或复杂校验表达式。',
+    steps: [
+      '连接需要校验的 dataframe 输入。',
+      '配置 tableBindings 和 sql，让 SQL 返回单个 actual 值。',
+      '配置 operator、expectedValue 和 failureStrategy。',
+    ],
+    example: `{
+  "tableBindings": [{ "inputSlot": "summary", "tableName": "summary" }],
+  "sql": "select count(*) as actual from {summary}",
+  "operator": "=",
+  "expectedValue": 10,
+  "failureStrategy": "block"
+}`,
+  },
   inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'Input 1', required: false }],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {

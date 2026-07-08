@@ -11,6 +11,22 @@ class FakeDb implements MonthlyRunDb {
   };
 
   metrics: Record<string, unknown>[] = [
+    {
+      id: 10,
+      source_group: 'fixed',
+      metric_key: 'fixed_options_outstanding_cullgen',
+      label: 'Options Outstanding- Cullgen',
+      normalized_value: 4_156_815,
+      raw_value: { item: 'Options Outstanding- Cullgen', value: 4_156_815 },
+    },
+    {
+      id: 11,
+      source_group: 'fixed',
+      metric_key: 'fixed_options_available_cullgen',
+      label: 'Options Available- Cullgen',
+      normalized_value: 10_994,
+      raw_value: { item: 'Options Available- Cullgen', value: 10_994 },
+    },
     { id: 1, source_group: 'shareworks', label: 'EQ Control Book', required: 'Required', product_file_id: 101, uploaded_file: 'control.xlsx' },
     { id: 2, source_group: 'shareworks', label: 'Option Plans Summary', required: 'Required', product_file_id: 202, uploaded_file: 'options.xlsx' },
     { id: 3, source_group: 'futu', label: 'Futu BCI Exercises to Date', required: 'Required', product_file_id: 303, uploaded_file: 'futu.xlsx' },
@@ -57,9 +73,30 @@ test('resolveMonthlyRunInputConfiguration builds workflow runtime fileRefs from 
         control_book: { provider: 'product-files', id: 101 },
         futu_exercises: { provider: 'product-files', id: 303 },
         option_plans: { provider: 'product-files', id: 202 },
+        summary_source: { provider: 'product-files', id: 7 },
+      },
+      fixedValues: {
+        optionsAvailableCullgen: 10994,
+        optionsOutstandingCullgen: 4156815,
       },
     },
     primarySourceFileId: 101,
+  });
+});
+
+test('resolveMonthlyRunInputConfiguration passes fixed value rows as workflow runtime constants', async () => {
+  const db = new FakeDb();
+  db.metrics = db.metrics.map((row) => {
+    if (row.metric_key === 'fixed_options_outstanding_cullgen') return { ...row, normalized_value: 123 };
+    if (row.metric_key === 'fixed_options_available_cullgen') return { ...row, normalized_value: 456 };
+    return row;
+  });
+
+  const result = await resolveMonthlyRunInputConfiguration(db, 12);
+
+  assert.deepEqual(result.runtimeParameters.fixedValues, {
+    optionsOutstandingCullgen: 123,
+    optionsAvailableCullgen: 456,
   });
 });
 

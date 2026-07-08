@@ -27,7 +27,6 @@ import {
   collectWorkflowTaskParamInputUsages,
   buildDefaultTaskParams,
   buildWorkflowTask,
-  collectWorkflowRuntimeReferences,
   decodeWorkflowFileParamSelection,
   encodeWorkflowFileParamSelection,
   getAssertFailureStrategy,
@@ -71,7 +70,7 @@ type WorkflowPageDeps = {
 
 export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refreshProductFiles, notify, confirmAction }: WorkflowPageDeps) {
   const WORKFLOW_NODE_WIDTH = 300;
-  const WORKFLOW_NODE_HEADER_BASE_HEIGHT = 80;
+  const WORKFLOW_NODE_HEADER_BASE_HEIGHT = 64;
   const WORKFLOW_SLOT_ROW_MIN_HEIGHT = 34;
   const WORKFLOW_SLOT_LINE_HEIGHT = 13;
   const WORKFLOW_SLOT_COLUMN_GAP = 6;
@@ -128,6 +127,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   let isWorkflowInspectorCollapsed = false;
   let isWorkflowDependenciesCollapsed = false;
   let isWorkflowDependencyPickerOpen = false;
+  let isWorkflowRuntimeParamsCollapsed = true;
+  let activeWorkflowOperatorKey: string | null = null;
   let workflowCanvasZoom = 1;
   let workflowInputGuardAddSlot: string | null = null;
   let activeWorkflowEdgeGuards:
@@ -186,6 +187,11 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   function getWorkflowOperatorKey(operator: WorkflowOperator) {
     return `${operator.code}@${operator.version}`;
+  }
+
+  function getWorkflowOperatorByKey(operatorKey: string | null) {
+    if (!operatorKey) return null;
+    return workflowOperators.find((operator) => getWorkflowOperatorKey(operator) === operatorKey) ?? null;
   }
 
   function getWorkflowOperatorGroupLabel(category: WorkflowOperator['category']) {
@@ -274,6 +280,24 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el('workflowTaskModal').addEventListener('click', (event) => {
       if (event.target === el('workflowTaskModal')) closeWorkflowTaskModal();
     });
+    el('btnOpenWorkflowSqlFullscreen').addEventListener('click', openWorkflowSqlFullscreenModal);
+    el('btnCloseWorkflowSqlFullscreen').addEventListener('click', closeWorkflowSqlFullscreenModal);
+    el('btnCancelWorkflowSqlFullscreen').addEventListener('click', closeWorkflowSqlFullscreenModal);
+    el('btnApplyWorkflowSqlFullscreen').addEventListener('click', applyWorkflowSqlFullscreenModal);
+    el('workflowSqlFullscreenModal').addEventListener('click', (event) => {
+      if (event.target === el('workflowSqlFullscreenModal')) closeWorkflowSqlFullscreenModal();
+    });
+    el('workflowSqlFullscreenInput').addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeWorkflowSqlFullscreenModal();
+        return;
+      }
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        applyWorkflowSqlFullscreenModal();
+      }
+    });
     el('btnCloseWorkflowBindingPreviewModal').addEventListener('click', closeWorkflowBindingPreviewModal);
     el('workflowBindingPreviewModal').addEventListener('click', (event) => {
       if (event.target === el('workflowBindingPreviewModal')) closeWorkflowBindingPreviewModal();
@@ -282,6 +306,11 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el('btnDoneWorkflowEdgeGuards').addEventListener('click', closeWorkflowEdgeGuardsModal);
     el('workflowEdgeGuardsModal').addEventListener('click', (event) => {
       if (event.target === el('workflowEdgeGuardsModal')) closeWorkflowEdgeGuardsModal();
+    });
+    el('btnCloseWorkflowOperatorDetailsModal').addEventListener('click', closeWorkflowOperatorDetailsModal);
+    el('btnDoneWorkflowOperatorDetails').addEventListener('click', closeWorkflowOperatorDetailsModal);
+    el('workflowOperatorDetailsModal').addEventListener('click', (event) => {
+      if (event.target === el('workflowOperatorDetailsModal')) closeWorkflowOperatorDetailsModal();
     });
     el('btnEditWorkflowEdgeGuards').addEventListener('click', () => {
       if (!activeWorkflowEdgeGuards) return;
@@ -690,6 +719,29 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   function closeWorkflowTaskModal() {
     el('workflowTaskModal').classList.add('hidden');
+    closeWorkflowSqlFullscreenModal();
+  }
+
+  function openWorkflowSqlFullscreenModal() {
+    const sqlInput = el<HTMLTextAreaElement>('workflowSqlInput');
+    const fullscreenInput = el<HTMLTextAreaElement>('workflowSqlFullscreenInput');
+    fullscreenInput.value = sqlInput.value;
+    el('workflowSqlFullscreenModal').classList.remove('hidden');
+    requestAnimationFrame(() => {
+      fullscreenInput.focus();
+      fullscreenInput.setSelectionRange(fullscreenInput.value.length, fullscreenInput.value.length);
+    });
+  }
+
+  function closeWorkflowSqlFullscreenModal() {
+    el('workflowSqlFullscreenModal').classList.add('hidden');
+  }
+
+  function applyWorkflowSqlFullscreenModal() {
+    const sqlInput = el<HTMLTextAreaElement>('workflowSqlInput');
+    sqlInput.value = el<HTMLTextAreaElement>('workflowSqlFullscreenInput').value;
+    syncStructuredTaskParamsToState();
+    closeWorkflowSqlFullscreenModal();
   }
 
   function openWorkflowBindingPreviewModal() {
@@ -726,6 +778,17 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   function closeWorkflowOperatorPickerModal() {
     el('workflowOperatorPickerModal').classList.add('hidden');
+  }
+
+  function openWorkflowOperatorDetailsModal(operatorKey: string) {
+    activeWorkflowOperatorKey = operatorKey;
+    renderWorkflowOperatorDetailsModal();
+    el('workflowOperatorDetailsModal').classList.remove('hidden');
+  }
+
+  function closeWorkflowOperatorDetailsModal() {
+    el('workflowOperatorDetailsModal').classList.add('hidden');
+    activeWorkflowOperatorKey = null;
   }
 
   function renderWorkflowOperatorPickerOptions() {
@@ -771,21 +834,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     return workflowOperators.find((item) => item.code === task.operatorCode && item.version === task.operatorVersion) ?? null;
   }
 
-  function getTaskRuntimeReferenceUsages(task: WorkflowTask) {
-    return collectWorkflowRuntimeReferences(task.params ?? {});
-  }
-
   function getWorkflowFileLabel(fileId: number) {
     return getProductFiles().find((file) => file.id === fileId)?.originalName ?? `File #${fileId}`;
   }
 
   function getTaskParameterInputUsages(task: WorkflowTask) {
     const paramInputs = collectWorkflowTaskParamInputUsages(task);
-    const consumedRuntimePaths = new Set(
-      paramInputs.filter((usage) => usage.kind === 'runtime').map((usage) => usage.paramPath),
-    );
-    const extraRuntimeRefs = getTaskRuntimeReferenceUsages(task).filter((ref) => !consumedRuntimePaths.has(ref.paramPath));
-    return { paramInputs, extraRuntimeRefs };
+    return { paramInputs };
   }
 
   function estimateWorkflowTextLines(value: unknown, charsPerLine: number) {
@@ -812,7 +867,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   }
 
   function getWorkflowNodeSlotRows(task: WorkflowTask, operator?: WorkflowOperator | null) {
-    const { paramInputs, extraRuntimeRefs } = getTaskParameterInputUsages(task);
+    const { paramInputs } = getTaskParameterInputUsages(task);
     const inputSlots = getTaskInputSlots(task, operator).map((slot) => {
       const binding = task.inputs?.[slot];
       return {
@@ -824,11 +879,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       name: usage.paramPath,
       binding: usage.kind === 'runtime' ? usage.runtimePath : getWorkflowFileLabel(usage.fileId),
     }));
-    const runtimeRows = extraRuntimeRefs.map((ref) => ({
-      name: ref.paramPath,
-      binding: ref.runtimePath,
-    }));
-    const inputs = [...inputSlots, ...paramRows, ...runtimeRows];
+    const inputs = [...inputSlots, ...paramRows];
     const outputs = getTaskOutputSlots(task, operator).map((slot) => ({ name: slot, binding: '' }));
     return {
       inputs,
@@ -847,7 +898,6 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   function getWorkflowNodeHeight(task: WorkflowTask, operator?: WorkflowOperator | null) {
     const { inputs, outputs, rowCount } = getWorkflowNodeSlotRows(task, operator);
     const taskNameHeight = estimateWorkflowTextLines(task.name, 24) * 16;
-    const operatorHeight = estimateWorkflowTextLines(operator?.name ?? task.operatorCode, 36) * 13;
     const metaHeight = estimateWorkflowTextLines(task.id, 42) * 12;
     const slotHeight = Array.from({ length: rowCount }).reduce<number>((sum, _, index) => {
       const inputHeight = inputs[index] ? estimateWorkflowSlotHeight(inputs[index]) : WORKFLOW_SLOT_ROW_MIN_HEIGHT;
@@ -855,7 +905,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       return sum + Math.max(inputHeight, outputHeight);
     }, 0);
     const slotGaps = Math.max(0, rowCount - 1) * WORKFLOW_SLOT_COLUMN_GAP;
-    return WORKFLOW_NODE_HEADER_BASE_HEIGHT + taskNameHeight + operatorHeight + metaHeight + slotHeight + slotGaps;
+    return WORKFLOW_NODE_HEADER_BASE_HEIGHT + taskNameHeight + metaHeight + slotHeight + slotGaps;
   }
 
   function getNestedValueAtPath(source: Record<string, unknown>, path: string): unknown {
@@ -992,6 +1042,46 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     return `<input class="workflow-runtime-summary__control" value="${escapeHtml(value ?? '')}" data-runtime-default-path="${pathAttr}" data-runtime-default-type="string">`;
   }
 
+  function renderWorkflowRuntimeParameterItem(
+    workflow: WorkflowDefinition,
+    entry: { path: string; required: boolean; type: string; label: string },
+  ) {
+    const rawDefaultValue = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, entry.path);
+    const defaultValue = formatRuntimeDefaultDisplay(entry, rawDefaultValue);
+    return `
+      <div class="workflow-runtime-summary__item">
+        <div class="workflow-runtime-summary__item-top">
+          <span class="workflow-runtime-summary__path">${escapeHtml(entry.path)}</span>
+          <span class="workflow-runtime-summary__type">${escapeHtml(entry.type)}</span>
+          ${entry.required ? '<span class="workflow-runtime-summary__required">required</span>' : ''}
+        </div>
+        <div class="workflow-runtime-summary__default">default: ${escapeHtml(defaultValue)}</div>
+        ${renderRuntimeDefaultEditor(entry, rawDefaultValue)}
+      </div>`;
+  }
+
+  function renderWorkflowRuntimeParameterGroup(
+    title: string,
+    description: string,
+    entries: Array<{ path: string; required: boolean; type: string; label: string }>,
+    workflow: WorkflowDefinition,
+  ) {
+    if (!entries.length) return '';
+    return `
+      <section class="workflow-runtime-summary__group">
+        <div class="workflow-runtime-summary__group-header">
+          <div>
+            <div class="workflow-runtime-summary__group-title">${escapeHtml(title)}</div>
+            <div class="workflow-runtime-summary__group-description">${escapeHtml(description)}</div>
+          </div>
+          <span class="workflow-runtime-summary__group-count">${entries.length}</span>
+        </div>
+        <div class="workflow-runtime-summary__list">
+          ${entries.map((entry) => renderWorkflowRuntimeParameterItem(workflow, entry)).join('')}
+        </div>
+      </section>`;
+  }
+
   function syncRuntimeDefaultFromControl(control: HTMLInputElement | HTMLSelectElement) {
     const workflow = getActiveWorkflow();
     const path = control.dataset.runtimeDefaultPath ?? '';
@@ -1046,53 +1136,69 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
 
     const entries = flattenWorkflowRuntimeSchema(workflow.runtimeParamsSchema);
+    const fileEntries = entries.filter((entry) => isRuntimeFileParameter(entry));
+    const constantEntries = entries.filter((entry) => !isRuntimeFileParameter(entry));
+    const groupedEntriesHtml = [
+      renderWorkflowRuntimeParameterGroup(
+        'Constants 常量',
+        'Workflow execution constants and fixed business values.',
+        constantEntries,
+        workflow,
+      ),
+      renderWorkflowRuntimeParameterGroup(
+        'Input Files 输入文件',
+        'File references resolved by the configured file source provider.',
+        fileEntries,
+        workflow,
+      ),
+    ].join('');
 
     container.classList.remove('hidden');
+    container.classList.toggle('is-collapsed', isWorkflowRuntimeParamsCollapsed);
     container.innerHTML = `
       <div class="workflow-runtime-summary__header">
-        <div class="workflow-runtime-summary__title">Runtime Parameters</div>
-        <button class="btn btn-secondary btn-sm" type="button" data-workflow-runtime-json-apply>Apply JSON</button>
+        <button
+          class="workflow-runtime-summary__toggle"
+          type="button"
+          aria-expanded="${String(!isWorkflowRuntimeParamsCollapsed)}"
+          data-workflow-runtime-toggle
+        >
+          <span class="workflow-runtime-summary__chevron" aria-hidden="true">▸</span>
+          <span class="workflow-runtime-summary__title">Runtime Parameters</span>
+          <span class="workflow-runtime-summary__summary">${entries.length} params</span>
+        </button>
+        <button class="btn btn-secondary btn-sm workflow-runtime-summary__apply" type="button" data-workflow-runtime-json-apply>Apply JSON</button>
       </div>
-      <div class="workflow-runtime-summary__list">
+      <div class="workflow-runtime-summary__body">
         ${
           entries.length
-            ? entries
-                .map((entry) => {
-                  const rawDefaultValue = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, entry.path);
-                  const defaultValue = formatRuntimeDefaultDisplay(entry, rawDefaultValue);
-                  return `
-                    <div class="workflow-runtime-summary__item">
-                      <div class="workflow-runtime-summary__item-top">
-                        <span class="workflow-runtime-summary__path">${escapeHtml(entry.path)}</span>
-                        <span class="workflow-runtime-summary__type">${escapeHtml(entry.type)}</span>
-                        ${entry.required ? '<span class="workflow-runtime-summary__required">required</span>' : ''}
-                      </div>
-                      <div class="workflow-runtime-summary__default">default: ${escapeHtml(defaultValue)}</div>
-                      ${renderRuntimeDefaultEditor(entry, rawDefaultValue)}
-                    </div>`;
-                })
-                .join('')
+            ? `<div class="workflow-runtime-summary__groups">${groupedEntriesHtml}</div>`
             : '<div class="workflow-runtime-summary__empty">No runtime parameter schema</div>'
         }
+        <details class="workflow-runtime-summary__raw">
+          <summary>Runtime parameters JSON</summary>
+          <div class="workflow-runtime-summary__raw-grid">
+            <label>
+              <span>schema</span>
+              <textarea class="workflow-runtime-summary__raw-textarea" spellcheck="false" data-workflow-runtime-json="schema">${escapeHtml(
+                stringifyWorkflowJson(workflow.runtimeParamsSchema),
+              )}</textarea>
+            </label>
+            <label>
+              <span>defaults</span>
+              <textarea class="workflow-runtime-summary__raw-textarea" spellcheck="false" data-workflow-runtime-json="defaults">${escapeHtml(
+                stringifyWorkflowJson(workflow.runtimeParamsDefaults),
+              )}</textarea>
+            </label>
+          </div>
+        </details>
       </div>
-      <details class="workflow-runtime-summary__raw">
-        <summary>Runtime parameters JSON</summary>
-        <div class="workflow-runtime-summary__raw-grid">
-          <label>
-            <span>schema</span>
-            <textarea class="workflow-runtime-summary__raw-textarea" spellcheck="false" data-workflow-runtime-json="schema">${escapeHtml(
-              stringifyWorkflowJson(workflow.runtimeParamsSchema),
-            )}</textarea>
-          </label>
-          <label>
-            <span>defaults</span>
-            <textarea class="workflow-runtime-summary__raw-textarea" spellcheck="false" data-workflow-runtime-json="defaults">${escapeHtml(
-              stringifyWorkflowJson(workflow.runtimeParamsDefaults),
-            )}</textarea>
-          </label>
-        </div>
-      </details>
     `;
+
+    container.querySelector<HTMLElement>('[data-workflow-runtime-toggle]')?.addEventListener('click', () => {
+      isWorkflowRuntimeParamsCollapsed = !isWorkflowRuntimeParamsCollapsed;
+      renderWorkflowRuntimeParamsSummary(workflow);
+    });
 
     container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]').forEach((control) => {
       control.addEventListener('change', () => syncRuntimeDefaultFromControl(control));
@@ -1160,7 +1266,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
             id: `${sourceTask.id}:${sourceSlot}->${task.id}:${targetSlot}`,
             targetTaskId: task.id,
             targetSlot,
-            guardCount: normalizeInputGuards(input.guards).filter((guard) => guard.enabled).length,
+            guardCount: normalizeInputGuards(input.guards).length,
             path: getEdgePath(startX, startY, endX, endY),
             labelX: startX + (endX - startX) / 2,
             labelY: startY + (endY - startY) / 2 - 16,
@@ -1570,7 +1676,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     if (!applyAutoLayoutToWorkflow(getActiveWorkflow())) return;
     activeWorkflowPreview = null;
     workflowPreviewPage = 1;
-    renderWorkflowEditor();
+    fitWorkflowCanvas();
   }
 
   function startWorkflowDrag(event: PointerEvent, taskId: string) {
@@ -1658,19 +1764,15 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
             .map((task) => {
               const operator = operatorsByTaskId.get(task.id) ?? null;
               const operatorBadge = getWorkflowNodeBadge(operator);
-              const inputs = Object.entries(task.inputs ?? {});
               const inputSlots = getTaskInputSlots(task, operator);
               const outputSlots = getTaskOutputSlots(task, operator);
-              const { paramInputs, extraRuntimeRefs } = getTaskParameterInputUsages(task);
-              const runtimeCount =
-                paramInputs.filter((usage) => usage.kind === 'runtime').length + extraRuntimeRefs.length;
-              const renderedInputRows = inputSlots.length + paramInputs.length + extraRuntimeRefs.length;
+              const { paramInputs } = getTaskParameterInputUsages(task);
+              const renderedInputRows = inputSlots.length + paramInputs.length;
               const slotRows = Math.max(renderedInputRows, outputSlots.length, 1);
               const runState = getWorkflowRunTaskState(task.id);
               const controlDependencyCount = getWorkflowControlDependencies(task).length;
               const metaParts = [
                 renderedInputRows ? `${renderedInputRows} inputs` : '',
-                runtimeCount ? `${runtimeCount} runtime` : '',
                 `${controlDependencyCount} deps`,
               ].filter(Boolean);
               return `
@@ -1686,7 +1788,6 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                   <div class="workflow-node__id">${escapeHtml(task.name)}</div>
                   <span class="workflow-node__category workflow-node__category--${escapeHtml(operatorBadge.code)}" title="${escapeHtml(operatorBadge.title)}">${escapeHtml(operatorBadge.label)}</span>
                 </div>
-                <div class="workflow-node__step">${escapeHtml(operator?.name ?? task.operatorCode)}</div>
                 <div class="workflow-node__meta">${escapeHtml(task.id)} · ${escapeHtml(metaParts.join(' · '))}</div>
                 <div class="workflow-node__slots" style="--workflow-slot-count:${slotRows};">
                   <div class="workflow-node__slot-column workflow-node__slot-column--inputs">
@@ -1715,7 +1816,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                         ? paramInputs
                             .map(
                               (usage) => `
-                              <div class="workflow-node__slot workflow-node__slot--${usage.kind === 'runtime' ? 'runtime' : 'parameter'}">
+                              <div class="workflow-node__slot workflow-node__slot--parameter">
                                 <span class="workflow-node__slot-name">${escapeHtml(usage.paramPath)}</span>
                                 <span class="workflow-node__slot-binding">${escapeHtml(
                                   usage.kind === 'runtime' ? usage.runtimePath : getWorkflowFileLabel(usage.fileId),
@@ -1726,20 +1827,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                         : ''
                     }
                     ${
-                      extraRuntimeRefs.length
-                        ? extraRuntimeRefs
-                            .map(
-                              (ref) => `
-                              <div class="workflow-node__slot workflow-node__slot--runtime">
-                                <span class="workflow-node__slot-name">${escapeHtml(ref.paramPath)}</span>
-                                <span class="workflow-node__slot-binding">${escapeHtml(ref.runtimePath)}</span>
-                              </div>`,
-                            )
-                            .join('')
-                        : ''
-                    }
-                    ${
-                      !inputSlots.length && !paramInputs.length && !extraRuntimeRefs.length
+                      !inputSlots.length && !paramInputs.length
                         ? '<div class="workflow-node__slot workflow-node__slot--empty">No inputs</div>'
                         : ''
                     }
@@ -2006,8 +2094,9 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
     const task = workflow.tasks.find((item) => item.id === activeWorkflowEdgeGuards?.taskId);
     const input = task?.inputs?.[activeWorkflowEdgeGuards.slot];
-    const guards = normalizeInputGuards(input?.guards).filter((guard) => guard.enabled);
-    title.textContent = `${task?.name ?? activeWorkflowEdgeGuards.taskId} · ${activeWorkflowEdgeGuards.slot}`;
+    const guards = normalizeInputGuards(input?.guards);
+    const sourceTask = input?.from ? workflow.tasks.find((item) => item.id === input.from) : null;
+    title.textContent = sourceTask?.name ?? input?.from ?? 'Input Checks';
     content.innerHTML = `
       <div class="workflow-edge-guards">
         <div class="workflow-edge-guards__summary">
@@ -2027,7 +2116,10 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                           <strong>${escapeHtml(guard.name)}</strong>
                           <span>${escapeHtml(guardOperator?.name ?? guard.type)}</span>
                         </div>
-                        <span class="workflow-input-guard__type">Enabled</span>
+                        <label class="workflow-edge-guard-card__toggle">
+                          <input type="checkbox" data-edge-guard-toggle-id="${escapeHtml(guard.id)}" ${guard.enabled ? 'checked' : ''}>
+                          <span>${guard.enabled ? 'Enabled' : 'Disabled'}</span>
+                        </label>
                       </div>
                       ${
                         params.length
@@ -2047,10 +2139,22 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                     </article>`;
                 })
                 .join('')
-            : '<div class="workflow-dependency-empty">No enabled checks on this input</div>'
+            : '<div class="workflow-dependency-empty">No checks on this input</div>'
         }
       </div>
     `;
+
+    content.querySelectorAll<HTMLInputElement>('[data-edge-guard-toggle-id]').forEach((checkbox) => {
+      checkbox.addEventListener('change', () => {
+        if (!task) return;
+        const guard = findInputGuard(task, checkbox.dataset.edgeGuardToggleId ?? '');
+        if (!guard) return;
+        guard.enabled = checkbox.checked;
+        syncTaskParamsTextarea(task);
+        renderWorkflowEditor();
+        renderWorkflowEdgeGuardsModal();
+      });
+    });
   }
 
   function renderWorkflowInputGuards(task: WorkflowTask) {
@@ -2841,7 +2945,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       el<HTMLInputElement>('workflowAssertFailureMessage').value = String(task.params.failureMessage ?? 'Assertion failed');
     }
 
-    renderWorkflowInputGuards(task);
+    inputGuardsRow.classList.add('hidden');
   }
 
   function syncStructuredTaskParamsToState() {
@@ -3473,7 +3577,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     panel.classList.remove('hidden');
 
     if (!activeWorkflowPreview) {
-      summary.innerHTML = '<div class="workflow-empty">点击 Preview 执行当前节点，或点击 Execute 运行整个工作流</div>';
+      summary.innerHTML = '<div class="workflow-empty workflow-preview__empty">点击 Preview 执行当前节点，预览节点输出</div>';
       table.innerHTML = '';
       return;
     }
@@ -3586,6 +3690,113 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     table.innerHTML = renderWorkflowDataFramePreviewTable(preview, workflowBindingPreviewPage, 'workflowBindingPreviewPage');
   }
 
+  function renderWorkflowOperatorSlotList(title: string, slots: WorkflowOperator['inputSlots']) {
+    return `
+      <div class="workflow-operator-card__detail-section">
+        <div class="workflow-operator-card__detail-title">${escapeHtml(title)}</div>
+        ${
+          slots.length
+            ? `<div class="workflow-operator-card__slot-list">
+                ${slots
+                  .map(
+                    (slot) => `
+                      <div class="workflow-operator-card__slot">
+                        <strong>${escapeHtml(slot.slot)}</strong>
+                        <span>${escapeHtml(slot.label || slot.type)}${slot.required ? ' · required' : ''}</span>
+                      </div>`,
+                  )
+                  .join('')}
+              </div>`
+            : '<div class="workflow-operator-card__empty">None</div>'
+        }
+      </div>`;
+  }
+
+  function renderWorkflowOperatorParams(operator: WorkflowOperator) {
+    const entries = Object.entries(operator.paramsSchema ?? {});
+    return `
+      <div class="workflow-operator-card__detail-section">
+        <div class="workflow-operator-card__detail-title">参数</div>
+        ${
+          entries.length
+            ? `<div class="workflow-operator-card__param-list">
+                ${entries
+                  .map(([key, field]) => {
+                    const enumValues = Array.isArray(field.enum) && field.enum.length ? ` · ${field.enum.join(' | ')}` : '';
+                    const defaultValue =
+                      field.default === undefined || field.default === null ? '' : ` · default: ${JSON.stringify(field.default)}`;
+                    return `
+                      <div class="workflow-operator-card__param">
+                        <div>
+                          <strong>${escapeHtml(key)}</strong>
+                          <span>${escapeHtml(field.label || key)}</span>
+                        </div>
+                        <small>${escapeHtml(`${field.type}${field.required ? ' · required' : ''}${enumValues}${defaultValue}`)}</small>
+                        ${field.description ? `<small>${escapeHtml(field.description)}</small>` : ''}
+                      </div>`;
+                  })
+                  .join('')}
+              </div>`
+            : '<div class="workflow-operator-card__empty">No params</div>'
+        }
+      </div>`;
+  }
+
+  function renderWorkflowOperatorDetails(operator: WorkflowOperator) {
+    const documentation = operator.documentation;
+    const hasDocumentation =
+      Boolean(documentation) &&
+      typeof documentation?.usage === 'string' &&
+      Array.isArray(documentation.steps) &&
+      typeof documentation.example === 'string';
+    const doc = hasDocumentation
+      ? documentation
+      : {
+          usage: operator.description || 'No usage documentation yet.',
+          steps: ['配置参数后连接输入输出槽。'],
+          example: '{}',
+        };
+    return `
+      <div class="workflow-operator-card__details">
+        <div class="workflow-operator-card__detail-section">
+          <div class="workflow-operator-card__detail-title">用法</div>
+          <p>${escapeHtml(doc.usage)}</p>
+        </div>
+        <div class="workflow-operator-card__detail-section">
+          <div class="workflow-operator-card__detail-title">配置步骤</div>
+          <ol class="workflow-operator-card__steps">
+            ${doc.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
+          </ol>
+        </div>
+        <div class="workflow-operator-card__detail-grid">
+          ${renderWorkflowOperatorSlotList('输入槽', operator.inputSlots)}
+          ${renderWorkflowOperatorSlotList('输出槽', operator.outputSlots)}
+        </div>
+        ${renderWorkflowOperatorParams(operator)}
+        <div class="workflow-operator-card__detail-section">
+          <div class="workflow-operator-card__detail-title">示例参数</div>
+          <pre class="workflow-operator-card__example"><code>${escapeHtml(doc.example)}</code></pre>
+        </div>
+      </div>`;
+  }
+
+  function renderWorkflowOperatorDetailsModal() {
+    const operator = getWorkflowOperatorByKey(activeWorkflowOperatorKey);
+    const title = el('workflowOperatorDetailsTitle');
+    const subtitle = el('workflowOperatorDetailsSubtitle');
+    const body = el('workflowOperatorDetailsBody');
+    if (!operator) {
+      title.textContent = 'Operator';
+      subtitle.textContent = '';
+      body.innerHTML = '<div class="workflow-empty">请选择一个 operator</div>';
+      return;
+    }
+
+    title.textContent = operator.name;
+    subtitle.textContent = `${operator.code} · ${getWorkflowOperatorGroupLabel(operator.category)} · ${operator.inputSlots.length} in · ${operator.outputSlots.length} out`;
+    body.innerHTML = renderWorkflowOperatorDetails(operator);
+  }
+
   function renderWorkflowOperators() {
     const container = el('workflowOperators');
     if (!workflowOperators.length) {
@@ -3603,21 +3814,38 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           <div class="workflow-operator-group__list">
             ${group.operators
               .map(
-                (operator) => `
-                <div class="workflow-operator-card">
+                (operator) => {
+                  const operatorKey = getWorkflowOperatorKey(operator);
+                  return `
+                <div class="workflow-operator-card" role="button" tabindex="0" data-workflow-operator-key="${escapeHtml(operatorKey)}" aria-label="Open ${escapeHtml(operator.name)} documentation">
                   <div class="workflow-operator-card__head">
-                    <strong>${escapeHtml(operator.name)}</strong>
+                    <span class="workflow-operator-card__name">${escapeHtml(operator.name)}</span>
+                    <span class="workflow-operator-card__open">Details</span>
                   </div>
                   <div class="workflow-operator-card__code">${escapeHtml(operator.code)}</div>
                   <div class="workflow-operator-card__desc">${escapeHtml(operator.description)}</div>
                   <div class="workflow-operator-card__meta">${escapeHtml(getWorkflowOperatorGroupLabel(operator.category))} · ${operator.inputSlots.length} in · ${operator.outputSlots.length} out</div>
-                </div>`,
+                </div>`;
+                },
               )
               .join('')}
           </div>
         </section>`,
       )
       .join('');
+
+    container.querySelectorAll<HTMLElement>('[data-workflow-operator-key]').forEach((card) => {
+      const open = () => {
+        const operatorKey = card.dataset.workflowOperatorKey ?? '';
+        if (operatorKey) openWorkflowOperatorDetailsModal(operatorKey);
+      };
+      card.addEventListener('click', open);
+      card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        open();
+      });
+    });
   }
 
   async function createWorkflow() {

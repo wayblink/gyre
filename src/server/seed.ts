@@ -6,6 +6,8 @@ import { config } from './config.js';
 import type { AppDb, DbClient } from './db.js';
 import { buildMonthlyWorkflowSeedDefinition } from './monthlyRun/workflowDefinition.js';
 import { workflowOperatorDefinitions } from './workflow/operators/registry.js';
+import { deriveWorkflowRuntimeConfigFromTasks } from './workflow/runtimeParameterRequirements.js';
+import type { WorkflowRuntimeParameters, WorkflowRuntimeParametersSchema, WorkflowTask } from '../shared/types.js';
 
 type PrototypeData = {
   employeeMappings: Array<Record<string, unknown>>;
@@ -531,43 +533,19 @@ async function seedParametersAndDecisions(db: DbClient, firstPlanId: number | un
   }
 }
 
-async function seedWorkflowData(db: DbClient) {
-  const operatorCodes = workflowOperatorDefinitions.map((operator) => `'${operator.code}'`).join(', ');
-  await db.execute(`delete from workflow_operators where code not in (${operatorCodes})`);
-  await db.execute(
-    `update workflow_definitions
-        set code = $2
-      where code = $1`,
-    ['captable-import', 'default-workflow'],
-  );
+type WorkflowSeedDefinition = {
+  code: string;
+  name: string;
+  description: string;
+  status: 'draft' | 'active';
+  version: number;
+  tasks: WorkflowTask[];
+  runtimeParamsSchema: WorkflowRuntimeParametersSchema;
+  runtimeParamsDefaults: WorkflowRuntimeParameters;
+};
 
-  for (const operator of workflowOperatorDefinitions) {
-    await db.execute(
-      `insert into workflow_operators (
-        code, name, version, category, description, input_slots_json, output_slots_json, params_schema_json
-      ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb)
-      on conflict (code, version) do update set
-        name = excluded.name,
-        category = excluded.category,
-        description = excluded.description,
-        input_slots_json = excluded.input_slots_json,
-        output_slots_json = excluded.output_slots_json,
-        params_schema_json = excluded.params_schema_json,
-        updated_at = current_timestamp`,
-      [
-        operator.code,
-        operator.name,
-        operator.version,
-        operator.category,
-        operator.description,
-        JSON.stringify(operator.inputSlots),
-        JSON.stringify(operator.outputSlots),
-        JSON.stringify(operator.paramsSchema),
-      ],
-    );
-  }
-
-  const workflowTasks = [
+export function buildDefaultWorkflowSeedDefinition(): WorkflowSeedDefinition {
+  const tasks: WorkflowTask[] = [
     {
       id: 'task_extract_range',
       name: 'Extract Excel Range',
@@ -577,12 +555,13 @@ async function seedWorkflowData(db: DbClient) {
       x: 48,
       y: 48,
       params: {
-        fileId: null,
+        fileRef: { $fromRuntime: 'fileRefs.source' },
         sheetName: 'Detailed Cap Table',
         range: 'A1:Z50',
         headerRow: 1,
       },
       inputs: {},
+      dependsOn: [],
     },
     {
       id: 'task_sql_compute',
@@ -599,29 +578,28 @@ async function seedWorkflowData(db: DbClient) {
       inputs: {
         source_input: { from: 'task_extract_range', slot: 'dataframe' },
       },
+      dependsOn: [],
     },
   ];
+  const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
+    tasks,
+    runtimeParamsSchema: {},
+    runtimeParamsDefaults: {},
+  });
 
-  await db.execute(
-    `insert into workflow_definitions (code, name, description, status, version, tasks_json)
-     values ($1, $2, $3, $4, $5, $6::jsonb)
-     on conflict (code) do nothing`,
-    [
-      'default-workflow',
-      'Cap Table Import Flow',
-      '通用 Excel 提取与 SQL 计算工作流，支持基于文件、Sheet 和范围输出 dataframe，并在后续节点上执行 SQL。',
-      'active',
-      1,
-      JSON.stringify(workflowTasks),
-    ],
-  );
-
-  await parameterizeMonthlyWorkflow(db);
+  return {
+    code: 'default-workflow',
+    name: 'Cap Table Import Flow',
+    description: '通用 Excel 提取与 SQL 计算工作流，支持基于文件、Sheet 和范围输出 dataframe，并在后续节点上执行 SQL。',
+    status: 'active',
+    version: 1,
+    tasks,
+    runtimeParamsSchema: runtimeConfig.runtimeParamsSchema,
+    runtimeParamsDefaults: runtimeConfig.runtimeParamsDefaults,
+  };
 }
 
-async function parameterizeMonthlyWorkflow(db: DbClient): Promise<void> {
-  const workflow = buildMonthlyWorkflowSeedDefinition();
-
+async function upsertWorkflowDefinition(db: DbClient, workflow: WorkflowSeedDefinition): Promise<void> {
   await db.execute(
     `insert into workflow_definitions (
         code, name, description, status, version, tasks_json,
@@ -648,6 +626,73 @@ async function parameterizeMonthlyWorkflow(db: DbClient): Promise<void> {
       JSON.stringify(workflow.runtimeParamsDefaults),
     ],
   );
+}
+
+async function seedWorkflowData(db: DbClient) {
+  const operatorCodes = workflowOperatorDefinitions.map((operator) => `'${operator.code}'`).join(', ');
+  await db.execute(`delete from workflow_operators where code not in (${operatorCodes})`);
+  await db.execute(
+    `update workflow_definitions
+        set code = $2
+      where code = $1`,
+    ['captable-import', 'default-workflow'],
+  );
+  await db.execute(
+    `update workflow_definitions
+        set code = $2
+      where code = $1
+        and not exists (select 1 from workflow_definitions where code = $2)`,
+    ['gyre-captable-summary-draft', 'gyre-captable-summary'],
+  );
+  await db.execute(
+    `update workflow_definitions
+        set code = code || '-duplicate-' || id
+      where code = $2
+        and exists (select 1 from workflow_definitions where code = $1)`,
+    ['gyre-captable-summary-draft', 'gyre-captable-summary'],
+  );
+  await db.execute(
+    `update workflow_definitions
+        set code = $2
+      where code = $1`,
+    ['gyre-captable-summary-draft', 'gyre-captable-summary'],
+  );
+
+  for (const operator of workflowOperatorDefinitions) {
+    await db.execute(
+      `insert into workflow_operators (
+        code, name, version, category, description, input_slots_json, output_slots_json, params_schema_json, documentation_json
+      ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb)
+      on conflict (code, version) do update set
+        name = excluded.name,
+        category = excluded.category,
+        description = excluded.description,
+        input_slots_json = excluded.input_slots_json,
+        output_slots_json = excluded.output_slots_json,
+        params_schema_json = excluded.params_schema_json,
+        documentation_json = excluded.documentation_json,
+        updated_at = current_timestamp`,
+      [
+        operator.code,
+        operator.name,
+        operator.version,
+        operator.category,
+        operator.description,
+        JSON.stringify(operator.inputSlots),
+        JSON.stringify(operator.outputSlots),
+        JSON.stringify(operator.paramsSchema),
+        JSON.stringify(operator.documentation ?? {}),
+      ],
+    );
+  }
+
+  await upsertWorkflowDefinition(db, buildDefaultWorkflowSeedDefinition());
+
+  await parameterizeMonthlyWorkflow(db);
+}
+
+async function parameterizeMonthlyWorkflow(db: DbClient): Promise<void> {
+  await upsertWorkflowDefinition(db, buildMonthlyWorkflowSeedDefinition());
 }
 
 export async function seedDatabase(db: AppDb) {

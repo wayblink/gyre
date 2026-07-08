@@ -22,13 +22,12 @@ export function isWorkflowRuntimeParameterReference(value: unknown): value is Wo
     typeof value === 'object' &&
     value !== null &&
     !Array.isArray(value) &&
-    typeof (value as Record<string, unknown>).$fromRuntime === 'string' &&
-    Object.keys(value as Record<string, unknown>).length === 1
+    typeof (value as Record<string, unknown>).$fromRuntime === 'string'
   );
 }
 
 function cloneRuntimeParameterReference(value: WorkflowRuntimeParameterReference): WorkflowRuntimeParameterReference {
-  return { $fromRuntime: value.$fromRuntime };
+  return JSON.parse(JSON.stringify(value)) as WorkflowRuntimeParameterReference;
 }
 
 export function normalizeWorkflowFileParamValue(value: unknown): number | WorkflowRuntimeParameterReference | null {

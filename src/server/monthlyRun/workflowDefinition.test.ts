@@ -5,6 +5,7 @@ import { dataframePersistExcelOperator } from '../workflow/operators/dataframePe
 import { executeSqlDataFrameQuery } from '../workflow/operators/sqlUtils.js';
 import {
   buildMonthlyCapitalizationSummarySql,
+  buildMonthlyRuntimeParameters,
   buildMonthlyWorkflowSeedDefinition,
   buildMonthlyWorkflowTasks,
   MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
@@ -70,6 +71,7 @@ test('monthly capitalization summary workflow SQL matches expected workbook stru
   });
 
   assert.deepEqual(result.dataFrame.columns, MONTHLY_SUMMARY_COLUMNS);
+  assert.equal(result.dataFrame.columns.includes('Formula'), false);
   assert.equal(result.dataFrame.rows.length, 13);
 
   assert.deepEqual(
@@ -112,13 +114,17 @@ test('monthly workflow exposes source extraction and business input calculation 
   const sourceMetrics = tasks.find((item) => item.id === 'calc_cap_table_summary_source_metrics');
   const businessInputs = tasks.find((item) => item.id === 'calc_business_inputs');
   const summaryBuild = tasks.find((item) => item.id === 'build_capitalization_summary');
+  const summaryFileRef = summaryExtract?.params.fileRef as Record<string, unknown> | undefined;
 
   assert.equal(controlExtract?.operatorCode, 'sheet.range.extract');
   assert.equal(controlExtract?.params.sheetName, 'EQ Control Book');
-  assert.equal(controlExtract?.params.range, 'A9:L124');
+  assert.equal(controlExtract?.params.range, 'A9:L');
+  assert.equal(controlExtract?.params.dropTrailingEmptyRows, true);
   assert.equal(summaryExtract?.operatorCode, 'sheet.range.extract');
   assert.equal(summaryExtract?.params.sheetName, 'Detailed Cap Table');
-  assert.deepEqual(summaryExtract?.params.fileRef, { $fromRuntime: 'fileRefs.summary_source' });
+  assert.equal(summaryFileRef?.$fromRuntime, 'fileRefs.summary_source');
+  assert.equal(summaryFileRef?.$type, 'object');
+  assert.deepEqual(summaryFileRef?.$default, { provider: 'product-files', id: 7 });
   assert.equal(optionExtract?.operatorCode, 'sheet.sections.extract');
   assert.equal(optionExtract?.params.sheetName, 'Option Plans Summary');
   assert.equal(optionExtract?.params.splitByColumn, undefined);
@@ -130,6 +136,7 @@ test('monthly workflow exposes source extraction and business input calculation 
   assert.ok(!buildMonthlyCapitalizationSummarySql.includes('14450527'));
   assert.ok(!buildMonthlyCapitalizationSummarySql.includes('4156815'));
   assert.ok(!buildMonthlyCapitalizationSummarySql.includes('10994'));
+  assert.ok(!buildMonthlyCapitalizationSummarySql.includes(' as Formula'));
 });
 
 test('monthly control book metrics extract Futu SubPlan total from source rows instead of hardcoding it', () => {
@@ -140,18 +147,59 @@ test('monthly control book metrics extract Futu SubPlan total from source rows i
   assert.ok(!sql.includes('7815396 as gyre_2023_china_subplan_total'));
 });
 
-test('monthly workflow seed definition derives month runtime parameter from output constant requirements', () => {
+test('monthly control book metrics uses last non-empty issued outstanding row instead of max value', async () => {
+  const task = buildMonthlyWorkflowTasks().find((item) => item.id === 'calc_control_book_metrics');
+  assert.ok(task);
+
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot !== 'control_book') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame(
+      [
+        {
+          'Issued & Outstanding': 100,
+          'Shares Issued': 10,
+          Comment: 'Opening',
+          'Trans. Type': 'Other',
+        },
+        {
+          'Issued & Outstanding': 300,
+          'Shares Issued': 20,
+          Comment: 'Peak',
+          'Trans. Type': 'Other',
+        },
+        {
+          'Issued & Outstanding': 250,
+          'Shares Issued': 30,
+          Comment: 'Closing',
+          'Trans. Type': 'Other',
+        },
+      ],
+      { sheetName: 'EQ Control Book', a1Range: 'A9:L11' },
+    );
+  });
+
+  assert.equal(result.dataFrame.rows[0].eom_eq_balance_os, 250);
+});
+
+test('monthly workflow seed definition derives runtime parameters without business-required semantics', () => {
   const workflow = buildMonthlyWorkflowSeedDefinition();
   const persistTask = workflow.tasks.find((item) => item.id === 'persist_capitalization_summary');
   const businessInputsTask = workflow.tasks.find((item) => item.id === 'calc_business_inputs');
+  const businessInputConstants = businessInputsTask?.params.constants as Record<string, Record<string, unknown>> | undefined;
 
   assert.deepEqual(persistTask?.params.fileNamePrefix, { $fromRuntime: 'month' });
   assert.equal(persistTask?.params.fileName, 'Capitalization_Table_Summary_View.xlsx');
   assert.equal(workflow.runtimeParamsSchema.month?.label, 'Month');
-  assert.equal(workflow.runtimeParamsSchema.month?.required, true);
+  assert.notEqual(workflow.runtimeParamsSchema.month?.required, true);
   assert.equal(workflow.runtimeParamsSchema.fixedValues?.type, 'object');
   assert.equal(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsOutstandingCullgen?.type, 'number');
   assert.equal(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsAvailableCullgen?.type, 'number');
+  assert.notEqual(workflow.runtimeParamsSchema.fixedValues?.required, true);
+  assert.notEqual(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsOutstandingCullgen?.required, true);
+  assert.notEqual(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsAvailableCullgen?.required, true);
+  assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.required, true);
+  assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.properties?.control_book?.required, true);
+  assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.properties?.summary_source?.required, true);
   assert.equal(
     (workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsOutstandingCullgen,
     MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
@@ -160,11 +208,43 @@ test('monthly workflow seed definition derives month runtime parameter from outp
     (workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsAvailableCullgen,
     MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
   );
-  assert.deepEqual(businessInputsTask?.params.constants, {
-    optionsOutstandingCullgen: { $fromRuntime: 'fixedValues.optionsOutstandingCullgen' },
-    optionsAvailableCullgen: { $fromRuntime: 'fixedValues.optionsAvailableCullgen' },
-  });
+  assert.equal(
+    businessInputConstants?.optionsOutstandingCullgen?.$fromRuntime,
+    'fixedValues.optionsOutstandingCullgen',
+  );
+  assert.equal(businessInputConstants?.optionsOutstandingCullgen?.$type, 'number');
+  assert.equal(businessInputConstants?.optionsOutstandingCullgen?.$default, MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN);
+  assert.equal(
+    businessInputConstants?.optionsAvailableCullgen?.$fromRuntime,
+    'fixedValues.optionsAvailableCullgen',
+  );
+  assert.equal(businessInputConstants?.optionsAvailableCullgen?.$type, 'number');
+  assert.equal(businessInputConstants?.optionsAvailableCullgen?.$default, MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN);
   assert.match(String(workflow.runtimeParamsDefaults.month ?? ''), /^\d{4}-\d{2}$/);
+});
+
+test('monthly workflow defaults use independent source workbooks for required inputs', () => {
+  const workflow = buildMonthlyWorkflowSeedDefinition();
+
+  assert.deepEqual(workflow.runtimeParamsDefaults.fileRefs, {
+    control_book: { provider: 'product-files', id: 53 },
+    futu_exercises: { provider: 'product-files', id: 54 },
+    option_plans: { provider: 'product-files', id: 55 },
+    summary_source: { provider: 'product-files', id: 7 },
+  });
+});
+
+test('monthly runtime parameter builder keeps defaults when optional override keys are undefined', () => {
+  const runtimeParameters = buildMonthlyRuntimeParameters({
+    month: '2026-06',
+    fixedValues: undefined,
+  });
+
+  assert.equal(runtimeParameters.month, '2026-06');
+  assert.deepEqual(runtimeParameters.fixedValues, {
+    optionsOutstandingCullgen: MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
+    optionsAvailableCullgen: MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
+  });
 });
 
 test('monthly business inputs resolves configurable Cullgen option constants from runtime parameters', async () => {

@@ -18,7 +18,7 @@ type FilesPageDeps = {
 
 const FILES_LEFT_MIN = 200;
 const FILES_LEFT_MAX = 480;
-const FILES_LEFT_DEFAULT = 280;
+const FILES_LEFT_DEFAULT = FILES_LEFT_MAX;
 const FILES_LEFT_COLLAPSED_WIDTH = 28;
 const FILES_MOBILE_MEDIA = '(max-width: 768px)';
 

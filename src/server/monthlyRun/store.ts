@@ -9,7 +9,7 @@ import type {
 } from '../../shared/types.js';
 import type { QueryResultRow } from 'pg';
 
-export const MONTHLY_WORKFLOW_CODE = 'gyre-captable-summary-draft';
+export const MONTHLY_WORKFLOW_CODE = 'gyre-captable-summary';
 export const MONTHLY_PERSIST_TASK_ID = 'persist_capitalization_summary';
 const MONTHLY_RUN_INPUT_LABELS: Record<string, string> = {
   control_book: 'EQ Control Book',

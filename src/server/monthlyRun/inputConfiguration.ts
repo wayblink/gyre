@@ -1,6 +1,6 @@
 import type { WorkflowRuntimeParameters } from '../../shared/types.js';
 import type { MonthlyRunDb } from './store.js';
-import { MONTHLY_RUN_SOURCE_DEFINITIONS } from './workflowDefinition.js';
+import { buildMonthlyRuntimeParameters, MONTHLY_RUN_SOURCE_DEFINITIONS } from './workflowDefinition.js';
 import { productFileRef } from '../workflow/fileSources.js';
 
 type UpdatePlanInputRow = Record<string, unknown>;
@@ -36,8 +36,17 @@ const sourceMetricMatchers: Record<string, string[]> = {
   option_plans: ['option plans summary'],
 };
 
+const fixedValueMatchers: Record<string, string[]> = {
+  optionsOutstandingCullgen: ['options outstanding cullgen', 'options_outstanding_cullgen'],
+  optionsAvailableCullgen: ['options available cullgen', 'options_available_cullgen'],
+};
+
 function normalizeText(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase();
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[-–—]+/g, ' ')
+    .replace(/\s+/g, ' ');
 }
 
 function parseRawValue(value: unknown): Record<string, unknown> {
@@ -68,6 +77,18 @@ function rowText(row: UpdatePlanInputRow): string {
     .map(normalizeText)
     .filter(Boolean)
     .join(' | ');
+}
+
+function normalizedMetricKey(value: unknown): string {
+  return normalizeText(value).replaceAll(' ', '_');
+}
+
+function rowNumericValue(row: UpdatePlanInputRow): number | null {
+  const direct = Number(row.normalized_value);
+  if (Number.isFinite(direct)) return direct;
+  const raw = parseRawValue(row.raw_value);
+  const rawValue = Number(raw.value);
+  return Number.isFinite(rawValue) ? rawValue : null;
 }
 
 function rowProductFileId(row: UpdatePlanInputRow): number | null {
@@ -114,6 +135,30 @@ function findInputRow(sourceKey: string, rows: UpdatePlanInputRow[]): UpdatePlan
       return matchers.some((matcher) => text.includes(matcher));
     }) ?? null
   );
+}
+
+function resolveFixedValues(rows: UpdatePlanInputRow[]): Record<string, number> {
+  const fixedRows = rows.filter((row) => normalizeText(row.source_group) === 'fixed');
+  const fixedValues: Record<string, number> = {};
+  for (const [runtimeKey, matchers] of Object.entries(fixedValueMatchers)) {
+    const row = fixedRows.find((candidate) => {
+      const raw = parseRawValue(candidate.raw_value);
+      const texts = [
+        normalizeText(candidate.label),
+        normalizeText(raw.item),
+        normalizeText(raw.metric),
+        normalizedMetricKey(candidate.metric_key),
+      ];
+      return matchers.some((matcher) => {
+        const normalizedMatcher = normalizeText(matcher);
+        const keyMatcher = normalizedMetricKey(matcher);
+        return texts.some((text) => text.includes(normalizedMatcher) || text.includes(keyMatcher));
+      });
+    });
+    const value = row ? rowNumericValue(row) : null;
+    if (value !== null) fixedValues[runtimeKey] = value;
+  }
+  return fixedValues;
 }
 
 async function resolveRequiredInputRows(
@@ -202,9 +247,10 @@ export async function resolveMonthlyRunInputConfiguration(
   );
 
   const requiredInputFileIds = await resolveRequiredInputRows(db, updatePlanId, rows, backfillProductFile, lookupProductFile);
+  const fixedValues = resolveFixedValues(rows);
 
   const fileIds: Record<string, number> = {};
-  for (const source of MONTHLY_RUN_SOURCE_DEFINITIONS.filter((item) => item.required)) {
+  for (const source of MONTHLY_RUN_SOURCE_DEFINITIONS) {
     const row = findInputRow(source.sourceKey, rows);
     let fileId = row ? (requiredInputFileIds.get(row.id) ?? rowProductFileId(row)) : null;
     const sourceFileId = row ? rowSourceFileId(row) : null;
@@ -237,20 +283,21 @@ export async function resolveMonthlyRunInputConfiguration(
         }
       }
     }
-    if (!fileId) {
+    if (!fileId && source.required) {
       throw inputConfigurationError(`Missing Input Configuration file: ${source.label}`);
     }
-    fileIds[source.sourceKey] = fileId;
+    if (fileId) fileIds[source.sourceKey] = fileId;
   }
 
   return {
     updatePlanId,
     month: String(plan.month_key),
     operator: String(plan.operator ?? 'Administrator'),
-    runtimeParameters: {
+    runtimeParameters: buildMonthlyRuntimeParameters({
       month: String(plan.month_key),
       fileRefs: Object.fromEntries(Object.entries(fileIds).map(([sourceKey, fileId]) => [sourceKey, productFileRef(fileId)])),
-    },
+      fixedValues,
+    }),
     primarySourceFileId: fileIds.control_book ?? Object.values(fileIds)[0] ?? null,
   };
 }
