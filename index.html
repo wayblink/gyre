@@ -159,6 +159,12 @@
                 </div>
             </nav>
             <div class="sidebar-footer">
+                <div class="nav-item nav-item--footer" data-page="docs" title="User Guide">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    </span>
+                    <span class="nav-text">User Guide</span>
+                </div>
                 <div class="nav-item nav-item--footer" data-page="settings" title="Settings">
                     <span class="nav-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.68 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.32 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -201,23 +207,129 @@
                 </section>
 
                 <section class="page-section" id="page-grant-record">
-                    <div class="product-page-hero">
-                        <div>
-                            <div class="product-page-hero__eyebrow">授予记录</div>
-                            <h2>Grant Record</h2>
-                            <p>来源包含 futu 和 shareworks，核心工作是合并拼表并形成可追溯的授予记录。</p>
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label">Search</label>
+                            <input type="text" id="searchHolder" class="search-input" placeholder="Search by name, plan, grant...">
+                            <label class="search-label">Tag</label>
+                            <input type="text" id="filterHoldingsTag" class="search-input" placeholder="Filter by employee tag">
+                            <label class="search-label">Incentive Type</label>
+                            <select id="filterGrantType" class="form-input" style="min-width:160px;height:36px;">
+                                <option value="">All Types</option>
+                                <option value="Option">Option</option>
+                            </select>
+                            <button class="btn btn-primary" id="btnSearchHoldings">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search
+                            </button>
                         </div>
                     </div>
+                    <div class="sub-tabs grant-view-tabs" role="tablist" aria-label="Grant data source">
+                        <button class="sub-tab active" id="grantTab-futu" type="button" role="tab" aria-selected="true" aria-controls="grantPanel-futu" data-grant-view="futu">Futu</button>
+                        <button class="sub-tab" id="grantTab-shareworks" type="button" role="tab" aria-selected="false" aria-controls="grantPanel-shareworks" data-grant-view="shareworks">Shareworks</button>
+                        <button class="sub-tab" id="grantTab-merge" type="button" role="tab" aria-selected="false" aria-controls="grantPanel-merge" data-grant-view="merge">Merge</button>
+                    </div>
                     <div class="card">
-                        <div class="card-header"><h3 class="card-title">合并拼表</h3><span class="card-subtitle">futu + shareworks</span></div>
-                        <div class="card-body">
-                            <table class="data-table product-spec-table">
-                                <thead><tr><th>数据来源</th><th>处理方式</th><th>状态</th></tr></thead>
-                                <tbody>
-                                    <tr><td>futu</td><td>授予记录导入后参与合并</td><td><span class="status-badge status-pending">待接入</span></td></tr>
-                                    <tr><td>shareworks</td><td>授予记录导入后参与合并</td><td><span class="status-badge status-pending">待接入</span></td></tr>
-                                </tbody>
-                            </table>
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+                                <span id="grantViewTitle">Futu Grant Record</span>
+                            </h3>
+                            <span class="card-subtitle" id="grantViewSubtitle">Futu 授予数据原始格式</span>
+                        </div>
+                        <div class="card-body card-body--with-pagination">
+                            <div class="grant-panel" id="grantPanel-futu" role="tabpanel" aria-labelledby="grantTab-futu">
+                                <div class="table-scroll">
+                                <table class="data-table table-holdings" id="grantTable-futu">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width:60px;">No.<br><span class="sub-label">序号</span></th>
+                                            <th style="min-width:140px;">Employee Name<br><span class="sub-label">姓名</span></th>
+                                            <th style="min-width:100px;">Grant No.<br><span class="sub-label">授予编号</span></th>
+                                            <th style="min-width:120px;">User ID<br><span class="sub-label">用户ID</span></th>
+                                            <th style="min-width:100px;">Employee No.<br><span class="sub-label">工号</span></th>
+                                            <th style="min-width:120px;">Incentive Type<br><span class="sub-label">激励类型</span></th>
+                                            <th style="min-width:110px;">Grant Date<br><span class="sub-label">授予日期</span></th>
+                                            <th style="min-width:120px;" class="col-number">Grant Qty<br><span class="sub-label">授予数量</span></th>
+                                            <th style="min-width:120px;" class="col-number">Grant Price<br><span class="sub-label">授予价(USD)</span></th>
+                                            <th style="min-width:110px;">Expire Date<br><span class="sub-label">到期日</span></th>
+                                            <th style="min-width:220px;">Plan Name<br><span class="sub-label">所属计划</span></th>
+                                            <th style="min-width:110px;">Condition Rule<br><span class="sub-label">条件规则</span></th>
+                                            <th style="min-width:150px;">Employee Portal Visibility<br><span class="sub-label">员工端</span></th>
+                                            <th style="min-width:140px;" class="col-number">Closing Price<br><span class="sub-label">登记日收盘价(USD)</span></th>
+                                            <th style="min-width:110px;">Withholding Cost<br><span class="sub-label">代扣成本</span></th>
+                                            <th style="min-width:110px;">Tax Calculation<br><span class="sub-label">代算税款</span></th>
+                                            <th style="min-width:110px;">Tax Withholding<br><span class="sub-label">代扣税款</span></th>
+                                            <th style="min-width:130px;">FX Settlement<br><span class="sub-label">授予统一结汇</span></th>
+                                            <th style="min-width:150px;">Tax Rule<br><span class="sub-label">授予计税规则</span></th>
+                                            <th style="min-width:140px;">Cancellation Date<br><span class="sub-label">确认取消日期</span></th>
+                                            <th style="min-width:120px;">Data Source<br><span class="sub-label">数据来源</span></th>
+                                            <th style="min-width:150px;">Vesting Rule<br><span class="sub-label">归属规则名称</span></th>
+                                            <th style="min-width:110px;">Vesting Start<br><span class="sub-label">归属起算日期</span></th>
+                                            <th style="min-width:110px;" class="col-number">Vested<br><span class="sub-label">已归属</span></th>
+                                            <th style="min-width:110px;" class="col-number">Effective Vested<br><span class="sub-label">有效已归属</span></th>
+                                            <th style="min-width:110px;" class="col-number">Unvested<br><span class="sub-label">待归属</span></th>
+                                            <th style="min-width:120px;" class="col-number">Vested Cancelled<br><span class="sub-label">已归属取消</span></th>
+                                            <th style="min-width:120px;" class="col-number">Unvested Cancelled<br><span class="sub-label">待归属取消</span></th>
+                                            <th style="min-width:110px;" class="col-number">Exercised<br><span class="sub-label">已行权</span></th>
+                                            <th style="min-width:110px;" class="col-number">Pending Exercise<br><span class="sub-label">待行权</span></th>
+                                            <th style="min-width:110px;" class="col-number">Outstanding<br><span class="sub-label">Outstanding</span></th>
+                                            <th style="min-width:110px;" class="col-number">Sellable<br><span class="sub-label">可出售数量</span></th>
+                                            <th style="min-width:190px;">Related Sale Orders<br><span class="sub-label">关联出售订单编号</span></th>
+                                            <th style="min-width:140px;">Agreement Info<br><span class="sub-label">协议信息</span></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="holdingsBody"></tbody>
+                                </table>
+                                </div>
+                            </div>
+                            <div class="grant-panel hidden" id="grantPanel-shareworks" role="tabpanel" aria-labelledby="grantTab-shareworks">
+                                <div class="table-scroll">
+                                <table class="data-table table-holdings" id="grantTable-shareworks">
+                                    <thead><tr>
+                                        <th>No.</th><th>Cost Center</th><th>Participant Type @ Report Date</th><th>Employee Number</th>
+                                        <th>Last Name</th><th>First Name</th><th>Middle Name</th><th>Plan Name</th><th>Grant Name</th>
+                                        <th>Grant Type</th><th>Employee Grant Number</th><th>Grant Date</th><th>Vesting Start Date</th>
+                                        <th>Service Start Date</th><th>Original VCD (migrated grants)</th><th>Expire Date</th>
+                                        <th>Expire Date (participant view)</th><th>Earliest Expire Cancel Date</th><th>Latest Expire Cancel Date</th>
+                                        <th class="col-number">No. of Shares Granted</th><th class="col-number">Exercise Price per Share</th>
+                                        <th>Vesting Schedule</th><th>Early Exercise Allowed</th><th class="col-number">No. of Shares Vested</th>
+                                        <th class="col-number">No. of Shares Unvested</th><th class="col-number">Shares Exercised / Released</th>
+                                        <th class="col-number">Shares Subject To Repurchase</th><th class="col-number">Shares Cancelled/Expired</th>
+                                        <th class="col-number">Shares Outstanding</th><th class="col-number">Outstanding Unvested</th>
+                                        <th class="col-number">Outstanding Vested/Exercisable</th>
+                                    </tr></thead>
+                                    <tbody id="shareworksGrantBody"></tbody>
+                                </table>
+                                </div>
+                            </div>
+                            <div class="grant-panel hidden" id="grantPanel-merge" role="tabpanel" aria-labelledby="grantTab-merge">
+                                <div class="table-scroll">
+                                <table class="data-table table-holdings" id="grantTable-merge">
+                                    <thead><tr>
+                                        <th>No.</th><th>Employee Name<br><span class="sub-label">姓名</span></th>
+                                        <th>Grant No.<br><span class="sub-label">授予编号</span></th><th>Employee No.<br><span class="sub-label">工号</span></th>
+                                        <th>Incentive Type<br><span class="sub-label">激励类型</span></th><th>Grant Date<br><span class="sub-label">授予日期</span></th>
+                                        <th class="col-number">Grant Qty<br><span class="sub-label">授予数量</span></th>
+                                        <th class="col-number">Grant Price (USD)<br><span class="sub-label">授予价</span></th>
+                                        <th>Expire Date<br><span class="sub-label">失效日期</span></th><th>Plan Name<br><span class="sub-label">所属计划</span></th>
+                                        <th>Vesting Rule<br><span class="sub-label">归属规则名称</span></th><th>Vesting Start<br><span class="sub-label">归属起算日期</span></th>
+                                        <th class="col-number">No. of Shares Vested</th><th class="col-number">No. of Shares Unvested</th>
+                                        <th class="col-number">Shares Exercised / Released</th><th class="col-number">Shares Cancelled/Expired</th>
+                                        <th class="col-number">Shares Outstanding</th><th>Data Source</th>
+                                    </tr></thead>
+                                    <tbody id="mergedGrantBody"></tbody>
+                                </table>
+                                </div>
+                            </div>
+                            <div class="table-pagination">
+                                <div class="pagination-summary" id="holdingsPaginationSummary">-</div>
+                                <div class="pagination-actions">
+                                    <button class="btn btn-secondary btn-sm" id="btnHoldingsPrevPage">Previous</button>
+                                    <span class="pagination-page" id="holdingsPaginationPage">1 / 1</span>
+                                    <button class="btn btn-secondary btn-sm" id="btnHoldingsNextPage">Next</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -227,12 +339,65 @@
                         <div>
                             <div class="product-page-hero__eyebrow">行权记录</div>
                             <h2>Exercise to Date</h2>
-                            <p>展示 futu 的全部行权记录，业务范围包含 2023 年和 2025 年数据。</p>
+                            <p>展示 Futu 全部行权记录，数据来自 Files 中的独立工作簿。</p>
+                        </div>
+                        <div class="product-page-hero__metric"><span>Source File</span><strong>Files #54</strong></div>
+                    </div>
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label" for="searchExercises">Search</label>
+                            <input type="text" id="searchExercises" class="search-input" placeholder="Search by name, employee, grant...">
+                            <label class="search-label" for="filterExerciseGrantYear">Grant Year</label>
+                            <select id="filterExerciseGrantYear" class="form-input" style="min-width:150px;height:36px;">
+                                <option value="">All Years</option>
+                                <option value="2023">2023</option>
+                                <option value="2025">2025</option>
+                            </select>
+                            <button class="btn btn-primary" id="btnSearchExercises">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search
+                            </button>
                         </div>
                     </div>
-                    <div class="product-grid">
-                        <div class="product-card"><div class="product-card__label">来源</div><h3>futu</h3><p>全部行权记录统一归档。</p></div>
-                        <div class="product-card"><div class="product-card__label">年份</div><h3>2023 / 2025</h3><p>保留年份筛选和后续核对入口。</p></div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+                                Futu Exercise Records
+                            </h3>
+                            <span class="card-subtitle">Futu BCI Exercises to Date.xlsx</span>
+                        </div>
+                        <div class="card-body card-body--with-pagination">
+                            <div class="table-scroll">
+                                <table class="data-table table-exercises" id="exerciseTable">
+                                    <thead><tr>
+                                        <th>No.</th>
+                                        <th>Name<br><span class="sub-label">姓名</span></th>
+                                        <th>Employee No.<br><span class="sub-label">员工编号</span></th>
+                                        <th>Futubull ID<br><span class="sub-label">Futubull 账号</span></th>
+                                        <th>User ID<br><span class="sub-label">用户 ID</span></th>
+                                        <th>Grant No.<br><span class="sub-label">授予编号</span></th>
+                                        <th>Grant Date<br><span class="sub-label">授予日期</span></th>
+                                        <th class="col-number">Grant Price (USD)<br><span class="sub-label">授予价格</span></th>
+                                        <th>Exercise Date<br><span class="sub-label">行权日期</span></th>
+                                        <th class="col-number">Ordered Qty<br><span class="sub-label">申请数量</span></th>
+                                        <th class="col-number">Exercised Qty<br><span class="sub-label">已行权数量</span></th>
+                                        <th class="col-number">Exercise Cost (USD)<br><span class="sub-label">行权成本</span></th>
+                                        <th class="col-number">Deduction/Selling Qty.<br><span class="sub-label">扣除/出售数量</span></th>
+                                        <th class="col-number">Dealt Qty.<br><span class="sub-label">成交数量</span></th>
+                                    </tr></thead>
+                                    <tbody id="exerciseBody"></tbody>
+                                </table>
+                            </div>
+                            <div class="table-pagination">
+                                <div class="pagination-summary" id="exercisePaginationSummary">-</div>
+                                <div class="pagination-actions">
+                                    <button class="btn btn-secondary btn-sm" id="btnExercisesPrevPage">Previous</button>
+                                    <span class="pagination-page" id="exercisePaginationPage">1 / 1</span>
+                                    <button class="btn btn-secondary btn-sm" id="btnExercisesNextPage">Next</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -241,12 +406,71 @@
                         <div>
                             <div class="product-page-hero__eyebrow">卖出记录</div>
                             <h2>Sold Shares</h2>
-                            <p>futu 卖出记录仅做管理，暂不作为强校验卡点。</p>
+                            <p>展示 Futu 卖出汇总记录，数据来自 Files 中的独立工作簿。</p>
+                        </div>
+                        <div class="product-page-hero__metric"><span>Source</span><strong>Files</strong></div>
+                    </div>
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label" for="searchSoldShares">Search</label>
+                            <input type="text" id="searchSoldShares" class="search-input" placeholder="Search by name, employee, account...">
+                            <label class="search-label" for="filterSoldSharesEmploymentStatus">Employment Status</label>
+                            <select id="filterSoldSharesEmploymentStatus" class="form-input" style="min-width:150px;height:36px;">
+                                <option value="">All Statuses</option>
+                                <option value="在职">在职</option>
+                                <option value="离职">离职</option>
+                            </select>
+                            <button class="btn btn-primary" id="btnSearchSoldShares">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search
+                            </button>
                         </div>
                     </div>
-                    <div class="product-grid">
-                        <div class="product-card"><div class="product-card__label">来源</div><h3>futu</h3><p>记录卖出流水和管理状态。</p></div>
-                        <div class="product-card"><div class="product-card__label">口径</div><h3>管理记录</h3><p>后续可扩展为查询、备注和导出。</p></div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+                                Futu Sold Shares
+                            </h3>
+                            <span class="card-subtitle">Futu sold shares.xlsx</span>
+                        </div>
+                        <div class="card-body card-body--with-pagination">
+                            <div class="table-scroll">
+                                <table class="data-table table-sold-shares" id="soldSharesTable">
+                                    <thead><tr>
+                                        <th>No.</th>
+                                        <th>Name<br><span class="sub-label">姓名</span></th>
+                                        <th>Employee No.<br><span class="sub-label">工号</span></th>
+                                        <th>Futubull ID<br><span class="sub-label">牛牛号</span></th>
+                                        <th>User ID<br><span class="sub-label">用户 ID</span></th>
+                                        <th>Employment Status<br><span class="sub-label">在职状态</span></th>
+                                        <th>Related Party<br><span class="sub-label">关联人士身份</span></th>
+                                        <th>Capital Gains Tax<br><span class="sub-label">财产转让所得税</span></th>
+                                        <th class="col-number">Sold Qty<br><span class="sub-label">出售总数量</span></th>
+                                        <th class="col-number">Dealt Qty<br><span class="sub-label">成交总数量</span></th>
+                                        <th class="col-number">Deal Amount (USD)<br><span class="sub-label">成交总金额</span></th>
+                                        <th class="col-number">Taxable Income (USD)<br><span class="sub-label">总应税收入</span></th>
+                                        <th class="col-number">Tax Payable (USD)<br><span class="sub-label">总应纳税额</span></th>
+                                        <th class="col-number">Transaction Fees (USD)<br><span class="sub-label">交易总费用</span></th>
+                                        <th class="col-number">Net Deal Value (USD)<br><span class="sub-label">成交净值</span></th>
+                                        <th class="col-number">Grant Cost (USD)<br><span class="sub-label">授予成本</span></th>
+                                        <th class="col-number">Exercise/Vesting Fee (USD)<br><span class="sub-label">行权/归属手续费</span></th>
+                                        <th class="col-number">Withholding Tax (USD)<br><span class="sub-label">本期代扣税额</span></th>
+                                        <th class="col-number">Withholding Tax (CNY)<br><span class="sub-label">本期代扣税额</span></th>
+                                        <th class="col-number">Cash Net Proceeds (USD)<br><span class="sub-label">现金净收益</span></th>
+                                    </tr></thead>
+                                    <tbody id="soldSharesBody"></tbody>
+                                </table>
+                            </div>
+                            <div class="table-pagination">
+                                <div class="pagination-summary" id="soldSharesPaginationSummary">-</div>
+                                <div class="pagination-actions">
+                                    <button class="btn btn-secondary btn-sm" id="btnSoldSharesPrevPage">Previous</button>
+                                    <span class="pagination-page" id="soldSharesPaginationPage">1 / 1</span>
+                                    <button class="btn btn-secondary btn-sm" id="btnSoldSharesNextPage">Next</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -255,51 +479,157 @@
                         <div>
                             <div class="product-page-hero__eyebrow">2025年计划</div>
                             <h2>2025 Transfer to Futu</h2>
-                            <p>如果未导入，仅做感叹号提醒，不强卡；按月汇总归属记录，并支持编辑每个月的取消数量。</p>
+                            <p>按月汇总归属记录，取消数量可直接编辑；数据来自 Files 中的独立工作簿。</p>
                         </div>
+                        <div class="product-page-hero__metric"><span>Source</span><strong>Files</strong></div>
+                    </div>
+                    <div class="transfer-plan-metrics">
+                        <div class="transfer-plan-metric"><span>In total</span><strong id="transferPlanInTotal">-</strong></div>
+                        <div class="transfer-plan-metric transfer-plan-metric--warning"><span>Cancelled / forfeited</span><strong id="transferPlanCancelled">-</strong></div>
+                        <div class="transfer-plan-metric transfer-plan-metric--accent"><span>Transfer to Futu</span><strong id="transferPlanTransferred">-</strong></div>
+                        <div class="transfer-plan-metric"><span>Detail records</span><strong id="transferPlanDetailCount">-</strong></div>
                     </div>
                     <div class="card">
-                        <div class="card-header"><h3 class="card-title">月度归属汇总</h3><span class="card-subtitle">by 月汇总，支持取消数量维护</span></div>
-                        <div class="card-body">
-                            <table class="data-table product-spec-table">
-                                <thead><tr><th>月份</th><th>归属数量</th><th>取消数量</th><th>提示</th></tr></thead>
-                                <tbody>
-                                    <tr><td>2025-01</td><td>-</td><td>可编辑</td><td>未导入时仅提醒</td></tr>
-                                    <tr><td>2025-02</td><td>-</td><td>可编辑</td><td>未导入时仅提醒</td></tr>
-                                </tbody>
-                            </table>
+                        <div class="card-header transfer-plan-card-header">
+                            <div>
+                                <h3 class="card-title">月度归属汇总</h3>
+                                <span class="card-subtitle" id="transferPlanSourceName">2025 BC Subplan Transfer.xlsx</span>
+                            </div>
+                            <div class="transfer-plan-actions">
+                                <input type="file" id="transferPlanFileInput" accept=".xlsx" hidden>
+                                <button class="btn btn-secondary btn-sm" id="btnImportTransferPlan">Import detail</button>
+                                <button class="btn btn-primary btn-sm" id="btnExportTransferPlan">Export detail</button>
+                            </div>
+                        </div>
+                        <div class="card-body transfer-plan-card-body">
+                            <div class="table-scroll transfer-plan-scroll">
+                                <table class="data-table table-transfer-plan" id="transferPlanSummaryTable">
+                                    <thead id="transferPlanSummaryHead"></thead>
+                                    <tbody id="transferPlanSummaryBody" data-transfer-cancelled="editable"></tbody>
+                                </table>
+                            </div>
+                            <div class="transfer-plan-note">
+                                <strong>Options cancelled/forfeited</strong> 可编辑；修改后 Transfer to Futu 将即时按 “In total + cancelled” 重新计算。
+                            </div>
                         </div>
                     </div>
                 </section>
 
                 <section class="page-section" id="page-employee-management">
-                    <div class="product-page-hero">
-                        <div>
-                            <div class="product-page-hero__eyebrow">员工汇总（股东管理）</div>
-                            <h2>Employee Management</h2>
-                            <p>表格来源于 ESOP Detail 汇总，支持新增员工、高管等标签展示，以及标签管理入口。</p>
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label">Search</label>
+                            <input type="text" id="searchEmployeesPage" class="search-input" placeholder="Search by name, employee no., user id...">
+                            <label class="search-label">Tag</label>
+                            <input type="text" id="filterEmployeesPageTag" class="search-input" placeholder="Filter by tag">
+                            <button class="btn btn-primary" id="btnSearchEmployeesPage">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search
+                            </button>
+                        </div>
+                        <div class="search-actions">
+                            <button class="btn btn-success" id="btnAddEmployeesPage">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                New Employee
+                            </button>
                         </div>
                     </div>
-                    <div class="product-grid product-grid--three">
-                        <div class="product-card"><div class="product-card__label">来源</div><h3>details 汇总</h3><p>从股权明细页沉淀员工维度汇总。</p></div>
-                        <div class="product-card"><div class="product-card__label">标签</div><h3>高管等标签</h3><p>在本页展示并允许后续维护。</p></div>
-                        <div class="product-card"><div class="product-card__label">入口</div><h3>标签管理</h3><p>本页增加标签管理入口。</p></div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
+                                Employee Management
+                            </h3>
+                            <span class="card-subtitle">Employee master records summarized from ESOP detail</span>
+                        </div>
+                        <div class="card-body card-body--with-pagination">
+                            <div class="table-scroll">
+                                <table class="data-table" id="employeesPageTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:56px;">No.</th>
+                                            <th class="sortable-th" data-employees-sort="name">Employee Name <span class="sort-indicator" data-sort-key="name"></span></th>
+                                            <th style="width:130px;" class="sortable-th" data-employees-sort="empNo">Emp. No. <span class="sort-indicator" data-sort-key="empNo"></span></th>
+                                            <th style="width:88px;">Source</th>
+                                            <th>Linked</th>
+                                            <th>Tags</th>
+                                            <th style="width:96px;">Grant Count</th>
+                                            <th style="width:220px;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="employeesPageBody"></tbody>
+                                </table>
+                            </div>
+                            <div class="table-pagination">
+                                <div class="pagination-summary" id="employeesPaginationSummary">-</div>
+                                <div class="pagination-actions">
+                                    <label class="pagination-size-label">Rows
+                                        <select class="form-input pagination-size-select" id="employeesPageSizeSelect">
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                        </select>
+                                    </label>
+                                    <button class="btn btn-secondary btn-sm" id="btnEmployeesFirstPage">« First</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnEmployeesPrevPage">Previous</button>
+                                    <span class="pagination-page" id="employeesPaginationPage">1 / 1</span>
+                                    <button class="btn btn-secondary btn-sm" id="btnEmployeesNextPage">Next</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnEmployeesLastPage">Last »</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-overlay hidden" id="employeesPageModal">
+                        <div class="modal-container modal-small">
+                            <div class="modal-header">
+                                <h3 class="modal-title" id="employeesPageModalTitle">New Employee</h3>
+                                <button class="modal-close" data-close="employeesPageModal">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-group" id="employeesPageNumberRow" style="display:none;"><label>Emp. No.（工号）<span style="color:var(--danger-500);">*</span></label><input type="text" id="employeesPageNumber" class="form-input" placeholder="输入工号（新增后不可改）"></div>
+                                <div class="form-group"><label>Employee Name <span style="color:var(--danger-500);">*</span></label><input type="text" id="employeesPageName" class="form-input" placeholder="Enter employee name"></div>
+                                <div class="form-group"><label>User ID</label><input type="text" id="employeesPageUserId" class="form-input" placeholder="Enter user id"></div>
+                                <div class="form-group"><label>Tags</label><input type="text" id="employeesPageTags" class="form-input" placeholder="Comma separated tags"></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" data-close="employeesPageModal">Cancel</button>
+                                <button class="btn btn-primary" id="btnSubmitEmployeesPage">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-overlay hidden" id="employeesMergeModal">
+                        <div class="modal-container modal-small">
+                            <div class="modal-header">
+                                <h3 class="modal-title">关联为同一人</h3>
+                                <button class="modal-close" data-close="employeesMergeModal">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="form-hint" style="margin-bottom:12px;">将当前员工 <strong id="employeesMergeSourceLabel">-</strong> 并入目标员工（保留目标为主记录，本记录成为其别名）。此操作不可撤销。</p>
+                                <div class="form-group"><label>目标员工工号（Emp. No.） <span style="color:var(--danger-500);">*</span></label><input type="text" id="employeesMergeTargetNumber" class="form-input" placeholder="输入目标员工的工号 / Emp. No."></div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" data-close="employeesMergeModal">Cancel</button>
+                                <button class="btn btn-primary" id="btnSubmitEmployeesMerge">关联</button>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
                 <section class="page-section" id="page-plan-summary">
-                    <div class="product-page-hero">
-                        <div>
-                            <div class="product-page-hero__eyebrow">计划汇总统计</div>
-                            <h2>Plan Summary</h2>
-                            <p>面向计划维度的汇总统计入口，后续承接计划数量、授予、行权和剩余额度等指标。</p>
-                        </div>
-                    </div>
                     <div class="stats-row">
-                        <div class="stat-card"><div class="stat-label">Plans</div><div class="stat-value">-</div></div>
-                        <div class="stat-card"><div class="stat-label">Granted</div><div class="stat-value">-</div></div>
-                        <div class="stat-card"><div class="stat-label">Exercised</div><div class="stat-value">-</div></div>
-                        <div class="stat-card"><div class="stat-label">Remaining</div><div class="stat-value">-</div></div>
+                        <div class="stat-card"><div class="stat-label">Plans</div><div class="stat-value" id="planSummaryPlanCount">-</div></div>
+                        <div class="stat-card"><div class="stat-label">Granted</div><div class="stat-value" id="planSummaryGranted">-</div></div>
+                        <div class="stat-card"><div class="stat-label">Exercised</div><div class="stat-value" id="planSummaryExercised">-</div></div>
+                        <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value" id="planSummaryOutstanding">-</div></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Plan Summary</h3><span class="card-subtitle">Aggregated from equity grant detail</span></div>
+                        <div class="card-body">
+                            <table class="data-table">
+                                <thead><tr><th>Plan Name</th><th class="col-number">Grant Count</th><th class="col-number">Granted</th><th class="col-number">Exercised</th><th class="col-number">Cancelled</th><th class="col-number">Outstanding</th></tr></thead>
+                                <tbody id="planSummaryBody"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
@@ -308,15 +638,23 @@
                         <div>
                             <div class="product-page-hero__eyebrow">持股5%以上股东</div>
                             <h2>5% Holders</h2>
-                            <p>Data Management 下的业务数据页，用于管理和查看持股 5% 以上股东。</p>
+                            <p>来源：Gyre Cap Table「5% Holders」sheet（EDGAR SC13 申报口径）。</p>
                         </div>
                     </div>
                     <div class="card">
-                        <div class="card-header"><h3 class="card-title">5% Holders</h3><span class="card-subtitle">Data Management</span></div>
+                        <div class="card-header"><h3 class="card-title">5% Holders</h3><span class="card-subtitle">EDGAR SC13 Ownership</span></div>
                         <div class="card-body">
-                            <table class="data-table product-spec-table">
-                                <thead><tr><th>股东</th><th>持股比例</th><th>数据来源</th></tr></thead>
-                                <tbody><tr><td>-</td><td>-</td><td>待接入</td></tr></tbody>
+                            <div class="stat-chip-row" id="fivePercentHoldersSummary"></div>
+                            <table class="data-table">
+                                <thead><tr>
+                                    <th style="text-align:left;">Shareholder</th>
+                                    <th class="col-number">Common Stock</th>
+                                    <th class="col-number">Total CSEs</th>
+                                    <th class="col-number">% of Class</th>
+                                    <th class="col-number">% Fully Diluted</th>
+                                    <th style="text-align:left;">SC13 Filing</th>
+                                </tr></thead>
+                                <tbody id="fivePercentHoldersBody"></tbody>
                             </table>
                         </div>
                     </div>
@@ -334,10 +672,24 @@
                         <div class="card-header"><h3 class="card-title">固定值</h3><span class="card-subtitle">管理员可维护</span></div>
                         <div class="card-body">
                             <table class="data-table product-spec-table">
-                                <thead><tr><th>Key</th><th>中文</th><th>Value</th><th>状态</th></tr></thead>
-                                <tbody><tr><td>-</td><td>待配置</td><td>-</td><td><span class="status-badge status-pending">待接入</span></td></tr></tbody>
+                                <thead><tr><th>Key</th><th>Item</th><th>Value</th><th>Effective From</th><th>Updated By</th><th>Actions</th></tr></thead>
+                                <tbody id="fixedValuePageBody"></tbody>
                             </table>
                         </div>
+                    </div>
+                </section>
+
+                <section class="page-section" id="page-docs">
+                    <div class="product-page-hero">
+                        <div>
+                            <div class="product-page-hero__eyebrow">使用手册</div>
+                            <h2>User Guide</h2>
+                            <p>系统各页面与工作流的使用说明，按主题分多篇文档。</p>
+                        </div>
+                    </div>
+                    <div class="doc-layout">
+                        <aside class="doc-nav" id="docNav"></aside>
+                        <article class="doc-content" id="docContent"></article>
                     </div>
                 </section>
 
@@ -1157,155 +1509,6 @@
                     </div>
                 </div>
 
-                <!-- Holdings Page -->
-                <section class="page-section" id="page-holdings">
-                    <div class="search-bar">
-                        <div class="search-group">
-                            <label class="search-label">Search</label>
-                            <input type="text" id="searchHolder" class="search-input" placeholder="Search by name, plan, grant...">
-                            <label class="search-label">Tag</label>
-                            <input type="text" id="filterHoldingsTag" class="search-input" placeholder="Filter by employee tag">
-                            <label class="search-label">Incentive Type</label>
-                            <select id="filterGrantType" class="form-input" style="min-width:160px;height:36px;">
-                                <option value="">All Types</option>
-                                <option value="Option">Option</option>
-                            </select>
-                            <button class="btn btn-primary" id="btnSearchHoldings">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                Search
-                            </button>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="card-header">
-                            <h3 class="card-title">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                                Equity Grant Detail
-                            </h3>
-                            <span class="card-subtitle">Imported grant records aligned to the award workbook</span>
-                        </div>
-                        <div class="card-body card-body--with-pagination">
-                            <div class="table-scroll">
-                                <table class="data-table table-holdings" id="holdingsTable">
-                                    <thead>
-                                        <tr>
-                                            <th style="min-width:60px;">No.<br><span class="sub-label">序号</span></th>
-                                            <th style="min-width:140px;">Employee Name<br><span class="sub-label">姓名</span></th>
-                                            <th style="min-width:100px;">Employee No.<br><span class="sub-label">工号</span></th>
-                                            <th style="min-width:120px;">User ID<br><span class="sub-label">用户ID</span></th>
-                                            <th style="min-width:180px;">Tags<br><span class="sub-label">标签</span></th>
-                                            <th style="min-width:100px;">Grant No.<br><span class="sub-label">授予编号</span></th>
-                                            <th style="min-width:120px;">Incentive Type<br><span class="sub-label">激励类型</span></th>
-                                            <th style="min-width:110px;">Grant Date<br><span class="sub-label">授予日期</span></th>
-                                            <th style="min-width:120px;" class="col-number">Grant Qty<br><span class="sub-label">授予数量</span></th>
-                                            <th style="min-width:120px;" class="col-number">Grant Price<br><span class="sub-label">授予价(USD)</span></th>
-                                            <th style="min-width:110px;">Expire Date<br><span class="sub-label">到期日</span></th>
-                                            <th style="min-width:220px;">Plan Name<br><span class="sub-label">所属计划</span></th>
-                                            <th style="min-width:110px;">Condition Rule<br><span class="sub-label">条件规则</span></th>
-                                            <th style="min-width:110px;">Portal Visibility<br><span class="sub-label">员工端</span></th>
-                                            <th style="min-width:150px;">Tax Rule<br><span class="sub-label">授予计税规则</span></th>
-                                            <th style="min-width:150px;">Vesting Rule<br><span class="sub-label">归属规则名称</span></th>
-                                            <th style="min-width:110px;">Vesting Start<br><span class="sub-label">归属起算日期</span></th>
-                                            <th style="min-width:110px;" class="col-number">Vested<br><span class="sub-label">已归属</span></th>
-                                            <th style="min-width:110px;" class="col-number">Effective Vested<br><span class="sub-label">有效已归属</span></th>
-                                            <th style="min-width:110px;" class="col-number">Unvested<br><span class="sub-label">待归属</span></th>
-                                            <th style="min-width:110px;" class="col-number">Exercised<br><span class="sub-label">已行权</span></th>
-                                            <th style="min-width:110px;" class="col-number">Pending Exercise<br><span class="sub-label">待行权</span></th>
-                                            <th style="min-width:110px;" class="col-number">Outstanding<br><span class="sub-label">Outstanding</span></th>
-                                            <th style="min-width:110px;" class="col-number">Sellable<br><span class="sub-label">可出售数量</span></th>
-                                            <th style="min-width:120px;">Data Source<br><span class="sub-label">数据来源</span></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="holdingsBody"></tbody>
-                                </table>
-                            </div>
-                            <div class="table-pagination">
-                                <div class="pagination-summary" id="holdingsPaginationSummary">-</div>
-                                <div class="pagination-actions">
-                                    <button class="btn btn-secondary btn-sm" id="btnHoldingsPrevPage">Previous</button>
-                                    <span class="pagination-page" id="holdingsPaginationPage">1 / 1</span>
-                                    <button class="btn btn-secondary btn-sm" id="btnHoldingsNextPage">Next</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="page-section" id="page-employees">
-                    <div class="search-bar">
-                        <div class="search-group">
-                            <label class="search-label">Search</label>
-                            <input type="text" id="searchEmployeesPage" class="search-input" placeholder="Search by name, employee no., user id...">
-                            <label class="search-label">Tag</label>
-                            <input type="text" id="filterEmployeesPageTag" class="search-input" placeholder="Filter by tag">
-                            <button class="btn btn-primary" id="btnSearchEmployeesPage">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                Search
-                            </button>
-                        </div>
-                        <div class="search-actions">
-                            <button class="btn btn-success" id="btnAddEmployeesPage">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                New Employee
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-header">
-                            <h3 class="card-title">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
-                                Employees
-                            </h3>
-                            <span class="card-subtitle">Employee master records used by Holdings</span>
-                        </div>
-                        <div class="card-body card-body--with-pagination">
-                            <div class="table-scroll">
-                                <table class="data-table" id="employeesPageTable">
-                                    <thead>
-                                        <tr>
-                                            <th style="width:60px;">No.</th>
-                                            <th>Employee Name</th>
-                                            <th>Employee No.</th>
-                                            <th>User ID</th>
-                                            <th>Tags</th>
-                                            <th style="width:120px;">Grant Count</th>
-                                            <th style="width:180px;">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="employeesPageBody"></tbody>
-                                </table>
-                            </div>
-                            <div class="table-pagination">
-                                <div class="pagination-summary" id="employeesPaginationSummary">-</div>
-                                <div class="pagination-actions">
-                                    <button class="btn btn-secondary btn-sm" id="btnEmployeesPrevPage">Previous</button>
-                                    <span class="pagination-page" id="employeesPaginationPage">1 / 1</span>
-                                    <button class="btn btn-secondary btn-sm" id="btnEmployeesNextPage">Next</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="modal-overlay hidden" id="employeesPageModal">
-                        <div class="modal-container modal-small">
-                            <div class="modal-header">
-                                <h3 class="modal-title" id="employeesPageModalTitle">New Employee</h3>
-                                <button class="modal-close" data-close="employeesPageModal">&times;</button>
-                            </div>
-                            <div class="modal-body">
-                                <div class="form-group"><label>Employee Name <span style="color:var(--danger-500);">*</span></label><input type="text" id="employeesPageName" class="form-input" placeholder="Enter employee name"></div>
-                                <div class="form-group"><label>Employee No. <span style="color:var(--danger-500);">*</span></label><input type="text" id="employeesPageNumber" class="form-input" placeholder="Enter employee number"></div>
-                                <div class="form-group"><label>User ID</label><input type="text" id="employeesPageUserId" class="form-input" placeholder="Enter user id"></div>
-                                <div class="form-group"><label>Tags</label><input type="text" id="employeesPageTags" class="form-input" placeholder="Comma separated tags"></div>
-                            </div>
-                            <div class="modal-footer">
-                                <button class="btn btn-secondary" data-close="employeesPageModal">Cancel</button>
-                                <button class="btn btn-primary" id="btnSubmitEmployeesPage">Save</button>
-                            </div>
-                        </div>
-                    </div>
-                </section>
 
                 <!-- Account Page -->
                 <section class="page-section" id="page-account">

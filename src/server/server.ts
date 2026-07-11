@@ -61,6 +61,19 @@ import {
   monthlyRunWorkflowFileRuntimeKeyForName,
   monthlyRunWorkflowFixedRuntimeKeyForRow,
 } from './monthlyRun/inputUsage.js';
+import {
+  buildPlanSummary,
+  mergeFutuGrant,
+  mergeShareworksGrant,
+  toExerciseRecord,
+  toFixedValue,
+  toShareworksGrant,
+  toSoldShare,
+  toTransferPlanPeriod,
+} from './esopPages.js';
+import { loadTransferPlanWorkbook, seedTransferPlanData } from './seed.js';
+import { upsertTableRows } from './workflow/tableUpsert.js';
+import { normalizeExternalNumber } from './employees.js';
 import { executeWorkflowTaskPreview } from './workflow/engine.js';
 import { WorkflowFileSourceRegistry, productFileRef } from './workflow/fileSources.js';
 import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
@@ -102,6 +115,18 @@ type RequestWithAuth = {
     is_active: boolean;
     last_login_at: string | null;
   } | null;
+};
+
+// Synthetic user used while login is disabled (config.authDisabled) during development.
+const DEV_AUTH_USER: NonNullable<RequestWithAuth['currentUser']> = {
+  id: 0,
+  username: 'dev',
+  display_name: 'Developer',
+  role: 'admin',
+  email: null,
+  phone: null,
+  is_active: true,
+  last_login_at: null,
 };
 
 function toIsoTimestamp(value: unknown): string {
@@ -231,6 +256,11 @@ const accountPasswordPatchSchema = z.object({
   newPassword: z.string().min(8).max(128),
 });
 
+const fixedValuePatchSchema = z.object({
+  value: z.number(),
+  updatedBy: z.string().trim().min(1).optional().default('Administrator'),
+});
+
 function isUniqueConstraintViolation(error: unknown): boolean {
   return typeof error === 'object'
     && error !== null
@@ -291,6 +321,10 @@ async function resolveAuthUser(request: { headers: Record<string, unknown> }): P
 }
 
 async function requireAuth(request: { headers: Record<string, unknown> } & RequestWithAuth, reply: { code: (statusCode: number) => { send: (payload: unknown) => unknown } }) {
+  if (config.authDisabled) {
+    request.currentUser = DEV_AUTH_USER;
+    return;
+  }
   request.currentUser = await resolveAuthUser(request);
   if (!request.currentUser) {
     return reply.code(401).send({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
@@ -298,6 +332,9 @@ async function requireAuth(request: { headers: Record<string, unknown> } & Reque
 }
 
 async function currentAuthStatus(request: { headers: Record<string, unknown> }): Promise<AuthStatus> {
+  if (config.authDisabled) {
+    return toAuthStatus(DEV_AUTH_USER, false);
+  }
   const bootstrapRequired = !(await hasAnyUsers(db));
   const currentUser = await resolveAuthUser(request);
   return toAuthStatus(currentUser ?? null, bootstrapRequired);
@@ -709,13 +746,29 @@ function toHoldingGrant(row: Record<string, unknown>) {
 }
 
 function toEmployee(row: Record<string, unknown>) {
+  const linkedRaw = row.linked_identities;
+  const linkedIdentities = Array.isArray(linkedRaw)
+    ? linkedRaw.map((identity) => ({
+        employeeId: String((identity as Record<string, unknown>).employeeId ?? ''),
+        source: String((identity as Record<string, unknown>).source ?? ''),
+        name: String((identity as Record<string, unknown>).name ?? ''),
+      }))
+    : [];
+  const source = String(row.source ?? 'futu');
   return {
     id: Number(row.id),
-    employeeNumber: String(row.employee_number ?? ''),
+    employeeNumber: String(row.employee_id ?? ''),
     employeeName: String(row.employee_name ?? ''),
     userId: row.user_id ? String(row.user_id) : null,
     tags: parseTags(row.tags),
     grantCount: Number(row.grant_count ?? 0),
+    source: (source === 'shareworks' ? 'shareworks' : source === 'manual' ? 'manual' : 'futu') as
+      | 'futu'
+      | 'shareworks'
+      | 'manual',
+    hasFileEvidence: row.has_file_evidence === true || row.has_file_evidence === 'true',
+    active: row.is_active === undefined ? true : row.is_active === true || row.is_active === 'true',
+    linkedIdentities,
   };
 }
 
@@ -1046,6 +1099,8 @@ workflowFileSources.register({
   },
 });
 
+const WORKFLOW_WRITABLE_TABLES: ReadonlySet<string> = new Set(['employees']);
+
 const workflowOperatorRuntime: WorkflowOperatorRuntime = {
   extractSheetRangeAsDataFrame,
   rowsToDataFrame,
@@ -1057,6 +1112,9 @@ const workflowOperatorRuntime: WorkflowOperatorRuntime = {
   async saveGeneratedWorkbook(params) {
     const saved = await saveProductWorkbook(params);
     return toProductFile(saved.file);
+  },
+  upsertTableRows(params) {
+    return upsertTableRows(db, params, WORKFLOW_WRITABLE_TABLES);
   },
 };
 
@@ -1184,6 +1242,18 @@ async function registerRoutes() {
   app.get('/api/account', async (request) => {
     const user = (request as typeof request & RequestWithAuth).currentUser;
     if (!user) throw new Error('Authentication required');
+    if (config.authDisabled) {
+      return {
+        account: {
+          id: DEV_AUTH_USER.id,
+          username: DEV_AUTH_USER.username,
+          displayName: DEV_AUTH_USER.display_name,
+          role: DEV_AUTH_USER.role,
+          email: DEV_AUTH_USER.email,
+          phone: DEV_AUTH_USER.phone,
+        },
+      };
+    }
     const account = await getPublicAccount(db, user.id);
     if (!account) throw new Error('Account not found');
     return { account };
@@ -1928,7 +1998,7 @@ async function registerRoutes() {
            $3 = ''
            or lower(
              coalesce(e.employee_name, '') || ' ' ||
-             coalesce(e.employee_number, '') || ' ' ||
+             coalesce(e.id::text, '') || ' ' ||
              coalesce(array_to_string(e.tags, ' '), '') || ' ' ||
              coalesce(g.grant_number, '') || ' ' ||
              coalesce(g.plan_name, '') || ' ' ||
@@ -1941,7 +2011,7 @@ async function registerRoutes() {
       `select
          g.*,
          e.employee_name,
-         e.employee_number,
+         e.id::text as employee_number,
          e.user_id,
          e.tags
        from equity_grants g
@@ -1952,14 +2022,14 @@ async function registerRoutes() {
            $3 = ''
            or lower(
              coalesce(e.employee_name, '') || ' ' ||
-             coalesce(e.employee_number, '') || ' ' ||
+             coalesce(e.id::text, '') || ' ' ||
              coalesce(array_to_string(e.tags, ' '), '') || ' ' ||
              coalesce(g.grant_number, '') || ' ' ||
              coalesce(g.plan_name, '') || ' ' ||
             coalesce(g.vesting_rule_name, '')
            ) like $4
          )
-       order by e.employee_number, g.grant_date, g.grant_number
+       order by e.id, g.grant_date, g.grant_number
        limit $5 offset $6`,
       [grantType, normalizedTag, normalizedQuery, like, pageSize, offset],
     );
@@ -1972,50 +2042,331 @@ async function registerRoutes() {
     };
   });
 
-  app.get('/api/employees', async (request) => {
+  app.get('/api/grants/shareworks', async (request) => {
+    const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const { query = '' } = request.query as { query?: string };
+    const normalizedQuery = query.trim().toLowerCase();
+    const like = `%${normalizedQuery}%`;
+    const offset = (page - 1) * pageSize;
+    const searchSql = `
+      ($1 = '' or lower(
+        coalesce(last_name, '') || ' ' ||
+        coalesce(first_name, '') || ' ' ||
+        coalesce(middle_name, '') || ' ' ||
+        coalesce(employee_number, '') || ' ' ||
+        coalesce(employee_grant_number, '') || ' ' ||
+        coalesce(plan_name, '') || ' ' ||
+        coalesce(grant_name, '') || ' ' ||
+        coalesce(grant_type, '')
+      ) like $2)
+    `;
+    const totalRow = await db.queryOne<{ count: number }>(
+      `select count(*)::int as count from shareworks_grants where ${searchSql}`,
+      [normalizedQuery, like],
+    );
+    const rows = await db.query<Record<string, unknown>>(
+      `select *
+       from shareworks_grants
+       where ${searchSql}
+       order by employee_number, grant_date, employee_grant_number
+       limit $3 offset $4`,
+      [normalizedQuery, like, pageSize, offset],
+    );
+    const total = Number(totalRow?.count ?? 0);
+    return {
+      items: rows.map((row) => toShareworksGrant(row as never)),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  });
+
+  app.get('/api/grants/merge', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
     const { query = '', tag = '' } = request.query as { query?: string; tag?: string };
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedTag = tag.trim();
+    const futuRows = await db.query<Record<string, unknown>>(
+      `select g.*, e.employee_name, e.id::text as employee_number, e.user_id, e.tags
+       from equity_grants g
+       join employees e on e.id = g.employee_id
+       where ($1 = '' or $1 = any(e.tags))`,
+      [normalizedTag],
+    );
+    const shareworksRows =
+      normalizedTag === '' ? await db.query<Record<string, unknown>>('select * from shareworks_grants') : [];
+    const items = [
+      ...futuRows.map((row) => mergeFutuGrant(toHoldingGrant(row))),
+      ...shareworksRows.map((row) => mergeShareworksGrant(toShareworksGrant(row as never))),
+    ]
+      .filter((row) => {
+        if (!normalizedQuery) return true;
+        return [
+          row.employeeName,
+          row.employeeNumber,
+          row.grantNumber,
+          row.incentiveType,
+          row.planName,
+          row.vestingRuleName,
+          row.source,
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort(
+        (left, right) =>
+          left.employeeNumber.localeCompare(right.employeeNumber) ||
+          String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
+          left.grantNumber.localeCompare(right.grantNumber),
+      );
+    const total = items.length;
+    const offset = (page - 1) * pageSize;
+    return {
+      items: items.slice(offset, offset + pageSize),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  });
+
+  app.get('/api/exercises', async (request) => {
+    const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const { query = '', grantYear = '' } = request.query as { query?: string; grantYear?: string };
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedGrantYear = grantYear.trim();
     const like = `%${normalizedQuery}%`;
     const offset = (page - 1) * pageSize;
+    const whereSql = `
+      ($1 = '' or left(grant_date, 4) = $1)
+      and (
+        $2 = ''
+        or lower(
+          name || ' ' ||
+          employee_number || ' ' ||
+          futubull_id || ' ' ||
+          user_id || ' ' ||
+          grant_number || ' ' ||
+          grant_date || ' ' ||
+          exercise_date
+        ) like $3
+      )
+    `;
     const totalRow = await db.queryOne<{ count: number }>(
-      `select count(*)::int as count
+      `select count(*)::int as count from exercise_records where ${whereSql}`,
+      [normalizedGrantYear, normalizedQuery, like],
+    );
+    const rows = await db.query<Record<string, unknown>>(
+      `select *
+       from exercise_records
+       where ${whereSql}
+       order by exercise_date desc, employee_number, grant_number, id
+       limit $4 offset $5`,
+      [normalizedGrantYear, normalizedQuery, like, pageSize, offset],
+    );
+    const total = Number(totalRow?.count ?? 0);
+    return {
+      items: rows.map((row) => toExerciseRecord(row as never)),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  });
+
+  app.get('/api/sold-shares', async (request) => {
+    const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const { query = '', employmentStatus = '' } = request.query as {
+      query?: string;
+      employmentStatus?: string;
+    };
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedEmploymentStatus = employmentStatus.trim();
+    const like = `%${normalizedQuery}%`;
+    const offset = (page - 1) * pageSize;
+    const whereSql = `
+      ($1 = '' or employment_status = $1)
+      and (
+        $2 = ''
+        or lower(
+          name || ' ' ||
+          employee_number || ' ' ||
+          futubull_id || ' ' ||
+          user_id || ' ' ||
+          employment_status || ' ' ||
+          related_party_identity
+        ) like $3
+      )
+    `;
+    const totalRow = await db.queryOne<{ count: number }>(
+      `select count(*)::int as count from sold_shares where ${whereSql}`,
+      [normalizedEmploymentStatus, normalizedQuery, like],
+    );
+    const rows = await db.query<Record<string, unknown>>(
+      `select *
+       from sold_shares
+       where ${whereSql}
+       order by employee_number, id
+       limit $4 offset $5`,
+      [normalizedEmploymentStatus, normalizedQuery, like, pageSize, offset],
+    );
+    const total = Number(totalRow?.count ?? 0);
+    return {
+      items: rows.map((row) => toSoldShare(row as never)),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  });
+
+  app.get('/api/transfer-plan', async () => {
+    const rows = await db.query<Record<string, unknown>>(
+      'select * from transfer_plan_periods order by sort_order, id',
+    );
+    const items = rows.map((row) => toTransferPlanPeriod(row as never));
+    const sourceFileId = items[0]?.sourceFileId ?? null;
+    const totals = items.reduce(
+      (result, item) => ({
+        inTotal: result.inTotal + item.inTotal,
+        sourceCancelled: result.sourceCancelled + item.sourceCancelled,
+        cancelledQuantity: result.cancelledQuantity + item.cancelledQuantity,
+        transferToFutu: result.transferToFutu + item.transferToFutu,
+      }),
+      { inTotal: 0, sourceCancelled: 0, cancelledQuantity: 0, transferToFutu: 0 },
+    );
+
+    return {
+      sourceFileId,
+      sourceFileName: '2025 BC Subplan Transfer.xlsx',
+      detailCount: loadTransferPlanWorkbook().details.length,
+      items,
+      totals,
+    };
+  });
+
+  app.patch('/api/transfer-plan/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const body = z.object({ cancelledQuantity: z.number().finite() }).parse(request.body ?? {});
+    const row = await db.queryOne<Record<string, unknown>>(
+      `update transfer_plan_periods
+          set cancelled_quantity = $2,
+              manually_edited = true,
+              updated_at = current_timestamp
+        where id = $1
+        returning *`,
+      [Number(id), body.cancelledQuantity],
+    );
+    if (!row) throw notFound('Transfer plan period not found');
+    return { item: toTransferPlanPeriod(row as never) };
+  });
+
+  app.post('/api/transfer-plan/import', async (request, reply) => {
+    let uploaded: { buffer: Buffer; mimeType: string } | null = null;
+    for await (const part of request.parts()) {
+      if (part.type === 'file') {
+        uploaded = {
+          buffer: await part.toBuffer(),
+          mimeType: part.mimetype,
+        };
+      }
+    }
+    if (!uploaded) return reply.code(400).send({ error: 'No file uploaded' });
+
+    const canonicalName = '2025 BC Subplan Transfer.xlsx';
+    const canonicalPath = path.join(config.rootDir, 'database', 'extracted-sheets', canonicalName);
+    const temporaryPath = `${canonicalPath}.${crypto.randomUUID()}.tmp.xlsx`;
+    fs.writeFileSync(temporaryPath, uploaded.buffer);
+    let workbook;
+    try {
+      workbook = loadTransferPlanWorkbook(temporaryPath);
+      fs.renameSync(temporaryPath, canonicalPath);
+    } catch (error) {
+      fs.rmSync(temporaryPath, { force: true });
+      throw error;
+    }
+
+    const saved = await saveProductWorkbook({
+      originalName: canonicalName,
+      buffer: uploaded.buffer,
+      mimeType: uploaded.mimeType,
+      uploadedBy: 'Administrator',
+    });
+    await seedTransferPlanData(db, workbook, Number(saved.file.id));
+    return reply.code(201).send({
+      file: toProductFile(saved.file),
+      detailCount: workbook.details.length,
+    });
+  });
+
+  const employeeSelectColumns = `
+    e.id,
+    e.employee_name,
+    e.user_id,
+    e.tags,
+    e.source,
+    e.employee_id,
+    e.has_file_evidence,
+    e.is_active,
+    count(g.id)::int as grant_count,
+    coalesce((
+      select json_agg(json_build_object(
+        'employeeId', t.employee_id, 'source', t.source, 'name', t.employee_name
+      ) order by t.id)
+      from employees t where t.merged_into_id = e.id
+    ), '[]'::json) as linked_identities`;
+
+  async function fetchEmployeeById(employeeId: number) {
+    const row = await db.queryOne<Record<string, unknown>>(
+      `select ${employeeSelectColumns}
        from employees e
-       where ($1 = '' or $1 = any(e.tags))
-         and (
-           $2 = ''
-           or lower(
-             coalesce(e.employee_name, '') || ' ' ||
-             coalesce(e.employee_number, '') || ' ' ||
-             coalesce(e.user_id, '') || ' ' ||
-             coalesce(array_to_string(e.tags, ' '), '')
-           ) like $3
-         )`,
+       left join equity_grants g on g.employee_id = e.id
+       where e.id = $1
+       group by e.id`,
+      [employeeId],
+    );
+    return row ? toEmployee(row) : null;
+  }
+
+  app.get('/api/employees', async (request) => {
+    const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const { query = '', tag = '', sort = '', dir = '' } = request.query as {
+      query?: string;
+      tag?: string;
+      sort?: string;
+      dir?: string;
+    };
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedTag = tag.trim();
+    const like = `%${normalizedQuery}%`;
+    const offset = (page - 1) * pageSize;
+    const sortColumn = sort === 'name' ? 'e.employee_name' : sort === 'empNo' ? 'e.employee_id' : 'e.id';
+    const sortDir = dir === 'desc' ? 'desc' : 'asc';
+    const matchClause = `
+      e.merged_into_id is null
+      and ($1 = '' or $1 = any(e.tags))
+      and (
+        $2 = ''
+        or lower(
+          coalesce(e.employee_name, '') || ' ' ||
+          coalesce(e.employee_id, '') || ' ' ||
+          coalesce(e.user_id, '') || ' ' ||
+          coalesce(array_to_string(e.tags, ' '), '')
+        ) like $3
+      )`;
+    const totalRow = await db.queryOne<{ count: number }>(
+      `select count(*)::int as count from employees e where ${matchClause}`,
       [normalizedTag, normalizedQuery, like],
     );
     const rows = await db.query<Record<string, unknown>>(
-      `select
-         e.id,
-         e.employee_number,
-         e.employee_name,
-         e.user_id,
-         e.tags,
-         count(g.id)::int as grant_count
+      `select ${employeeSelectColumns}
        from employees e
        left join equity_grants g on g.employee_id = e.id
-       where ($1 = '' or $1 = any(e.tags))
-         and (
-         $2 = ''
-         or lower(
-           coalesce(e.employee_name, '') || ' ' ||
-           coalesce(e.employee_number, '') || ' ' ||
-           coalesce(e.user_id, '') || ' ' ||
-           coalesce(array_to_string(e.tags, ' '), '')
-         ) like $3
-       )
-       group by e.id, e.employee_number, e.employee_name, e.user_id, e.tags
-       order by e.employee_number, e.id
+       where ${matchClause}
+       group by e.id
+       order by ${sortColumn} ${sortDir}, e.id ${sortDir}
        limit $4 offset $5`,
       [normalizedTag, normalizedQuery, like, pageSize, offset],
     );
@@ -2031,58 +2382,190 @@ async function registerRoutes() {
   app.post('/api/employees', async (request, reply) => {
     const body = z
       .object({
-        employeeNumber: z.string().trim().min(1),
+        employeeId: z.string().trim().min(1),
         employeeName: z.string().trim().min(1),
         userId: z.string().trim().optional().or(z.literal('')),
         tags: z.array(z.string().trim()).optional().default([]),
       })
       .parse(request.body);
-    const row = await db.queryOne<Record<string, unknown>>(
-      `insert into employees (employee_number, employee_name, user_id, tags)
-       values ($1, $2, $3, $4::text[])
-       returning id, employee_number, employee_name, user_id, tags, 0::int as grant_count`,
-      [body.employeeNumber, body.employeeName, body.userId || null, body.tags],
+    // Manual employees must carry an employee_id (工号) — it is the business key, not
+    // system-generated. A duplicate employee_id is a conflict (409); the operator should
+    // find the existing row instead.
+    const employeeId = normalizeExternalNumber(body.employeeId);
+    const existing = await db.queryOne<{ id: number }>('select id from employees where employee_id = $1', [employeeId]);
+    if (existing) {
+      const owner = await fetchEmployeeById(Number(existing.id));
+      return reply.code(409).send({ error: '该工号已存在', employee: owner });
+    }
+    const row = await db.queryOne<{ id: number }>(
+      `insert into employees (employee_id, source, employee_name, user_id, tags, has_file_evidence)
+       values ($1, 'manual', $2, $3, $4::text[], false)
+       returning id`,
+      [employeeId, body.employeeName, body.userId || null, body.tags],
     );
     if (!row) throw new Error('Failed to create employee');
-    return reply.code(201).send(toEmployee(row));
+    const created = await fetchEmployeeById(Number(row.id));
+    return reply.code(201).send(created);
   });
 
   app.patch('/api/employees/:id', async (request) => {
-    const { id } = request.params as { id: string };
-    const employeeId = Number(id);
+    const employeeId = Number((request.params as { id: string }).id);
     const body = z
       .object({
-        employeeNumber: z.string().trim().min(1),
-        employeeName: z.string().trim().min(1),
+        employeeName: z.string().trim().min(1).optional(),
         userId: z.string().trim().optional().or(z.literal('')),
-        tags: z.array(z.string().trim()).optional().default([]),
+        tags: z.array(z.string().trim()).optional(),
+        active: z.boolean().optional(),
       })
       .parse(request.body);
-    const row = await db.queryOne<Record<string, unknown>>(
-      `update employees
-       set employee_number = $1,
-           employee_name = $2,
-           user_id = $3,
-           tags = $4::text[],
-           updated_at = current_timestamp
-       where id = $5
-       returning id, employee_number, employee_name, user_id, tags`,
-      [body.employeeNumber, body.employeeName, body.userId || null, body.tags, employeeId],
-    );
-    if (!row) throw notFound('Employee not found');
 
-    const grantCount = await db.queryOne<{ count: number }>('select count(*)::int as count from equity_grants where employee_id = $1', [employeeId]);
-    return toEmployee({ ...row, grant_count: Number(grantCount?.count ?? 0) });
+    const current = await db.queryOne<{ id: number }>('select id from employees where id = $1', [employeeId]);
+    if (!current) throw notFound('Employee not found');
+
+    // employee_id (工号) is the key and cannot change; name/user_id/tags/active are editable.
+    await db.execute(
+      `update employees
+       set employee_name = coalesce($1, employee_name),
+           user_id = coalesce($2, user_id),
+           tags = coalesce($3::text[], tags),
+           is_active = coalesce($4, is_active),
+           updated_at = current_timestamp
+       where id = $5`,
+      [
+        body.employeeName ?? null,
+        body.userId === undefined ? null : body.userId || null,
+        body.tags ?? null,
+        body.active ?? null,
+        employeeId,
+      ],
+    );
+
+    return fetchEmployeeById(employeeId);
   });
 
-  app.delete('/api/employees/:id', async (request, reply) => {
-    const employeeId = Number((request.params as { id: string }).id);
-    const existing = await db.queryOne<{ count: number }>('select count(*)::int as count from equity_grants where employee_id = $1', [employeeId]);
-    if (Number(existing?.count ?? 0) > 0) {
-      return reply.code(400).send({ error: 'Employee has related grants and cannot be deleted' });
+  // Link two records as the same person: merge `mergeFromId` into the target.
+  // The target `:id` may be an internal row id or an employee_id (工号).
+  // Append-only — the merged record becomes a tombstone rather than being deleted.
+  app.post('/api/employees/:id/merge', async (request, reply) => {
+    const rawTarget = String((request.params as { id: string }).id).trim();
+    const body = z.object({ mergeFromId: z.number().int().positive() }).parse(request.body);
+    const sourceId = body.mergeFromId;
+
+    // Resolve the target by employee_id (工号) first, then fall back to internal row id.
+    let targetId: number | null = null;
+    const normalizedTarget = normalizeExternalNumber(rawTarget);
+    if (normalizedTarget) {
+      const idRow = await db.queryOne<{ id: number }>(
+        'select id from employees where employee_id = $1 limit 1',
+        [normalizedTarget],
+      );
+      if (idRow) targetId = Number(idRow.id);
     }
-    await db.execute('delete from employees where id = $1', [employeeId]);
-    return reply.code(204).send();
+    if (targetId === null && /^\d+$/.test(rawTarget)) targetId = Number(rawTarget);
+    if (targetId === null) return reply.code(404).send({ error: '找不到目标员工' });
+    if (sourceId === targetId) return reply.code(400).send({ error: '不能与自身关联' });
+
+    await db.transaction(async (tx) => {
+      const target = await tx.queryOne<{ id: number }>('select id from employees where id = $1 and merged_into_id is null', [targetId]);
+      const source = await tx.queryOne<{ id: number }>('select id from employees where id = $1 and merged_into_id is null', [sourceId]);
+      if (!target) throw notFound('Target employee not found');
+      if (!source) throw notFound('Source employee not found');
+
+      await tx.execute('update equity_grants set employee_id = $1, updated_at = current_timestamp where employee_id = $2', [targetId, sourceId]);
+      await tx.execute(
+        `update employees
+         set has_file_evidence = has_file_evidence or (select has_file_evidence from employees where id = $2),
+             updated_at = current_timestamp
+         where id = $1`,
+        [targetId, sourceId],
+      );
+      await tx.execute(
+        'update employees set merged_into_id = $1, is_active = false, updated_at = current_timestamp where id = $2',
+        [targetId, sourceId],
+      );
+    });
+
+    const merged = await fetchEmployeeById(targetId);
+    return merged;
+  });
+
+  app.get('/api/plan-summary', async () => {
+    const rows = await db.query<{
+      plan_name: string | null;
+      grant_count: number;
+      granted: number | null;
+      exercised: number | null;
+      cancelled: number | null;
+      outstanding: number | null;
+    }>(
+      `select
+         nullif(btrim(coalesce(plan_name, '')), '') as plan_name,
+         count(*)::int as grant_count,
+         coalesce(sum(grant_quantity), 0) as granted,
+         coalesce(sum(exercised_quantity), 0) as exercised,
+         coalesce(sum(coalesce(vested_cancelled_quantity, 0) + coalesce(unvested_cancelled_quantity, 0)), 0) as cancelled,
+         coalesce(sum(outstanding_quantity), 0) as outstanding
+       from equity_grants
+       group by nullif(btrim(coalesce(plan_name, '')), '')
+       order by outstanding desc, granted desc, plan_name asc`,
+    );
+    return buildPlanSummary(rows);
+  });
+
+  app.get('/api/fixed-values', async () => {
+    const rows = await db.query<Record<string, unknown>>(
+      'select * from global_parameters order by effective_from desc, id asc',
+    );
+    return { items: rows.map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0])) };
+  });
+
+  app.patch('/api/fixed-values/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const body = fixedValuePatchSchema.parse(request.body);
+    const row = await db.queryOne<Record<string, unknown>>(
+      `update global_parameters
+       set value = $1,
+           updated_by = $2,
+           updated_at = current_timestamp
+       where id = $3 and editable = true
+       returning *`,
+      [body.value, body.updatedBy, Number(id)],
+    );
+    if (!row) throw notFound('Fixed value not found or not editable');
+    return toFixedValue(row as Parameters<typeof toFixedValue>[0]);
+  });
+
+  app.get('/api/five-percent-holders', async () => {
+    const rows = await db.query<Record<string, unknown>>(
+      `select id, row_type, name, common_stock, total_cses, pct_of_class, pct_fully_diluted, sc13_filing, note, raw_json
+       from five_percent_holders
+       order by sort_order asc, id asc`,
+    );
+    const summaryRow = rows.find((row) => String(row.row_type) === 'summary');
+    const summaryJson = (summaryRow?.raw_json ?? {}) as Record<string, unknown>;
+    const numberOrNull = (value: unknown) =>
+      value === null || value === undefined ? null : Number.isFinite(Number(value)) ? Number(value) : null;
+    const items = rows
+      .filter((row) => String(row.row_type) !== 'summary')
+      .map((row) => ({
+        id: Number(row.id),
+        rowType: String(row.row_type) === 'total' ? 'total' : 'holder',
+        name: String(row.name ?? ''),
+        commonStock: numberOrNull(row.common_stock),
+        totalCses: numberOrNull(row.total_cses),
+        pctOfClass: numberOrNull(row.pct_of_class),
+        pctFullyDiluted: numberOrNull(row.pct_fully_diluted),
+        sc13Filing: row.sc13_filing ? String(row.sc13_filing) : null,
+        note: row.note ? String(row.note) : null,
+      }));
+    return {
+      summary: {
+        asOfDate: summaryJson.asOfDate ? String(summaryJson.asOfDate) : null,
+        fullyDiluted: numberOrNull(summaryJson.fullyDiluted),
+        commonStockOs: numberOrNull(summaryJson.commonStockOs),
+      },
+      items,
+    };
   });
 
   app.get('/api/settings/employee-mappings', async () => ({
@@ -2466,7 +2949,27 @@ async function registerRoutes() {
 
   if (fs.existsSync(config.clientDistDir)) {
     await app.register(fastifyStatic, { root: config.clientDistDir });
-    const spaPages = ['summary', 'monthly', 'monthly/run', 'files', 'workflow', 'holdings', 'employees', 'account', 'settings'];
+    const spaPages = [
+      'summary',
+      'captable',
+      'monthly',
+      'monthly/run',
+      'esop-detail',
+      'grant-record',
+      'exercise-record',
+      'sold-shares',
+      'transfer-plan',
+      'employee-management',
+      'plan-summary',
+      'five-percent-holders',
+      'fixed-value',
+      'files',
+      'workflow',
+      'holdings',
+      'employees',
+      'account',
+      'settings',
+    ];
     for (const page of spaPages) {
       app.get(`/${page}`, async (_request, reply) => reply.sendFile('index.html'));
     }

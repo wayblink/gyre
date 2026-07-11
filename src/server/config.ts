@@ -22,4 +22,10 @@ export const config = {
   sessionCookieName: process.env.SESSION_COOKIE_NAME ?? 'captable_session',
   sessionTtlHours: Number(process.env.SESSION_TTL_HOURS ?? 24 * 7),
   authBootstrapSecret: process.env.AUTH_BOOTSTRAP_SECRET ?? '',
+  // Login is temporarily disabled during development. Set AUTH_DISABLED=false to re-enable
+  // authentication once the product is mature.
+  authDisabled: (process.env.AUTH_DISABLED ?? 'true') === 'true',
+  // Seed loads demo workbooks on init. Set SEED_ON_INIT=false to boot against an empty
+  // database (e.g. production) without requiring the demo Excel files.
+  seedOnInit: (process.env.SEED_ON_INIT ?? 'true') === 'true',
 };

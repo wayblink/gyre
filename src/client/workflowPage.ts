@@ -88,6 +88,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     { category: 'Input', label: '输入' },
     { category: 'Transform', label: '计算' },
     { category: 'Output', label: '输出' },
+    { category: 'Database', label: '数据库' },
     { category: 'Validation', label: '断言' },
   ];
   type WorkflowRunState = {

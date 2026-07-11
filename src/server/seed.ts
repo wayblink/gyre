@@ -4,7 +4,13 @@ import vm from 'node:vm';
 import XLSX from 'xlsx';
 import { config } from './config.js';
 import type { AppDb, DbClient } from './db.js';
+import {
+  assembleShareworksName,
+  createDbEmployeeStore,
+  upsertEmployeeByEmployeeId,
+} from './employees.js';
 import { buildMonthlyWorkflowSeedDefinition } from './monthlyRun/workflowDefinition.js';
+import { buildEmployeeImportWorkflowSeedDefinition } from './workflow/employeeImportWorkflow.js';
 import { workflowOperatorDefinitions } from './workflow/operators/registry.js';
 import { deriveWorkflowRuntimeConfigFromTasks } from './workflow/runtimeParameterRequirements.js';
 import type { WorkflowRuntimeParameters, WorkflowRuntimeParametersSchema, WorkflowTask } from '../shared/types.js';
@@ -71,6 +77,63 @@ function asText(value: unknown): string | null {
 }
 
 type GrantSheetRow = Record<string, unknown>;
+type ExerciseWorkbookRow = {
+  name: string;
+  employeeNumber: string;
+  futubullId: string;
+  userId: string;
+  grantNumber: string;
+  grantDate: string;
+  grantPriceUsd: number;
+  exerciseDate: string;
+  orderedQuantity: number;
+  exercisedQuantity: number;
+  exerciseCostUsd: number;
+  deductionSellingQuantity: number;
+  dealtQuantity: number;
+};
+export type SoldSharesWorkbookRow = {
+  name: string;
+  employeeNumber: string;
+  futubullId: string;
+  userId: string;
+  employmentStatus: string;
+  relatedPartyIdentity: string;
+  capitalGainsTaxVisibility: string;
+  soldQuantity: number;
+  dealtQuantity: number;
+  dealAmountUsd: number;
+  taxableIncomeUsd: number;
+  taxPayableUsd: number;
+  transactionFeesUsd: number;
+  netDealValueUsd: number;
+  grantCostUsd: number;
+  exerciseVestingFeeUsd: number;
+  withholdingTaxUsd: number;
+  withholdingTaxCny: number;
+  cashNetProceedsUsd: number;
+};
+export type TransferPlanWorkbookDetail = {
+  employeeNumber: string;
+  periodValues: Record<string, number>;
+  total: number;
+};
+export type TransferPlanWorkbookPeriod = {
+  period: string;
+  inTotal: number;
+  sourceCancelled: number;
+  transferToFutu: number;
+  sortOrder: number;
+};
+export type TransferPlanWorkbookData = {
+  details: TransferPlanWorkbookDetail[];
+  periods: TransferPlanWorkbookPeriod[];
+  totals: {
+    inTotal: number;
+    sourceCancelled: number;
+    transferToFutu: number;
+  };
+};
 type GrantWorkbookData = {
   employees: Array<{ employeeNumber: string; employeeName: string; userId: string | null }>;
   grants: GrantSheetRow[];
@@ -101,6 +164,244 @@ function loadGrantWorkbook(): GrantWorkbookData {
     grants: grantRows,
     vestings: vestingRows,
     agreements: agreementRows,
+  };
+}
+
+export function loadShareworksGrantWorkbook(): GrantSheetRow[] {
+  const workbookPath = path.join(config.rootDir, 'database', '!!Gyre Cap Table 05.31.26【新】.xlsx');
+  const workbook = XLSX.readFile(workbookPath);
+  const sheet = workbook.Sheets['Options OS Detail'];
+  if (!sheet) throw new Error(`Missing Options OS Detail sheet in ${workbookPath}`);
+  return XLSX.utils
+    .sheet_to_json<GrantSheetRow>(sheet, { defval: '', range: 1, raw: false })
+    .filter((row) => asText(row['Employee Grant Number']));
+}
+
+export type FivePercentHolderRow = {
+  rowType: 'holder' | 'total';
+  name: string;
+  commonStock: number | null;
+  totalCses: number | null;
+  pctOfClass: number | null;
+  pctFullyDiluted: number | null;
+  sc13Filing: string | null;
+  note: string | null;
+};
+
+export type FivePercentHoldersWorkbook = {
+  asOfDate: string | null;
+  fullyDiluted: number | null;
+  commonStockOs: number | null;
+  holders: FivePercentHolderRow[];
+};
+
+function parseGroupedNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).replace(/,/g, '').trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parsePercent(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).replace(/%/g, '').trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed / 100 : null;
+}
+
+export function loadFivePercentHoldersWorkbook(): FivePercentHoldersWorkbook {
+  const workbookPath = path.join(config.rootDir, 'database', '!!Gyre Cap Table 05.31.26【新】.xlsx');
+  const workbook = XLSX.readFile(workbookPath);
+  const sheet = workbook.Sheets['5% Holders'];
+  if (!sheet) throw new Error(`Missing 5% Holders sheet in ${workbookPath}`);
+  const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: false });
+
+  const cell = (row: number, col: number): string | null => asText((grid[row] ?? [])[col]);
+  const findRow = (col: number, needle: string): number =>
+    grid.findIndex((row) => (asText((row ?? [])[col]) ?? '').toLowerCase().includes(needle.toLowerCase()));
+
+  const edgarRow = findRow(0, 'edgar');
+  const fullyDilutedRow = grid.findIndex((row) => (asText((row ?? [])[1]) ?? '').toLowerCase().includes('fully diluted'));
+  const commonOsRow = grid.findIndex((row) => (asText((row ?? [])[1]) ?? '').toLowerCase().includes('common stock os'));
+  const headerRow = findRow(0, 'shareholder');
+
+  const holders: FivePercentHolderRow[] = [];
+  if (headerRow >= 0) {
+    for (let i = headerRow + 1; i < grid.length; i += 1) {
+      const name = cell(i, 0);
+      if (!name) continue;
+      if (name.startsWith('*')) break; // footnotes begin
+      if (name.toLowerCase().includes('5% holders')) continue; // section label
+      const commonStock = parseGroupedNumber((grid[i] ?? [])[1]);
+      const totalCses = parseGroupedNumber((grid[i] ?? [])[2]);
+      if (commonStock === null && totalCses === null) break; // past the table
+      holders.push({
+        rowType: name.toLowerCase().startsWith('total') ? 'total' : 'holder',
+        name,
+        commonStock,
+        totalCses,
+        pctOfClass: parsePercent((grid[i] ?? [])[3]),
+        pctFullyDiluted: parsePercent((grid[i] ?? [])[4]),
+        sc13Filing: cell(i, 5),
+        note: cell(i, 6),
+      });
+    }
+  }
+
+  return {
+    asOfDate: edgarRow >= 0 ? cell(edgarRow, 1) : null,
+    fullyDiluted: fullyDilutedRow >= 0 ? parseGroupedNumber((grid[fullyDilutedRow] ?? [])[0]) : null,
+    commonStockOs: commonOsRow >= 0 ? parseGroupedNumber((grid[commonOsRow] ?? [])[0]) : null,
+    holders,
+  };
+}
+
+function workbookNumber(value: unknown, column: string): number {
+  const normalized = String(value ?? '')
+    .replace(/,/g, '')
+    .trim();
+  const parsed = Number(normalized);
+  if (!normalized || !Number.isFinite(parsed)) {
+    throw new Error(`Invalid ${column} value in Futu BCI Exercises to Date: ${String(value)}`);
+  }
+  return parsed;
+}
+
+export function loadExerciseWorkbook(): ExerciseWorkbookRow[] {
+  const workbookPath = path.join(
+    config.rootDir,
+    'database',
+    'extracted-sheets',
+    'Futu BCI Exercises to Date.xlsx',
+  );
+  const workbook = XLSX.readFile(workbookPath);
+  const sheet = workbook.Sheets['Futu BCI Exercises to Date'];
+  if (!sheet) throw new Error(`Missing Futu BCI Exercises to Date sheet in ${workbookPath}`);
+
+  return XLSX.utils
+    .sheet_to_json<GrantSheetRow>(sheet, { defval: '', raw: false })
+    .filter((row) => {
+      const employeeNumber = asText(row['Employee No.']);
+      return employeeNumber !== null && employeeNumber !== '员工编号';
+    })
+    .map((row) => ({
+      name: asText(row.Name) ?? '',
+      employeeNumber: asText(row['Employee No.']) ?? '',
+      futubullId: asText(row['Futubull ID']) ?? '',
+      userId: asText(row['User ID']) ?? '',
+      grantNumber: asText(row['Grant No.']) ?? '',
+      grantDate: asText(row['Grant Date']) ?? '',
+      grantPriceUsd: workbookNumber(row['Grant Price(USD)'], 'Grant Price(USD)'),
+      exerciseDate: asText(row['Exercise Date']) ?? '',
+      orderedQuantity: workbookNumber(row['Ordered Qty'], 'Ordered Qty'),
+      exercisedQuantity: workbookNumber(row['Exercised Qty'], 'Exercised Qty'),
+      exerciseCostUsd: workbookNumber(row['Exercise Cost(USD)'], 'Exercise Cost(USD)'),
+      deductionSellingQuantity: workbookNumber(row['Deduction/Selling Qty.'], 'Deduction/Selling Qty.'),
+      dealtQuantity: workbookNumber(row['Dealt Qty.'], 'Dealt Qty.'),
+    }));
+}
+
+export function loadSoldSharesWorkbook(): SoldSharesWorkbookRow[] {
+  const workbookPath = path.join(config.rootDir, 'database', 'extracted-sheets', 'Futu sold shares.xlsx');
+  const workbook = XLSX.readFile(workbookPath);
+  const sheet = workbook.Sheets['Futu sold shares'];
+  if (!sheet) throw new Error(`Missing Futu sold shares sheet in ${workbookPath}`);
+
+  return XLSX.utils
+    .sheet_to_json<GrantSheetRow>(sheet, { defval: '', raw: false })
+    .filter((row) => asText(row['工号']) !== null)
+    .map((row) => ({
+      name: asText(row['姓名']) ?? '',
+      employeeNumber: asText(row['工号']) ?? '',
+      futubullId: asText(row['牛牛号']) ?? '',
+      userId: asText(row['用户ID']) ?? '',
+      employmentStatus: asText(row['在职状态']) ?? '',
+      relatedPartyIdentity: asText(row['关联人士身份']) ?? '',
+      capitalGainsTaxVisibility: asText(row['财产转让所得税']) ?? '',
+      soldQuantity: workbookNumber(row['出售总数量'], '出售总数量'),
+      dealtQuantity: workbookNumber(row['成交总数量'], '成交总数量'),
+      dealAmountUsd: workbookNumber(row['成交总金额（美元）'], '成交总金额（美元）'),
+      taxableIncomeUsd: workbookNumber(row['财产转让所得总应税收入（美元）'], '财产转让所得总应税收入（美元）'),
+      taxPayableUsd: workbookNumber(row['财产转让所得总应纳税额（美元）'], '财产转让所得总应纳税额（美元）'),
+      transactionFeesUsd: workbookNumber(row['交易总费用（美元）'], '交易总费用（美元）'),
+      netDealValueUsd: workbookNumber(row['成交净值（美元）'], '成交净值（美元）'),
+      grantCostUsd: workbookNumber(row['授予成本（美元）'], '授予成本（美元）'),
+      exerciseVestingFeeUsd: workbookNumber(row['行权/归属手续费（美元）'], '行权/归属手续费（美元）'),
+      withholdingTaxUsd: workbookNumber(row['本期合计代扣税额（美元）'], '本期合计代扣税额（美元）'),
+      withholdingTaxCny: workbookNumber(row['本期合计代扣税额（人民币）'], '本期合计代扣税额（人民币）'),
+      cashNetProceedsUsd: workbookNumber(row['现金净收益(美元)'], '现金净收益(美元)'),
+    }));
+}
+
+export function loadTransferPlanWorkbook(
+  workbookPath = path.join(
+    config.rootDir,
+    'database',
+    'extracted-sheets',
+    '2025 BC Subplan Transfer.xlsx',
+  ),
+): TransferPlanWorkbookData {
+  const workbook = XLSX.readFile(workbookPath);
+  const sheet = workbook.Sheets['2025 BC Subplan Transfer'];
+  if (!sheet) throw new Error(`Missing 2025 BC Subplan Transfer sheet in ${workbookPath}`);
+
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: null,
+    raw: true,
+  });
+  const headerIndex = rows.findIndex((row) => asText(row[0]) === '行标签');
+  if (headerIndex < 0) throw new Error(`Missing 行标签 header in ${workbookPath}`);
+
+  const header = rows[headerIndex];
+  const periodColumns = header
+    .map((value, column) => ({ period: asText(value), column }))
+    .filter(
+      (item): item is { period: string; column: number } =>
+        item.column > 0 && item.period !== null && !['(空白)', '总计'].includes(item.period),
+    );
+  const totalColumn = header.findIndex((value) => asText(value) === '总计');
+  const totalRows = rows.filter((row) => asText(row[0]) === '总计');
+  if (totalColumn < 0 || totalRows.length < 2) {
+    throw new Error(`Missing source and adjusted total rows in ${workbookPath}`);
+  }
+
+  const numberAt = (row: unknown[], column: number) => Number(row[column] ?? 0);
+  const sourceTotalRow = totalRows[0];
+  const adjustedTotalRow = totalRows[1];
+  const periods = periodColumns.map(({ period, column }, sortOrder) => {
+    const inTotal = numberAt(sourceTotalRow, column);
+    const transferToFutu = numberAt(adjustedTotalRow, column);
+    return {
+      period,
+      inTotal,
+      sourceCancelled: transferToFutu - inTotal,
+      transferToFutu,
+      sortOrder,
+    };
+  });
+  const details = rows
+    .filter((row) => /^K\d+$/.test(asText(row[0]) ?? ''))
+    .map((row) => ({
+      employeeNumber: asText(row[0]) ?? '',
+      periodValues: Object.fromEntries(
+        periodColumns.map(({ period, column }) => [period, numberAt(row, column)]),
+      ),
+      total: numberAt(row, totalColumn),
+    }));
+  const inTotal = numberAt(sourceTotalRow, totalColumn);
+  const transferToFutu = numberAt(adjustedTotalRow, totalColumn);
+
+  return {
+    details,
+    periods,
+    totals: {
+      inTotal,
+      sourceCancelled: transferToFutu - inTotal,
+      transferToFutu,
+    },
   };
 }
 
@@ -325,19 +626,25 @@ async function seedSettings(db: DbClient, data: PrototypeData) {
 
 async function seedGrantWorkbookData(db: DbClient) {
   const workbookData = loadGrantWorkbook();
+  const store = createDbEmployeeStore(db);
   const employeeIdByNumber = new Map<string, number>();
   const grantIdByNumber = new Map<string, number>();
 
   for (const employee of workbookData.employees) {
-    const row = await db.queryOne<{ id: number }>(
-      `
-      insert into employees (employee_number, employee_name, user_id)
-      values ($1, $2, $3)
-      returning id
-    `,
-      [employee.employeeNumber, employee.employeeName, employee.userId],
-    );
-    if (row) employeeIdByNumber.set(employee.employeeNumber, Number(row.id));
+    const employeeId = await upsertEmployeeByEmployeeId(store, {
+      employeeId: employee.employeeNumber,
+      source: 'futu',
+      name: employee.employeeName,
+      hasFileEvidence: true,
+    });
+    if (employeeId === null) continue;
+    if (employee.userId) {
+      await db.execute(
+        `update employees set user_id = coalesce(user_id, $1), updated_at = current_timestamp where id = $2`,
+        [employee.userId, employeeId],
+      );
+    }
+    employeeIdByNumber.set(employee.employeeNumber, employeeId);
   }
 
   for (const item of workbookData.grants) {
@@ -439,6 +746,285 @@ async function seedGrantWorkbookData(db: DbClient) {
         asText(item['员工签署状态']),
         asText(item['公司签署状态']),
         asText(item['其他签署方签署状态']),
+        JSON.stringify(item),
+      ],
+    );
+  }
+}
+
+async function seedShareworksGrantData(db: DbClient) {
+  const store = createDbEmployeeStore(db);
+  for (const item of loadShareworksGrantWorkbook()) {
+    const employeeGrantNumber = asText(item['Employee Grant Number']);
+    if (!employeeGrantNumber) continue;
+    await db.execute(
+      `
+      insert into shareworks_grants (
+        cost_center, participant_type, employee_number, last_name, first_name, middle_name,
+        plan_name, grant_name, grant_type, employee_grant_number, grant_date,
+        vesting_start_date, service_start_date, original_vesting_start_date, expire_date,
+        participant_expire_date, earliest_expire_cancel_date, latest_expire_cancel_date,
+        shares_granted, exercise_price_per_share, vesting_schedule, early_exercise_allowed,
+        shares_vested, shares_unvested, shares_exercised_released, shares_subject_to_repurchase,
+        shares_cancelled_expired, shares_outstanding, outstanding_unvested,
+        outstanding_vested_exercisable, raw_json
+      ) values (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+        $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31::jsonb
+      )
+      on conflict (employee_grant_number) do update set
+        cost_center = excluded.cost_center,
+        participant_type = excluded.participant_type,
+        employee_number = excluded.employee_number,
+        last_name = excluded.last_name,
+        first_name = excluded.first_name,
+        middle_name = excluded.middle_name,
+        plan_name = excluded.plan_name,
+        grant_name = excluded.grant_name,
+        grant_type = excluded.grant_type,
+        grant_date = excluded.grant_date,
+        vesting_start_date = excluded.vesting_start_date,
+        service_start_date = excluded.service_start_date,
+        original_vesting_start_date = excluded.original_vesting_start_date,
+        expire_date = excluded.expire_date,
+        participant_expire_date = excluded.participant_expire_date,
+        earliest_expire_cancel_date = excluded.earliest_expire_cancel_date,
+        latest_expire_cancel_date = excluded.latest_expire_cancel_date,
+        shares_granted = excluded.shares_granted,
+        exercise_price_per_share = excluded.exercise_price_per_share,
+        vesting_schedule = excluded.vesting_schedule,
+        early_exercise_allowed = excluded.early_exercise_allowed,
+        shares_vested = excluded.shares_vested,
+        shares_unvested = excluded.shares_unvested,
+        shares_exercised_released = excluded.shares_exercised_released,
+        shares_subject_to_repurchase = excluded.shares_subject_to_repurchase,
+        shares_cancelled_expired = excluded.shares_cancelled_expired,
+        shares_outstanding = excluded.shares_outstanding,
+        outstanding_unvested = excluded.outstanding_unvested,
+        outstanding_vested_exercisable = excluded.outstanding_vested_exercisable,
+        raw_json = excluded.raw_json,
+        updated_at = current_timestamp
+      `,
+      [
+        asText(item['Cost Center']),
+        asText(item['Participant Type @ Report Date']),
+        asText(item['Employee Number']),
+        asText(item['Last Name']),
+        asText(item['First Name']),
+        asText(item['Middle Name']),
+        asText(item['Plan Name']),
+        asText(item['Grant Name']),
+        asText(item['Grant Type']),
+        employeeGrantNumber,
+        asText(item['Grant Date']),
+        asText(item['Vesting Start Date']),
+        asText(item['Service Start Date']),
+        asText(item['Original VCD (migrated grants)']),
+        asText(item['Expire Date']),
+        asText(item['Expire Date (participant view)']),
+        asText(item['Earliest Expire Cancel Date']),
+        asText(item['Latest Expire Cancel Date']),
+        asNumber(item['No. of Shares Granted']),
+        asNumber(item['Exercise Price per Share']),
+        asText(item['Vesting Schedule']),
+        asText(item['Early Exercise Allowed']),
+        asNumber(item['No. of Shares Vested']),
+        asNumber(item['No. of Shares Unvested']),
+        asNumber(item['Shares Exercised / Released']),
+        asNumber(item['Shares Subject To Repurchase']),
+        asNumber(item['Shares Cancelled/Expired']),
+        asNumber(item['Shares Outstanding']),
+        asNumber(item['Outstanding Unvested']),
+        asNumber(item['Outstanding Vested/Exercisable']),
+        JSON.stringify(item),
+      ],
+    );
+
+    // Align Shareworks participants into the employee master, keyed on their Shareworks
+    // employee number (a separate row from the Futu person until linked via merge).
+    const fullName = assembleShareworksName(
+      asText(item['Last Name']),
+      asText(item['First Name']),
+      asText(item['Middle Name']),
+    );
+    const externalNumber = asText(item['Employee Number']);
+    if (externalNumber) {
+      await upsertEmployeeByEmployeeId(store, {
+        employeeId: externalNumber,
+        source: 'shareworks',
+        name: fullName || externalNumber,
+        hasFileEvidence: true,
+      });
+    }
+  }
+}
+
+async function seedFivePercentHolders(db: DbClient) {
+  const data = loadFivePercentHoldersWorkbook();
+  await db.execute('delete from five_percent_holders');
+  // A single summary row carries the sheet's header context (as-of, fully diluted, common OS).
+  await db.execute(
+    `insert into five_percent_holders (row_type, name, sort_order, raw_json)
+     values ('summary', '', -1, $1::jsonb)`,
+    [JSON.stringify({ asOfDate: data.asOfDate, fullyDiluted: data.fullyDiluted, commonStockOs: data.commonStockOs })],
+  );
+  let sortOrder = 0;
+  for (const holder of data.holders) {
+    await db.execute(
+      `insert into five_percent_holders (
+        row_type, name, common_stock, total_cses, pct_of_class, pct_fully_diluted, sc13_filing, note, sort_order, raw_json
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
+      [
+        holder.rowType,
+        holder.name,
+        holder.commonStock,
+        holder.totalCses,
+        holder.pctOfClass,
+        holder.pctFullyDiluted,
+        holder.sc13Filing,
+        holder.note,
+        sortOrder,
+        JSON.stringify(holder),
+      ],
+    );
+    sortOrder += 1;
+  }
+}
+
+async function seedExerciseData(db: DbClient) {
+  const rows = loadExerciseWorkbook();
+  const sourceFile = await db.queryOne<{ id: number }>(
+    `select id
+     from product_files
+     where original_name = $1
+     order by created_at desc, id desc
+     limit 1`,
+    ['Futu BCI Exercises to Date.xlsx'],
+  );
+
+  await db.execute('delete from exercise_records');
+  for (const item of rows) {
+    await db.execute(
+      `insert into exercise_records (
+        source_file_id, name, employee_number, futubull_id, user_id, grant_number,
+        grant_date, grant_price_usd, exercise_date, ordered_quantity, exercised_quantity,
+        exercise_cost_usd, deduction_selling_quantity, dealt_quantity, raw_json
+      ) values (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb
+      )`,
+      [
+        sourceFile?.id ?? null,
+        item.name,
+        item.employeeNumber,
+        item.futubullId,
+        item.userId,
+        item.grantNumber,
+        item.grantDate,
+        item.grantPriceUsd,
+        item.exerciseDate,
+        item.orderedQuantity,
+        item.exercisedQuantity,
+        item.exerciseCostUsd,
+        item.deductionSellingQuantity,
+        item.dealtQuantity,
+        JSON.stringify(item),
+      ],
+    );
+  }
+}
+
+async function seedSoldSharesData(db: DbClient) {
+  const rows = loadSoldSharesWorkbook();
+  const sourceFile = await db.queryOne<{ id: number }>(
+    `select id
+     from product_files
+     where original_name = $1
+     order by created_at desc, id desc
+     limit 1`,
+    ['Futu sold shares.xlsx'],
+  );
+
+  await db.execute('delete from sold_shares');
+  for (const item of rows) {
+    await db.execute(
+      `insert into sold_shares (
+        source_file_id, name, employee_number, futubull_id, user_id, employment_status,
+        related_party_identity, capital_gains_tax_visibility, sold_quantity, dealt_quantity,
+        deal_amount_usd, taxable_income_usd, tax_payable_usd, transaction_fees_usd,
+        net_deal_value_usd, grant_cost_usd, exercise_vesting_fee_usd, withholding_tax_usd,
+        withholding_tax_cny, cash_net_proceeds_usd, raw_json
+      ) values (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+        $17, $18, $19, $20, $21::jsonb
+      )`,
+      [
+        sourceFile?.id ?? null,
+        item.name,
+        item.employeeNumber,
+        item.futubullId,
+        item.userId,
+        item.employmentStatus,
+        item.relatedPartyIdentity,
+        item.capitalGainsTaxVisibility,
+        item.soldQuantity,
+        item.dealtQuantity,
+        item.dealAmountUsd,
+        item.taxableIncomeUsd,
+        item.taxPayableUsd,
+        item.transactionFeesUsd,
+        item.netDealValueUsd,
+        item.grantCostUsd,
+        item.exerciseVestingFeeUsd,
+        item.withholdingTaxUsd,
+        item.withholdingTaxCny,
+        item.cashNetProceedsUsd,
+        JSON.stringify(item),
+      ],
+    );
+  }
+}
+
+export async function seedTransferPlanData(
+  db: Pick<DbClient, 'queryOne' | 'execute'>,
+  workbook = loadTransferPlanWorkbook(),
+  sourceFileId?: number | null,
+) {
+  let resolvedSourceFileId = sourceFileId;
+  if (resolvedSourceFileId === undefined) {
+    const sourceFile = await db.queryOne<{ id: number }>(
+      `select id
+       from product_files
+       where original_name = $1
+       order by created_at desc, id desc
+       limit 1`,
+      ['2025 BC Subplan Transfer.xlsx'],
+    );
+    resolvedSourceFileId = sourceFile?.id ?? null;
+  }
+
+  for (const item of workbook.periods) {
+    await db.execute(
+      `insert into transfer_plan_periods (
+        source_file_id, period, in_total, source_cancelled, cancelled_quantity,
+        manually_edited, sort_order, raw_json
+      ) values ($1, $2, $3, $4, $4, false, $5, $6::jsonb)
+      on conflict (period) do update set
+        source_file_id = excluded.source_file_id,
+        in_total = excluded.in_total,
+        source_cancelled = excluded.source_cancelled,
+        cancelled_quantity = case
+          when transfer_plan_periods.manually_edited then transfer_plan_periods.cancelled_quantity
+          else excluded.cancelled_quantity
+        end,
+        sort_order = excluded.sort_order,
+        raw_json = excluded.raw_json,
+        updated_at = current_timestamp`,
+      [
+        resolvedSourceFileId,
+        item.period,
+        item.inTotal,
+        item.sourceCancelled,
+        item.sortOrder,
         JSON.stringify(item),
       ],
     );
@@ -687,6 +1273,7 @@ async function seedWorkflowData(db: DbClient) {
   }
 
   await upsertWorkflowDefinition(db, buildDefaultWorkflowSeedDefinition());
+  await upsertWorkflowDefinition(db, buildEmployeeImportWorkflowSeedDefinition());
 
   await parameterizeMonthlyWorkflow(db);
 }
@@ -699,6 +1286,11 @@ export async function seedDatabase(db: AppDb) {
   const existing = await db.queryOne<{ count: string }>('select count(*)::text as count from months');
   if (Number(existing?.count ?? 0) > 0) {
     await db.transaction(async (client) => {
+      await seedShareworksGrantData(client);
+      await seedFivePercentHolders(client);
+      await seedExerciseData(client);
+      await seedSoldSharesData(client);
+      await seedTransferPlanData(client);
       await seedWorkflowData(client);
     });
     return;
@@ -711,6 +1303,11 @@ export async function seedDatabase(db: AppDb) {
     await seedSnapshotsAndDetails(client, data, idByMonth);
     await seedSettings(client, data);
     await seedGrantWorkbookData(client);
+    await seedShareworksGrantData(client);
+    await seedFivePercentHolders(client);
+    await seedExerciseData(client);
+    await seedSoldSharesData(client);
+    await seedTransferPlanData(client);
     await seedParametersAndDecisions(client, planIdMap.get(1));
     await seedWorkflowData(client);
   });

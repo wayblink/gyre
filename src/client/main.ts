@@ -4,17 +4,25 @@ import type {
   AuthenticatedUser,
   Employee,
   EmployeeMapping,
+  ExerciseRecord,
+  FixedValueRecord,
+  FivePercentHoldersResponse,
   Holding,
   LinkDetail,
+  MergedGrant,
   PaginatedResult,
+  PlanSummaryResponse,
   ProductFileDetail,
   ProductFileRecord,
   SourceChecklist,
+  SoldShare,
   SummaryCapitalizationSource,
   SummarySnapshot,
   TrackedPlan,
+  TransferPlanResponse,
   UpdatePlan,
   ShareholderTag,
+  ShareworksGrant,
 } from '../shared/types.js';
 import { createFilesPage } from './filesPage.js';
 import { createMonthlyRunPage } from './monthlyRunPage.js';
@@ -27,7 +35,7 @@ import {
 } from './theme.js';
 import { confirmAction, notify } from './uiFeedback.js';
 import { createWorkflowPage } from './workflowPage.js';
-import '../../css/style.css';
+import { createDocsPage } from './docsPage.js';import '../../css/style.css';
 import '@univerjs/design/lib/index.css';
 import '@univerjs/ui/lib/index.css';
 import '@univerjs/sheets-ui/lib/index.css';
@@ -46,9 +54,19 @@ let summarySourceFiles: ProductFileRecord[] = [];
 let holdingsPage = 1;
 let holdingsTotal = 0;
 const holdingsPageSize = 20;
+type GrantView = 'futu' | 'shareworks' | 'merge';
+let activeGrantView: GrantView = 'futu';
+let exercisePage = 1;
+let exerciseTotal = 0;
+const exercisePageSize = 20;
+let soldSharesPage = 1;
+let soldSharesTotal = 0;
+const soldSharesPageSize = 20;
+let transferPlanSourceFileId: number | null = null;
 let employeesPage = 1;
 let employeesTotal = 0;
-const employeesPageSize = 20;
+let employeesPageSize = 20;
+let employeesSort: { by: 'name' | 'empNo' | ''; dir: 'asc' | 'desc' } = { by: '', dir: 'asc' };
 
 const pageTitles: Record<string, string> = {
   captable: 'Captable',
@@ -65,6 +83,7 @@ const pageTitles: Record<string, string> = {
   'fixed-value': 'Fixed Value',
   files: 'Files',
   workflow: 'Workflow',
+  docs: 'User Guide',
   holdings: 'Holdings',
   employees: 'Employees',
   account: 'Account',
@@ -83,6 +102,7 @@ let appInitialized = false;
 let currentAccount: AccountProfile | null = null;
 
 let editingEmployeeId: number | null = null;
+let mergeSourceEmployeeId: number | null = null;
 
 const filesPage = createFilesPage({
   el,
@@ -104,6 +124,8 @@ const workflowPage = createWorkflowPage({
   notify,
   confirmAction,
 });
+
+const docsPage = createDocsPage({ el });
 
 const monthlyRunPage = createMonthlyRunPage({
   el,
@@ -403,6 +425,8 @@ async function logout() {
 function normalizePage(page: string | null | undefined): PageKey {
   const value = page?.trim().toLowerCase() ?? '';
   if (value === 'summary') return 'captable';
+  if (value === 'holdings') return 'grant-record';
+  if (value === 'employees') return 'employee-management';
   return validPages.has(value as PageKey) ? (value as PageKey) : DEFAULT_PAGE;
 }
 
@@ -465,8 +489,44 @@ async function activatePage(page: PageKey) {
     workflowPage.onActivate();
   }
 
+  if (page === 'grant-record') {
+    await renderHoldingsPage(currentMonth);
+  }
+
+  if (page === 'exercise-record') {
+    await renderExerciseRecords();
+  }
+
+  if (page === 'sold-shares') {
+    await renderSoldShares();
+  }
+
+  if (page === 'transfer-plan') {
+    await renderTransferPlan();
+  }
+
+  if (page === 'employee-management') {
+    await loadEmployeesPage();
+  }
+
+  if (page === 'plan-summary') {
+    await renderPlanSummaryPage();
+  }
+
+  if (page === 'five-percent-holders') {
+    await renderFivePercentHoldersPage();
+  }
+
+  if (page === 'fixed-value') {
+    await renderFixedValuePage();
+  }
+
   if (page === 'account') {
     await loadAccountPage();
+  }
+
+  if (page === 'docs') {
+    docsPage.render();
   }
 }
 
@@ -1004,14 +1064,69 @@ async function initHoldingsPage() {
   el('btnSearchHoldings').addEventListener('click', searchHoldingsPage);
   el('btnHoldingsPrevPage').addEventListener('click', () => changeHoldingsPage(-1));
   el('btnHoldingsNextPage').addEventListener('click', () => changeHoldingsPage(1));
+  document.querySelectorAll<HTMLButtonElement>('[data-grant-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const view = button.dataset.grantView as GrantView;
+      if (view === activeGrantView) return;
+      activeGrantView = view;
+      holdingsPage = 1;
+      applyGrantView();
+      void renderHoldingsPage(currentMonth);
+    });
+  });
+  applyGrantView();
+}
+
+async function initExercisePage() {
+  await renderExerciseRecords();
+  el('btnSearchExercises').addEventListener('click', searchExercises);
+  el('filterExerciseGrantYear').addEventListener('change', searchExercises);
+  el('searchExercises').addEventListener('keydown', (event) => {
+    if ((event as KeyboardEvent).key === 'Enter') searchExercises();
+  });
+  el('btnExercisesPrevPage').addEventListener('click', () => changeExercisePage(-1));
+  el('btnExercisesNextPage').addEventListener('click', () => changeExercisePage(1));
+}
+
+async function initSoldSharesPage() {
+  await renderSoldShares();
+  el('btnSearchSoldShares').addEventListener('click', searchSoldShares);
+  el('filterSoldSharesEmploymentStatus').addEventListener('change', searchSoldShares);
+  el('searchSoldShares').addEventListener('keydown', (event) => {
+    if ((event as KeyboardEvent).key === 'Enter') searchSoldShares();
+  });
+  el('btnSoldSharesPrevPage').addEventListener('click', () => changeSoldSharesPage(-1));
+  el('btnSoldSharesNextPage').addEventListener('click', () => changeSoldSharesPage(1));
+}
+
+async function initTransferPlanPage() {
+  el('btnImportTransferPlan').addEventListener('click', () => {
+    el<HTMLInputElement>('transferPlanFileInput').click();
+  });
+  el('btnExportTransferPlan').addEventListener('click', exportTransferPlanWorkbook);
+  el('transferPlanFileInput').addEventListener('change', () => void importTransferPlanWorkbook());
+  el('transferPlanSummaryBody').addEventListener('change', (event) => {
+    const input = (event.target as HTMLElement).closest<HTMLInputElement>('[data-transfer-cancelled-id]');
+    if (input) void updateTransferPlanCancellation(input);
+  });
+  await renderTransferPlan();
 }
 
 async function initEmployeesPage() {
   el('btnSearchEmployeesPage').addEventListener('click', searchEmployeesPage);
   el('btnAddEmployeesPage').addEventListener('click', () => openEmployeesPageModal());
   el('btnSubmitEmployeesPage').addEventListener('click', () => void submitEmployeesPage());
+  el('btnSubmitEmployeesMerge').addEventListener('click', () => void submitEmployeesMerge());
+  el('btnEmployeesFirstPage').addEventListener('click', () => goToEmployeesPage('first'));
   el('btnEmployeesPrevPage').addEventListener('click', () => changeEmployeesPage(-1));
   el('btnEmployeesNextPage').addEventListener('click', () => changeEmployeesPage(1));
+  el('btnEmployeesLastPage').addEventListener('click', () => goToEmployeesPage('last'));
+  el<HTMLSelectElement>('employeesPageSizeSelect').addEventListener('change', (event) =>
+    changeEmployeesPageSize(Number((event.target as HTMLSelectElement).value)),
+  );
+  document.querySelectorAll<HTMLElement>('#employeesPageTable [data-employees-sort]').forEach((header) =>
+    header.addEventListener('click', () => toggleEmployeesSort(header.dataset.employeesSort as 'name' | 'empNo')),
+  );
   await loadEmployeesPage();
 }
 
@@ -1121,13 +1236,80 @@ function renderEmployeesPagination(page: number, totalPages: number, total: numb
   const end = Math.min(page * employeesPageSize, total);
   el('employeesPaginationSummary').textContent = total === 0 ? '0 employees' : `Showing ${start}-${end} of ${total} employees`;
   el('employeesPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
+  el<HTMLButtonElement>('btnEmployeesFirstPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnEmployeesPrevPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnEmployeesNextPage').disabled = total === 0 || page >= totalPages;
+  el<HTMLButtonElement>('btnEmployeesLastPage').disabled = total === 0 || page >= totalPages;
+}
+
+function renderExercisePagination(page: number, totalPages: number, total: number) {
+  const start = total === 0 ? 0 : (page - 1) * exercisePageSize + 1;
+  const end = Math.min(page * exercisePageSize, total);
+  el('exercisePaginationSummary').textContent = total === 0 ? '0 records' : `Showing ${start}-${end} of ${total} records`;
+  el('exercisePaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
+  el<HTMLButtonElement>('btnExercisesPrevPage').disabled = page <= 1;
+  el<HTMLButtonElement>('btnExercisesNextPage').disabled = total === 0 || page >= totalPages;
+}
+
+function renderSoldSharesPagination(page: number, totalPages: number, total: number) {
+  const start = total === 0 ? 0 : (page - 1) * soldSharesPageSize + 1;
+  const end = Math.min(page * soldSharesPageSize, total);
+  el('soldSharesPaginationSummary').textContent =
+    total === 0 ? '0 records' : `Showing ${start}-${end} of ${total} records`;
+  el('soldSharesPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
+  el<HTMLButtonElement>('btnSoldSharesPrevPage').disabled = page <= 1;
+  el<HTMLButtonElement>('btnSoldSharesNextPage').disabled = total === 0 || page >= totalPages;
 }
 
 function searchHoldingsPage() {
   holdingsPage = 1;
   void renderHoldingsPage(currentMonth);
+}
+
+function searchExercises() {
+  exercisePage = 1;
+  void renderExerciseRecords();
+}
+
+function changeExercisePage(delta: number) {
+  const maxPage = Math.max(1, Math.ceil(exerciseTotal / exercisePageSize));
+  const nextPage = Math.min(Math.max(1, exercisePage + delta), maxPage);
+  if (nextPage === exercisePage) return;
+  exercisePage = nextPage;
+  void renderExerciseRecords();
+}
+
+function searchSoldShares() {
+  soldSharesPage = 1;
+  void renderSoldShares();
+}
+
+function changeSoldSharesPage(delta: number) {
+  const maxPage = Math.max(1, Math.ceil(soldSharesTotal / soldSharesPageSize));
+  const nextPage = Math.min(Math.max(1, soldSharesPage + delta), maxPage);
+  if (nextPage === soldSharesPage) return;
+  soldSharesPage = nextPage;
+  void renderSoldShares();
+}
+
+function applyGrantView() {
+  const viewCopy: Record<GrantView, { title: string; subtitle: string }> = {
+    futu: { title: 'Futu Grant Record', subtitle: 'Futu 授予数据原始格式' },
+    shareworks: { title: 'Shareworks Grant Record', subtitle: 'Options OS Detail 原始格式' },
+    merge: { title: 'Merged Grant Record', subtitle: 'Futu + Shareworks 标准化拼表' },
+  };
+  document.querySelectorAll<HTMLButtonElement>('[data-grant-view]').forEach((button) => {
+    const active = button.dataset.grantView === activeGrantView;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  (['futu', 'shareworks', 'merge'] as GrantView[]).forEach((view) => {
+    el(`grantPanel-${view}`).classList.toggle('hidden', view !== activeGrantView);
+  });
+  el('grantViewTitle').textContent = viewCopy[activeGrantView].title;
+  el('grantViewSubtitle').textContent = viewCopy[activeGrantView].subtitle;
+  el<HTMLSelectElement>('filterGrantType').disabled = activeGrantView !== 'futu';
+  el<HTMLInputElement>('filterHoldingsTag').disabled = activeGrantView === 'shareworks';
 }
 
 function changeHoldingsPage(delta: number) {
@@ -1153,10 +1335,47 @@ function changeEmployeesPage(delta: number) {
   void loadEmployeesPage();
 }
 
+function goToEmployeesPage(target: 'first' | 'last') {
+  const maxPage = Math.max(1, Math.ceil(employeesTotal / employeesPageSize));
+  const nextPage = target === 'first' ? 1 : maxPage;
+  if (nextPage === employeesPage) return;
+  employeesPage = nextPage;
+  void loadEmployeesPage();
+}
+
+function changeEmployeesPageSize(size: number) {
+  if (size === employeesPageSize) return;
+  employeesPageSize = size;
+  employeesPage = 1;
+  void loadEmployeesPage();
+}
+
 async function renderHoldingsPage(month: string) {
   const query = el<HTMLInputElement>('searchHolder').value.trim();
   const tag = el<HTMLInputElement>('filterHoldingsTag').value.trim();
   const grantType = el<HTMLSelectElement>('filterGrantType').value;
+  if (activeGrantView === 'shareworks') {
+    const data = await api<PaginatedResult<ShareworksGrant>>(
+      `/api/grants/shareworks?query=${encodeURIComponent(query)}&page=${holdingsPage}&pageSize=${holdingsPageSize}`,
+    );
+    const items = data.items ?? [];
+    holdingsPage = data.page;
+    holdingsTotal = data.total;
+    renderHoldingsPagination(data.page, data.totalPages, data.total);
+    renderShareworksGrants(items, data);
+    return;
+  }
+  if (activeGrantView === 'merge') {
+    const data = await api<PaginatedResult<MergedGrant>>(
+      `/api/grants/merge?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}&page=${holdingsPage}&pageSize=${holdingsPageSize}`,
+    );
+    const items = data.items ?? [];
+    holdingsPage = data.page;
+    holdingsTotal = data.total;
+    renderHoldingsPagination(data.page, data.totalPages, data.total);
+    renderMergedGrants(items, data);
+    return;
+  }
   const data = await api<PaginatedResult<Holding>>(
     `/api/holdings?month=${month}&query=${encodeURIComponent(query)}&grantType=${encodeURIComponent(grantType)}&tag=${encodeURIComponent(tag)}&page=${holdingsPage}&pageSize=${holdingsPageSize}`,
   );
@@ -1166,7 +1385,7 @@ async function renderHoldingsPage(month: string) {
   renderHoldingsPagination(data.page, data.totalPages, data.total);
   const tbody = el('holdingsBody');
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="25" style="text-align:center; padding:var(--space-10); color:var(--text-muted);">No matching records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="34" class="table-empty-cell">No matching records found</td></tr>';
     return;
   }
   tbody.innerHTML = items
@@ -1175,10 +1394,9 @@ async function renderHoldingsPage(month: string) {
       <tr>
         <td>${(data.page - 1) * data.pageSize + index + 1}</td>
         <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.employeeName)}</td>
-        <td>${escapeHtml(item.employeeNumber)}</td>
-        <td>${escapeHtml(item.userId)}</td>
-        <td style="text-align:left;">${escapeHtml(formatTags(item.tags))}</td>
         <td>${escapeHtml(item.grantNumber)}</td>
+        <td>${escapeHtml(item.userId)}</td>
+        <td>${escapeHtml(item.employeeNumber)}</td>
         <td><span class="grant-type-badge ${getGrantTypeClass(String(item.incentiveType))}">${escapeHtml(item.incentiveType)}</span></td>
         <td>${escapeHtml(item.grantDate)}</td>
         <td class="col-number">${formatNumber(item.grantQuantity)}</td>
@@ -1187,106 +1405,565 @@ async function renderHoldingsPage(month: string) {
         <td style="text-align:left;">${escapeHtml(item.planName)}</td>
         <td>${escapeHtml(item.conditionRule)}</td>
         <td>${escapeHtml(item.employeePortalVisibility)}</td>
+        <td class="col-number">${item.closingPriceUsd === null ? '-' : `$${Number(item.closingPriceUsd).toFixed(2)}`}</td>
+        <td>${escapeHtml(item.withholdingCost)}</td>
+        <td>${escapeHtml(item.taxCalculation)}</td>
+        <td>${escapeHtml(item.taxWithholding)}</td>
+        <td>${escapeHtml(item.fxSettlement)}</td>
         <td>${escapeHtml(item.taxRule)}</td>
+        <td>${escapeHtml(item.cancellationConfirmDate)}</td>
+        <td>${escapeHtml(item.dataSource)}</td>
         <td style="text-align:left;">${escapeHtml(item.vestingRuleName)}</td>
         <td>${escapeHtml(item.vestingStartDate)}</td>
         <td class="col-number">${formatNumber(item.vestedQuantity)}</td>
         <td class="col-number">${formatNumber(item.effectiveVestedQuantity)}</td>
         <td class="col-number">${formatNumber(item.unvestedQuantity)}</td>
+        <td class="col-number">${formatNumber(item.vestedCancelledQuantity)}</td>
+        <td class="col-number">${formatNumber(item.unvestedCancelledQuantity)}</td>
         <td class="col-number">${formatNumber(item.exercisedQuantity)}</td>
         <td class="col-number">${formatNumber(item.pendingExerciseQuantity)}</td>
         <td class="col-number" style="font-weight:var(--font-semibold);">${formatNumber(item.outstandingQuantity)}</td>
         <td class="col-number">${formatNumber(item.sellableQuantity)}</td>
-        <td>${escapeHtml(item.dataSource)}</td>
+        <td class="grant-long-cell">${escapeHtml(item.relatedSaleOrderNumber)}</td>
+        <td>${escapeHtml(item.agreementInfo)}</td>
       </tr>`,
     )
     .join('');
+}
+
+function renderShareworksGrants(items: ShareworksGrant[], data: PaginatedResult<ShareworksGrant>) {
+  const tbody = el('shareworksGrantBody');
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="31" class="table-empty-cell">No matching Shareworks records found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items
+    .map(
+      (item, index) => `
+      <tr>
+        <td>${(data.page - 1) * data.pageSize + index + 1}</td>
+        <td>${escapeHtml(item.costCenter)}</td>
+        <td>${escapeHtml(item.participantType)}</td>
+        <td>${escapeHtml(item.employeeNumber)}</td>
+        <td>${escapeHtml(item.lastName)}</td>
+        <td>${escapeHtml(item.firstName)}</td>
+        <td>${escapeHtml(item.middleName)}</td>
+        <td style="text-align:left;">${escapeHtml(item.planName)}</td>
+        <td style="text-align:left;">${escapeHtml(item.grantName)}</td>
+        <td>${escapeHtml(item.grantType)}</td>
+        <td>${escapeHtml(item.employeeGrantNumber)}</td>
+        <td>${escapeHtml(item.grantDate)}</td>
+        <td>${escapeHtml(item.vestingStartDate)}</td>
+        <td>${escapeHtml(item.serviceStartDate)}</td>
+        <td>${escapeHtml(item.originalVestingStartDate)}</td>
+        <td>${escapeHtml(item.expireDate)}</td>
+        <td>${escapeHtml(item.participantExpireDate)}</td>
+        <td>${escapeHtml(item.earliestExpireCancelDate)}</td>
+        <td>${escapeHtml(item.latestExpireCancelDate)}</td>
+        <td class="col-number">${formatNumber(item.sharesGranted)}</td>
+        <td class="col-number">${item.exercisePricePerShare === null ? '-' : `$${Number(item.exercisePricePerShare).toFixed(2)}`}</td>
+        <td>${escapeHtml(item.vestingSchedule)}</td>
+        <td>${escapeHtml(item.earlyExerciseAllowed)}</td>
+        <td class="col-number">${formatNumber(item.sharesVested)}</td>
+        <td class="col-number">${formatNumber(item.sharesUnvested)}</td>
+        <td class="col-number">${formatNumber(item.sharesExercisedReleased)}</td>
+        <td class="col-number">${formatNumber(item.sharesSubjectToRepurchase)}</td>
+        <td class="col-number">${formatNumber(item.sharesCancelledExpired)}</td>
+        <td class="col-number">${formatNumber(item.sharesOutstanding)}</td>
+        <td class="col-number">${formatNumber(item.outstandingUnvested)}</td>
+        <td class="col-number">${formatNumber(item.outstandingVestedExercisable)}</td>
+      </tr>`,
+    )
+    .join('');
+}
+
+function renderMergedGrants(items: MergedGrant[], data: PaginatedResult<MergedGrant>) {
+  const tbody = el('mergedGrantBody');
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="18" class="table-empty-cell">No matching merged records found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items
+    .map(
+      (item, index) => `
+      <tr>
+        <td>${(data.page - 1) * data.pageSize + index + 1}</td>
+        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.employeeName)}</td>
+        <td>${escapeHtml(item.grantNumber)}</td>
+        <td>${escapeHtml(item.employeeNumber)}</td>
+        <td>${escapeHtml(item.incentiveType)}</td>
+        <td>${escapeHtml(item.grantDate)}</td>
+        <td class="col-number">${formatNumber(item.grantQuantity)}</td>
+        <td class="col-number">${item.grantPrice === null ? '-' : `$${Number(item.grantPrice).toFixed(2)}`}</td>
+        <td>${escapeHtml(item.expireDate)}</td>
+        <td style="text-align:left;">${escapeHtml(item.planName)}</td>
+        <td>${escapeHtml(item.vestingRuleName)}</td>
+        <td>${escapeHtml(item.vestingStartDate)}</td>
+        <td class="col-number">${formatNumber(item.sharesVested)}</td>
+        <td class="col-number">${formatNumber(item.sharesUnvested)}</td>
+        <td class="col-number">${formatNumber(item.sharesExercisedReleased)}</td>
+        <td class="col-number">${formatNumber(item.sharesCancelledExpired)}</td>
+        <td class="col-number">${formatNumber(item.sharesOutstanding)}</td>
+        <td><span class="grant-source-badge grant-source-badge--${item.source.toLowerCase()}">${escapeHtml(item.source)}</span></td>
+      </tr>`,
+    )
+    .join('');
+}
+
+async function renderExerciseRecords() {
+  const query = el<HTMLInputElement>('searchExercises').value.trim();
+  const grantYear = el<HTMLSelectElement>('filterExerciseGrantYear').value;
+  const data = await api<PaginatedResult<ExerciseRecord>>(
+    `/api/exercises?query=${encodeURIComponent(query)}&grantYear=${encodeURIComponent(grantYear)}&page=${exercisePage}&pageSize=${exercisePageSize}`,
+  );
+  const items = data.items ?? [];
+  exercisePage = data.page;
+  exerciseTotal = data.total;
+  renderExercisePagination(data.page, data.totalPages, data.total);
+
+  const tbody = el('exerciseBody');
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="14" class="table-empty-cell">No matching exercise records found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items
+    .map(
+      (item, index) => `
+      <tr>
+        <td>${(data.page - 1) * data.pageSize + index + 1}</td>
+        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.name)}</td>
+        <td>${escapeHtml(item.employeeNumber)}</td>
+        <td>${escapeHtml(item.futubullId)}</td>
+        <td>${escapeHtml(item.userId)}</td>
+        <td>${escapeHtml(item.grantNumber)}</td>
+        <td>${escapeHtml(item.grantDate)}</td>
+        <td class="col-number">$${item.grantPriceUsd.toFixed(5)}</td>
+        <td>${escapeHtml(item.exerciseDate)}</td>
+        <td class="col-number">${formatNumber(item.orderedQuantity)}</td>
+        <td class="col-number">${formatNumber(item.exercisedQuantity)}</td>
+        <td class="col-number">$${item.exerciseCostUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td class="col-number">${formatNumber(item.deductionSellingQuantity)}</td>
+        <td class="col-number">${formatNumber(item.dealtQuantity)}</td>
+      </tr>`,
+    )
+    .join('');
+}
+
+function formatCurrency(value: number, currency: 'USD' | 'CNY' = 'USD') {
+  const symbol = currency === 'USD' ? '$' : '¥';
+  return `${symbol}${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+async function renderSoldShares() {
+  const query = el<HTMLInputElement>('searchSoldShares').value.trim();
+  const employmentStatus = el<HTMLSelectElement>('filterSoldSharesEmploymentStatus').value;
+  const data = await api<PaginatedResult<SoldShare>>(
+    `/api/sold-shares?query=${encodeURIComponent(query)}&employmentStatus=${encodeURIComponent(employmentStatus)}&page=${soldSharesPage}&pageSize=${soldSharesPageSize}`,
+  );
+  const items = data.items ?? [];
+  soldSharesPage = data.page;
+  soldSharesTotal = data.total;
+  renderSoldSharesPagination(data.page, data.totalPages, data.total);
+
+  const tbody = el('soldSharesBody');
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="20" class="table-empty-cell">No matching sold-share records found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items
+    .map(
+      (item, index) => `
+      <tr>
+        <td>${(data.page - 1) * data.pageSize + index + 1}</td>
+        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.name)}</td>
+        <td>${escapeHtml(item.employeeNumber)}</td>
+        <td>${escapeHtml(item.futubullId)}</td>
+        <td>${escapeHtml(item.userId)}</td>
+        <td>${escapeHtml(item.employmentStatus)}</td>
+        <td>${escapeHtml(item.relatedPartyIdentity)}</td>
+        <td>${escapeHtml(item.capitalGainsTaxVisibility)}</td>
+        <td class="col-number">${formatNumber(item.soldQuantity)}</td>
+        <td class="col-number">${formatNumber(item.dealtQuantity)}</td>
+        <td class="col-number">${formatCurrency(item.dealAmountUsd)}</td>
+        <td class="col-number">${formatCurrency(item.taxableIncomeUsd)}</td>
+        <td class="col-number">${formatCurrency(item.taxPayableUsd)}</td>
+        <td class="col-number">${formatCurrency(item.transactionFeesUsd)}</td>
+        <td class="col-number">${formatCurrency(item.netDealValueUsd)}</td>
+        <td class="col-number">${formatCurrency(item.grantCostUsd)}</td>
+        <td class="col-number">${formatCurrency(item.exerciseVestingFeeUsd)}</td>
+        <td class="col-number">${formatCurrency(item.withholdingTaxUsd)}</td>
+        <td class="col-number">${formatCurrency(item.withholdingTaxCny, 'CNY')}</td>
+        <td class="col-number">${formatCurrency(item.cashNetProceedsUsd)}</td>
+      </tr>`,
+    )
+    .join('');
+}
+
+async function renderTransferPlan() {
+  const data = await api<TransferPlanResponse>('/api/transfer-plan');
+  transferPlanSourceFileId = data.sourceFileId;
+  el('transferPlanSourceName').textContent = data.sourceFileName;
+  el('transferPlanInTotal').textContent = formatNumber(data.totals.inTotal);
+  el('transferPlanCancelled').textContent = formatNumber(data.totals.cancelledQuantity);
+  el('transferPlanTransferred').textContent = formatNumber(data.totals.transferToFutu);
+  el('transferPlanDetailCount').textContent = formatNumber(data.detailCount);
+
+  el('transferPlanSummaryHead').innerHTML = `
+    <tr>
+      <th>Summary</th>
+      ${data.items.map((item) => `<th>${escapeHtml(item.period)}</th>`).join('')}
+      <th>Total</th>
+    </tr>`;
+  el('transferPlanSummaryBody').innerHTML = `
+    <tr>
+      <th>In total</th>
+      ${data.items.map((item) => `<td>${formatNumber(item.inTotal)}</td>`).join('')}
+      <td class="transfer-plan-total">${formatNumber(data.totals.inTotal)}</td>
+    </tr>
+    <tr class="transfer-plan-cancelled-row">
+      <th>Options cancelled/forfeited</th>
+      ${data.items
+        .map(
+          (item) => `
+            <td>
+              <input
+                class="transfer-plan-cancel-input${item.manuallyEdited ? ' is-edited' : ''}"
+                type="number"
+                step="1"
+                value="${item.cancelledQuantity}"
+                data-transfer-cancelled-id="${item.id}"
+                aria-label="${escapeHtml(item.period)} cancelled quantity"
+                title="Source value: ${item.sourceCancelled}"
+              >
+            </td>`,
+        )
+        .join('')}
+      <td class="transfer-plan-total">${formatNumber(data.totals.cancelledQuantity)}</td>
+    </tr>
+    <tr class="transfer-plan-result-row">
+      <th>Transfer to Futu</th>
+      ${data.items.map((item) => `<td>${formatNumber(item.transferToFutu)}</td>`).join('')}
+      <td class="transfer-plan-total">${formatNumber(data.totals.transferToFutu)}</td>
+    </tr>`;
+}
+
+async function updateTransferPlanCancellation(input: HTMLInputElement) {
+  const id = Number(input.dataset.transferCancelledId);
+  const cancelledQuantity = Number(input.value);
+  if (!Number.isFinite(id) || !Number.isFinite(cancelledQuantity)) {
+    notify('请输入有效的取消数量', { type: 'warning' });
+    await renderTransferPlan();
+    return;
+  }
+  input.disabled = true;
+  try {
+    await api(`/api/transfer-plan/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ cancelledQuantity }),
+    });
+    await renderTransferPlan();
+    notify('取消数量已更新', { type: 'success' });
+  } catch (error) {
+    input.disabled = false;
+    notify((error as Error).message, { type: 'error' });
+  }
+}
+
+async function importTransferPlanWorkbook() {
+  const input = el<HTMLInputElement>('transferPlanFileInput');
+  const file = input.files?.[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    await api('/api/transfer-plan/import', { method: 'POST', body: form });
+    await renderTransferPlan();
+    await filesPage.refreshProductFiles();
+    notify('Transfer detail 已导入', { type: 'success' });
+  } catch (error) {
+    notify((error as Error).message, { type: 'error' });
+  } finally {
+    input.value = '';
+  }
+}
+
+function exportTransferPlanWorkbook() {
+  if (transferPlanSourceFileId === null) {
+    notify('当前没有可导出的源文件', { type: 'warning' });
+    return;
+  }
+  window.location.href = `/api/files/${transferPlanSourceFileId}/content`;
 }
 
 async function loadEmployeesPage() {
   const query = el<HTMLInputElement>('searchEmployeesPage').value.trim();
   const tag = el<HTMLInputElement>('filterEmployeesPageTag').value.trim();
+  const sortParam = employeesSort.by ? `&sort=${employeesSort.by}&dir=${employeesSort.dir}` : '';
   const data = await api<PaginatedResult<Employee>>(
-    `/api/employees?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}&page=${employeesPage}&pageSize=${employeesPageSize}`,
+    `/api/employees?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}&page=${employeesPage}&pageSize=${employeesPageSize}${sortParam}`,
   );
   employees = data.items ?? [];
   employeesPage = data.page;
   employeesTotal = data.total;
+  renderEmployeesSortIndicators();
   renderEmployeesPagination(data.page, data.totalPages, data.total);
   renderEmployeesPageTable();
+}
+
+function renderEmployeesSortIndicators() {
+  document.querySelectorAll<HTMLElement>('#employeesPageTable [data-sort-key]').forEach((node) => {
+    const key = node.dataset.sortKey;
+    node.textContent = employeesSort.by && employeesSort.by === key ? (employeesSort.dir === 'asc' ? '▲' : '▼') : '';
+  });
+}
+
+function toggleEmployeesSort(by: 'name' | 'empNo') {
+  if (employeesSort.by === by) {
+    employeesSort.dir = employeesSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    employeesSort = { by, dir: 'asc' };
+  }
+  employeesPage = 1;
+  void loadEmployeesPage();
 }
 
 function renderEmployeesPageTable() {
   if (employees.length === 0) {
     el('employeesPageBody').innerHTML =
-      '<tr><td colspan="7" class="table-empty-cell">No matching employees found</td></tr>';
+      '<tr><td colspan="8" class="table-empty-cell">No matching employees found</td></tr>';
     return;
   }
   el('employeesPageBody').innerHTML = employees
-    .map(
-      (item, index) => `
-      <tr>
+    .map((item, index) => {
+      const sourceLabels: Record<string, string> = { futu: 'Futu', shareworks: 'Shareworks', manual: '手工' };
+      const sourceLabel = sourceLabels[item.source] ?? item.source;
+      const sourceClass = item.source === 'manual' ? 'employee-origin-badge--manual' : 'employee-origin-badge--extracted';
+      const linkedText = item.linkedIdentities.length
+        ? item.linkedIdentities.map((identity) => `${identity.source}:${identity.employeeId} ${identity.name}`.trim()).join('；')
+        : '-';
+      const toggleLabel = item.active ? '停用' : '启用';
+      const rowClass = item.active ? '' : ' class="table-row--muted"';
+      return `
+      <tr${rowClass}>
         <td>${(employeesPage - 1) * employeesPageSize + index + 1}</td>
         <td style="text-align:left; font-weight:600;">${escapeHtml(item.employeeName)}</td>
-        <td>${escapeHtml(item.employeeNumber)}</td>
-        <td>${escapeHtml(item.userId)}</td>
+        <td>${escapeHtml(item.employeeNumber || '-')}</td>
+        <td><span class="employee-origin-badge ${sourceClass}">${escapeHtml(sourceLabel)}</span></td>
+        <td style="text-align:left;">${escapeHtml(linkedText)}</td>
         <td style="text-align:left;">${escapeHtml(formatTags(item.tags))}</td>
         <td class="col-number">${formatNumber(item.grantCount)}</td>
         <td>
           <div class="action-buttons">
             <button class="btn btn-secondary btn-sm" data-action="edit-employee-page" data-id="${item.id}">编辑</button>
-            <button class="btn btn-danger btn-sm" data-action="delete-employee-page" data-id="${item.id}">删除</button>
+            <button class="btn btn-secondary btn-sm" data-action="merge-employee-page" data-id="${item.id}">关联</button>
+            <button class="btn btn-warning btn-sm" data-action="toggle-employee-page" data-id="${item.id}">${toggleLabel}</button>
           </div>
         </td>
-      </tr>`,
-    )
+      </tr>`;
+    })
     .join('');
   el('employeesPageBody')
     .querySelectorAll<HTMLElement>('[data-action="edit-employee-page"]')
     .forEach((button) => button.addEventListener('click', () => openEmployeesPageModal(Number(button.dataset.id))));
   el('employeesPageBody')
-    .querySelectorAll<HTMLElement>('[data-action="delete-employee-page"]')
-    .forEach((button) => button.addEventListener('click', () => void deleteEmployeesPage(Number(button.dataset.id))));
+    .querySelectorAll<HTMLElement>('[data-action="merge-employee-page"]')
+    .forEach((button) => button.addEventListener('click', () => openEmployeesMergeModal(Number(button.dataset.id))));
+  el('employeesPageBody')
+    .querySelectorAll<HTMLElement>('[data-action="toggle-employee-page"]')
+    .forEach((button) => button.addEventListener('click', () => void toggleEmployeeActive(Number(button.dataset.id))));
 }
 
 function openEmployeesPageModal(id?: number) {
   editingEmployeeId = id ?? null;
   const item = employees.find((row) => row.id === id);
   el('employeesPageModalTitle').textContent = item ? 'Edit Employee' : 'New Employee';
+  el('employeesPageNumberRow').style.display = '';
+  const numberInput = el<HTMLInputElement>('employeesPageNumber');
+  numberInput.value = item?.employeeNumber ?? '';
+  numberInput.readOnly = Boolean(item); // employee_id (工号) is the key: editable only when creating
   el<HTMLInputElement>('employeesPageName').value = item?.employeeName ?? '';
-  el<HTMLInputElement>('employeesPageNumber').value = item?.employeeNumber ?? '';
   el<HTMLInputElement>('employeesPageUserId').value = item?.userId ?? '';
   el<HTMLInputElement>('employeesPageTags').value = item?.tags.join(', ') ?? '';
   el('employeesPageModal').classList.remove('hidden');
 }
 
 async function submitEmployeesPage() {
+  const employeeId = el<HTMLInputElement>('employeesPageNumber').value.trim();
   const employeeName = el<HTMLInputElement>('employeesPageName').value.trim();
-  const employeeNumber = el<HTMLInputElement>('employeesPageNumber').value.trim();
   const userId = el<HTMLInputElement>('employeesPageUserId').value.trim();
   const tags = parseTagInput(el<HTMLInputElement>('employeesPageTags').value);
-  if (!employeeName || !employeeNumber) {
-    notify('请填写员工姓名和工号', { type: 'warning' });
+  if (!employeeName) {
+    notify('请填写员工姓名', { type: 'warning' });
+    return;
+  }
+  if (!editingEmployeeId && !employeeId) {
+    notify('请填写工号（Emp. No.）', { type: 'warning' });
     return;
   }
 
-  const payload = { employeeName, employeeNumber, userId, tags };
-  if (editingEmployeeId) {
-    await api(`/api/employees/${editingEmployeeId}`, { method: 'PATCH', body: JSON.stringify(payload) });
-  } else {
-    await api('/api/employees', { method: 'POST', body: JSON.stringify(payload) });
+  try {
+    if (editingEmployeeId) {
+      await api(`/api/employees/${editingEmployeeId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ employeeName, userId, tags }),
+      });
+    } else {
+      await api('/api/employees', { method: 'POST', body: JSON.stringify({ employeeId, employeeName, userId, tags }) });
+    }
+  } catch (error) {
+    notify((error as Error).message, { type: 'warning' });
+    return;
   }
   el('employeesPageModal').classList.add('hidden');
   editingEmployeeId = null;
   await loadEmployeesPage();
 }
 
-async function deleteEmployeesPage(id: number) {
+async function toggleEmployeeActive(id: number) {
   const item = employees.find((row) => row.id === id);
   if (!item) return;
-  if (!(await confirmAction(`确定删除员工【${item.employeeName}】吗？`, { title: '删除员工', confirmText: '删除', tone: 'danger' }))) return;
-  await api(`/api/employees/${id}`, { method: 'DELETE' });
+  const nextActive = !item.active;
+  const verb = nextActive ? '启用' : '停用';
+  if (!(await confirmAction(`确定${verb}员工【${item.employeeName}】吗？`, { title: `${verb}员工`, confirmText: verb }))) return;
+  await api(`/api/employees/${id}`, { method: 'PATCH', body: JSON.stringify({ active: nextActive }) });
   await loadEmployeesPage();
+}
+
+function openEmployeesMergeModal(id: number) {
+  const item = employees.find((row) => row.id === id);
+  if (!item) return;
+  mergeSourceEmployeeId = id;
+  el('employeesMergeSourceLabel').textContent = `${item.employeeName}（No. ${item.employeeNumber}）`;
+  el<HTMLInputElement>('employeesMergeTargetNumber').value = '';
+  el('employeesMergeModal').classList.remove('hidden');
+}
+
+async function submitEmployeesMerge() {
+  if (mergeSourceEmployeeId === null) return;
+  const targetNumber = el<HTMLInputElement>('employeesMergeTargetNumber').value.trim();
+  if (!targetNumber) {
+    notify('请输入目标员工工号', { type: 'warning' });
+    return;
+  }
+  try {
+    await api(`/api/employees/${encodeURIComponent(targetNumber)}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ mergeFromId: mergeSourceEmployeeId }),
+    });
+  } catch (error) {
+    notify((error as Error).message, { type: 'warning' });
+    return;
+  }
+  el('employeesMergeModal').classList.add('hidden');
+  mergeSourceEmployeeId = null;
+  notify('已关联为同一人', { type: 'success' });
+  await loadEmployeesPage();
+}
+
+async function renderPlanSummaryPage() {
+  const data = await api<PlanSummaryResponse>('/api/plan-summary');
+  el('planSummaryPlanCount').textContent = formatNumber(data.totals.planCount);
+  el('planSummaryGranted').textContent = formatNumber(data.totals.granted);
+  el('planSummaryExercised').textContent = formatNumber(data.totals.exercised);
+  el('planSummaryOutstanding').textContent = formatNumber(data.totals.outstanding);
+
+  if (data.items.length === 0) {
+    el('planSummaryBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">No plan summary data found</td></tr>';
+    return;
+  }
+
+  el('planSummaryBody').innerHTML = data.items
+    .map(
+      (item) => `
+      <tr>
+        <td style="text-align:left; font-weight:600;">${escapeHtml(item.planName)}</td>
+        <td class="col-number">${formatNumber(item.grantCount)}</td>
+        <td class="col-number">${formatNumber(item.granted)}</td>
+        <td class="col-number">${formatNumber(item.exercised)}</td>
+        <td class="col-number">${formatNumber(item.cancelled)}</td>
+        <td class="col-number" style="font-weight:600;">${formatNumber(item.outstanding)}</td>
+      </tr>`,
+    )
+    .join('');
+}
+
+function formatHolderPercent(value: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
+  return `${(Number(value) * 100).toLocaleString('en-US', { maximumFractionDigits: 3 })}%`;
+}
+
+async function renderFivePercentHoldersPage() {
+  const data = await api<FivePercentHoldersResponse>('/api/five-percent-holders');
+  const summary = data.summary;
+  el('fivePercentHoldersSummary').innerHTML = `
+    <div class="stat-chip"><span class="stat-chip__label">As of</span><span class="stat-chip__value">${escapeHtml(summary.asOfDate ?? '-')}</span></div>
+    <div class="stat-chip"><span class="stat-chip__label">Fully Diluted</span><span class="stat-chip__value">${formatNumber(summary.fullyDiluted)}</span></div>
+    <div class="stat-chip"><span class="stat-chip__label">Common Stock OS</span><span class="stat-chip__value">${formatNumber(summary.commonStockOs)}</span></div>`;
+
+  if (data.items.length === 0) {
+    el('fivePercentHoldersBody').innerHTML =
+      '<tr><td colspan="6" class="table-empty-cell">No 5% holder records found.</td></tr>';
+    return;
+  }
+
+  el('fivePercentHoldersBody').innerHTML = data.items
+    .map((item) => {
+      const rowClass = item.rowType === 'total' ? ' class="table-row--total"' : '';
+      const filing = [item.sc13Filing, item.note].filter(Boolean).map((text) => escapeHtml(String(text))).join('<br>');
+      return `
+      <tr${rowClass}>
+        <td style="text-align:left; font-weight:600;">${escapeHtml(item.name)}</td>
+        <td class="col-number">${formatNumber(item.commonStock)}</td>
+        <td class="col-number">${formatNumber(item.totalCses)}</td>
+        <td class="col-number">${formatHolderPercent(item.pctOfClass)}</td>
+        <td class="col-number">${formatHolderPercent(item.pctFullyDiluted)}</td>
+        <td style="text-align:left;">${filing || '-'}</td>
+      </tr>`;
+    })
+    .join('');
+}
+
+async function renderFixedValuePage() {
+  const data = await api<{ items: FixedValueRecord[] }>('/api/fixed-values');
+  if (data.items.length === 0) {
+    el('fixedValuePageBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">No fixed values configured</td></tr>';
+    return;
+  }
+
+  el('fixedValuePageBody').innerHTML = data.items
+    .map(
+      (item) => `
+      <tr>
+        <td style="text-align:left;">${escapeHtml(item.key)}</td>
+        <td style="text-align:left; font-weight:600;">${escapeHtml(item.label)}</td>
+        <td class="col-number">${formatNumber(item.value)}</td>
+        <td>${escapeHtml(item.effectiveFrom)}</td>
+        <td>${escapeHtml(item.updatedBy)}</td>
+        <td><button class="btn btn-secondary btn-sm" data-action="edit-fixed-value" data-id="${item.id}" ${item.editable ? '' : 'disabled'}>edit</button></td>
+      </tr>`,
+    )
+    .join('');
+
+  el('fixedValuePageBody')
+    .querySelectorAll<HTMLElement>('[data-action="edit-fixed-value"]')
+    .forEach((button) => button.addEventListener('click', () => void editFixedValue(Number(button.dataset.id), data.items)));
+}
+
+async function editFixedValue(id: number, items: FixedValueRecord[]) {
+  const item = items.find((row) => row.id === id);
+  if (!item) return;
+  const next = prompt(`Update ${item.label}:`, String(item.value));
+  if (next === null) return;
+  const value = Number(next.replace(/,/g, ''));
+  if (!Number.isFinite(value)) {
+    notify('请输入有效数字', { type: 'warning' });
+    return;
+  }
+  await api(`/api/fixed-values/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ value, updatedBy: authStatus?.user?.displayName ?? 'Administrator' }),
+  });
+  await renderFixedValuePage();
 }
 
 function getGrantTypeClass(type: string): string {
@@ -1534,6 +2211,9 @@ async function initializeApp() {
   await filesPage.init();
   await workflowPage.init();
   await initHoldingsPage();
+  await initExercisePage();
+  await initSoldSharesPage();
+  await initTransferPlanPage();
   await initEmployeesPage();
   await initAccountPage();
   await initSettingsPage();

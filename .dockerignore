@@ -1,0 +1,22 @@
+# Build artifacts and deps (reinstalled/rebuilt inside the image)
+node_modules
+dist
+data
+
+# VCS / tooling / local noise
+.git
+.gitignore
+.claude
+.playwright-mcp
+*.log
+npm-debug.log*
+
+# Editors / OS
+.vscode
+.idea
+.DS_Store
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+docker-compose.yml

@@ -50,6 +50,18 @@ export type WorkflowOperatorRuntime = {
     mimeType?: string;
     uploadedBy?: string;
   }) => Promise<ProductFileRecord>;
+  /**
+   * Upsert dataframe rows into a whitelisted database table. Only present when the
+   * host wires DB-write access (see server.ts). Implementations MUST enforce a table
+   * whitelist and validate identifiers. `updateColumns` empty ⇒ ON CONFLICT DO NOTHING.
+   */
+  upsertTableRows?: (params: {
+    table: string;
+    columns: string[];
+    rows: Array<Record<string, unknown>>;
+    conflictColumns: string[];
+    updateColumns: string[];
+  }) => Promise<{ inserted: number; updated: number }>;
 };
 
 export type WorkflowOperatorExecutionContext = {

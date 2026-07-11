@@ -28,3 +28,9 @@ backups/
 # Temporary local test files
 tmp-save-test.txt
 ~$*.docx
+~$*.xlsx
+
+# Local screenshot scratch (playwright captures saved to repo root)
+/docs-overview.png
+/docs-workflow.png
+/five-percent-holders.png

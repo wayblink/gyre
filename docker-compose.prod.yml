@@ -1,0 +1,44 @@
+# Production deployment compose (ECS). Dev infra lives in docker-compose.yml.
+# Usage:  docker compose -f docker-compose.prod.yml up -d --build
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: captable
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-captable}
+      POSTGRES_DB: captable
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U captable -d captable"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      PORT: "60628"
+      DATABASE_URL: postgres://captable:${POSTGRES_PASSWORD:-captable}@postgres:5432/captable
+      STORAGE_DRIVER: local
+      # 登录开关：true=免登录（开发期）; false=启用账号登录
+      AUTH_DISABLED: ${AUTH_DISABLED:-true}
+      # 首次启动是否导入 demo 数据；生产建议 false（空库启动，无需 demo 文件）
+      SEED_ON_INIT: ${SEED_ON_INIT:-false}
+    volumes:
+      # 持久化本地存储（上传件 / product files 写在 /app/data 下）
+      - appdata:/app/data
+    # 只发布到宿主机回环，前面用 Nginx 反代（见 DEPLOY.md）。
+    # 临时直连测试可改成 "60628:60628"。
+    ports:
+      - "127.0.0.1:60628:60628"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  appdata:

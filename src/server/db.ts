@@ -25,7 +25,9 @@ export class AppDb {
     fs.mkdirSync(config.productFileDir, { recursive: true });
     await fileStorage.init();
     await this.pool.query(schemaSql);
-    await seedDatabase(this);
+    if (config.seedOnInit) {
+      await seedDatabase(this);
+    }
   }
 
   async query<T extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []): Promise<T[]> {

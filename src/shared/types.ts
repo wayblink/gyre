@@ -137,6 +137,134 @@ export type Holding = {
   agreementInfo: string | null;
 };
 
+export type ExerciseRecord = {
+  id: number;
+  name: string;
+  employeeNumber: string;
+  futubullId: string;
+  userId: string;
+  grantNumber: string;
+  grantDate: string;
+  grantPriceUsd: number;
+  exerciseDate: string;
+  orderedQuantity: number;
+  exercisedQuantity: number;
+  exerciseCostUsd: number;
+  deductionSellingQuantity: number;
+  dealtQuantity: number;
+};
+
+export type SoldShare = {
+  id: number;
+  name: string;
+  employeeNumber: string;
+  futubullId: string;
+  userId: string;
+  employmentStatus: string;
+  relatedPartyIdentity: string;
+  capitalGainsTaxVisibility: string;
+  soldQuantity: number;
+  dealtQuantity: number;
+  dealAmountUsd: number;
+  taxableIncomeUsd: number;
+  taxPayableUsd: number;
+  transactionFeesUsd: number;
+  netDealValueUsd: number;
+  grantCostUsd: number;
+  exerciseVestingFeeUsd: number;
+  withholdingTaxUsd: number;
+  withholdingTaxCny: number;
+  cashNetProceedsUsd: number;
+};
+
+export type TransferPlanPeriod = {
+  id: number;
+  sourceFileId: number | null;
+  period: string;
+  inTotal: number;
+  sourceCancelled: number;
+  cancelledQuantity: number;
+  transferToFutu: number;
+  manuallyEdited: boolean;
+  sortOrder: number;
+};
+
+export type TransferPlanResponse = {
+  sourceFileId: number | null;
+  sourceFileName: string;
+  detailCount: number;
+  items: TransferPlanPeriod[];
+  totals: {
+    inTotal: number;
+    sourceCancelled: number;
+    cancelledQuantity: number;
+    transferToFutu: number;
+  };
+};
+
+export type ShareworksGrant = {
+  id: number;
+  costCenter: string | null;
+  participantType: string | null;
+  employeeNumber: string | null;
+  lastName: string | null;
+  firstName: string | null;
+  middleName: string | null;
+  planName: string | null;
+  grantName: string | null;
+  grantType: string | null;
+  employeeGrantNumber: string | null;
+  grantDate: string | null;
+  vestingStartDate: string | null;
+  serviceStartDate: string | null;
+  originalVestingStartDate: string | null;
+  expireDate: string | null;
+  participantExpireDate: string | null;
+  earliestExpireCancelDate: string | null;
+  latestExpireCancelDate: string | null;
+  sharesGranted: number | null;
+  exercisePricePerShare: number | null;
+  vestingSchedule: string | null;
+  earlyExerciseAllowed: string | null;
+  sharesVested: number | null;
+  sharesUnvested: number | null;
+  sharesExercisedReleased: number | null;
+  sharesSubjectToRepurchase: number | null;
+  sharesCancelledExpired: number | null;
+  sharesOutstanding: number | null;
+  outstandingUnvested: number | null;
+  outstandingVestedExercisable: number | null;
+};
+
+export type MergedGrant = {
+  id: string;
+  source: 'Futu' | 'Shareworks';
+  employeeName: string;
+  grantNumber: string;
+  employeeNumber: string;
+  incentiveType: string;
+  grantDate: string | null;
+  grantQuantity: number | null;
+  grantPrice: number | null;
+  expireDate: string | null;
+  planName: string | null;
+  vestingRuleName: string | null;
+  vestingStartDate: string | null;
+  sharesVested: number | null;
+  sharesUnvested: number | null;
+  sharesExercisedReleased: number | null;
+  sharesCancelledExpired: number | null;
+  sharesOutstanding: number | null;
+};
+
+export type EmployeeSource = 'futu' | 'shareworks' | 'manual';
+
+export type LinkedEmployeeIdentity = {
+  employeeId: string;
+  source: string;
+  name: string;
+};
+
 export type Employee = {
   id: number;
   employeeNumber: string;
@@ -144,6 +272,10 @@ export type Employee = {
   userId: string | null;
   tags: string[];
   grantCount: number;
+  source: EmployeeSource;
+  hasFileEvidence: boolean;
+  active: boolean;
+  linkedIdentities: LinkedEmployeeIdentity[];
 };
 
 export type EmployeeMapping = {
@@ -166,6 +298,60 @@ export type ShareholderTag = {
   name: string;
   identity: string;
   track: boolean;
+};
+
+export type PlanSummaryItem = {
+  planName: string;
+  grantCount: number;
+  granted: number;
+  exercised: number;
+  cancelled: number;
+  outstanding: number;
+};
+
+export type PlanSummaryResponse = {
+  items: PlanSummaryItem[];
+  totals: {
+    planCount: number;
+    grantCount: number;
+    granted: number;
+    exercised: number;
+    cancelled: number;
+    outstanding: number;
+  };
+};
+
+export type FixedValueRecord = {
+  id: number;
+  key: string;
+  label: string;
+  value: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  editable: boolean;
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type FivePercentHolder = {
+  id: number;
+  rowType: 'holder' | 'total';
+  name: string;
+  commonStock: number | null;
+  totalCses: number | null;
+  pctOfClass: number | null;
+  pctFullyDiluted: number | null;
+  sc13Filing: string | null;
+  note: string | null;
+};
+
+export type FivePercentHoldersResponse = {
+  summary: {
+    asOfDate: string | null;
+    fullyDiluted: number | null;
+    commonStockOs: number | null;
+  };
+  items: FivePercentHolder[];
 };
 
 export type LinkDetail = {
@@ -332,7 +518,7 @@ export type WorkflowOperatorSlot = {
   label?: string;
 };
 
-export type WorkflowOperatorCategory = 'Input' | 'Transform' | 'Validation' | 'Output';
+export type WorkflowOperatorCategory = 'Input' | 'Transform' | 'Validation' | 'Output' | 'Database';
 
 export type WorkflowOperatorParamField = {
   type: 'string' | 'number' | 'boolean' | 'array' | 'object';
