@@ -31,13 +31,24 @@ select distinct
 from {sw}
 where trim(concat('', coalesce([Employee Number], ''))) <> ''`;
 
+const SHAREWORKS_EMPLOYEE_ROW_FILTER_SQL = `
+select *
+from {sw}
+where not (
+  lower(trim(concat('', coalesce([Last Name], '')))) = 'subplan'
+  and (
+    lower(trim(concat('', coalesce([Plan Name], '')))) like '%subplan%'
+    or lower(trim(concat('', coalesce([Grant Name], '')))) like '%subplan%'
+  )
+)`;
+
 const futuFileRef = {
   $fromRuntime: 'fileRefs.futu_grants',
   $type: 'object',
   $label: 'Futu 授予数据导出报表 workbook',
 };
 const shareworksFileRef = {
-  $fromRuntime: 'fileRefs.shareworks',
+  $fromRuntime: 'fileRefs.shareworks_grants',
   $type: 'object',
   $label: 'Shareworks Cap Table workbook',
 };
@@ -96,18 +107,33 @@ export function buildEmployeeImportWorkflowTasks(): WorkflowTask[] {
       dependsOn: [],
     },
     {
+      id: 'filter_shareworks_employee_rows',
+      name: 'Filter Shareworks Employee Rows',
+      operatorCode: 'sql.compute',
+      operatorVersion: '1.0.0',
+      description: '过滤 Shareworks Options OS Detail 中计划级占位行，例如 BC Subplan 这类不是员工的记录。',
+      x: 400,
+      y: 260,
+      params: {
+        sql: SHAREWORKS_EMPLOYEE_ROW_FILTER_SQL,
+        tableBindings: [{ tableName: 'sw', inputSlot: 'input1' }],
+      },
+      inputs: { input1: { from: 'extract_shareworks', slot: 'dataframe' } },
+      dependsOn: [],
+    },
+    {
       id: 'normalize_shareworks_employees',
       name: 'Normalize Shareworks Employees',
       operatorCode: 'sql.compute',
       operatorVersion: '1.0.0',
       description: '把 Shareworks 明细去重规范成 (employee_id, source, employee_name)，姓名由 last/first/middle 拼成。',
-      x: 400,
+      x: 760,
       y: 260,
       params: {
         sql: SHAREWORKS_TRANSFORM_SQL,
         tableBindings: [{ tableName: 'sw', inputSlot: 'input1' }],
       },
-      inputs: { input1: { from: 'extract_shareworks', slot: 'dataframe' } },
+      inputs: { input1: { from: 'filter_shareworks_employee_rows', slot: 'dataframe' } },
       dependsOn: [],
     },
     {
@@ -116,7 +142,7 @@ export function buildEmployeeImportWorkflowTasks(): WorkflowTask[] {
       operatorCode: 'dataframe.union',
       operatorVersion: '1.0.0',
       description: '把 Futu 与 Shareworks 员工按列名对齐后合并成一张待写入表。',
-      x: 760,
+      x: 1120,
       y: 154,
       params: { distinct: false },
       inputs: {
@@ -131,7 +157,7 @@ export function buildEmployeeImportWorkflowTasks(): WorkflowTask[] {
       operatorCode: 'db.upsert',
       operatorVersion: '1.0.0',
       description: '按 employee_id UPSERT 进 employees 表：已存在工号更新姓名/证据，新工号插入。',
-      x: 1120,
+      x: 1480,
       y: 154,
       params: {
         table: 'employees',

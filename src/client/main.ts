@@ -9,18 +9,18 @@ import type {
   FivePercentHoldersResponse,
   Holding,
   LinkDetail,
+  LatestMonthlyRunOutput,
   MergedGrant,
+  MonthlyRunInstanceRecord,
   PaginatedResult,
   PlanSummaryResponse,
   ProductFileDetail,
   ProductFileRecord,
-  SourceChecklist,
   SoldShare,
   SummaryCapitalizationSource,
   SummarySnapshot,
   TrackedPlan,
   TransferPlanResponse,
-  UpdatePlan,
   ShareholderTag,
   ShareworksGrant,
 } from '../shared/types.js';
@@ -35,17 +35,19 @@ import {
 } from './theme.js';
 import { confirmAction, notify } from './uiFeedback.js';
 import { createWorkflowPage } from './workflowPage.js';
-import { createDocsPage } from './docsPage.js';import '../../css/style.css';
+import { createDocsPage } from './docsPage.js';
+import { resolveDefaultSummaryMonth } from './summaryPage.js';
+import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
+import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './transferPlanPage.js';
+import '../../css/style.css';
 import '@univerjs/design/lib/index.css';
 import '@univerjs/ui/lib/index.css';
 import '@univerjs/sheets-ui/lib/index.css';
 
-let currentMonth = '2026-05';
+let currentMonth = '';
 let currentSummary: SummarySnapshot | null = null;
 let authStatus: AuthStatus | null = null;
-let updatePlans: UpdatePlan[] = [];
-let currentPlan: UpdatePlan | null = null;
-let currentFileList: SourceChecklist | null = null;
+let updatePlans: MonthlyRunInstanceRecord[] = [];
 let employees: Employee[] = [];
 let employeeMappings: EmployeeMapping[] = [];
 let planManagements: TrackedPlan[] = [];
@@ -53,41 +55,43 @@ let shareholders: ShareholderTag[] = [];
 let summarySourceFiles: ProductFileRecord[] = [];
 let holdingsPage = 1;
 let holdingsTotal = 0;
-const holdingsPageSize = 20;
+let holdingsPageSize = 20;
 type GrantView = 'futu' | 'shareworks' | 'merge';
 let activeGrantView: GrantView = 'futu';
 let exercisePage = 1;
 let exerciseTotal = 0;
-const exercisePageSize = 20;
+let exercisePageSize = 20;
 let soldSharesPage = 1;
 let soldSharesTotal = 0;
-const soldSharesPageSize = 20;
+let soldSharesPageSize = 20;
 let transferPlanSourceFileId: number | null = null;
+let transferPlanTableView: TransferPlanTableView = 'summaryRows';
 let employeesPage = 1;
 let employeesTotal = 0;
 let employeesPageSize = 20;
 let employeesSort: { by: 'name' | 'empNo' | ''; dir: 'asc' | 'desc' } = { by: '', dir: 'asc' };
+let employeesSourceFilter: EmployeeSourceFilter = '';
 
 const pageTitles: Record<string, string> = {
-  captable: 'Captable',
-  monthly: 'Monthly Updates',
-  monthlyrun: 'Monthly Run',
-  'esop-detail': 'ESOP Detail',
-  'grant-record': 'Grant Record',
-  'exercise-record': 'Exercise to Date',
-  'sold-shares': 'Sold Shares',
-  'transfer-plan': '2025 Transfer to Futu',
-  'employee-management': 'Employee Management',
-  'plan-summary': 'Plan Summary',
-  'five-percent-holders': '5% Holders',
-  'fixed-value': 'Fixed Value',
-  files: 'Files',
-  workflow: 'Workflow',
-  docs: 'User Guide',
-  holdings: 'Holdings',
-  employees: 'Employees',
-  account: 'Account',
-  settings: 'Settings',
+  captable: '股权汇总',
+  monthly: '月度更新',
+  monthlyrun: '月度运行',
+  'esop-detail': 'ESOP 明细',
+  'grant-record': '授予记录',
+  'exercise-record': '行权记录',
+  'sold-shares': '卖出记录',
+  'transfer-plan': '2025 转仓至 Futu',
+  'employee-management': '员工管理',
+  'plan-summary': '计划汇总',
+  'five-percent-holders': '5% 股东',
+  'fixed-value': '固定参数',
+  files: '文件中心',
+  workflow: '工作流',
+  docs: '使用手册',
+  holdings: '持仓明细',
+  employees: '员工列表',
+  account: '账号设置',
+  settings: '系统设置',
 };
 type PageKey = keyof typeof pageTitles;
 const DEFAULT_PAGE: PageKey = 'captable';
@@ -134,7 +138,6 @@ const monthlyRunPage = createMonthlyRunPage({
   formatDateTime,
   refreshProductFiles: () => filesPage.refreshProductFiles(),
   refreshSummary: (month) => renderSummaryPage(month),
-  getUpdatePlanId: () => currentPlan?.id ?? null,
   notify,
   confirmAction,
   onMonthChanged: (month) => {
@@ -233,7 +236,23 @@ function statusClass(status: string): string {
   if (status === '待复核') return 'status-review';
   if (status === '失败') return 'status-failed';
   if (status === '已取消') return 'status-cancelled';
+  if (status === 'completed' || status === 'completed_with_warnings') return 'status-completed';
+  if (status === 'running') return 'status-inprogress';
+  if (status === 'waiting_approval') return 'status-review';
+  if (status === 'failed') return 'status-failed';
+  if (status === 'skipped') return 'status-cancelled';
   return 'status-pending';
+}
+
+function monthlyRunStatusLabel(status: string): string {
+  if (status === 'completed') return '已完成';
+  if (status === 'completed_with_warnings') return '已完成';
+  if (status === 'running') return '进行中';
+  if (status === 'waiting_approval') return '待复核';
+  if (status === 'failed') return '失败';
+  if (status === 'skipped') return '已取消';
+  if (status === 'draft') return '待启动';
+  return status || '待启动';
 }
 
 function readSidebarCollapsedPreference(): boolean {
@@ -465,13 +484,13 @@ function setActivePage(page: string) {
   document.querySelectorAll<HTMLElement>('.page-section').forEach((node) => {
     node.classList.toggle('active', node.id === `page-${targetPage}`);
   });
-  el('pageTitle').textContent = targetPage === 'monthlyrun' ? 'Monthly Updates / Run' : pageTitles[targetPage];
+  el('pageTitle').textContent = targetPage === 'monthlyrun' ? '月度更新 / 运行' : pageTitles[targetPage];
 }
 
 async function activatePage(page: PageKey) {
   if (page === 'captable') {
     await refreshSummarySourceFileOptions();
-    await renderSummaryPage(currentMonth);
+    if (currentMonth) await renderSummaryPage(currentMonth);
     return;
   }
 
@@ -569,41 +588,10 @@ async function navigateToProductFile(fileId: number) {
   await filesPage.refreshProductFiles(fileId);
 }
 
-async function openMonthlyRun(month: string) {
-  const targetPath = buildPagePath('monthlyrun');
-  const url = new URL(window.location.href);
-  url.pathname = targetPath;
-  url.search = '';
-  url.hash = '';
-  if (window.location.pathname !== targetPath || window.location.search) {
-    window.history.pushState(null, '', url);
-  }
-  setActivePage('monthlyrun');
-  await monthlyRunPage.openForMonth(month);
-}
-
 async function openMonthlyRunPlan(planId: number) {
-  const plan = updatePlans.find((item) => item.id === planId) ?? await api<UpdatePlan>(`/api/update-plans/${planId}`);
-  const targetPath = buildPagePath('monthlyrun');
-  const url = new URL(window.location.href);
-  url.pathname = targetPath;
-  url.searchParams.set('planId', String(planId));
-  url.hash = '';
-  if (window.location.pathname !== targetPath || window.location.search !== url.search) {
-    window.history.pushState(null, '', url);
-  }
-  setActivePage('monthlyrun');
-  await monthlyRunPage.openForMonth(plan.month);
-  await loadMonthlyRunInputs(planId, plan);
-}
-
-async function loadMonthlyRunInputs(planId: number, planOverride?: UpdatePlan) {
-  currentPlan = planOverride ?? updatePlans.find((plan) => plan.id === planId) ?? await api<UpdatePlan>(`/api/update-plans/${planId}`);
-  currentFileList = await api<SourceChecklist>(`/api/update-plans/${planId}/checklist`);
-  el<HTMLInputElement>('monthlyRunMonth').value = currentPlan.month;
-  el('monthlyRunInputMonth').textContent = formatMonthCN(currentPlan.month);
-  el('modalTitle').textContent = 'Input Configuration';
-  renderSourceTables();
+  const plan = updatePlans.find((item) => item.id === planId);
+  if (!plan) return;
+  await openMonthlyRunMonthOnly(plan.monthKey);
 }
 
 async function openMonthlyRunMonthOnly(month: string) {
@@ -611,29 +599,24 @@ async function openMonthlyRunMonthOnly(month: string) {
   const url = new URL(window.location.href);
   url.pathname = targetPath;
   url.search = '';
+  url.searchParams.set('month', month);
   url.hash = '';
-  if (window.location.pathname !== targetPath || window.location.search) {
+  if (window.location.pathname !== targetPath || window.location.search !== url.search) {
     window.history.pushState(null, '', url);
   }
-  currentPlan = null;
-  currentFileList = null;
   el('monthlyRunInputMonth').textContent = formatMonthCN(month);
   el('modalTitle').textContent = 'Input Configuration';
-  el('fixedValueBody').innerHTML = '<tr><td colspan="5" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
-  el('shareworksBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
-  el('futuBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">从 Monthly 列表点击查看详情后配置输入。</td></tr>';
+  el('fixedValueBody').innerHTML = '<tr><td colspan="5" class="table-empty-cell">正在加载输入定义...</td></tr>';
+  el('shareworksBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">正在加载输入定义...</td></tr>';
+  el('futuBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">正在加载输入定义...</td></tr>';
   setActivePage('monthlyrun');
   await monthlyRunPage.openForMonth(month);
 }
 
 async function openMonthlyRunFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  const planId = Number(params.get('planId'));
-  if (Number.isFinite(planId) && planId > 0) {
-    await openMonthlyRunPlan(planId);
-    return;
-  }
-  await openMonthlyRunMonthOnly(el<HTMLInputElement>('monthlyRunMonth').value || currentMonth);
+  const month = params.get('month')?.trim();
+  await openMonthlyRunMonthOnly(month || el<HTMLInputElement>('monthlyRunMonth').value || currentMonth);
 }
 
 function initNavigation() {
@@ -684,8 +667,18 @@ function initMonthPicker() {
 }
 
 async function initSummaryPage() {
+  const [months, latestOutputResponse] = await Promise.all([
+    fetchAvailableMonths(),
+    api<{ output: LatestMonthlyRunOutput | null }>('/api/monthly-runs/latest-output'),
+  ]);
+  currentMonth = resolveDefaultSummaryMonth(months, latestOutputResponse.output);
+  el<HTMLInputElement>('monthPicker').value = currentMonth;
   await refreshSummarySourceFileOptions();
-  await renderSummaryPage(currentMonth);
+  if (months.length === 0) {
+    renderEmptySummaryPage('暂无月度业务数据。请先创建 Monthly Update 或导入正式数据。');
+  } else {
+    await renderSummaryPage(currentMonth);
+  }
   el<HTMLSelectElement>('capitalizationSourceFile').addEventListener('change', () => void saveCapitalizationSource());
   el('btnAddNote').addEventListener('click', () => {
     el('addNoteForm').classList.remove('hidden');
@@ -707,6 +700,21 @@ async function initSummaryPage() {
     el('addNoteForm').classList.add('hidden');
     await renderSummaryPage(currentMonth);
   });
+}
+
+async function fetchAvailableMonths() {
+  const data = await api<{ months: Array<{ month: string }> }>('/api/months');
+  return data.months.map((item) => item.month);
+}
+
+function renderEmptySummaryPage(message: string) {
+  currentSummary = null;
+  el('currentMonthText').textContent = '暂无汇总数据';
+  el('eomDate').textContent = '-';
+  el('reconciliationBody').innerHTML = `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
+  el('capitalizationBody').innerHTML = `<tr><td colspan="4" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
+  applyCapitalizationSourceState(null);
+  renderNotes([]);
 }
 
 async function renderSummaryPage(month: string) {
@@ -755,8 +763,13 @@ async function renderSummaryPage(month: string) {
     });
     renderNotes(data.notes);
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load summary data';
+    if (/Month .* not found/i.test(message)) {
+      renderEmptySummaryPage('暂无月度业务数据。请先创建 Monthly Update 或导入正式数据。');
+      return;
+    }
     currentSummary = null;
-    el('reconciliationBody').innerHTML = `<tr><td colspan="5" class="table-empty-cell">${escapeHtml((error as Error).message)}</td></tr>`;
+    el('reconciliationBody').innerHTML = `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
     el('capitalizationBody').innerHTML = '';
     applyCapitalizationSourceState(null);
     renderNotes([]);
@@ -872,23 +885,22 @@ function initMonthlyRunInputCard() {
 
 async function submitNewPlan() {
   const month = el<HTMLInputElement>('newPlanMonth').value;
-  const remark = el<HTMLTextAreaElement>('newPlanRemark').value.trim();
   if (!month) {
     notify('请填写月份', { type: 'warning' });
     return;
   }
-  await api<UpdatePlan>('/api/update-plans', { method: 'POST', body: JSON.stringify({ month, remark }) });
+  await api<{ instance: MonthlyRunInstanceRecord }>('/api/monthly-runs/instances', { method: 'POST', body: JSON.stringify({ month }) });
   el('addPlanModal').classList.add('hidden');
   await renderMonthlyPage('');
 }
 
 async function renderMonthlyPage(filterMonth: string) {
-  const data = await api<{ plans: UpdatePlan[] }>(`/api/update-plans${filterMonth ? `?month=${encodeURIComponent(filterMonth)}` : ''}`);
-  updatePlans = data.plans;
+  const data = await api<{ items: MonthlyRunInstanceRecord[] }>(`/api/monthly-runs/instances${filterMonth ? `?month=${encodeURIComponent(filterMonth)}` : ''}`);
+  updatePlans = data.items;
   el('planTotalCount').textContent = String(updatePlans.length);
-  el('planCompletedCount').textContent = String(updatePlans.filter((plan) => plan.status === '已完成').length);
-  el('planInProgressCount').textContent = String(updatePlans.filter((plan) => plan.status === '进行中').length);
-  el('planPendingCount').textContent = String(updatePlans.filter((plan) => plan.status === '待启动' || plan.status === '待复核').length);
+  el('planCompletedCount').textContent = String(updatePlans.filter((plan) => plan.status === 'completed' || plan.status === 'completed_with_warnings').length);
+  el('planInProgressCount').textContent = String(updatePlans.filter((plan) => plan.status === 'running').length);
+  el('planPendingCount').textContent = String(updatePlans.filter((plan) => plan.status === 'draft' || plan.status === 'waiting_approval').length);
 
   const tbody = el('monthlyUpdateBody');
   if (updatePlans.length === 0) {
@@ -900,10 +912,10 @@ async function renderMonthlyPage(filterMonth: string) {
       (plan, index) => `
       <tr>
         <td>${index + 1}</td>
-        <td><button class="table-link-button" data-action="view" data-id="${plan.id}" type="button">${escapeHtml(plan.month)}</button></td>
-        <td>${escapeHtml(plan.operationTime)}</td>
+        <td><button class="table-link-button" data-action="view" data-id="${plan.id}" type="button">${escapeHtml(plan.monthKey)}</button></td>
+        <td>${escapeHtml(formatDateTime(plan.updatedAt))}</td>
         <td>${escapeHtml(plan.operator)}</td>
-        <td><span class="status-badge ${statusClass(plan.status)}">${escapeHtml(plan.status)}</span></td>
+        <td><span class="status-badge ${statusClass(plan.status)}">${escapeHtml(monthlyRunStatusLabel(plan.status))}</span></td>
         <td><div class="action-buttons">
           <button class="btn btn-primary" data-action="view" data-id="${plan.id}">查看详情</button>
           <button class="btn btn-danger" data-action="delete" data-id="${plan.id}">删除</button>
@@ -918,152 +930,25 @@ async function renderMonthlyPage(filterMonth: string) {
 async function deleteUpdatePlan(id: number) {
   const plan = updatePlans.find((item) => item.id === id);
   if (!plan) return;
-  if (!(await confirmAction(`确定删除【${plan.month}】的更新计划吗？此操作不可撤销。`, { title: '删除更新计划', confirmText: '删除', tone: 'danger' }))) return;
-  await api(`/api/update-plans/${id}`, { method: 'DELETE' });
+  if (!(await confirmAction(`确定删除【${plan.monthKey}】的月度运行实例吗？此操作不可撤销。`, { title: '删除月度运行实例', confirmText: '删除', tone: 'danger' }))) return;
+  await api(`/api/monthly-runs/instances/${id}`, { method: 'DELETE' });
   await renderMonthlyPage('');
-}
-
-async function openFileModal(planId: number) {
-  await openMonthlyRunPlan(planId);
-}
-
-function renderSourceTables() {
-  if (!currentFileList) return;
-  el('fixedValueBody').innerHTML = currentFileList.fixedValues
-    .map(
-      (item) => `
-      <tr>
-        <td style="text-align:left;">${escapeHtml(item.item)}</td>
-        <td style="text-align:left;">${escapeHtml(item.note || '-')}</td>
-        <td class="col-number">${formatNumber(item.value)}</td>
-        <td>${renderUsedValue(item.used)}</td>
-        <td><a href="javascript:void(0)" class="source-edit-link" data-table="fixed" data-id="${item.id}">edit</a></td>
-      </tr>`,
-    )
-    .join('');
-
-  el('shareworksBody').innerHTML = currentFileList.shareworksData.map((item) => sourceMetricRow(item, 'shareworks')).join('');
-  el('futuBody').innerHTML = currentFileList.futuData.map((item) => sourceMetricRow(item, 'futu')).join('');
-
-  document.querySelectorAll<HTMLElement>('.source-edit-link').forEach((link) => {
-    link.addEventListener('click', () => void editMetric(Number(link.dataset.id)));
-  });
-  document.querySelectorAll<HTMLElement>('.source-upload-btn').forEach((button) => {
-    button.addEventListener('click', () => void uploadMetricFile(button.dataset.table ?? 'unknown', Number(button.dataset.id)));
-  });
-  document.querySelectorAll<HTMLElement>('.source-file-delete').forEach((button) => {
-    button.addEventListener('click', () => void clearMetricFile(Number(button.dataset.id)));
-  });
-  document.querySelectorAll<HTMLElement>('.source-file-link[data-product-file-id]').forEach((link) => {
-    link.addEventListener('click', (event) => {
-      event.preventDefault();
-      void navigateToProductFile(Number(link.dataset.productFileId));
-    });
-  });
-}
-
-function sourceMetricRow(item: SourceChecklist['shareworksData'][number], table: 'shareworks' | 'futu'): string {
-  const isMissingFile = !item.uploadedFile || item.uploadedFile === 'Not uploaded';
-  const hasUnboundFile = !isMissingFile && !item.productFileId;
-  const hasInputIssue = item.isRequired === 'Required' && (isMissingFile || hasUnboundFile);
-  const required = !item.isRequired
-    ? '<span class="source-empty-value">-</span>'
-    : item.isRequired === 'Required'
-      ? '<span class="source-required-badge">Required</span>'
-      : '<span class="source-optional-badge">Optional</span>';
-  const uploaded =
-    isMissingFile
-      ? `<span class="source-not-uploaded">Not uploaded</span> ${item.fileName ? `<button class="source-upload-btn" data-table="${table}" data-id="${item.id}">Upload</button>` : ''}`
-      : `<div class="source-file-actions">${
-          item.productFileId
-            ? `<a href="/files?fileId=${item.productFileId}" class="source-file-link" data-product-file-id="${item.productFileId}" title="${escapeHtml(item.uploadedFile)}">${escapeHtml(item.uploadedFile)}</a>`
-            : `<span class="source-file-link source-file-link--unbound" title="${escapeHtml(item.uploadedFile)}">${escapeHtml(item.uploadedFile)}</span><span class="source-file-warning">未绑定</span>`
-        }<button class="source-file-delete" data-id="${item.id}" title="Delete file">&times;</button></div>`;
-  return `<tr class="${hasInputIssue ? 'source-row--issue' : ''}">
-    <td style="text-align:left;${item.fileName ? ' font-weight:600;' : ''}">${escapeHtml(item.fileName)}</td>
-    <td>${renderUsedValue(item.used)}</td>
-    <td>${required}</td>
-    <td>${uploaded}</td>
-  </tr>`;
 }
 
 function renderUsedValue(used: boolean): string {
   return used ? '<span class="source-used source-used--true">true</span>' : '<span class="source-used source-used--false">false</span>';
 }
 
-async function editMetric(metricId: number) {
-  if (!metricId) return;
-  const current = findMetric(metricId);
-  const next = prompt('Enter new value:', current?.value === null || current?.value === undefined ? '' : String(current.value));
-  if (next === null) return;
-  const value = Number(next);
-  if (!Number.isFinite(value)) {
-    notify('请输入有效数字', { type: 'warning' });
-    return;
-  }
-  await api(`/api/source-metrics/${metricId}`, { method: 'PATCH', body: JSON.stringify({ value, status: 'pass' }) });
-  if (currentPlan) {
-    currentFileList = await api<SourceChecklist>(`/api/update-plans/${currentPlan.id}/checklist`);
-    renderSourceTables();
-  }
-}
-
-function findMetric(id: number) {
-  if (!currentFileList) return undefined;
-  return [...currentFileList.fixedValues, ...currentFileList.shareworksData, ...currentFileList.futuData].find((item) => item.id === id);
-}
-
-async function uploadMetricFile(sourceGroup: string, metricId: number) {
-  if (!currentPlan || !metricId) return;
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.xlsx,.xls,.csv';
-  input.addEventListener('change', async () => {
-    const file = input.files?.[0];
-    if (!file) return;
-    const form = new FormData();
-    form.append('sourceGroup', sourceGroup);
-    form.append('metricId', String(metricId));
-    form.append('file', file);
-    await api(`/api/update-plans/${currentPlan?.id}/source-files`, { method: 'POST', body: form });
-    currentFileList = await api<SourceChecklist>(`/api/update-plans/${currentPlan?.id}/checklist`);
-    renderSourceTables();
-  });
-  input.click();
-}
-
-async function clearMetricFile(metricId: number) {
-  await api(`/api/source-metrics/${metricId}`, { method: 'PATCH', body: JSON.stringify({ uploadedFile: 'Not uploaded', status: '' }) });
-  if (currentPlan) {
-    currentFileList = await api<SourceChecklist>(`/api/update-plans/${currentPlan.id}/checklist`);
-    renderSourceTables();
-  }
-}
-
-async function skipWarnings() {
-  if (!currentFileList || !currentPlan) return;
-  const warningIds = [...currentFileList.shareworksData, ...currentFileList.futuData].filter((item) => item.status === 'warning' && item.id).map((item) => item.id);
-  await Promise.all(warningIds.map((id) => api(`/api/source-metrics/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'pass' }) })));
-  currentFileList = await api<SourceChecklist>(`/api/update-plans/${currentPlan.id}/checklist`);
-  renderSourceTables();
-}
-
-async function confirmUpdate() {
-  if (!currentPlan || !currentFileList) return;
-  const rows = [...currentFileList.shareworksData, ...currentFileList.futuData].filter((item) => item.status);
-  const passCount = rows.filter((item) => item.status === 'pass').length;
-  if (!(await confirmAction(`共 ${rows.length} 个数据项，${passCount} 个检查通过。\n确认无误，开始执行数据更新？`, { title: '执行数据更新', confirmText: '开始执行' }))) return;
-  await api(`/api/update-plans/${currentPlan.id}/generate-snapshot`, { method: 'POST' });
-  await loadMonthlyRunInputs(currentPlan.id);
-  await renderMonthlyPage('');
-  await renderSummaryPage(currentMonth);
-}
-
 async function initHoldingsPage() {
   await renderHoldingsPage(currentMonth);
   el('btnSearchHoldings').addEventListener('click', searchHoldingsPage);
+  el('btnHoldingsFirstPage').addEventListener('click', () => goToHoldingsPage('first'));
   el('btnHoldingsPrevPage').addEventListener('click', () => changeHoldingsPage(-1));
   el('btnHoldingsNextPage').addEventListener('click', () => changeHoldingsPage(1));
+  el('btnHoldingsLastPage').addEventListener('click', () => goToHoldingsPage('last'));
+  el<HTMLSelectElement>('holdingsPageSizeSelect').addEventListener('change', (event) =>
+    changeHoldingsPageSize(Number((event.target as HTMLSelectElement).value)),
+  );
   document.querySelectorAll<HTMLButtonElement>('[data-grant-view]').forEach((button) => {
     button.addEventListener('click', () => {
       const view = button.dataset.grantView as GrantView;
@@ -1084,8 +969,13 @@ async function initExercisePage() {
   el('searchExercises').addEventListener('keydown', (event) => {
     if ((event as KeyboardEvent).key === 'Enter') searchExercises();
   });
+  el('btnExercisesFirstPage').addEventListener('click', () => goToExercisePage('first'));
   el('btnExercisesPrevPage').addEventListener('click', () => changeExercisePage(-1));
   el('btnExercisesNextPage').addEventListener('click', () => changeExercisePage(1));
+  el('btnExercisesLastPage').addEventListener('click', () => goToExercisePage('last'));
+  el<HTMLSelectElement>('exercisePageSizeSelect').addEventListener('change', (event) =>
+    changeExercisePageSize(Number((event.target as HTMLSelectElement).value)),
+  );
 }
 
 async function initSoldSharesPage() {
@@ -1095,11 +985,20 @@ async function initSoldSharesPage() {
   el('searchSoldShares').addEventListener('keydown', (event) => {
     if ((event as KeyboardEvent).key === 'Enter') searchSoldShares();
   });
+  el('btnSoldSharesFirstPage').addEventListener('click', () => goToSoldSharesPage('first'));
   el('btnSoldSharesPrevPage').addEventListener('click', () => changeSoldSharesPage(-1));
   el('btnSoldSharesNextPage').addEventListener('click', () => changeSoldSharesPage(1));
+  el('btnSoldSharesLastPage').addEventListener('click', () => goToSoldSharesPage('last'));
+  el<HTMLSelectElement>('soldSharesPageSizeSelect').addEventListener('change', (event) =>
+    changeSoldSharesPageSize(Number((event.target as HTMLSelectElement).value)),
+  );
 }
 
 async function initTransferPlanPage() {
+  el('btnToggleTransferPlanTableView').addEventListener('click', () => {
+    transferPlanTableView = transferPlanTableView === 'summaryRows' ? 'periodRows' : 'summaryRows';
+    void renderTransferPlan();
+  });
   el('btnImportTransferPlan').addEventListener('click', () => {
     el<HTMLInputElement>('transferPlanFileInput').click();
   });
@@ -1114,6 +1013,10 @@ async function initTransferPlanPage() {
 
 async function initEmployeesPage() {
   el('btnSearchEmployeesPage').addEventListener('click', searchEmployeesPage);
+  el<HTMLSelectElement>('filterEmployeesPageSource').addEventListener('change', (event) => {
+    employeesSourceFilter = (event.target as HTMLSelectElement).value as EmployeeSourceFilter;
+    searchEmployeesPage();
+  });
   el('btnAddEmployeesPage').addEventListener('click', () => openEmployeesPageModal());
   el('btnSubmitEmployeesPage').addEventListener('click', () => void submitEmployeesPage());
   el('btnSubmitEmployeesMerge').addEventListener('click', () => void submitEmployeesMerge());
@@ -1227,8 +1130,10 @@ function renderHoldingsPagination(page: number, totalPages: number, total: numbe
   const end = Math.min(page * holdingsPageSize, total);
   el('holdingsPaginationSummary').textContent = total === 0 ? '0 records' : `Showing ${start}-${end} of ${total} records`;
   el('holdingsPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
+  el<HTMLButtonElement>('btnHoldingsFirstPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnHoldingsPrevPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnHoldingsNextPage').disabled = total === 0 || page >= totalPages;
+  el<HTMLButtonElement>('btnHoldingsLastPage').disabled = total === 0 || page >= totalPages;
 }
 
 function renderEmployeesPagination(page: number, totalPages: number, total: number) {
@@ -1247,8 +1152,10 @@ function renderExercisePagination(page: number, totalPages: number, total: numbe
   const end = Math.min(page * exercisePageSize, total);
   el('exercisePaginationSummary').textContent = total === 0 ? '0 records' : `Showing ${start}-${end} of ${total} records`;
   el('exercisePaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
+  el<HTMLButtonElement>('btnExercisesFirstPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnExercisesPrevPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnExercisesNextPage').disabled = total === 0 || page >= totalPages;
+  el<HTMLButtonElement>('btnExercisesLastPage').disabled = total === 0 || page >= totalPages;
 }
 
 function renderSoldSharesPagination(page: number, totalPages: number, total: number) {
@@ -1257,8 +1164,10 @@ function renderSoldSharesPagination(page: number, totalPages: number, total: num
   el('soldSharesPaginationSummary').textContent =
     total === 0 ? '0 records' : `Showing ${start}-${end} of ${total} records`;
   el('soldSharesPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
+  el<HTMLButtonElement>('btnSoldSharesFirstPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnSoldSharesPrevPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnSoldSharesNextPage').disabled = total === 0 || page >= totalPages;
+  el<HTMLButtonElement>('btnSoldSharesLastPage').disabled = total === 0 || page >= totalPages;
 }
 
 function searchHoldingsPage() {
@@ -1279,6 +1188,21 @@ function changeExercisePage(delta: number) {
   void renderExerciseRecords();
 }
 
+function goToExercisePage(target: 'first' | 'last') {
+  const maxPage = Math.max(1, Math.ceil(exerciseTotal / exercisePageSize));
+  const nextPage = target === 'first' ? 1 : maxPage;
+  if (nextPage === exercisePage) return;
+  exercisePage = nextPage;
+  void renderExerciseRecords();
+}
+
+function changeExercisePageSize(size: number) {
+  if (size === exercisePageSize) return;
+  exercisePageSize = size;
+  exercisePage = 1;
+  void renderExerciseRecords();
+}
+
 function searchSoldShares() {
   soldSharesPage = 1;
   void renderSoldShares();
@@ -1289,6 +1213,21 @@ function changeSoldSharesPage(delta: number) {
   const nextPage = Math.min(Math.max(1, soldSharesPage + delta), maxPage);
   if (nextPage === soldSharesPage) return;
   soldSharesPage = nextPage;
+  void renderSoldShares();
+}
+
+function goToSoldSharesPage(target: 'first' | 'last') {
+  const maxPage = Math.max(1, Math.ceil(soldSharesTotal / soldSharesPageSize));
+  const nextPage = target === 'first' ? 1 : maxPage;
+  if (nextPage === soldSharesPage) return;
+  soldSharesPage = nextPage;
+  void renderSoldShares();
+}
+
+function changeSoldSharesPageSize(size: number) {
+  if (size === soldSharesPageSize) return;
+  soldSharesPageSize = size;
+  soldSharesPage = 1;
   void renderSoldShares();
 }
 
@@ -1318,6 +1257,21 @@ function changeHoldingsPage(delta: number) {
   const nextPage = Math.min(Math.max(1, currentPage + delta), maxPage);
   if (nextPage === currentPage) return;
   holdingsPage = nextPage;
+  void renderHoldingsPage(currentMonth);
+}
+
+function goToHoldingsPage(target: 'first' | 'last') {
+  const maxPage = Math.max(1, Math.ceil(holdingsTotal / holdingsPageSize));
+  const nextPage = target === 'first' ? 1 : maxPage;
+  if (nextPage === holdingsPage) return;
+  holdingsPage = nextPage;
+  void renderHoldingsPage(currentMonth);
+}
+
+function changeHoldingsPageSize(size: number) {
+  if (size === holdingsPageSize) return;
+  holdingsPageSize = size;
+  holdingsPage = 1;
   void renderHoldingsPage(currentMonth);
 }
 
@@ -1385,7 +1339,7 @@ async function renderHoldingsPage(month: string) {
   renderHoldingsPagination(data.page, data.totalPages, data.total);
   const tbody = el('holdingsBody');
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="34" class="table-empty-cell">No matching records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="34" class="table-empty-cell">暂无符合条件的持仓记录</td></tr>';
     return;
   }
   tbody.innerHTML = items
@@ -1434,7 +1388,7 @@ async function renderHoldingsPage(month: string) {
 function renderShareworksGrants(items: ShareworksGrant[], data: PaginatedResult<ShareworksGrant>) {
   const tbody = el('shareworksGrantBody');
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="31" class="table-empty-cell">No matching Shareworks records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="31" class="table-empty-cell">暂无符合条件的 Shareworks 记录</td></tr>';
     return;
   }
   tbody.innerHTML = items
@@ -1480,7 +1434,7 @@ function renderShareworksGrants(items: ShareworksGrant[], data: PaginatedResult<
 function renderMergedGrants(items: MergedGrant[], data: PaginatedResult<MergedGrant>) {
   const tbody = el('mergedGrantBody');
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="18" class="table-empty-cell">No matching merged records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="18" class="table-empty-cell">暂无符合条件的合并记录</td></tr>';
     return;
   }
   tbody.innerHTML = items
@@ -1523,7 +1477,7 @@ async function renderExerciseRecords() {
 
   const tbody = el('exerciseBody');
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="14" class="table-empty-cell">No matching exercise records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" class="table-empty-cell">暂无符合条件的行权记录</td></tr>';
     return;
   }
   tbody.innerHTML = items
@@ -1567,7 +1521,7 @@ async function renderSoldShares() {
 
   const tbody = el('soldSharesBody');
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="20" class="table-empty-cell">No matching sold-share records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="20" class="table-empty-cell">暂无符合条件的出售记录</td></tr>';
     return;
   }
   tbody.innerHTML = items
@@ -1608,43 +1562,13 @@ async function renderTransferPlan() {
   el('transferPlanTransferred').textContent = formatNumber(data.totals.transferToFutu);
   el('transferPlanDetailCount').textContent = formatNumber(data.detailCount);
 
-  el('transferPlanSummaryHead').innerHTML = `
-    <tr>
-      <th>Summary</th>
-      ${data.items.map((item) => `<th>${escapeHtml(item.period)}</th>`).join('')}
-      <th>Total</th>
-    </tr>`;
-  el('transferPlanSummaryBody').innerHTML = `
-    <tr>
-      <th>In total</th>
-      ${data.items.map((item) => `<td>${formatNumber(item.inTotal)}</td>`).join('')}
-      <td class="transfer-plan-total">${formatNumber(data.totals.inTotal)}</td>
-    </tr>
-    <tr class="transfer-plan-cancelled-row">
-      <th>Options cancelled/forfeited</th>
-      ${data.items
-        .map(
-          (item) => `
-            <td>
-              <input
-                class="transfer-plan-cancel-input${item.manuallyEdited ? ' is-edited' : ''}"
-                type="number"
-                step="1"
-                value="${item.cancelledQuantity}"
-                data-transfer-cancelled-id="${item.id}"
-                aria-label="${escapeHtml(item.period)} cancelled quantity"
-                title="Source value: ${item.sourceCancelled}"
-              >
-            </td>`,
-        )
-        .join('')}
-      <td class="transfer-plan-total">${formatNumber(data.totals.cancelledQuantity)}</td>
-    </tr>
-    <tr class="transfer-plan-result-row">
-      <th>Transfer to Futu</th>
-      ${data.items.map((item) => `<td>${formatNumber(item.transferToFutu)}</td>`).join('')}
-      <td class="transfer-plan-total">${formatNumber(data.totals.transferToFutu)}</td>
-    </tr>`;
+  const table = renderTransferPlanSummaryTable(data, transferPlanTableView, { escapeHtml, formatNumber });
+  el('transferPlanSummaryHead').innerHTML = table.headHtml;
+  el('transferPlanSummaryBody').innerHTML = table.bodyHtml;
+  el('transferPlanSummaryTable').classList.toggle('table-transfer-plan--transposed', transferPlanTableView === 'periodRows');
+  const toggleButton = el<HTMLButtonElement>('btnToggleTransferPlanTableView');
+  toggleButton.textContent = transferPlanTableView === 'summaryRows' ? '转置表格' : '恢复横向';
+  toggleButton.setAttribute('aria-pressed', String(transferPlanTableView === 'periodRows'));
 }
 
 async function updateTransferPlanCancellation(input: HTMLInputElement) {
@@ -1698,9 +1622,15 @@ function exportTransferPlanWorkbook() {
 async function loadEmployeesPage() {
   const query = el<HTMLInputElement>('searchEmployeesPage').value.trim();
   const tag = el<HTMLInputElement>('filterEmployeesPageTag').value.trim();
-  const sortParam = employeesSort.by ? `&sort=${employeesSort.by}&dir=${employeesSort.dir}` : '';
   const data = await api<PaginatedResult<Employee>>(
-    `/api/employees?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}&page=${employeesPage}&pageSize=${employeesPageSize}${sortParam}`,
+    buildEmployeesApiUrl({
+      query,
+      tag,
+      source: employeesSourceFilter,
+      page: employeesPage,
+      pageSize: employeesPageSize,
+      sort: employeesSort,
+    }),
   );
   employees = data.items ?? [];
   employeesPage = data.page;
@@ -1730,7 +1660,7 @@ function toggleEmployeesSort(by: 'name' | 'empNo') {
 function renderEmployeesPageTable() {
   if (employees.length === 0) {
     el('employeesPageBody').innerHTML =
-      '<tr><td colspan="8" class="table-empty-cell">No matching employees found</td></tr>';
+      '<tr><td colspan="8" class="table-empty-cell">暂无符合条件的员工</td></tr>';
     return;
   }
   el('employeesPageBody').innerHTML = employees
@@ -1868,7 +1798,7 @@ async function renderPlanSummaryPage() {
   el('planSummaryOutstanding').textContent = formatNumber(data.totals.outstanding);
 
   if (data.items.length === 0) {
-    el('planSummaryBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">No plan summary data found</td></tr>';
+    el('planSummaryBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无计划汇总数据</td></tr>';
     return;
   }
 
@@ -1902,7 +1832,7 @@ async function renderFivePercentHoldersPage() {
 
   if (data.items.length === 0) {
     el('fivePercentHoldersBody').innerHTML =
-      '<tr><td colspan="6" class="table-empty-cell">No 5% holder records found.</td></tr>';
+      '<tr><td colspan="6" class="table-empty-cell">暂无 5% 股东记录</td></tr>';
     return;
   }
 
@@ -1926,7 +1856,7 @@ async function renderFivePercentHoldersPage() {
 async function renderFixedValuePage() {
   const data = await api<{ items: FixedValueRecord[] }>('/api/fixed-values');
   if (data.items.length === 0) {
-    el('fixedValuePageBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">No fixed values configured</td></tr>';
+    el('fixedValuePageBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无固定参数配置</td></tr>';
     return;
   }
 

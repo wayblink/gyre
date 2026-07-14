@@ -13,10 +13,19 @@ test('employee-import workflow wires extract → normalize → union → db.upse
   const byId = new Map(def.tasks.map((task) => [task.id, task]));
   assert.deepEqual(
     def.tasks.map((task) => task.operatorCode),
-    ['sheet.range.extract', 'sheet.range.extract', 'sql.compute', 'sql.compute', 'dataframe.union', 'db.upsert'],
+    ['sheet.range.extract', 'sheet.range.extract', 'sql.compute', 'sql.compute', 'sql.compute', 'dataframe.union', 'db.upsert'],
   );
 
+  const filter = byId.get('filter_shareworks_employee_rows');
+  assert.equal(filter?.operatorCode, 'sql.compute');
+  assert.equal(filter?.inputs.input1.from, 'extract_shareworks');
+  assert.match(String(filter?.params.sql ?? ''), /Last Name/);
+  assert.match(String(filter?.params.sql ?? ''), /Subplan/i);
+
   // union pulls from both normalize steps
+  const shareworksNormalize = byId.get('normalize_shareworks_employees');
+  assert.equal(shareworksNormalize?.inputs.input1.from, 'filter_shareworks_employee_rows');
+
   const union = byId.get('union_employees');
   assert.equal(union?.inputs.input1.from, 'normalize_futu_employees');
   assert.equal(union?.inputs.input2.from, 'normalize_shareworks_employees');
@@ -33,5 +42,5 @@ test('employee-import workflow derives fileRefs runtime params for both sources'
   const fileRefs = def.runtimeParamsSchema.fileRefs;
   assert.equal(fileRefs?.type, 'object');
   assert.equal(fileRefs?.properties?.futu_grants?.type, 'object');
-  assert.equal(fileRefs?.properties?.shareworks?.type, 'object');
+  assert.equal(fileRefs?.properties?.shareworks_grants?.type, 'object');
 });

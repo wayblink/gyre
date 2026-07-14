@@ -4,6 +4,7 @@ import type { WorkflowRunArtifactRecord, WorkflowRunRecord, WorkflowTask } from 
 import {
   applyMonthlyRunPostProcessing,
   createMonthlyRunHistory,
+  deleteMonthlyRunHistory,
   getMonthlyRun,
   planStatusForWorkflowRunStatus,
   toMonthlyRunHistoryRecord,
@@ -177,6 +178,7 @@ class FakeMonthlyDb {
       });
       return;
     }
+    if (/update monthly_run_instances/i.test(sql)) return;
     throw new Error(`Unexpected execute: ${sql}`);
   }
 }
@@ -328,4 +330,86 @@ test('applyMonthlyRunPostProcessing ignores non-monthly workflow runs', async ()
 
   assert.deepEqual(db.monthUpdates, []);
   assert.deepEqual(db.historyUpdates, []);
+});
+
+test('deleteMonthlyRunHistory removes the output file and falls back to the previous successful output', async () => {
+  const executed: Array<{ sql: string; params: unknown[] }> = [];
+  const removedPaths: string[] = [];
+  const db = {
+    async query() {
+      return [];
+    },
+    async queryOne<T>(sql: string): Promise<T | undefined> {
+      if (/where h\.id = \$1/i.test(sql)) {
+        return {
+          id: 7,
+          month_id: 11,
+          month_key: '2026-06',
+          workflow_run_id: 207,
+          status: 'completed',
+          produced_file_id: 88,
+          produced_file_path: 'product/2026-06/latest.xlsx',
+          produced_file_name: 'latest.xlsx',
+        } as T;
+      }
+      if (/h\.id <> \$2/i.test(sql) && /produced_file_id is not null/i.test(sql)) {
+        return {
+          workflow_run_id: 206,
+          status: 'completed_with_warnings',
+          produced_file_id: 77,
+          produced_sheet_name: 'Capitalization Summary',
+          finished_at: new Date('2026-07-12T10:00:00.000Z'),
+        } as T;
+      }
+      if (/select h\.id from monthly_run_history/i.test(sql)) return undefined;
+      throw new Error(`Unexpected queryOne: ${sql}`);
+    },
+    async execute(sql: string, params: unknown[]): Promise<void> {
+      executed.push({ sql, params });
+    },
+  };
+
+  const result = await deleteMonthlyRunHistory(db, 7, async (filePath) => {
+    removedPaths.push(filePath);
+  });
+
+  assert.deepEqual(result, {
+    historyId: 7,
+    deletedOutputFileId: 88,
+    deletedOutputFileName: 'latest.xlsx',
+    fallbackOutputFileId: 77,
+  });
+  assert.deepEqual(removedPaths, ['product/2026-06/latest.xlsx']);
+  assert.ok(executed.some((call) => /delete from monthly_run_history/i.test(call.sql) && call.params[0] === 7));
+  assert.ok(executed.some((call) => /update months/i.test(call.sql) && call.params[0] === 77 && call.params[2] === 11));
+  assert.ok(executed.some((call) => /update monthly_run_instances/i.test(call.sql) && call.params[2] === 77));
+  assert.ok(executed.some((call) => /delete from product_files/i.test(call.sql) && call.params[0] === 88));
+});
+
+test('deleteMonthlyRunHistory rejects a running record before deleting anything', async () => {
+  const db = {
+    async query() {
+      return [];
+    },
+    async queryOne<T>(): Promise<T | undefined> {
+      return {
+        id: 8,
+        month_id: 11,
+        month_key: '2026-06',
+        workflow_run_id: 208,
+        status: 'running',
+        produced_file_id: null,
+        produced_file_path: null,
+        produced_file_name: null,
+      } as T;
+    },
+    async execute(): Promise<void> {
+      assert.fail('running history must not be deleted');
+    },
+  };
+
+  await assert.rejects(
+    () => deleteMonthlyRunHistory(db, 8, async () => assert.fail('running history must not remove files')),
+    /运行中或待审批的历史不能删除/,
+  );
 });

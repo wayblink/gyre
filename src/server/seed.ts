@@ -9,8 +9,14 @@ import {
   createDbEmployeeStore,
   upsertEmployeeByEmployeeId,
 } from './employees.js';
+import {
+  parseFivePercentHoldersGrid,
+  replaceFivePercentHolders,
+  type FivePercentHoldersWorkbook,
+} from './fivePercentHolders/persistence.js';
 import { buildMonthlyWorkflowSeedDefinition } from './monthlyRun/workflowDefinition.js';
-import { buildEmployeeImportWorkflowSeedDefinition } from './workflow/employeeImportWorkflow.js';
+import { buildEsopPageWorkflowSeedDefinitions } from './esopWorkflow/workflowDefinitions.js';
+import { buildDataManagementWorkflowSeedDefinitions } from './dataManagementWorkflow/workflowDefinitions.js';
 import { workflowOperatorDefinitions } from './workflow/operators/registry.js';
 import { deriveWorkflowRuntimeConfigFromTasks } from './workflow/runtimeParameterRequirements.js';
 import type { WorkflowRuntimeParameters, WorkflowRuntimeParametersSchema, WorkflowTask } from '../shared/types.js';
@@ -177,85 +183,13 @@ export function loadShareworksGrantWorkbook(): GrantSheetRow[] {
     .filter((row) => asText(row['Employee Grant Number']));
 }
 
-export type FivePercentHolderRow = {
-  rowType: 'holder' | 'total';
-  name: string;
-  commonStock: number | null;
-  totalCses: number | null;
-  pctOfClass: number | null;
-  pctFullyDiluted: number | null;
-  sc13Filing: string | null;
-  note: string | null;
-};
-
-export type FivePercentHoldersWorkbook = {
-  asOfDate: string | null;
-  fullyDiluted: number | null;
-  commonStockOs: number | null;
-  holders: FivePercentHolderRow[];
-};
-
-function parseGroupedNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const text = String(value).replace(/,/g, '').trim();
-  if (!text) return null;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parsePercent(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const text = String(value).replace(/%/g, '').trim();
-  if (!text) return null;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed / 100 : null;
-}
-
 export function loadFivePercentHoldersWorkbook(): FivePercentHoldersWorkbook {
   const workbookPath = path.join(config.rootDir, 'database', '!!Gyre Cap Table 05.31.26【新】.xlsx');
   const workbook = XLSX.readFile(workbookPath);
   const sheet = workbook.Sheets['5% Holders'];
   if (!sheet) throw new Error(`Missing 5% Holders sheet in ${workbookPath}`);
   const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: false });
-
-  const cell = (row: number, col: number): string | null => asText((grid[row] ?? [])[col]);
-  const findRow = (col: number, needle: string): number =>
-    grid.findIndex((row) => (asText((row ?? [])[col]) ?? '').toLowerCase().includes(needle.toLowerCase()));
-
-  const edgarRow = findRow(0, 'edgar');
-  const fullyDilutedRow = grid.findIndex((row) => (asText((row ?? [])[1]) ?? '').toLowerCase().includes('fully diluted'));
-  const commonOsRow = grid.findIndex((row) => (asText((row ?? [])[1]) ?? '').toLowerCase().includes('common stock os'));
-  const headerRow = findRow(0, 'shareholder');
-
-  const holders: FivePercentHolderRow[] = [];
-  if (headerRow >= 0) {
-    for (let i = headerRow + 1; i < grid.length; i += 1) {
-      const name = cell(i, 0);
-      if (!name) continue;
-      if (name.startsWith('*')) break; // footnotes begin
-      if (name.toLowerCase().includes('5% holders')) continue; // section label
-      const commonStock = parseGroupedNumber((grid[i] ?? [])[1]);
-      const totalCses = parseGroupedNumber((grid[i] ?? [])[2]);
-      if (commonStock === null && totalCses === null) break; // past the table
-      holders.push({
-        rowType: name.toLowerCase().startsWith('total') ? 'total' : 'holder',
-        name,
-        commonStock,
-        totalCses,
-        pctOfClass: parsePercent((grid[i] ?? [])[3]),
-        pctFullyDiluted: parsePercent((grid[i] ?? [])[4]),
-        sc13Filing: cell(i, 5),
-        note: cell(i, 6),
-      });
-    }
-  }
-
-  return {
-    asOfDate: edgarRow >= 0 ? cell(edgarRow, 1) : null,
-    fullyDiluted: fullyDilutedRow >= 0 ? parseGroupedNumber((grid[fullyDilutedRow] ?? [])[0]) : null,
-    commonStockOs: commonOsRow >= 0 ? parseGroupedNumber((grid[commonOsRow] ?? [])[0]) : null,
-    holders,
-  };
+  return parseFivePercentHoldersGrid(grid);
 }
 
 function workbookNumber(value: unknown, column: string): number {
@@ -861,34 +795,7 @@ async function seedShareworksGrantData(db: DbClient) {
 
 async function seedFivePercentHolders(db: DbClient) {
   const data = loadFivePercentHoldersWorkbook();
-  await db.execute('delete from five_percent_holders');
-  // A single summary row carries the sheet's header context (as-of, fully diluted, common OS).
-  await db.execute(
-    `insert into five_percent_holders (row_type, name, sort_order, raw_json)
-     values ('summary', '', -1, $1::jsonb)`,
-    [JSON.stringify({ asOfDate: data.asOfDate, fullyDiluted: data.fullyDiluted, commonStockOs: data.commonStockOs })],
-  );
-  let sortOrder = 0;
-  for (const holder of data.holders) {
-    await db.execute(
-      `insert into five_percent_holders (
-        row_type, name, common_stock, total_cses, pct_of_class, pct_fully_diluted, sc13_filing, note, sort_order, raw_json
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
-      [
-        holder.rowType,
-        holder.name,
-        holder.commonStock,
-        holder.totalCses,
-        holder.pctOfClass,
-        holder.pctFullyDiluted,
-        holder.sc13Filing,
-        holder.note,
-        sortOrder,
-        JSON.stringify(holder),
-      ],
-    );
-    sortOrder += 1;
-  }
+  await replaceFivePercentHolders(db, data);
 }
 
 async function seedExerciseData(db: DbClient) {
@@ -1130,61 +1037,6 @@ type WorkflowSeedDefinition = {
   runtimeParamsDefaults: WorkflowRuntimeParameters;
 };
 
-export function buildDefaultWorkflowSeedDefinition(): WorkflowSeedDefinition {
-  const tasks: WorkflowTask[] = [
-    {
-      id: 'task_extract_range',
-      name: 'Extract Excel Range',
-      operatorCode: 'sheet.range.extract',
-      operatorVersion: '1.0.0',
-      description: '选择文件、Sheet 与范围，提取通用 dataframe 数据。',
-      x: 48,
-      y: 48,
-      params: {
-        fileRef: { $fromRuntime: 'fileRefs.source' },
-        sheetName: 'Detailed Cap Table',
-        range: 'A1:Z50',
-        headerRow: 1,
-      },
-      inputs: {},
-      dependsOn: [],
-    },
-    {
-      id: 'task_sql_compute',
-      name: 'Compute SQL',
-      operatorCode: 'sql.compute',
-      operatorVersion: '1.0.0',
-      description: '对上游 dataframe 执行 SQL 计算。',
-      x: 360,
-      y: 48,
-      params: {
-        sql: 'select count(*) as total_rows from {source}',
-        tableBindings: [{ tableName: 'source', inputSlot: 'source_input' }],
-      },
-      inputs: {
-        source_input: { from: 'task_extract_range', slot: 'dataframe' },
-      },
-      dependsOn: [],
-    },
-  ];
-  const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
-    tasks,
-    runtimeParamsSchema: {},
-    runtimeParamsDefaults: {},
-  });
-
-  return {
-    code: 'default-workflow',
-    name: 'Cap Table Import Flow',
-    description: '通用 Excel 提取与 SQL 计算工作流，支持基于文件、Sheet 和范围输出 dataframe，并在后续节点上执行 SQL。',
-    status: 'active',
-    version: 1,
-    tasks,
-    runtimeParamsSchema: runtimeConfig.runtimeParamsSchema,
-    runtimeParamsDefaults: runtimeConfig.runtimeParamsDefaults,
-  };
-}
-
 async function upsertWorkflowDefinition(db: DbClient, workflow: WorkflowSeedDefinition): Promise<void> {
   await db.execute(
     `insert into workflow_definitions (
@@ -1218,9 +1070,8 @@ async function seedWorkflowData(db: DbClient) {
   const operatorCodes = workflowOperatorDefinitions.map((operator) => `'${operator.code}'`).join(', ');
   await db.execute(`delete from workflow_operators where code not in (${operatorCodes})`);
   await db.execute(
-    `update workflow_definitions
-        set code = $2
-      where code = $1`,
+    `delete from workflow_definitions
+      where code in ($1, $2)`,
     ['captable-import', 'default-workflow'],
   );
   await db.execute(
@@ -1272,8 +1123,13 @@ async function seedWorkflowData(db: DbClient) {
     );
   }
 
-  await upsertWorkflowDefinition(db, buildDefaultWorkflowSeedDefinition());
-  await upsertWorkflowDefinition(db, buildEmployeeImportWorkflowSeedDefinition());
+  for (const workflow of buildDataManagementWorkflowSeedDefinitions()) {
+    await upsertWorkflowDefinition(db, workflow);
+  }
+
+  for (const workflow of buildEsopPageWorkflowSeedDefinitions()) {
+    await upsertWorkflowDefinition(db, workflow);
+  }
 
   await parameterizeMonthlyWorkflow(db);
 }
@@ -1282,7 +1138,13 @@ async function parameterizeMonthlyWorkflow(db: DbClient): Promise<void> {
   await upsertWorkflowDefinition(db, buildMonthlyWorkflowSeedDefinition());
 }
 
-export async function seedDatabase(db: AppDb) {
+export async function ensureWorkflowSeedData(db: AppDb) {
+  await db.transaction(async (client) => {
+    await seedWorkflowData(client);
+  });
+}
+
+export async function seedDemoBusinessData(db: AppDb) {
   const existing = await db.queryOne<{ count: string }>('select count(*)::text as count from months');
   if (Number(existing?.count ?? 0) > 0) {
     await db.transaction(async (client) => {
@@ -1291,7 +1153,6 @@ export async function seedDatabase(db: AppDb) {
       await seedExerciseData(client);
       await seedSoldSharesData(client);
       await seedTransferPlanData(client);
-      await seedWorkflowData(client);
     });
     return;
   }
@@ -1309,6 +1170,10 @@ export async function seedDatabase(db: AppDb) {
     await seedSoldSharesData(client);
     await seedTransferPlanData(client);
     await seedParametersAndDecisions(client, planIdMap.get(1));
-    await seedWorkflowData(client);
   });
+}
+
+export async function seedDatabase(db: AppDb) {
+  await ensureWorkflowSeedData(db);
+  await seedDemoBusinessData(db);
 }

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import { config } from './config.js';
 import { schemaSql } from './schema.js';
-import { seedDatabase } from './seed.js';
+import { ensureWorkflowSeedData, seedDemoBusinessData } from './seed.js';
 import { fileStorage } from './storage.js';
 
 export type Queryable = {
@@ -25,8 +25,11 @@ export class AppDb {
     fs.mkdirSync(config.productFileDir, { recursive: true });
     await fileStorage.init();
     await this.pool.query(schemaSql);
-    if (config.seedOnInit) {
-      await seedDatabase(this);
+    if (config.workflowSeedOnInit) {
+      await ensureWorkflowSeedData(this);
+    }
+    if (config.demoSeedOnInit) {
+      await seedDemoBusinessData(this);
     }
   }
 

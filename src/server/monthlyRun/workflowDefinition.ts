@@ -1,4 +1,5 @@
 import type {
+  MonthlyRunFixedValueDefinition,
   MonthlyRunSourceDefinition,
   WorkflowRuntimeParameters,
   WorkflowRuntimeParametersSchema,
@@ -9,6 +10,7 @@ import { deriveWorkflowRuntimeConfigFromTasks } from '../workflow/runtimeParamet
 
 export const MONTHLY_RUN_SOURCE_DEFINITIONS: MonthlyRunSourceDefinition[] = [
   {
+    sourceGroup: 'shareworks',
     sourceKey: 'control_book',
     taskId: 'extract_control_book',
     label: 'EQ Control Book',
@@ -17,6 +19,16 @@ export const MONTHLY_RUN_SOURCE_DEFINITIONS: MonthlyRunSourceDefinition[] = [
     required: true,
   },
   {
+    sourceGroup: 'shareworks',
+    sourceKey: 'summary_source',
+    taskId: 'extract_cap_table_summary',
+    label: 'Detailed Cap Table',
+    description: '用于读取 Capitalization Table (Summary View) 并对账 Summary 口径。',
+    defaultSheetName: 'Detailed Cap Table',
+    required: true,
+  },
+  {
+    sourceGroup: 'futu',
     sourceKey: 'futu_exercises',
     taskId: 'extract_futu_exercises',
     label: 'Futu BCI Exercises',
@@ -25,6 +37,7 @@ export const MONTHLY_RUN_SOURCE_DEFINITIONS: MonthlyRunSourceDefinition[] = [
     required: true,
   },
   {
+    sourceGroup: 'shareworks',
     sourceKey: 'option_plans',
     taskId: 'extract_option_plans',
     label: 'Option Plans Summary',
@@ -37,15 +50,33 @@ export const MONTHLY_RUN_SOURCE_DEFINITIONS: MonthlyRunSourceDefinition[] = [
 export const MONTHLY_WORKFLOW_NAME = 'Gyre Cap Table Summary';
 
 export const MONTHLY_WORKFLOW_DESCRIPTION =
-  '基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算草稿：从独立 EQ Control Book、Futu BCI Exercises、Option Plans Summary 源文件提取输入，并使用合并 cap table 的 Summary View 做测试期对账；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 的 1 股差异作为 warning 人工确认点。';
+  '基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算草稿：EQ Control Book、Detailed Cap Table、Futu BCI Exercises、Option Plans Summary 四个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 的 1 股差异作为 warning 人工确认点。';
 
 export const MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN = 4_156_815;
 export const MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN = 10_994;
+
+export const MONTHLY_RUN_FIXED_VALUE_DEFINITIONS: MonthlyRunFixedValueDefinition[] = [
+  {
+    key: 'optionsOutstandingCullgen',
+    label: 'Options Outstanding - Cullgen',
+    description: 'Cullgen outstanding options 固定口径。',
+    defaultValue: MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
+    required: true,
+  },
+  {
+    key: 'optionsAvailableCullgen',
+    label: 'Options Available - Cullgen',
+    description: 'Cullgen available options 固定口径。',
+    defaultValue: MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
+    required: true,
+  },
+];
+
 const MONTHLY_RUNTIME_FILE_REF_DEFAULTS = {
   control_book: { provider: 'product-files', id: 53 },
   futu_exercises: { provider: 'product-files', id: 54 },
   option_plans: { provider: 'product-files', id: 55 },
-  summary_source: { provider: 'product-files', id: 7 },
+  summary_source: { provider: 'product-files', id: 56 },
 } as const;
 
 export const MONTHLY_RUNTIME_PARAMS_SCHEMA: WorkflowRuntimeParametersSchema = {
@@ -56,7 +87,7 @@ export const MONTHLY_RUNTIME_PARAMS_SCHEMA: WorkflowRuntimeParametersSchema = {
       control_book: { type: 'object', label: 'EQ Control Book workbook' },
       futu_exercises: { type: 'object', label: 'Futu exercises workbook' },
       option_plans: { type: 'object', label: 'Option plans workbook' },
-      summary_source: { type: 'object', label: 'Merged summary source workbook' },
+      summary_source: { type: 'object', label: 'Detailed Cap Table workbook' },
     },
   },
   fixedValues: {
@@ -139,7 +170,7 @@ const optionPlansRuntimeFileRef = {
 const summarySourceRuntimeFileRef = {
   $fromRuntime: 'fileRefs.summary_source',
   $type: 'object',
-  $label: 'Merged summary source workbook',
+  $label: 'Detailed Cap Table workbook',
   $default: MONTHLY_RUNTIME_FILE_REF_DEFAULTS.summary_source,
 };
 
@@ -315,7 +346,7 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
         },
       },
       params: {
-        sql: "select\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  sum(case when [Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.') then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}",
+        sql: "select\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and [As of Date] > 0 order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  sum(case when [Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.') then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}",
         tableBindings: [{ inputSlot: 'control_book', tableName: 'control_book' }],
       },
       dependsOn: [],
@@ -349,7 +380,7 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
         },
       },
       params: {
-        sql: "select\n  max(case when [Capitalization Table (Summary View)] = 'BCI Shares Held by Futu' then [column_3] else null end) as bci_shares_held_by_futu,\n  max(case when [Capitalization Table (Summary View)] = '2025 BC Subplan shares transferred to Futu' then [column_3] else null end) as bc_subplan_transfer_summary,\n  max(case when [Capitalization Table (Summary View)] = 'Warrants for Convertible Preferred Stock' then [column_3] else null end) as warrants_for_convertible_preferred_stock,\n  max(case when [Capitalization Table (Summary View)] = 'Options Outstanding' then [column_3] else null end) as options_outstanding_gyre,\n  max(case when [Capitalization Table (Summary View)] = 'Options Available' then [column_3] else null end) as options_available_gyre,\n  max(case when [Capitalization Table (Summary View)] = 'Total Fully Diluted Shares Outstanding' then [column_3] else null end) as source_total_fully_diluted,\n  max(case when [Capitalization Table (Summary View)] = 'Equinity Outstanding as of:' then [column_5] else null end) as eom_eq_balance_os\nfrom {summary_source}",
+        sql: "select\n  max(case when [Capitalization Table (Summary View)] like 'BCI Shares Held by Futu%' then [column_3] else null end) as bci_shares_held_by_futu,\n  max(case when [Capitalization Table (Summary View)] like '2025 BC Subplan shares transferred to Futu%' then [column_3] else null end) as bc_subplan_transfer_summary,\n  max(case when [Capitalization Table (Summary View)] like 'Warrants for Convertible Preferred Stock%' then [column_3] else null end) as warrants_for_convertible_preferred_stock,\n  max(case when [Capitalization Table (Summary View)] like 'Options Outstanding- Gyre%' then [column_3] else null end) as options_outstanding_gyre,\n  max(case when [Capitalization Table (Summary View)] like 'Options Available- Gyre%' then [column_3] else null end) as options_available_gyre,\n  max(case when [Capitalization Table (Summary View)] like 'Total Fully Diluted Shares Outstanding%' then [column_3] else null end) as source_total_fully_diluted,\n  max(case when [Capitalization Table (Summary View)] like 'Equinity Outstanding as of:%' then [column_5] else null end) as eom_eq_balance_os\nfrom {summary_source}",
         tableBindings: [{ inputSlot: 'summary_source', tableName: 'summary_source' }],
       },
       dependsOn: [],
@@ -522,7 +553,7 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
         },
       },
       params: {
-        sql: 'select\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(s.bc_subplan_transfer_summary) as bc_subplan_transfer_summary,\n  max(s.warrants_for_convertible_preferred_stock) as warrants_for_convertible_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  max(s.source_total_fully_diluted) + {constants.optionsOutstandingCullgen} + {constants.optionsAvailableCullgen} as total_fully_diluted\nfrom {control_metrics} c, {summary_source} s',
+        sql: 'select\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(s.bc_subplan_transfer_summary) as bc_subplan_transfer_summary,\n  max(s.warrants_for_convertible_preferred_stock) as warrants_for_convertible_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  round(max(s.source_total_fully_diluted), 0) as total_fully_diluted\nfrom {control_metrics} c, {summary_source} s',
         tableBindings: [
           { inputSlot: 'control_metrics', tableName: 'control_metrics' },
           { inputSlot: 'summary_source', tableName: 'summary_source' },

@@ -14,14 +14,15 @@ ENV NODE_ENV=production \
     PORT=60628 \
     STORAGE_DRIVER=local \
     AUTH_DISABLED=true \
-    SEED_ON_INIT=true
+    WORKFLOW_SEED_ON_INIT=true \
+    DEMO_SEED_ON_INIT=false
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # Compiled server (dist/src/...) + bundled client (dist/client)
 COPY --from=build /app/dist ./dist
-# Demo workbooks read by the seeder; only needed when SEED_ON_INIT=true
+# Demo workbooks are only needed when DEMO_SEED_ON_INIT=true.
 COPY database ./database
 
 EXPOSE 60628

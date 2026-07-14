@@ -1,5 +1,8 @@
 import type {
+  MonthlyRunFixedValueDefinition,
   MonthlyRunHistoryRecord,
+  MonthlyRunInstanceRecord,
+  MonthlyRunInstanceUpsertRequest,
   MonthlyRunSourceConfigResponse,
   MonthlyRunSourceDefinition,
   MonthlyRunSourceBinding,
@@ -21,7 +24,6 @@ type MonthlyRunPageDeps = {
   formatDateTime: (value: string) => string;
   refreshProductFiles: () => Promise<unknown>;
   refreshSummary: (month: string) => Promise<unknown>;
-  getUpdatePlanId?: () => number | null;
   notify: NotifyFn;
   confirmAction: ConfirmActionFn;
   onMonthChanged?: (month: string) => void;
@@ -29,6 +31,16 @@ type MonthlyRunPageDeps = {
 };
 
 type SourceDraftBindings = Record<string, MonthlyRunSourceBinding | null>;
+
+export function retainAvailableSourceBindings(
+  bindings: Record<string, MonthlyRunSourceBinding>,
+  availableFiles: ReadonlyArray<Pick<ProductFileRecord, 'id'>>,
+): Record<string, MonthlyRunSourceBinding> {
+  if (availableFiles.length === 0) return bindings;
+  return Object.fromEntries(
+    Object.entries(bindings).filter(([, binding]) => availableFiles.some((file) => file.id === binding.fileId)),
+  );
+}
 
 function statusLabel(status: string): string {
   if (status === 'completed') return 'Completed';
@@ -69,7 +81,6 @@ export function createMonthlyRunPage({
   formatDateTime,
   refreshProductFiles,
   refreshSummary,
-  getUpdatePlanId,
   notify,
   confirmAction,
   onMonthChanged,
@@ -79,6 +90,8 @@ export function createMonthlyRunPage({
   let files: ProductFileRecord[] = [];
   let monthlyWorkflowCode = '';
   let sourceDefinitions: MonthlyRunSourceDefinition[] = [];
+  let fixedValueDefinitions: MonthlyRunFixedValueDefinition[] = [];
+  let currentInstance: MonthlyRunInstanceRecord | null = null;
   let selectedSources: Record<string, MonthlyRunSourceBinding> = {};
   let draftSources: SourceDraftBindings = {};
   let activeHistoryId: number | null = null;
@@ -101,12 +114,12 @@ export function createMonthlyRunPage({
       }
     });
     bindSourceModalEvents();
-    await Promise.all([refreshSourceConfig(), refreshFiles(), refreshHistory()]);
+    await Promise.all([refreshSourceConfig(), refreshFiles(), refreshInstance(), refreshHistory()]);
     renderRunPanel();
   }
 
   async function onActivate() {
-    await Promise.all([refreshSourceConfig(), refreshFiles(), refreshHistory()]);
+    await Promise.all([refreshSourceConfig(), refreshFiles(), refreshInstance(), refreshHistory()]);
     if (activeRun && !isWorkflowRunTerminalStatus(activeRun.status)) {
       await refreshActiveRun();
     }
@@ -133,8 +146,47 @@ export function createMonthlyRunPage({
     const data = await api<MonthlyRunSourceConfigResponse>('/api/monthly-runs/source-config');
     monthlyWorkflowCode = data.workflowCode;
     sourceDefinitions = data.sources;
+    fixedValueDefinitions = data.fixedValues;
     ensureSelectedSourceBindings();
     renderSourceInfo();
+    renderBusinessDefinedInputConfiguration();
+  }
+
+  async function refreshInstance() {
+    const month = el<HTMLInputElement>('monthlyRunMonth').value;
+    if (!month) {
+      currentInstance = null;
+      selectedSources = {};
+      renderSourceInfo();
+      renderBusinessDefinedInputConfiguration();
+      return;
+    }
+    const data = await api<{ instance: MonthlyRunInstanceRecord }>(`/api/monthly-runs/instance?month=${encodeURIComponent(month)}`);
+    currentInstance = data.instance;
+    selectedSources = Object.fromEntries(
+      Object.entries(data.instance.sources)
+        .filter(([, value]) => typeof value.fileId === 'number' && value.fileId > 0)
+        .map(([sourceKey, value]) => [sourceKey, { fileId: value.fileId as number }]),
+    );
+    renderSourceInfo();
+    renderBusinessDefinedInputConfiguration();
+  }
+
+  async function saveInstance(patch: MonthlyRunInstanceUpsertRequest) {
+    const month = el<HTMLInputElement>('monthlyRunMonth').value;
+    if (!month) throw new Error('请选择月份');
+    const data = await api<{ instance: MonthlyRunInstanceRecord }>(`/api/monthly-runs/instance?month=${encodeURIComponent(month)}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    });
+    currentInstance = data.instance;
+    selectedSources = Object.fromEntries(
+      Object.entries(data.instance.sources)
+        .filter(([, value]) => typeof value.fileId === 'number' && value.fileId > 0)
+        .map(([sourceKey, value]) => [sourceKey, { fileId: value.fileId as number }]),
+    );
+    renderSourceInfo();
+    renderBusinessDefinedInputConfiguration();
   }
 
   async function refreshFiles() {
@@ -142,30 +194,80 @@ export function createMonthlyRunPage({
     files = data.files;
     sanitizeSelectedSourceBindings();
     renderSourceInfo();
+    renderBusinessDefinedInputConfiguration();
     if (!el('monthlyRunSourceModal').classList.contains('hidden')) {
       renderSourceModal();
     }
   }
 
+  function renderUsedValue(used: boolean): string {
+    return used ? '<span class="source-used source-used--true">true</span>' : '<span class="source-used source-used--false">false</span>';
+  }
+
+  function renderBusinessDefinedInputConfiguration() {
+    el('fixedValueBody').innerHTML = fixedValueDefinitions.length
+      ? fixedValueDefinitions
+          .map(
+            (item) => `
+              <tr>
+                <td style="text-align:left;">${escapeHtml(item.label)}</td>
+                <td style="text-align:left;">${escapeHtml(item.description)}</td>
+                <td class="col-number">${escapeHtml(String(currentInstance?.fixedValues[item.key] ?? item.defaultValue))}</td>
+                <td>${renderUsedValue(item.required)}</td>
+                <td><span class="source-empty-value">代码定义</span></td>
+              </tr>`,
+          )
+          .join('')
+      : '<tr><td colspan="5" class="table-empty-cell">暂无固定参数定义</td></tr>';
+
+    el('shareworksBody').innerHTML = renderBusinessDefinedSourceRows('shareworks');
+    el('futuBody').innerHTML = renderBusinessDefinedSourceRows('futu');
+
+    document.querySelectorAll<HTMLButtonElement>('[data-business-source-upload]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const sourceKey = button.dataset.businessSourceUpload;
+        if (!sourceKey) return;
+        void uploadSourceFileFor(sourceKey);
+      });
+    });
+
+    document.querySelectorAll<HTMLElement>('.source-file-link[data-product-file-id]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const fileId = Number(link.dataset.productFileId);
+        if (!fileId) return;
+        window.location.href = `/files?fileId=${fileId}`;
+      });
+    });
+  }
+
+  function renderBusinessDefinedSourceRows(sourceGroup: 'shareworks' | 'futu') {
+    const sources = sourceDefinitions.filter((source) => source.sourceGroup === sourceGroup);
+    if (!sources.length) return '<tr><td colspan="4" class="table-empty-cell">暂无输入定义</td></tr>';
+    return sources
+      .map((source) => {
+        const binding = selectedSources[source.sourceKey] ?? null;
+        const file = binding ? getFileById(binding.fileId) : null;
+        const uploaded = file
+          ? `<div class="source-file-actions"><a href="/files?fileId=${file.id}" class="source-file-link" data-product-file-id="${file.id}" title="${escapeHtml(file.originalName)}">${escapeHtml(file.originalName)}</a></div>`
+          : `<span class="source-not-uploaded">Not uploaded</span> <button class="source-upload-btn" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>`;
+        return `<tr>
+          <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
+          <td>${renderUsedValue(source.required)}</td>
+          <td>${source.required ? '<span class="source-required-badge">Required</span>' : '<span class="source-optional-badge">Optional</span>'}</td>
+          <td>${uploaded}</td>
+        </tr>`;
+      })
+      .join('');
+  }
+
   function ensureSelectedSourceBindings() {
     if (!sourceDefinitions.length) return;
-    const next = { ...selectedSources };
-    for (const source of sourceDefinitions) {
-      const current = next[source.sourceKey];
-      if (current && files.some((file) => file.id === current.fileId)) continue;
-      if (current && files.length === 0) continue;
-      const firstFile = files[0];
-      if (!current && firstFile) next[source.sourceKey] = { fileId: firstFile.id };
-    }
-    selectedSources = Object.fromEntries(
-      Object.entries(next).filter(([, binding]) => binding && files.some((file) => file.id === binding.fileId)),
-    );
+    selectedSources = retainAvailableSourceBindings(selectedSources, files);
   }
 
   function sanitizeSelectedSourceBindings() {
-    selectedSources = Object.fromEntries(
-      Object.entries(selectedSources).filter(([, binding]) => files.some((file) => file.id === binding.fileId)),
-    );
+    selectedSources = retainAvailableSourceBindings(selectedSources, files);
     ensureSelectedSourceBindings();
   }
 
@@ -233,7 +335,7 @@ export function createMonthlyRunPage({
               <span class="monthly-run-source-card__task">${escapeHtml(source.taskId)}</span>
             </div>
             <div class="monthly-run-source-card__current">
-              <span>Current</span>
+              <span>当前文件</span>
               <strong>${file ? escapeHtml(file.originalName) : '未配置'}</strong>
             </div>
             <div class="monthly-run-source-card__controls">
@@ -241,11 +343,11 @@ export function createMonthlyRunPage({
                 ${options}
               </select>
               <button class="btn btn-secondary monthly-run-source-card__upload" type="button" data-source-upload="${escapeHtml(source.sourceKey)}">
-                Upload New File
+                上传新文件
               </button>
             </div>
             <div class="monthly-run-source-card__hint">
-              <span>Default sheet</span>
+              <span>默认 Sheet</span>
               <strong>${escapeHtml(source.defaultSheetName ?? '-')}</strong>
             </div>
           </section>
@@ -287,6 +389,13 @@ export function createMonthlyRunPage({
       await refreshFiles();
       await refreshProductFiles();
       draftSources[sourceKey] = { fileId: data.file.id };
+      selectedSources[sourceKey] = { fileId: data.file.id };
+      await saveInstance({
+        operator: currentInstance?.operator ?? 'Administrator',
+        sources: { [sourceKey]: { fileId: data.file.id } },
+      });
+      renderSourceInfo();
+      renderBusinessDefinedInputConfiguration();
       renderSourceModal();
     });
     input.click();
@@ -304,19 +413,25 @@ export function createMonthlyRunPage({
       if (binding?.fileId) nextSources[sourceKey] = binding;
     }
     selectedSources = nextSources;
+    await saveInstance({
+      operator: currentInstance?.operator ?? 'Administrator',
+      sources: Object.fromEntries(
+        sourceDefinitions.map((source) => [source.sourceKey, nextSources[source.sourceKey] ?? null]),
+      ),
+    });
     renderSourceInfo();
+    renderBusinessDefinedInputConfiguration();
     isSavingSources = false;
     closeSourceModal();
   }
 
   async function triggerMonthlyRun() {
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
-    const updatePlanId = getUpdatePlanId?.() ?? null;
     if (!month) {
       notify('请选择月份', { type: 'warning' });
       return;
     }
-    if (!updatePlanId && !sourceDefinitions.every((source) => !source.required || selectedSources[source.sourceKey]?.fileId)) {
+    if (!sourceDefinitions.every((source) => !source.required || selectedSources[source.sourceKey]?.fileId)) {
       notify('请先完成 source 配置', { type: 'warning' });
       return;
     }
@@ -326,30 +441,21 @@ export function createMonthlyRunPage({
     activeHistoryId = null;
     activeRun = null;
     expandedWarningTaskIds.clear();
-    renderRunPanel('Submitting monthly run...');
+    renderRunPanel('正在提交 Monthly Run...');
     let failedMessage: string | null = null;
 
     try {
       const response = await api<MonthlyRunTriggerResponse>('/api/monthly-runs', {
         method: 'POST',
-        body: JSON.stringify(
-          updatePlanId
-            ? {
-                updatePlanId,
-                workflowCode: monthlyWorkflowCode,
-                operator: 'Administrator',
-              }
-            : {
-                workflowCode: monthlyWorkflowCode,
-                month,
-                sources: selectedSources,
-                operator: 'Administrator',
-              },
-        ),
+        body: JSON.stringify({
+          workflowCode: monthlyWorkflowCode,
+          month,
+          operator: currentInstance?.operator ?? 'Administrator',
+        }),
       });
       activeHistoryId = response.history.id;
       activeRun = response.executionResult.run ?? null;
-      renderRunPanel('Workflow submitted');
+      renderRunPanel('Monthly Run 已提交');
       if (activeRun) {
         await runClient.pollUntilSettled(activeRun.id, {
           minimumPollCount: 1,
@@ -479,10 +585,11 @@ export function createMonthlyRunPage({
       summary.innerHTML = '';
     }
     progressBar.style.width = `${ratio * 100}%`;
-    progressText.textContent = pendingApprovals.length ? `${reached} / ${total} · review required` : `${reached} / ${total}`;
+    progressText.textContent = pendingApprovals.length ? `${reached} / ${total} · 需人工复核` : `${reached} / ${total}`;
     taskList.innerHTML = run.steps
       .map((step, index) => {
         const warningMessage = step.status === 'warning' ? getWarningMessageForTask(run, step.taskId) : null;
+        const failureMessage = step.status === 'failed' || step.status === 'blocked' ? step.errorMessage?.trim() ?? '' : '';
         const isWarningExpandable = Boolean(warningMessage);
         const isExpanded = isWarningExpandable && expandedWarningTaskIds.has(step.taskId);
         return `
@@ -497,13 +604,14 @@ export function createMonthlyRunPage({
             ${
               isWarningExpandable
                 ? `<button type="button" class="monthly-run-task__warning-toggle" data-warning-task-id="${escapeHtml(step.taskId)}">
-                    ${escapeHtml(isExpanded ? 'Hide warning details' : 'Show warning details')}
+                    ${escapeHtml(isExpanded ? '收起告警详情' : '查看告警详情')}
                   </button>`
                 : ''
             }
           </div>
           <span class="monthly-run-task__status">${escapeHtml(taskStateLabel(step.status))}</span>
           ${isExpanded && warningMessage ? `<div class="monthly-run-task__warning-detail">${escapeHtml(warningMessage)}</div>` : ''}
+          ${failureMessage ? `<div class="monthly-run-task__failure-detail">${escapeHtml(failureMessage)}</div>` : ''}
         </div>`;
       })
       .join('');
@@ -534,8 +642,9 @@ export function createMonthlyRunPage({
     }
     body.innerHTML = items
       .map((item) => {
+        const canDelete = !['pending', 'running', 'waiting_approval'].includes(item.status);
         const inputSummary = item.inputFiles.length
-          ? `${escapeHtml(item.inputFiles.filter((input) => input.fileId || input.fileName).length.toString())}/${escapeHtml(item.inputFiles.length.toString())} files`
+          ? `${escapeHtml(item.inputFiles.filter((input) => input.fileId || input.fileName).length.toString())}/${escapeHtml(item.inputFiles.length.toString())} 个文件`
           : '-';
         const inputDetails = item.inputFiles.length
           ? item.inputFiles
@@ -547,12 +656,12 @@ export function createMonthlyRunPage({
                   </div>`,
               )
               .join('')
-          : '<div class="monthly-run-history__input-empty">No input snapshot</div>';
+              : '<div class="monthly-run-history__input-empty">暂无输入快照</div>';
         return `
         <tr class="monthly-run-history__row">
           <td class="monthly-run-history__run-cell">
             <button class="table-link-button table-link-button--subtle" data-history-toggle="${item.id}" type="button">
-              ${item.workflowRunId ? `#${item.workflowRunId}` : `History #${item.id}`}
+              ${item.workflowRunId ? `#${item.workflowRunId}` : `运行历史 #${item.id}`}
             </button>
           </td>
           <td>
@@ -562,7 +671,7 @@ export function createMonthlyRunPage({
           <td>${escapeHtml(item.producedFileName ?? (item.producedFileId ? `#${item.producedFileId}` : '-'))}</td>
           <td>${escapeHtml(formatDateTime(item.triggeredAt))}</td>
           <td>${escapeHtml(item.errorMessage ?? '-')}</td>
-          <td><button class="btn btn-danger btn-sm" data-history-delete="${item.id}" type="button">删除</button></td>
+          <td><button class="btn btn-danger btn-sm" data-history-delete="${item.id}" type="button" ${canDelete ? '' : 'disabled title="运行中或待审批的记录不能删除"'}>删除</button></td>
         </tr>
         <tr class="monthly-run-history__detail-row hidden" data-history-detail="${item.id}">
           <td colspan="7">
@@ -589,9 +698,21 @@ export function createMonthlyRunPage({
       button.addEventListener('click', async () => {
         const historyId = Number(button.dataset.historyDelete);
         if (!historyId) return;
-        if (!(await confirmAction('确定删除这条运行历史吗？', { title: '删除运行历史', confirmText: '删除', tone: 'danger' }))) return;
+        const history = items.find((item) => item.id === historyId);
+        const outputNotice = history?.producedFileName
+          ? `\n对应输出文件“${history.producedFileName}”也会被永久删除。`
+          : '';
+        if (!(await confirmAction(`确定删除这条运行历史吗？${outputNotice}`, { title: '删除运行历史及输出文件', confirmText: '删除', tone: 'danger' }))) return;
         await api(`/api/monthly-runs/${historyId}`, { method: 'DELETE' });
-        await refreshHistory();
+        if (activeHistoryId === historyId) {
+          activeHistoryId = null;
+          activeRun = null;
+          renderRunPanel();
+        }
+        await Promise.all([refreshHistory(), refreshFiles(), refreshInstance(), refreshProductFiles()]);
+        const month = el<HTMLInputElement>('monthlyRunMonth').value;
+        if (month) await refreshSummary(month);
+        notify('运行历史及对应输出文件已删除', { type: 'success' });
       });
     });
   }

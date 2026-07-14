@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg';
 
 export type EmployeeSource = 'futu' | 'shareworks' | 'manual';
+const employeeSources = new Set<EmployeeSource>(['futu', 'shareworks', 'manual']);
 
 /**
  * Normalize an external staff number (Futu 工号 / Shareworks employee number) into a
@@ -10,6 +11,12 @@ export type EmployeeSource = 'futu' | 'shareworks' | 'manual';
 export function normalizeExternalNumber(raw: string): string {
   if (!raw) return '';
   return raw.normalize('NFKC').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+export function normalizeEmployeeSourceFilter(raw: unknown): '' | EmployeeSource {
+  if (typeof raw !== 'string') return '';
+  const value = raw.trim().toLowerCase();
+  return employeeSources.has(value as EmployeeSource) ? (value as EmployeeSource) : '';
 }
 
 /**

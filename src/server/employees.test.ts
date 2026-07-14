@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   assembleShareworksName,
+  normalizeEmployeeSourceFilter,
   normalizeExternalNumber,
   upsertEmployeeByEmployeeId,
   type EmployeeStore,
@@ -19,6 +20,14 @@ test('assembleShareworksName joins last first middle and skips empty segments', 
   assert.equal(assembleShareworksName('Smith', 'John', 'A'), 'Smith John A');
   assert.equal(assembleShareworksName('  Han ', '', '  '), 'Han');
   assert.equal(assembleShareworksName(null, null, null), '');
+});
+
+test('normalizeEmployeeSourceFilter accepts known employee sources only', () => {
+  assert.equal(normalizeEmployeeSourceFilter('shareworks'), 'shareworks');
+  assert.equal(normalizeEmployeeSourceFilter(' Futu '), 'futu');
+  assert.equal(normalizeEmployeeSourceFilter('manual'), 'manual');
+  assert.equal(normalizeEmployeeSourceFilter('unknown'), '');
+  assert.equal(normalizeEmployeeSourceFilter(undefined), '');
 });
 
 type FakeRow = { id: number; employeeId: string; source: string; name: string; hasFileEvidence: boolean };

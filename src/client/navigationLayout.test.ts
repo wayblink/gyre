@@ -32,7 +32,7 @@ test('primary navigation follows the product menu layout before dev tools', () =
     expectedPages.map((page) => pageLabel(page)),
     [
       'Captable',
-      'Monthly Updates',
+      '月度更新',
       'ESOP Detail',
       'Grant Record',
       'Exercise to Date',
@@ -71,8 +71,8 @@ test('captable is the renamed Summary page and new product pages have matching s
     assert.match(html, new RegExp(`<section class="[^"]*page-section[^"]*" id="page-${page}">`));
   });
 
-  assert.match(html, /id="page-captable"[\s\S]*Shares OS Reconciliation/);
-  assert.match(html, /id="page-captable"[\s\S]*Capitalization Table \(Summary View\)/);
+  assert.match(html, /id="page-captable"[\s\S]*股本对账/);
+  assert.match(html, /id="page-captable"[\s\S]*股权结构汇总/);
   assert.doesNotMatch(html, /id="page-summary"/);
 });
 
@@ -100,6 +100,9 @@ test('Grant Record exposes Futu, Shareworks, and Merge tabs with source-specific
   assert.match(grantPage, /Participant Type @ Report Date/);
   assert.match(grantPage, /Shares Cancelled\/Expired/);
   assert.match(grantPage, /Data Source/);
+  assert.match(grantPage, /id="holdingsPageSizeSelect"/);
+  assert.match(grantPage, /id="btnHoldingsFirstPage"/);
+  assert.match(grantPage, /id="btnHoldingsLastPage"/);
 });
 
 test('Exercise to Date exposes file-backed filters, table, and pagination', () => {
@@ -113,8 +116,11 @@ test('Exercise to Date exposes file-backed filters, table, and pagination', () =
   assert.match(exercisePage, /Exercise Cost \(USD\)/);
   assert.match(exercisePage, /Deduction\/Selling Qty\./);
   assert.match(exercisePage, /id="exercisePaginationSummary"/);
+  assert.match(exercisePage, /id="exercisePageSizeSelect"/);
+  assert.match(exercisePage, /id="btnExercisesFirstPage"/);
   assert.match(exercisePage, /id="btnExercisesPrevPage"/);
   assert.match(exercisePage, /id="btnExercisesNextPage"/);
+  assert.match(exercisePage, /id="btnExercisesLastPage"/);
 });
 
 test('Sold Shares exposes file-backed filters, nineteen-column table, and pagination', () => {
@@ -129,8 +135,11 @@ test('Sold Shares exposes file-backed filters, nineteen-column table, and pagina
   assert.match(soldSharesPage, /Withholding Tax \(CNY\)/);
   assert.match(soldSharesPage, /Cash Net Proceeds \(USD\)/);
   assert.match(soldSharesPage, /id="soldSharesPaginationSummary"/);
+  assert.match(soldSharesPage, /id="soldSharesPageSizeSelect"/);
+  assert.match(soldSharesPage, /id="btnSoldSharesFirstPage"/);
   assert.match(soldSharesPage, /id="btnSoldSharesPrevPage"/);
   assert.match(soldSharesPage, /id="btnSoldSharesNextPage"/);
+  assert.match(soldSharesPage, /id="btnSoldSharesLastPage"/);
 });
 
 test('Transfer to Futu exposes file-backed monthly summary, cancellation editing, and workbook actions', () => {

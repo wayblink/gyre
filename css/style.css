@@ -355,8 +355,9 @@ body {
 }
 
 .logo-icon {
-  width: 36px;
+  min-width: 36px;
   height: 36px;
+  padding: 0 8px;
   background: linear-gradient(135deg, var(--bg-sidebar-logo-start), var(--bg-sidebar-logo-end));
   border-radius: var(--radius-md);
   display: flex;
@@ -364,7 +365,7 @@ body {
   justify-content: center;
   font-weight: var(--font-bold);
   color: var(--text-inverse);
-  font-size: var(--text-sm);
+  font-size: 0.65rem;
   letter-spacing: 0.02em;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--primary-600) 30%, transparent);
 }
@@ -1286,6 +1287,9 @@ body.sidebar-collapsed .sidebar-toggle {
 .workflow-run-task__body {
   min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .workflow-run-task__topline {
@@ -1418,6 +1422,18 @@ body.sidebar-collapsed .sidebar-toggle {
   border-color: var(--border-default);
   background: var(--surface-panel-bg);
   color: var(--text-tertiary);
+}
+
+.workflow-run-task__detail {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--danger-50) 85%, white);
+  border: 1px solid color-mix(in srgb, var(--danger-300) 65%, transparent);
+  color: var(--status-danger-text);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .workflow-run-panel__footer {
@@ -5622,6 +5638,10 @@ textarea.form-input {
   border-spacing: 0;
 }
 
+.table-transfer-plan--transposed {
+  min-width: 760px;
+}
+
 .table-transfer-plan th,
 .table-transfer-plan td {
   min-width: 128px;
@@ -5640,6 +5660,11 @@ textarea.form-input {
   text-align: left;
   background: var(--card-bg);
   box-shadow: 1px 0 0 var(--border-color);
+}
+
+.table-transfer-plan--transposed th:first-child,
+.table-transfer-plan--transposed tbody th {
+  min-width: 180px;
 }
 
 .table-transfer-plan thead th {
@@ -6074,6 +6099,32 @@ textarea.form-input {
   min-width: 10px;
   font-size: 10px;
   color: var(--primary-600);
+}
+
+.table-header-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.table-header-select {
+  height: 26px;
+  min-width: 74px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-xs);
+  outline: none;
+}
+
+.table-header-select:focus {
+  border-color: var(--primary-500);
+  box-shadow: var(--surface-input-focus-ring);
 }
 
 .pagination-size-label {
@@ -7678,6 +7729,20 @@ textarea.form-input {
     white-space: pre-wrap;
     word-break: break-word;
 }
+
+  .monthly-run-task__failure-detail {
+    grid-column: 2 / 4;
+    margin-top: 2px;
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--danger-50) 92%, white);
+    color: var(--status-danger-text);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    border: 1px solid color-mix(in srgb, var(--danger-300) 55%, transparent);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 
 .monthly-run-task--running {
     border-color: var(--primary-300);

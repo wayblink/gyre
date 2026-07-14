@@ -820,6 +820,7 @@ export type MonthlyRunHistoryRecord = {
 };
 
 export type MonthlyRunSourceDefinition = {
+  sourceGroup: 'shareworks' | 'futu';
   sourceKey: string;
   taskId: string;
   label: string;
@@ -828,16 +829,59 @@ export type MonthlyRunSourceDefinition = {
   required: boolean;
 };
 
+export type MonthlyRunFixedValueDefinition = {
+  key: string;
+  label: string;
+  description: string;
+  defaultValue: number;
+  required: boolean;
+};
+
 export type MonthlyRunSourceBinding = {
   fileId: number;
 };
 
+export type MonthlyRunInstanceSourceValue = {
+  fileId: number | null;
+  fileName: string | null;
+};
+
+export type MonthlyRunInstanceRecord = {
+  id: number;
+  monthId: number;
+  monthKey: string;
+  workflowCode: string;
+  operator: string;
+  status: string;
+  sources: Record<string, MonthlyRunInstanceSourceValue>;
+  fixedValues: Record<string, number>;
+  latestWorkflowRunId: number | null;
+  latestOutputFileId: number | null;
+  latestOutputFileName: string | null;
+  latestErrorMessage: string | null;
+  lastTriggeredAt: string | null;
+  lastFinishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LatestMonthlyRunOutput = {
+  monthKey: string;
+  fileId: number;
+  fileName: string;
+  finishedAt: string;
+};
+
+export type MonthlyRunInstanceUpsertRequest = {
+  operator?: string;
+  sources?: Record<string, MonthlyRunSourceBinding | null>;
+  fixedValues?: Record<string, number>;
+};
+
 export type MonthlyRunTriggerRequest = {
-  updatePlanId?: number;
   workflowId?: number;
   workflowCode?: string;
   month?: string;
-  sources?: Record<string, MonthlyRunSourceBinding>;
   operator?: string;
 };
 
@@ -850,6 +894,7 @@ export type MonthlyRunSourceConfigResponse = {
   workflowCode: string;
   workflowName: string;
   sources: MonthlyRunSourceDefinition[];
+  fixedValues: MonthlyRunFixedValueDefinition[];
 };
 
 export type MonthlyRunApprovalRequest = {

@@ -10,6 +10,7 @@ import {
   buildMonthlyWorkflowTasks,
   MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
   MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
+  MONTHLY_RUN_SOURCE_DEFINITIONS,
   MONTHLY_SUMMARY_COLUMNS,
   MONTHLY_SUMMARY_TOTAL_FULLY_DILUTED,
 } from './workflowDefinition.js';
@@ -124,7 +125,7 @@ test('monthly workflow exposes source extraction and business input calculation 
   assert.equal(summaryExtract?.params.sheetName, 'Detailed Cap Table');
   assert.equal(summaryFileRef?.$fromRuntime, 'fileRefs.summary_source');
   assert.equal(summaryFileRef?.$type, 'object');
-  assert.deepEqual(summaryFileRef?.$default, { provider: 'product-files', id: 7 });
+  assert.deepEqual(summaryFileRef?.$default, { provider: 'product-files', id: 56 });
   assert.equal(optionExtract?.operatorCode, 'sheet.sections.extract');
   assert.equal(optionExtract?.params.sheetName, 'Option Plans Summary');
   assert.equal(optionExtract?.params.splitByColumn, undefined);
@@ -145,6 +146,41 @@ test('monthly control book metrics extract Futu SubPlan total from source rows i
 
   assert.ok(sql.includes("Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology'"));
   assert.ok(!sql.includes('7815396 as gyre_2023_china_subplan_total'));
+});
+
+test('monthly summary source metrics accepts bilingual labels from the merged workbook', async () => {
+  const task = buildMonthlyWorkflowTasks().find((item) => item.id === 'calc_cap_table_summary_source_metrics');
+  assert.ok(task);
+
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot !== 'summary_source') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame(
+      [
+        {
+          'Capitalization Table (Summary View)': 'BCI Shares Held by Futu Futu 持有的 BCI 股份',
+          column_3: 4_876_873,
+        },
+        {
+          'Capitalization Table (Summary View)': '2025 BC Subplan shares transferred to Futu\n2025 BC子计划转入Futu的股份',
+          column_3: 695_164,
+        },
+        {
+          'Capitalization Table (Summary View)': 'Warrants for Convertible Preferred Stock\n可转换优先股认股权证',
+          column_3: 540_666,
+        },
+        {
+          'Capitalization Table (Summary View)': 'Total Fully Diluted Shares Outstanding\n完全摊薄已发行股份合计',
+          column_3: 133_527_448.2141,
+        },
+      ],
+      { sheetName: 'Detailed Cap Table', a1Range: 'B24:F35' },
+    );
+  });
+
+  assert.equal(result.dataFrame.rows[0].bci_shares_held_by_futu, 4_876_873);
+  assert.equal(result.dataFrame.rows[0].bc_subplan_transfer_summary, 695_164);
+  assert.equal(result.dataFrame.rows[0].warrants_for_convertible_preferred_stock, 540_666);
+  assert.equal(result.dataFrame.rows[0].source_total_fully_diluted, 133_527_448.2141);
 });
 
 test('monthly control book metrics uses last non-empty issued outstanding row instead of max value', async () => {
@@ -172,6 +208,14 @@ test('monthly control book metrics uses last non-empty issued outstanding row in
           'Shares Issued': 30,
           Comment: 'Closing',
           'Trans. Type': 'Other',
+          'As of Date': 45_000,
+        },
+        {
+          'Issued & Outstanding': '已发行流通股',
+          'Shares Issued': '发行股份',
+          Comment: '备注',
+          'Trans. Type': '交易类型',
+          'As of Date': '截止日期',
         },
       ],
       { sheetName: 'EQ Control Book', a1Range: 'A9:L11' },
@@ -199,7 +243,7 @@ test('monthly workflow seed definition derives runtime parameters without busine
   assert.notEqual(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsAvailableCullgen?.required, true);
   assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.required, true);
   assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.properties?.control_book?.required, true);
-  assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.properties?.summary_source?.required, true);
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.summary_source?.type, 'object');
   assert.equal(
     (workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsOutstandingCullgen,
     MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
@@ -230,8 +274,21 @@ test('monthly workflow defaults use independent source workbooks for required in
     control_book: { provider: 'product-files', id: 53 },
     futu_exercises: { provider: 'product-files', id: 54 },
     option_plans: { provider: 'product-files', id: 55 },
-    summary_source: { provider: 'product-files', id: 7 },
+    summary_source: { provider: 'product-files', id: 56 },
   });
+});
+
+test('monthly business input configuration maps four source files one-to-one to extraction tasks', () => {
+  assert.deepEqual(
+    MONTHLY_RUN_SOURCE_DEFINITIONS.map(({ sourceKey, taskId }) => ({ sourceKey, taskId })),
+    [
+      { sourceKey: 'control_book', taskId: 'extract_control_book' },
+      { sourceKey: 'summary_source', taskId: 'extract_cap_table_summary' },
+      { sourceKey: 'futu_exercises', taskId: 'extract_futu_exercises' },
+      { sourceKey: 'option_plans', taskId: 'extract_option_plans' },
+    ],
+  );
+  assert.equal(new Set(MONTHLY_RUN_SOURCE_DEFINITIONS.map((source) => source.taskId)).size, 4);
 });
 
 test('monthly runtime parameter builder keeps defaults when optional override keys are undefined', () => {
@@ -289,7 +346,7 @@ test('monthly business inputs resolves configurable Cullgen option constants fro
           {
             bc_subplan_transfer_summary: 3,
             warrants_for_convertible_preferred_stock: 2,
-            source_total_fully_diluted: 1000,
+            source_total_fully_diluted: 1000.4,
           },
         ],
         { sheetName: 'summary_source', a1Range: '' },
@@ -300,7 +357,7 @@ test('monthly business inputs resolves configurable Cullgen option constants fro
 
   assert.equal(result.dataFrame.rows[0].options_outstanding_cullgen, 10);
   assert.equal(result.dataFrame.rows[0].options_available_cullgen, 5);
-  assert.equal(result.dataFrame.rows[0].total_fully_diluted, 1015);
+  assert.equal(result.dataFrame.rows[0].total_fully_diluted, 1000);
 });
 
 test('persist excel operator prefixes output filename with resolved month constant', async () => {

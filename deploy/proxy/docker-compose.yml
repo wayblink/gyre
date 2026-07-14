@@ -1,0 +1,24 @@
+# 反向代理（Caddy）：占 80/443，按子域名转发到两个服务，自动 HTTPS。
+# 前置：先建共享网络  ->  docker network create web
+# 启动：docker compose -f deploy/proxy/docker-compose.yml up -d
+services:
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # 证书持久化，重启/升级不丢
+      - caddy_config:/config
+    networks: [web]
+    restart: unless-stopped
+
+networks:
+  web:
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:

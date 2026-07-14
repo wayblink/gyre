@@ -1,0 +1,23 @@
+name: gyre-b
+
+services:
+  app:
+    build: .
+    container_name: gyre-b-app
+    environment:
+      HOST: 0.0.0.0
+      PORT: "60628"
+      DATABASE_URL: postgres://captable:captable@host.docker.internal:55432/captable
+      STORAGE_DRIVER: minio
+      MINIO_ENDPOINT: host.docker.internal
+      MINIO_PORT: "29000"
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: captable-files
+      AUTH_DISABLED: "true"
+      WORKFLOW_SEED_ON_INIT: "false"
+      DEMO_SEED_ON_INIT: "false"
+    ports:
+      - "127.0.0.1:60638:60628"
+    restart: unless-stopped

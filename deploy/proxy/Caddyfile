@@ -1,0 +1,15 @@
+{
+	# 可选：Let's Encrypt 联系邮箱（证书到期提醒）。删掉这两行也能用。
+	email admin@yushi.hk
+}
+
+# captable-merge（对外名 gyre）—— 别名 gyre-app、内部端口 60628（见 docker-compose.prod.yml）
+gyre.yushi.hk {
+	reverse_proxy gyre-app:60628
+}
+
+# yushi-captable —— yushi.hk 与 captable.yushi.hk 都转发到 yushi 的 frontend(nginx, 容器内 80)。
+# frontend 需加入共享网 web（见 yushi-captable/docker-compose-alicloud.yml）。
+yushi.hk, captable.yushi.hk {
+	reverse_proxy frontend:80
+}

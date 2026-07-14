@@ -102,6 +102,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     waitingForApprovalTaskIds: string[];
     warningTaskIds: string[];
     warningMessages: Record<string, string>;
+    taskMessages: Record<string, string>;
     message: string;
     errorMessage: string | null;
   };
@@ -150,7 +151,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     waitingForApprovalTaskIds: [],
     warningTaskIds: [],
     warningMessages: {},
-    message: 'Ready to run',
+    taskMessages: {},
+    message: '准备执行',
     errorMessage: null,
   };
   let workflowDragState:
@@ -493,6 +495,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       waitingForApprovalTaskIds: [],
       warningTaskIds: [],
       warningMessages: {},
+      taskMessages: {},
       message: 'Ready to run',
       errorMessage: null,
     };
@@ -639,12 +642,12 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         <div class="workflow-list__item ${workflow.id === activeWorkflowId ? 'is-active' : ''}" data-id="${workflow.id}">
           <div class="workflow-list__main" data-role="select" data-id="${workflow.id}" role="button" tabindex="0">
             <div class="workflow-list__name">${escapeHtml(workflow.name)}</div>
-            <div class="workflow-list__desc">${escapeHtml(workflow.description || 'No description')}</div>
-            <div class="workflow-list__meta">${workflow.tasks.length} tasks</div>
+            <div class="workflow-list__desc">${escapeHtml(workflow.description || '暂无描述')}</div>
+            <div class="workflow-list__meta">${workflow.tasks.length} 个节点</div>
           </div>
           <div class="workflow-list__actions">
-            <button class="btn btn-secondary btn-sm" data-role="export" data-id="${workflow.id}" type="button">Export</button>
-            <button class="btn btn-secondary btn-sm" data-role="duplicate" data-id="${workflow.id}" type="button">Copy</button>
+            <button class="btn btn-secondary btn-sm" data-role="export" data-id="${workflow.id}" type="button">导出</button>
+            <button class="btn btn-secondary btn-sm" data-role="duplicate" data-id="${workflow.id}" type="button">复制</button>
           </div>
         </div>`,
       )
@@ -826,8 +829,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
     summary.innerHTML = `
       <strong>${escapeHtml(operator.name)}</strong>
-      <div>${escapeHtml(operator.description || 'No description')}</div>
-      <div style="margin-top:8px;">${escapeHtml(getWorkflowOperatorGroupLabel(operator.category))} · ${operator.inputSlots.length} inputs · ${operator.outputSlots.length} outputs</div>
+      <div>${escapeHtml(operator.description || '暂无描述')}</div>
+      <div style="margin-top:8px;">${escapeHtml(getWorkflowOperatorGroupLabel(operator.category))} · ${operator.inputSlots.length} 个输入 · ${operator.outputSlots.length} 个输出</div>
     `;
   }
 
@@ -958,7 +961,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   }
 
   function formatRuntimeSummaryValue(value: unknown): string {
-    if (value === undefined) return 'No default';
+    if (value === undefined) return '未设置默认值';
     if (value === null) return 'null';
     if (typeof value === 'string') return value || '""';
     if (typeof value === 'number' || typeof value === 'boolean') return String(value);
@@ -998,7 +1001,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   function formatRuntimeDefaultDisplay(entry: { path: string; type: string }, value: unknown): string {
     if (isRuntimeFileParameter(entry)) {
       const fileId = runtimeProductFileId(value);
-      if (!fileId) return 'No default';
+      if (!fileId) return '未设置默认文件';
       const file = getProductFiles().find((item) => item.id === fileId);
       return file ? `${file.originalName} (#${fileId})` : `File #${fileId}`;
     }
@@ -1165,19 +1168,19 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           data-workflow-runtime-toggle
         >
           <span class="workflow-runtime-summary__chevron" aria-hidden="true">▸</span>
-          <span class="workflow-runtime-summary__title">Runtime Parameters</span>
-          <span class="workflow-runtime-summary__summary">${entries.length} params</span>
+          <span class="workflow-runtime-summary__title">运行时参数</span>
+          <span class="workflow-runtime-summary__summary">${entries.length} 项参数</span>
         </button>
-        <button class="btn btn-secondary btn-sm workflow-runtime-summary__apply" type="button" data-workflow-runtime-json-apply>Apply JSON</button>
+        <button class="btn btn-secondary btn-sm workflow-runtime-summary__apply" type="button" data-workflow-runtime-json-apply>应用 JSON</button>
       </div>
       <div class="workflow-runtime-summary__body">
         ${
           entries.length
             ? `<div class="workflow-runtime-summary__groups">${groupedEntriesHtml}</div>`
-            : '<div class="workflow-runtime-summary__empty">No runtime parameter schema</div>'
+            : '<div class="workflow-runtime-summary__empty">暂无运行时参数配置</div>'
         }
         <details class="workflow-runtime-summary__raw">
-          <summary>Runtime parameters JSON</summary>
+          <summary>运行时参数 JSON</summary>
           <div class="workflow-runtime-summary__raw-grid">
             <label>
               <span>schema</span>
@@ -1539,6 +1542,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                 : state === 'skipped'
                   ? 'Skipped'
                 : 'Pending';
+        const detailMessage = workflowRunState.taskMessages[task.id] ?? '';
         const meta = state === 'warning' ? (workflowRunState.warningMessages[task.id] ?? task.operatorCode) : task.operatorCode;
         return `
           <div class="workflow-run-task workflow-run-task--${state}">
@@ -1549,6 +1553,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                 <span class="workflow-run-task__state workflow-run-task__state--${state}">${escapeHtml(stateLabel)}</span>
               </div>
               <div class="workflow-run-task__meta">${escapeHtml(meta)}</div>
+              ${detailMessage ? `<div class="workflow-run-task__detail">${escapeHtml(detailMessage)}</div>` : ''}
             </div>
           </div>
         `;
@@ -1729,17 +1734,17 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const descriptionDisplayRow = el('workflowDescriptionDisplayRow');
     const descriptionInput = el<HTMLTextAreaElement>('workflowDescriptionInput');
     if (!workflow) {
-      descriptionText.textContent = 'No description';
+      descriptionText.textContent = '暂无描述';
       descriptionDisplayRow.classList.remove('hidden');
       descriptionInput.classList.add('hidden');
       descriptionInput.value = '';
     } else if (editingWorkflowDescriptionId === workflow.id) {
-      descriptionText.textContent = workflow.description || 'No description';
+      descriptionText.textContent = workflow.description || '暂无描述';
       descriptionDisplayRow.classList.add('hidden');
       descriptionInput.classList.remove('hidden');
       descriptionInput.value = editingWorkflowDescriptionDraft;
     } else {
-      descriptionText.textContent = workflow.description || 'No description';
+      descriptionText.textContent = workflow.description || '暂无描述';
       descriptionDisplayRow.classList.remove('hidden');
       descriptionInput.classList.add('hidden');
       descriptionInput.value = workflow.description || '';
@@ -1829,7 +1834,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                     }
                     ${
                       !inputSlots.length && !paramInputs.length
-                        ? '<div class="workflow-node__slot workflow-node__slot--empty">No inputs</div>'
+                        ? '<div class="workflow-node__slot workflow-node__slot--empty">暂无输入</div>'
                         : ''
                     }
                   </div>
@@ -2088,8 +2093,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const content = el('workflowEdgeGuardsContent');
     const title = el('workflowEdgeGuardsTitle');
     if (!workflow || !activeWorkflowEdgeGuards) {
-      title.textContent = 'Input Checks';
-      content.innerHTML = '<div class="workflow-dependency-empty">No checks</div>';
+      title.textContent = '输入检查';
+      content.innerHTML = '<div class="workflow-dependency-empty">暂无输入检查</div>';
       return;
     }
 
@@ -2097,7 +2102,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const input = task?.inputs?.[activeWorkflowEdgeGuards.slot];
     const guards = normalizeInputGuards(input?.guards);
     const sourceTask = input?.from ? workflow.tasks.find((item) => item.id === input.from) : null;
-    title.textContent = sourceTask?.name ?? input?.from ?? 'Input Checks';
+    title.textContent = sourceTask?.name ?? input?.from ?? '输入检查';
     content.innerHTML = `
       <div class="workflow-edge-guards">
         <div class="workflow-edge-guards__summary">
@@ -2135,12 +2140,12 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                                 )
                                 .join('')}
                             </dl>`
-                          : '<div class="workflow-dependency-empty">No parameters</div>'
+                          : '<div class="workflow-dependency-empty">暂无参数</div>'
                       }
                     </article>`;
                 })
                 .join('')
-            : '<div class="workflow-dependency-empty">No checks on this input</div>'
+              : '<div class="workflow-dependency-empty">当前输入暂无检查</div>'
         }
       </div>
     `;
@@ -2638,7 +2643,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                               </div>`,
                           )
                           .join('')
-                      : '<div class="workflow-dependency-empty">No execution dependencies</div>'
+                      : '<div class="workflow-dependency-empty">暂无执行依赖</div>'
                   }
                 </div>
                 <div class="workflow-dependency-add">
@@ -2662,7 +2667,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                                       </button>`,
                                   )
                                   .join('')
-                              : '<div class="workflow-dependency-empty">No more candidate tasks</div>'
+                              : '<div class="workflow-dependency-empty">没有更多可添加的候选节点</div>'
                           }
                         </div>`
                       : ''
@@ -2793,7 +2798,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const runtimeFilePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
     const runtimeDefaultFileId = workflow && runtimeFilePath ? workflowRuntimeDefaultFileId(workflow, runtimeFilePath) : null;
     fileSelect.innerHTML = [
-      `<option value="">${runtimeFilePath ? 'No default file' : 'Select file'}</option>`,
+      `<option value="">${runtimeFilePath ? '未设置默认文件' : '请选择文件'}</option>`,
       ...getProductFiles().map((file) => `<option value="${file.id}">${escapeHtml(file.originalName)}</option>`),
     ]
       .join('');
@@ -3195,6 +3200,16 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
             : step.errorMessage ?? run.approvals.find((approval) => approval.taskId === step.taskId)?.comment ?? 'Warning',
         ]),
     );
+    const taskMessages = Object.fromEntries(
+      run.steps
+        .filter((step) => (step.status === 'warning' || step.status === 'failed' || step.status === 'blocked') && Boolean(step.errorMessage?.trim() || step.result?.kind === 'assert'))
+        .map((step) => [
+          step.taskId,
+          step.status === 'warning' && step.result?.kind === 'assert'
+            ? step.result.assertion.failureMessage
+            : step.errorMessage?.trim() ?? (step.status === 'failed' ? 'Task failed' : 'Task blocked'),
+        ]),
+    );
 
     workflowRunState.workflowId = workflow.id;
     workflowRunState.runId = run.id;
@@ -3206,6 +3221,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     workflowRunState.waitingForApprovalTaskIds = waitingForApprovalTaskIds;
     workflowRunState.warningTaskIds = run.steps.filter((step) => step.status === 'warning').map((step) => step.taskId);
     workflowRunState.warningMessages = warningMessages;
+    workflowRunState.taskMessages = taskMessages;
     workflowRunState.errorMessage =
       run.errorMessage ?? run.steps.find((step) => step.status === 'failed')?.errorMessage ?? null;
 
@@ -3738,7 +3754,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                   })
                   .join('')}
               </div>`
-            : '<div class="workflow-operator-card__empty">No params</div>'
+            : '<div class="workflow-operator-card__empty">暂无参数</div>'
         }
       </div>`;
   }
@@ -3753,7 +3769,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const doc = hasDocumentation
       ? documentation
       : {
-          usage: operator.description || 'No usage documentation yet.',
+          usage: operator.description || '暂无使用说明。',
           steps: ['配置参数后连接输入输出槽。'],
           example: '{}',
         };

@@ -187,6 +187,129 @@ export async function getMonthlyRun(db: MonthlyRunDb, id: number): Promise<Month
   return enriched ? toMonthlyRunHistoryRecord(enriched) : null;
 }
 
+export class MonthlyRunHistoryDeleteConflictError extends Error {}
+
+export type MonthlyRunHistoryDeleteResult = {
+  historyId: number;
+  deletedOutputFileId: number | null;
+  deletedOutputFileName: string | null;
+  fallbackOutputFileId: number | null;
+};
+
+export async function deleteMonthlyRunHistory(
+  db: MonthlyRunDb,
+  historyId: number,
+  removeStoredFile: (filePath: string) => Promise<void>,
+): Promise<MonthlyRunHistoryDeleteResult | null> {
+  const history = await db.queryOne<Record<string, unknown>>(
+    `select h.*,
+            produced.file_path as produced_file_path,
+            produced.original_name as produced_file_name
+       from monthly_run_history h
+       left join product_files produced on produced.id = h.produced_file_id
+      where h.id = $1
+      for update of h`,
+    [historyId],
+  );
+  if (!history) return null;
+
+  const status = String(history.status ?? '');
+  if (status === 'pending' || status === 'running' || status === 'waiting_approval') {
+    throw new MonthlyRunHistoryDeleteConflictError('运行中或待审批的历史不能删除，请先结束本次 workflow');
+  }
+
+  const monthId = Number(history.month_id);
+  const workflowRunId = history.workflow_run_id === null || history.workflow_run_id === undefined
+    ? null
+    : Number(history.workflow_run_id);
+  const outputFileId = history.produced_file_id === null || history.produced_file_id === undefined
+    ? null
+    : Number(history.produced_file_id);
+  const outputFilePath = history.produced_file_path ? String(history.produced_file_path) : null;
+  const outputFileName = history.produced_file_name ? String(history.produced_file_name) : null;
+
+  const fallback = await db.queryOne<Record<string, unknown>>(
+    `select h.workflow_run_id,
+            h.status,
+            h.produced_file_id,
+            h.produced_sheet_name,
+            h.triggered_at,
+            h.finished_at
+       from monthly_run_history h
+       join product_files produced on produced.id = h.produced_file_id
+      where h.month_id = $1
+        and h.id <> $2
+        and h.status in ('completed', 'completed_with_warnings')
+        and h.produced_file_id is not null
+      order by h.finished_at desc nulls last, h.triggered_at desc, h.id desc
+      limit 1`,
+    [monthId, historyId],
+  );
+  const fallbackOutputFileId = fallback?.produced_file_id === null || fallback?.produced_file_id === undefined
+    ? null
+    : Number(fallback.produced_file_id);
+
+  if (outputFileId) {
+    const sharedHistory = await db.queryOne<{ id: number }>(
+      `select h.id from monthly_run_history h
+        where h.produced_file_id = $1 and h.id <> $2
+        limit 1`,
+      [outputFileId, historyId],
+    );
+    if (sharedHistory) {
+      throw new MonthlyRunHistoryDeleteConflictError(`输出文件 #${outputFileId} 仍被其他月度历史引用，不能删除`);
+    }
+  }
+
+  await db.execute('delete from monthly_run_history where id = $1', [historyId]);
+
+  if (outputFileId) {
+    await db.execute(
+      `update months
+          set capitalization_source_file_id = $1,
+              capitalization_source_sheet_name = $2,
+              updated_at = current_timestamp
+        where id = $3 and capitalization_source_file_id = $4`,
+      [fallbackOutputFileId, fallback?.produced_sheet_name ?? null, monthId, outputFileId],
+    );
+  }
+
+  await db.execute(
+    `update monthly_run_instances
+        set status = $1,
+            latest_workflow_run_id = $2,
+            latest_output_file_id = $3,
+            latest_error_message = null,
+            last_finished_at = $4,
+            last_triggered_at = $5,
+            updated_at = current_timestamp
+      where month_id = $6
+        and (latest_workflow_run_id = $7 or ($8::int is not null and latest_output_file_id = $8))`,
+    [
+      fallback?.status ?? 'draft',
+      fallback?.workflow_run_id ?? null,
+      fallbackOutputFileId,
+      fallback?.finished_at ?? null,
+      fallback?.triggered_at ?? null,
+      monthId,
+      workflowRunId,
+      outputFileId,
+    ],
+  );
+
+  if (outputFileId) {
+    await db.execute('delete from product_files where id = $1', [outputFileId]);
+    if (outputFilePath) await removeStoredFile(outputFilePath);
+  }
+
+  return {
+    historyId,
+    deletedOutputFileId: outputFileId,
+    deletedOutputFileName: outputFileName,
+    fallbackOutputFileId,
+  };
+}
+
 export async function createMonthlyRunHistory(
   db: MonthlyRunDb,
   params: {
@@ -394,6 +517,24 @@ export async function applyMonthlyRunPostProcessing(db: MonthlyRunDb, run: Workf
       producedFileId,
       producedSheetName,
       Number(history.id),
+    ],
+  );
+  await db.execute(
+    `update monthly_run_instances
+        set status = $1,
+            latest_workflow_run_id = $2,
+            latest_output_file_id = $3,
+            latest_error_message = $4,
+            last_finished_at = $5,
+            updated_at = current_timestamp
+      where month_key = $6`,
+    [
+      run.status,
+      run.id,
+      producedFileId,
+      run.errorMessage,
+      run.finishedAt ?? new Date().toISOString(),
+      String(history.month_key),
     ],
   );
   await updateMonthlyUpdatePlanStatus(db, updatePlanId, planStatusForWorkflowRunStatus(run.status));

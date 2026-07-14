@@ -2,6 +2,7 @@ import path from 'node:path';
 
 const rootDir = process.cwd();
 const minioPort = Number(process.env.MINIO_PORT ?? process.env.MINIO_HOST_PORT ?? 29000);
+const legacySeedOnInit = process.env.SEED_ON_INIT;
 
 export const config = {
   host: process.env.HOST ?? '127.0.0.1',
@@ -25,7 +26,10 @@ export const config = {
   // Login is temporarily disabled during development. Set AUTH_DISABLED=false to re-enable
   // authentication once the product is mature.
   authDisabled: (process.env.AUTH_DISABLED ?? 'true') === 'true',
-  // Seed loads demo workbooks on init. Set SEED_ON_INIT=false to boot against an empty
-  // database (e.g. production) without requiring the demo Excel files.
-  seedOnInit: (process.env.SEED_ON_INIT ?? 'true') === 'true',
+  // Workflow operators and built-in workflow definitions are product metadata and stay
+  // enabled by default on boot.
+  workflowSeedOnInit: (process.env.WORKFLOW_SEED_ON_INIT ?? 'true') === 'true',
+  // Demo business data must be opt-in. SEED_ON_INIT is treated as a legacy alias so
+  // existing environments can still force the old behavior intentionally.
+  demoSeedOnInit: (process.env.DEMO_SEED_ON_INIT ?? legacySeedOnInit ?? 'false') === 'true',
 };

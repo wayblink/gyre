@@ -11,6 +11,9 @@ import type {
   WorkflowTask,
   WorkflowTaskPreviewResult,
 } from '../../../shared/types.js';
+import type { EsopPagePersistInput, EsopPagePersistResult } from '../../esopWorkflow/persistence.js';
+import type { FivePercentHoldersPersistInput, FivePercentHoldersPersistResult } from '../../fivePercentHolders/persistence.js';
+import type { PlanSummaryPersistInput, PlanSummaryPersistResult } from '../../planSummary/persistence.js';
 
 export type WorkflowOperatorSeedDefinition = {
   code: string;
@@ -62,6 +65,9 @@ export type WorkflowOperatorRuntime = {
     conflictColumns: string[];
     updateColumns: string[];
   }) => Promise<{ inserted: number; updated: number }>;
+  persistEsopPage?: (params: EsopPagePersistInput) => Promise<EsopPagePersistResult>;
+  persistPlanSummary?: (params: PlanSummaryPersistInput) => Promise<PlanSummaryPersistResult>;
+  persistFivePercentHolders?: (params: FivePercentHoldersPersistInput) => Promise<FivePercentHoldersPersistResult>;
 };
 
 export type WorkflowOperatorExecutionContext = {

@@ -46,20 +46,31 @@ import {
   applyMonthlyRunPostProcessing,
   attachWorkflowRunToMonthlyHistory,
   createMonthlyRunHistory,
+  deleteMonthlyRunHistory,
   getMonthlyRun,
   listMonthlyRuns,
   MONTHLY_WORKFLOW_CODE,
+  MonthlyRunHistoryDeleteConflictError,
   reconcileMonthlyUpdatePlanStatuses,
 } from './monthlyRun/store.js';
 import {
-  resolveMonthlyRunInputConfiguration,
-  type ProductFileBindingLookup,
-} from './monthlyRun/inputConfiguration.js';
+  deleteMonthlyRunInstance,
+  ensureMonthlyRunInstance,
+  getLatestMonthlyRunOutput,
+  getMonthlyRunInstance,
+  listMonthlyRunInstances,
+  monthlyRunInstanceToRuntimeParameters,
+  upsertMonthlyRunInstance,
+  updateMonthlyRunInstanceExecutionState,
+} from './monthlyRun/instanceStore.js';
 import { monthlyWorkflowSelectionLabel, resolveMonthlyWorkflowDefinition } from './monthlyRun/workflowSelection.js';
-import { buildMonthlyRuntimeParameters, MONTHLY_RUN_SOURCE_DEFINITIONS, MONTHLY_WORKFLOW_NAME } from './monthlyRun/workflowDefinition.js';
 import {
-  monthlyRunWorkflowFileRuntimeKeyForName,
-  monthlyRunWorkflowFixedRuntimeKeyForRow,
+  buildMonthlyRuntimeParameters,
+  MONTHLY_RUN_FIXED_VALUE_DEFINITIONS,
+  MONTHLY_RUN_SOURCE_DEFINITIONS,
+  MONTHLY_WORKFLOW_NAME,
+} from './monthlyRun/workflowDefinition.js';
+import {
 } from './monthlyRun/inputUsage.js';
 import {
   buildPlanSummary,
@@ -72,8 +83,21 @@ import {
   toTransferPlanPeriod,
 } from './esopPages.js';
 import { loadTransferPlanWorkbook, seedTransferPlanData } from './seed.js';
+import { persistEsopPage } from './esopWorkflow/persistence.js';
+import { startEsopPageWorkflow } from './esopWorkflow/service.js';
+import {
+  ESOP_PAGE_WORKFLOW_CONFIGS,
+  type EsopPageKey,
+} from './esopWorkflow/workflowDefinitions.js';
+import { persistFivePercentHolders } from './fivePercentHolders/persistence.js';
+import { persistPlanSummary } from './planSummary/persistence.js';
+import { startDataManagementWorkflow } from './dataManagementWorkflow/service.js';
+import {
+  DATA_MANAGEMENT_WORKFLOW_CONFIGS,
+  type DataManagementPageKey,
+} from './dataManagementWorkflow/workflowDefinitions.js';
 import { upsertTableRows } from './workflow/tableUpsert.js';
-import { normalizeExternalNumber } from './employees.js';
+import { normalizeEmployeeSourceFilter, normalizeExternalNumber } from './employees.js';
 import { executeWorkflowTaskPreview } from './workflow/engine.js';
 import { WorkflowFileSourceRegistry, productFileRef } from './workflow/fileSources.js';
 import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
@@ -89,9 +113,10 @@ import { WorkflowRunExecutor, workflowRunToExecutionResult } from './workflow/ru
 import { WorkflowRunStore } from './workflow/runStore.js';
 import type {
   AuthStatus,
-  FixedValueItem,
+  LatestMonthlyRunOutput,
+  MonthlyRunInstanceRecord,
+  MonthlyRunInstanceUpsertRequest,
   MonthlyRunSourceConfigResponse,
-  SourceCheckItem,
   SummarySnapshot,
   SummaryCapitalizationSource,
   WorkflowDataFrame,
@@ -143,19 +168,6 @@ const updatePlanSchema = z.object({
   remark: z.string().optional().default(''),
 });
 
-const updatePlanPatchSchema = z.object({
-  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
-  operator: z.string().min(1).optional(),
-  status: z.enum(['待启动', '进行中', '待复核', '已完成', '失败', '已取消']).optional(),
-  remark: z.string().optional(),
-});
-
-const metricPatchSchema = z.object({
-  value: z.number().nullable().optional(),
-  status: z.enum(['pass', 'warning', '']).optional(),
-  uploadedFile: z.string().optional(),
-});
-
 const filePreviewQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
@@ -194,18 +206,33 @@ const workflowRunRetryBodySchema = z.object({
   tasks: z.array(z.any()).optional(),
 });
 
+const esopPageKeySchema = z.enum(['grant-record', 'exercise-record', 'sold-shares', 'transfer-plan']);
+
+const esopWorkflowRunBodySchema = z.object({
+  sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() })),
+});
+const dataManagementPageKeySchema = z.enum(['employee', 'plan-summary', 'five-percent-holders']);
+const dataManagementWorkflowRunBodySchema = esopWorkflowRunBodySchema;
+
 const monthlyRunListQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
+const monthlyRunInstanceQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+});
+
+const monthlyRunInstanceUpsertSchema = z.object({
+  operator: z.string().trim().min(1).optional(),
+  sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() }).nullable()).optional(),
+  fixedValues: z.record(z.string(), z.number()).optional(),
+});
+
 const monthlyRunTriggerBodySchema = z.object({
-  updatePlanId: z.number().int().positive().optional(),
   workflowId: z.number().int().positive().optional(),
   workflowCode: z.string().trim().min(1).optional(),
   month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
-  sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() })).optional(),
-  fixedValues: z.record(z.string(), z.number()).optional(),
   operator: z.string().trim().min(1).optional().default('Administrator'),
 });
 
@@ -271,6 +298,17 @@ function isUniqueConstraintViolation(error: unknown): boolean {
 function eomForMonth(monthKey: string): string {
   const [year, month] = monthKey.split('-').map(Number);
   return `${year}/${month}/${new Date(year, month, 0).getDate()}`;
+}
+
+async function assertMonthlyRunInstanceReady(instance: MonthlyRunInstanceRecord): Promise<void> {
+  for (const source of MONTHLY_RUN_SOURCE_DEFINITIONS) {
+    const fileId = instance.sources[source.sourceKey]?.fileId ?? null;
+    if (!fileId) {
+      if (source.required) throw new Error(`Missing source binding: ${source.sourceKey}`);
+      continue;
+    }
+    await getProductFileOrThrow(fileId);
+  }
 }
 
 function labelForMonth(monthKey: string): string {
@@ -407,141 +445,6 @@ function notFound(message: string) {
   return error;
 }
 
-function toUpdatePlan(row: Record<string, unknown>) {
-  const month = String(row.month_key);
-  return {
-    id: Number(row.id),
-    month,
-    monthLabel: labelForMonth(month),
-    operationTime: String(row.operation_time),
-    operator: String(row.operator),
-    status: String(row.status),
-    remark: String(row.remark ?? ''),
-  };
-}
-
-const FIXED_VALUE_EXPECTED_SOURCE_BY_ITEM: Record<string, string> = {
-  EOM: 'EQ Control Book',
-  '2025 BC Subplan shares transferred to Futu': 'EQ Control Book',
-  'Σ all option plan outstanding shares': 'Option Plans Summary',
-  'Σ all option plan available shares': 'Option Plans Summary',
-  'Exercises to Date': 'Futu BCI Exercises to Date',
-  'GYRE 2025 BC Subplan canceled': 'Futu BCI Exercises to Date',
-};
-
-const EXTRA_FIXED_VALUE_ITEMS = new Set([
-  'EOM',
-  '2025 BC Subplan shares transferred to Futu',
-  'Σ all option plan outstanding shares',
-  'Σ all option plan available shares',
-  'Exercises to Date',
-  'GYRE 2025 BC Subplan canceled',
-]);
-
-function checklistText(value: unknown): string {
-  return String(value ?? '').trim();
-}
-
-function checklistSourceLabel(row: Record<string, unknown>, raw: Record<string, unknown>): string {
-  const itemLabel = checklistText(raw.item ?? raw.metric ?? row.label);
-  return (
-    checklistText(raw.fileName) ||
-    FIXED_VALUE_EXPECTED_SOURCE_BY_ITEM[itemLabel] ||
-    checklistText(row.label) ||
-    itemLabel
-  );
-}
-
-function normalizeChecklistKey(value: unknown): string {
-  return checklistText(value).toLowerCase();
-}
-
-function isMissingChecklistUpload(value: unknown): boolean {
-  const text = normalizeChecklistKey(value);
-  return !text || text === 'not uploaded';
-}
-
-function toChecklistItem(row: Record<string, unknown>, options: { forceFixed?: boolean } = {}): FixedValueItem | SourceCheckItem {
-  const raw = parseJson<Record<string, unknown>>(row.raw_value, {});
-  const label = checklistText(row.label);
-  const itemLabel = checklistText(raw.item ?? raw.metric ?? label);
-  const fallbackExpectedSource = checklistText(raw.fileName ?? row.display_file_name ?? row.uploaded_file) || '-';
-  const value = row.normalized_value === null || row.normalized_value === undefined ? null : Number(row.normalized_value);
-  const common = {
-    id: Number(row.id),
-    sourceFileId:
-      row.display_source_file_id !== null && row.display_source_file_id !== undefined
-        ? Number(row.display_source_file_id)
-        : row.source_file_id === null || row.source_file_id === undefined
-          ? null
-          : Number(row.source_file_id),
-    productFileId:
-      row.display_product_file_id !== null && row.display_product_file_id !== undefined
-        ? Number(row.display_product_file_id)
-        : row.product_file_id === null || row.product_file_id === undefined
-          ? null
-          : Number(row.product_file_id),
-    fileName: checklistText(row.display_file_name) || checklistSourceLabel(row, raw),
-    used: false,
-    isRequired: String(row.required ?? '') as 'Required' | 'Optional' | '',
-    uploadedFile: checklistText(row.display_uploaded_file) || checklistText(row.uploaded_file ?? raw.uploadedFile),
-    status: String(row.status ?? '') as 'pass' | 'warning' | '',
-    value,
-    action: (asBoolean(row.editable) ? 'edit' : '-') as 'edit' | '-',
-  };
-
-  if (row.source_group === 'fixed' || options.forceFixed) {
-    const expectedSource = FIXED_VALUE_EXPECTED_SOURCE_BY_ITEM[itemLabel] ?? fallbackExpectedSource;
-    return {
-      id: common.id,
-      item: itemLabel,
-      note: expectedSource && expectedSource !== '-' ? `from ${expectedSource}` : '-',
-      value: value ?? 0,
-      used: monthlyRunWorkflowFixedRuntimeKeyForRow(row) !== null,
-      action: 'edit',
-    };
-  }
-
-  return {
-    ...common,
-    item: checklistText(raw.item),
-    metric: checklistText(raw.metric),
-  };
-}
-
-function mergeSourceChecklistItems(items: SourceCheckItem[]): SourceCheckItem[] {
-  const grouped = new Map<string, SourceCheckItem[]>();
-  for (const item of items) {
-    const key = normalizeChecklistKey(item.fileName);
-    const existing = grouped.get(key);
-    if (existing) existing.push(item);
-    else grouped.set(key, [item]);
-  }
-
-  return [...grouped.values()].map((group) => {
-    const representative =
-      group.find((item) => item.isRequired === 'Required') ??
-      group.find((item) => item.productFileId || item.sourceFileId) ??
-      group[0];
-    const uploadedSource =
-      group.find((item) => !isMissingChecklistUpload(item.uploadedFile) && (item.productFileId || item.sourceFileId)) ??
-      group.find((item) => !isMissingChecklistUpload(item.uploadedFile)) ??
-      representative;
-    return {
-      ...representative,
-      isRequired: group.some((item) => item.isRequired === 'Required')
-        ? 'Required'
-        : group.some((item) => item.isRequired === 'Optional')
-          ? 'Optional'
-          : '',
-      uploadedFile: uploadedSource.uploadedFile,
-      productFileId: uploadedSource.productFileId ?? representative.productFileId,
-      sourceFileId: uploadedSource.sourceFileId ?? representative.sourceFileId,
-      used: monthlyRunWorkflowFileRuntimeKeyForName(representative.fileName) !== null,
-    };
-  });
-}
-
 function toProductFile(row: Record<string, unknown>) {
   return {
     id: Number(row.id),
@@ -580,120 +483,6 @@ async function getProductFileOrThrow(id: number) {
   return file;
 }
 
-async function checklistForPlan(updatePlanId: number) {
-  const rows = await db.query<Record<string, unknown>>(
-    `select sm.*,
-            pf.original_name as product_file_name,
-            sf.original_name as source_file_name
-     from source_metrics sm
-     left join product_files pf on pf.id = sm.product_file_id
-     left join source_files sf on sf.id = sm.source_file_id
-     where sm.update_plan_id = $1
-     order by case sm.source_group when 'fixed' then 1 when 'shareworks' then 2 else 3 end, sm.sort_order`,
-    [updatePlanId],
-  );
-
-  const displayRows = rows.map((row) => ({ ...row }));
-  const uploadedBySource = new Map<
-    string,
-    { uploadedFile: string; productFileId: unknown; sourceFileId: unknown }
-  >();
-
-  for (const row of displayRows) {
-    if (row.source_group !== 'shareworks' && row.source_group !== 'futu') continue;
-    const raw = parseJson<Record<string, unknown>>(row.raw_value, {});
-    const sourceLabel = checklistSourceLabel(row, raw);
-    const uploadedFile =
-      checklistText(row.uploaded_file) ||
-      checklistText(row.product_file_name ?? row.source_file_name) ||
-      checklistText(raw.uploadedFile);
-    if (isMissingChecklistUpload(uploadedFile)) continue;
-    uploadedBySource.set(normalizeChecklistKey(sourceLabel), {
-      uploadedFile,
-      productFileId: row.product_file_id,
-      sourceFileId: row.source_file_id,
-    });
-  }
-
-  for (const row of displayRows) {
-    if (row.source_group !== 'shareworks' && row.source_group !== 'futu') continue;
-    const raw = parseJson<Record<string, unknown>>(row.raw_value, {});
-    const sourceLabel = checklistSourceLabel(row, raw);
-    row.display_file_name = sourceLabel;
-
-    const directUploadedFile =
-      checklistText(row.uploaded_file) ||
-      checklistText(row.product_file_name ?? row.source_file_name) ||
-      checklistText(raw.uploadedFile);
-    if (!isMissingChecklistUpload(directUploadedFile)) {
-      row.display_uploaded_file = directUploadedFile;
-      continue;
-    }
-
-    const inherited = uploadedBySource.get(normalizeChecklistKey(sourceLabel));
-    if (!inherited) continue;
-    row.display_uploaded_file = inherited.uploadedFile;
-    row.display_product_file_id = inherited.productFileId;
-    row.display_source_file_id = inherited.sourceFileId;
-  }
-
-  const isExtraFixedValueRow = (row: Record<string, unknown>) => {
-    const raw = parseJson<Record<string, unknown>>(row.raw_value, {});
-    const itemLabel = String(raw.item ?? raw.metric ?? row.label ?? '').trim();
-    return EXTRA_FIXED_VALUE_ITEMS.has(itemLabel);
-  };
-
-  return {
-    fixedValues: displayRows
-      .filter((row) => row.source_group === 'fixed' || isExtraFixedValueRow(row))
-      .map((row) => toChecklistItem(row, { forceFixed: true }) as FixedValueItem),
-    shareworksData: mergeSourceChecklistItems(
-      displayRows.filter((row) => row.source_group === 'shareworks').map((row) => toChecklistItem(row) as SourceCheckItem),
-    ),
-    futuData: mergeSourceChecklistItems(
-      displayRows.filter((row) => row.source_group === 'futu').map((row) => toChecklistItem(row) as SourceCheckItem),
-    ),
-  };
-}
-
-async function copyDefaultMetrics(updatePlanId: number) {
-  const templatePlan = await db.queryOne<{ id: number | null }>(
-    'select min(id) as id from update_plans where id != $1',
-    [updatePlanId],
-  );
-  if (!templatePlan?.id) return;
-
-  const rows = await db.query<Record<string, unknown>>('select * from source_metrics where update_plan_id = $1 order by id', [
-    templatePlan.id,
-  ]);
-
-  for (const row of rows) {
-    await db.execute(
-      `
-      insert into source_metrics (
-        update_plan_id, source_group, metric_key, label, required, sheet_name, cell_ref,
-        range_ref, uploaded_file, raw_value, normalized_value, status, editable, sort_order
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14)
-    `,
-      [
-        updatePlanId,
-        row.source_group,
-        row.metric_key,
-        row.label,
-        row.required,
-        row.sheet_name,
-        row.cell_ref,
-        row.range_ref,
-        row.uploaded_file,
-        row.raw_value === null || row.raw_value === undefined ? null : JSON.stringify(row.raw_value),
-        row.normalized_value,
-        row.status,
-        asBoolean(row.editable),
-        row.sort_order,
-      ],
-    );
-  }
-}
 
 async function settingRows(table: 'employee_mappings' | 'tracked_plans' | 'shareholder_tags') {
   return db.query<Record<string, unknown>>(`select * from ${table} order by id`);
@@ -997,42 +786,6 @@ async function productFileHasSheet(file: Record<string, unknown>, sheetName: str
   }
 }
 
-async function findProductFileForInputBinding(params: ProductFileBindingLookup): Promise<number | null> {
-  const files = await db.query<Record<string, unknown>>('select id, original_name, file_path from product_files order by id desc');
-  const uploadedFile = params.uploadedFile.trim();
-  const sheetName = params.defaultSheetName?.trim() ?? '';
-
-  if (uploadedFile) {
-    const exact = files.find((file) => String(file.original_name).toLowerCase() === uploadedFile.toLowerCase());
-    if (exact) return Number(exact.id);
-
-    const scored = files
-      .map((file) => ({ file, score: fileNameMatchScore(String(file.original_name), uploadedFile) }))
-      .filter((item) => item.score >= 0.6)
-      .sort((a, b) => b.score - a.score);
-    if (scored[0]) return Number(scored[0].file.id);
-
-    const current = params.currentProductFileId ? files.find((file) => Number(file.id) === params.currentProductFileId) : null;
-    if (current && fileNameMatchScore(String(current.original_name), uploadedFile) >= 0.6) {
-      return Number(current.id);
-    }
-    return null;
-  }
-
-  if (params.currentProductFileId) {
-    const current = files.find((file) => Number(file.id) === params.currentProductFileId);
-    if (current && (!sheetName || (await productFileHasSheet(current, sheetName)))) {
-      return Number(current.id);
-    }
-  }
-
-  if (!sheetName) return null;
-  for (const file of files) {
-    if (await productFileHasSheet(file, sheetName)) return Number(file.id);
-  }
-  return null;
-}
-
 async function updateProductWorkbook(params: {
   fileId: number;
   originalName: string;
@@ -1115,6 +868,15 @@ const workflowOperatorRuntime: WorkflowOperatorRuntime = {
   },
   upsertTableRows(params) {
     return upsertTableRows(db, params, WORKFLOW_WRITABLE_TABLES);
+  },
+  persistEsopPage(params) {
+    return persistEsopPage(db, params);
+  },
+  persistPlanSummary(params) {
+    return persistPlanSummary(db, params);
+  },
+  persistFivePercentHolders(params) {
+    return persistFivePercentHolders(db, params);
   },
 };
 
@@ -1304,10 +1066,48 @@ async function registerRoutes() {
     return { items: await listMonthlyRuns(db, query) };
   });
 
+  app.get('/api/monthly-runs/instances', async (request): Promise<{ items: MonthlyRunInstanceRecord[] }> => {
+    const query = monthlyRunListQuerySchema.parse(request.query);
+    return { items: await listMonthlyRunInstances(db, { month: query.month }) };
+  });
+
+  app.post('/api/monthly-runs/instances', async (request, reply): Promise<{ instance: MonthlyRunInstanceRecord }> => {
+    const body = updatePlanSchema.parse(request.body ?? {});
+    await getOrCreateMonth(body.month);
+    const instance = await ensureMonthlyRunInstance(db, body.month);
+    return reply.code(201).send({ instance });
+  });
+
+  app.delete('/api/monthly-runs/instances/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await deleteMonthlyRunInstance(db, Number(id));
+    return reply.code(204).send();
+  });
+
+  app.get('/api/monthly-runs/instance', async (request): Promise<{ instance: MonthlyRunInstanceRecord }> => {
+    const query = monthlyRunInstanceQuerySchema.parse(request.query);
+    await getOrCreateMonth(query.month);
+    const instance = await ensureMonthlyRunInstance(db, query.month);
+    return { instance };
+  });
+
+  app.put('/api/monthly-runs/instance', async (request): Promise<{ instance: MonthlyRunInstanceRecord }> => {
+    const query = monthlyRunInstanceQuerySchema.parse(request.query);
+    const body = monthlyRunInstanceUpsertSchema.parse(request.body ?? {}) as MonthlyRunInstanceUpsertRequest;
+    await getOrCreateMonth(query.month);
+    const instance = await upsertMonthlyRunInstance(db, query.month, body);
+    return { instance };
+  });
+
   app.get('/api/monthly-runs/source-config', async (): Promise<MonthlyRunSourceConfigResponse> => ({
     workflowCode: MONTHLY_WORKFLOW_CODE,
     workflowName: MONTHLY_WORKFLOW_NAME,
     sources: MONTHLY_RUN_SOURCE_DEFINITIONS,
+    fixedValues: MONTHLY_RUN_FIXED_VALUE_DEFINITIONS,
+  }));
+
+  app.get('/api/monthly-runs/latest-output', async (): Promise<{ output: LatestMonthlyRunOutput | null }> => ({
+    output: await getLatestMonthlyRunOutput(db),
   }));
 
   app.get('/api/monthly-runs/:id', async (request) => {
@@ -1319,52 +1119,12 @@ async function registerRoutes() {
 
   app.post('/api/monthly-runs', async (request, reply) => {
     const body = monthlyRunTriggerBodySchema.parse(request.body ?? {});
-    const inputConfiguration = body.updatePlanId
-      ? await resolveMonthlyRunInputConfiguration(
-          db,
-          body.updatePlanId,
-          async (params) => {
-            const buffer = await fileStorage.read(params.filePath);
-            const saved = await saveProductWorkbook({
-              originalName: params.originalName,
-              buffer,
-              mimeType: params.mimeType,
-              uploadedBy: params.uploadedBy,
-              folderPrefix: params.folderPrefix,
-            });
-            return Number(saved.file.id);
-          },
-          findProductFileForInputBinding,
-        )
-      : null;
-    if (!inputConfiguration && !body.month) {
-      throw new Error('month is required when updatePlanId is not provided');
-    }
-    if (!inputConfiguration && !body.sources) {
-      throw new Error('sources are required when updatePlanId is not provided');
-    }
+    if (!body.month) throw new Error('month is required');
+    await getOrCreateMonth(body.month);
+    const monthlyRunInstance = (await getMonthlyRunInstance(db, body.month)) ?? (await ensureMonthlyRunInstance(db, body.month));
 
-    const resolvedRuntimeParameters: WorkflowRuntimeParameters = inputConfiguration
-      ? inputConfiguration.runtimeParameters
-      : buildMonthlyRuntimeParameters({
-          month: body.month as string,
-          fileRefs: Object.fromEntries(
-            (
-              await Promise.all(
-                MONTHLY_RUN_SOURCE_DEFINITIONS.map(async (source) => {
-                  const binding = body.sources?.[source.sourceKey];
-                  if (!binding) {
-                    if (source.required) throw new Error(`Missing source binding: ${source.sourceKey}`);
-                    return null;
-                  }
-                  await getProductFileOrThrow(binding.fileId);
-                  return [source.sourceKey, productFileRef(binding.fileId)] as const;
-                }),
-              )
-            ).filter((entry): entry is readonly [string, ReturnType<typeof productFileRef>] => Boolean(entry)),
-          ),
-          fixedValues: body.fixedValues,
-        });
+    await assertMonthlyRunInstanceReady(monthlyRunInstance);
+    const resolvedRuntimeParameters: WorkflowRuntimeParameters = monthlyRunInstanceToRuntimeParameters(monthlyRunInstance);
 
     const monthKey = String(resolvedRuntimeParameters.month);
     const monthId = await getOrCreateMonth(monthKey);
@@ -1384,20 +1144,19 @@ async function registerRoutes() {
 
     const runtimeFileRefs = runtimeConfiguration.runtimeParameters.fileRefs;
     const primarySourceFileId =
-      inputConfiguration?.primarySourceFileId ??
-      (runtimeFileRefs && typeof runtimeFileRefs === 'object' && !Array.isArray(runtimeFileRefs)
+      runtimeFileRefs && typeof runtimeFileRefs === 'object' && !Array.isArray(runtimeFileRefs)
         ? Number(
             ((runtimeFileRefs as Record<string, unknown>).control_book as Record<string, unknown> | undefined)?.id ??
               ((Object.values(runtimeFileRefs)[0] as Record<string, unknown> | undefined)?.id ?? null),
           )
-        : null);
+        : null;
     const history = await createMonthlyRunHistory(db, {
       monthId,
       monthKey,
-      updatePlanId: body.updatePlanId ?? null,
+      updatePlanId: null,
       workflowId: Number(workflowRow.id),
       sourceFileId: primarySourceFileId && Number.isInteger(primarySourceFileId) ? primarySourceFileId : null,
-      operator: inputConfiguration?.operator ?? body.operator,
+      operator: monthlyRunInstance.operator ?? body.operator,
       runtimeParameters: runtimeConfiguration.runtimeParameters,
     });
     const workflowRun = await workflowRunStore.createRun({
@@ -1408,6 +1167,15 @@ async function registerRoutes() {
     const attachedHistory = await attachWorkflowRunToMonthlyHistory(db, {
       historyId: history.id,
       workflowRunId: workflowRun.id,
+    });
+
+    await updateMonthlyRunInstanceExecutionState(db, {
+      monthKey,
+      status: 'running',
+      latestWorkflowRunId: workflowRun.id,
+      latestOutputFileId: null,
+      latestErrorMessage: null,
+      lastTriggeredAt: history.triggeredAt,
     });
 
     workflowRunExecutor.startAsync(workflowRun.id);
@@ -1433,10 +1201,16 @@ async function registerRoutes() {
 
   app.delete('/api/monthly-runs/:id', async (request, reply) => {
     const historyId = Number((request.params as { id: string }).id);
-    const history = await getMonthlyRun(db, historyId);
-    if (!history) throw notFound('Monthly run not found');
-    await db.execute('delete from monthly_run_history where id = $1', [historyId]);
-    return reply.code(204).send();
+    try {
+      const deleted = await db.transaction((tx) => deleteMonthlyRunHistory(tx, historyId, (filePath) => fileStorage.remove(filePath)));
+      if (!deleted) throw notFound('Monthly run not found');
+      return reply.send({ deleted });
+    } catch (error) {
+      if (error instanceof MonthlyRunHistoryDeleteConflictError) {
+        return reply.code(409).send({ error: error.message });
+      }
+      throw error;
+    }
   });
 
   app.get('/api/files', async () => {
@@ -1763,220 +1537,6 @@ async function registerRoutes() {
     return reply.code(204).send();
   });
 
-  app.get('/api/update-plans', async (request) => {
-    const { month } = request.query as { month?: string };
-    await reconcileMonthlyUpdatePlanStatuses(db);
-    const rows = await db.query<Record<string, unknown>>(
-      `select up.*, m.month_key
-       from update_plans up
-       join months m on m.id = up.month_id
-       where ($1::text is null or m.month_key = $1)
-       order by m.month_key desc, up.id desc`,
-      [month ?? null],
-    );
-    return { plans: rows.map(toUpdatePlan) };
-  });
-
-  app.get('/api/update-plans/:id', async (request) => {
-    const { id } = request.params as { id: string };
-    await reconcileMonthlyUpdatePlanStatuses(db);
-    const row = await db.queryOne<Record<string, unknown>>(
-      `select up.*, m.month_key
-       from update_plans up
-       join months m on m.id = up.month_id
-       where up.id = $1`,
-      [Number(id)],
-    );
-    if (!row) throw notFound('Update plan not found');
-    return toUpdatePlan(row);
-  });
-
-  app.post('/api/update-plans', async (request, reply) => {
-    const currentUser = (request as typeof request & RequestWithAuth).currentUser;
-    if (!currentUser) throw new Error('Authentication required');
-    const body = updatePlanSchema.parse(request.body);
-    const row = await db.queryOne<{ id: number }>(
-      `insert into update_plans (month_id, operation_time, operator, status, remark)
-       values ($1, $2, $3, $4, $5)
-       returning id`,
-      [await getOrCreateMonth(body.month), new Date().toLocaleDateString('zh-CN'), currentUser.username, '待启动', body.remark],
-    );
-    if (!row) throw new Error('Failed to create update plan');
-
-    const id = Number(row.id);
-    await copyDefaultMetrics(id);
-    const plan = await db.queryOne<Record<string, unknown>>(
-      `select up.*, m.month_key from update_plans up join months m on m.id = up.month_id where up.id = $1`,
-      [id],
-    );
-    if (!plan) throw notFound('Update plan not found');
-    return reply.code(201).send(toUpdatePlan(plan));
-  });
-
-  app.patch('/api/update-plans/:id', async (request) => {
-    const { id } = request.params as { id: string };
-    const planId = Number(id);
-    const body = updatePlanPatchSchema.parse(request.body);
-    const existing = await db.queryOne<Record<string, unknown>>('select * from update_plans where id = $1', [planId]);
-    if (!existing) throw notFound('Update plan not found');
-
-    const monthId = body.month ? await getOrCreateMonth(body.month) : Number(existing.month_id);
-    await db.execute(
-      `update update_plans
-       set month_id = $1, operator = $2, status = $3, remark = $4, updated_at = current_timestamp
-       where id = $5`,
-      [
-        monthId,
-        body.operator ?? existing.operator,
-        body.status ?? existing.status,
-        body.remark ?? existing.remark,
-        planId,
-      ],
-    );
-    const row = await db.queryOne<Record<string, unknown>>(
-      `select up.*, m.month_key from update_plans up join months m on m.id = up.month_id where up.id = $1`,
-      [planId],
-    );
-    if (!row) throw notFound('Update plan not found');
-    return toUpdatePlan(row);
-  });
-
-  app.delete('/api/update-plans/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    await db.execute('delete from update_plans where id = $1', [Number(id)]);
-    return reply.code(204).send();
-  });
-
-  app.get('/api/update-plans/:id/checklist', async (request) => {
-    const { id } = request.params as { id: string };
-    return checklistForPlan(Number(id));
-  });
-
-  app.patch('/api/source-metrics/:id', async (request) => {
-    const { id } = request.params as { id: string };
-    const metricId = Number(id);
-    const body = metricPatchSchema.parse(request.body);
-    const existing = await db.queryOne<Record<string, unknown>>('select * from source_metrics where id = $1', [metricId]);
-    if (!existing) throw notFound('Source metric not found');
-    const row = await db.queryOne(
-      `update source_metrics
-       set normalized_value = $1,
-           status = $2,
-           uploaded_file = $3,
-           source_file_id = case when $3 in ('', 'Not uploaded') then null else source_file_id end,
-           product_file_id = case when $3 in ('', 'Not uploaded') then null else product_file_id end
-       where id = $4
-       returning *`,
-      [
-        body.value === undefined ? existing.normalized_value : body.value,
-        body.status === undefined ? existing.status : body.status,
-        body.uploadedFile === undefined ? existing.uploaded_file : body.uploadedFile,
-        metricId,
-      ],
-    );
-    return row;
-  });
-
-  app.post('/api/update-plans/:id/source-files', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const updatePlanId = Number(id);
-    let sourceGroup = 'unknown';
-    let metricId: number | null = null;
-    let uploaded: { fileName: string; buffer: Buffer; mimeType: string } | null = null;
-
-    for await (const part of request.parts()) {
-      if (part.type === 'file') {
-        uploaded = {
-          fileName: part.filename,
-          buffer: await part.toBuffer(),
-          mimeType: part.mimetype,
-        };
-      } else if (part.fieldname === 'sourceGroup') {
-        sourceGroup = String(part.value);
-      } else if (part.fieldname === 'metricId') {
-        metricId = Number(part.value);
-      }
-    }
-
-    if (!uploaded) return reply.code(400).send({ error: 'No file uploaded' });
-    const checksum = crypto.createHash('sha256').update(uploaded.buffer).digest('hex');
-    const safeName = `${Date.now()}-${uploaded.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const stored = await fileStorage.save('source', safeName, uploaded.buffer);
-
-    const parsedRows = parseWorkbook(uploaded.buffer);
-    const savedProductFile = await saveProductWorkbook({
-      originalName: uploaded.fileName,
-      buffer: uploaded.buffer,
-      mimeType: uploaded.mimeType,
-      uploadedBy: 'Input Configuration',
-      folderPrefix: `sources/${updatePlanId}`,
-    });
-    const productFileId = Number(savedProductFile.file.id);
-
-    const sourceFileId = await db.transaction(async (client) => {
-      const fileRow = await client.queryOne<{ id: number }>(
-        `insert into source_files (
-          update_plan_id, source_type, file_name, original_name, file_path, storage_backend, checksum, size_bytes
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8)
-        returning id`,
-        [
-          updatePlanId,
-          sourceGroup,
-          safeName,
-          uploaded.fileName,
-          stored.filePath,
-          stored.storageBackend,
-          checksum,
-          uploaded.buffer.length,
-        ],
-      );
-      if (!fileRow) throw new Error('Failed to create source file');
-
-      for (const row of parsedRows) {
-        await client.execute(
-          'insert into source_rows (source_file_id, sheet_name, row_index, row_json) values ($1, $2, $3, $4::jsonb)',
-          [fileRow.id, row.sheetName, row.rowIndex, JSON.stringify(row.row)],
-        );
-      }
-
-      if (metricId) {
-        await client.execute(
-          `update source_metrics
-           set source_file_id = $1, product_file_id = $2, uploaded_file = $3, status = 'pass'
-           where id = $4 and update_plan_id = $5`,
-          [fileRow.id, productFileId, uploaded.fileName, metricId, updatePlanId],
-        );
-      }
-
-      return Number(fileRow.id);
-    });
-
-    return reply.code(201).send({
-      id: sourceFileId,
-      productFileId,
-      originalName: uploaded.fileName,
-      checksum,
-      rowCount: parsedRows.length,
-    });
-  });
-
-  app.post('/api/update-plans/:id/generate-snapshot', async (request) => {
-    const { id } = request.params as { id: string };
-    const planId = Number(id);
-    await db.execute(
-      `update update_plans
-       set status = '已完成', operation_time = $1, updated_at = current_timestamp
-       where id = $2`,
-      [new Date().toLocaleDateString('zh-CN'), planId],
-    );
-    const row = await db.queryOne<Record<string, unknown>>(
-      `select up.*, m.month_key from update_plans up join months m on m.id = up.month_id where up.id = $1`,
-      [planId],
-    );
-    if (!row) throw notFound('Update plan not found');
-    return { plan: toUpdatePlan(row), checklist: await checklistForPlan(planId) };
-  });
-
   app.get('/api/holdings', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
     const { query = '', grantType = '', tag = '' } = request.query as {
@@ -1998,7 +1558,7 @@ async function registerRoutes() {
            $3 = ''
            or lower(
              coalesce(e.employee_name, '') || ' ' ||
-             coalesce(e.id::text, '') || ' ' ||
+             coalesce(e.employee_id, '') || ' ' ||
              coalesce(array_to_string(e.tags, ' '), '') || ' ' ||
              coalesce(g.grant_number, '') || ' ' ||
              coalesce(g.plan_name, '') || ' ' ||
@@ -2011,7 +1571,7 @@ async function registerRoutes() {
       `select
          g.*,
          e.employee_name,
-         e.id::text as employee_number,
+         e.employee_id as employee_number,
          e.user_id,
          e.tags
        from equity_grants g
@@ -2022,7 +1582,7 @@ async function registerRoutes() {
            $3 = ''
            or lower(
              coalesce(e.employee_name, '') || ' ' ||
-             coalesce(e.id::text, '') || ' ' ||
+             coalesce(e.employee_id, '') || ' ' ||
              coalesce(array_to_string(e.tags, ' '), '') || ' ' ||
              coalesce(g.grant_number, '') || ' ' ||
              coalesce(g.plan_name, '') || ' ' ||
@@ -2088,7 +1648,7 @@ async function registerRoutes() {
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedTag = tag.trim();
     const futuRows = await db.query<Record<string, unknown>>(
-      `select g.*, e.employee_name, e.id::text as employee_number, e.user_id, e.tags
+      `select g.*, e.employee_name, e.employee_id as employee_number, e.user_id, e.tags
        from equity_grants g
        join employees e on e.id = g.employee_id
        where ($1 = '' or $1 = any(e.tags))`,
@@ -2332,14 +1892,16 @@ async function registerRoutes() {
 
   app.get('/api/employees', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', tag = '', sort = '', dir = '' } = request.query as {
+    const { query = '', tag = '', source = '', sort = '', dir = '' } = request.query as {
       query?: string;
       tag?: string;
+      source?: string;
       sort?: string;
       dir?: string;
     };
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedTag = tag.trim();
+    const normalizedSource = normalizeEmployeeSourceFilter(source);
     const like = `%${normalizedQuery}%`;
     const offset = (page - 1) * pageSize;
     const sortColumn = sort === 'name' ? 'e.employee_name' : sort === 'empNo' ? 'e.employee_id' : 'e.id';
@@ -2355,10 +1917,11 @@ async function registerRoutes() {
           coalesce(e.user_id, '') || ' ' ||
           coalesce(array_to_string(e.tags, ' '), '')
         ) like $3
-      )`;
+      )
+      and ($4 = '' or e.source = $4)`;
     const totalRow = await db.queryOne<{ count: number }>(
       `select count(*)::int as count from employees e where ${matchClause}`,
-      [normalizedTag, normalizedQuery, like],
+      [normalizedTag, normalizedQuery, like, normalizedSource],
     );
     const rows = await db.query<Record<string, unknown>>(
       `select ${employeeSelectColumns}
@@ -2367,8 +1930,8 @@ async function registerRoutes() {
        where ${matchClause}
        group by e.id
        order by ${sortColumn} ${sortDir}, e.id ${sortDir}
-       limit $4 offset $5`,
-      [normalizedTag, normalizedQuery, like, pageSize, offset],
+       limit $5 offset $6`,
+      [normalizedTag, normalizedQuery, like, normalizedSource, pageSize, offset],
     );
     return {
       items: rows.map(toEmployee),
@@ -2500,13 +2063,12 @@ async function registerRoutes() {
     }>(
       `select
          nullif(btrim(coalesce(plan_name, '')), '') as plan_name,
-         count(*)::int as grant_count,
-         coalesce(sum(grant_quantity), 0) as granted,
-         coalesce(sum(exercised_quantity), 0) as exercised,
-         coalesce(sum(coalesce(vested_cancelled_quantity, 0) + coalesce(unvested_cancelled_quantity, 0)), 0) as cancelled,
-         coalesce(sum(outstanding_quantity), 0) as outstanding
-       from equity_grants
-       group by nullif(btrim(coalesce(plan_name, '')), '')
+         grant_count,
+         granted,
+         exercised,
+         cancelled,
+         outstanding
+       from plan_summary_rows
        order by outstanding desc, granted desc, plan_name asc`,
     );
     return buildPlanSummary(rows);
@@ -2686,6 +2248,67 @@ async function registerRoutes() {
       'select * from workflow_operators order by category asc, name asc, version asc',
     );
     return { operators: rows.map(toWorkflowOperator) };
+  });
+
+  app.get('/api/esop-workflows', async () => ({
+    items: Object.values(ESOP_PAGE_WORKFLOW_CONFIGS).map((config) => ({
+      pageKey: config.pageKey,
+      workflowCode: config.workflowCode,
+      workflowName: config.workflowName,
+      description: config.description,
+      sources: config.sources.map((source) => ({
+        sourceKey: source.sourceKey,
+        label: source.label,
+      })),
+    })),
+  }));
+
+  app.post('/api/esop-workflows/:pageKey/runs', async (request, reply) => {
+    const pageKey = esopPageKeySchema.parse((request.params as { pageKey: string }).pageKey) as EsopPageKey;
+    const body = esopWorkflowRunBodySchema.parse(request.body ?? {});
+    const config = ESOP_PAGE_WORKFLOW_CONFIGS[pageKey];
+    const expectedSourceKeys = new Set(config.sources.map((source) => source.sourceKey));
+    const unknownSourceKey = Object.keys(body.sources).find((sourceKey) => !expectedSourceKeys.has(sourceKey));
+    if (unknownSourceKey) throw new Error(`Unknown ESOP workflow source: ${unknownSourceKey}`);
+
+    for (const source of config.sources) {
+      const fileId = body.sources[source.sourceKey]?.fileId;
+      if (!fileId) throw new Error(`Missing ESOP workflow source: ${source.sourceKey}`);
+      await getProductFileOrThrow(fileId);
+    }
+
+    const run = await startEsopPageWorkflow(db, workflowRunStore, workflowRunExecutor, pageKey, body.sources);
+    return reply.code(201).send(workflowRunToExecutionResult(run));
+  });
+
+  app.get('/api/data-management-workflows', async () => ({
+    items: Object.values(DATA_MANAGEMENT_WORKFLOW_CONFIGS).map((config) => ({
+      pageKey: config.pageKey,
+      workflowCode: config.workflowCode,
+      workflowName: config.workflowName,
+      description: config.description,
+      sources: config.sources.map((source) => ({ sourceKey: source.sourceKey, label: source.label })),
+    })),
+  }));
+
+  app.post('/api/data-management-workflows/:pageKey/runs', async (request, reply) => {
+    const pageKey = dataManagementPageKeySchema.parse(
+      (request.params as { pageKey: string }).pageKey,
+    ) as DataManagementPageKey;
+    const body = dataManagementWorkflowRunBodySchema.parse(request.body ?? {});
+    const config = DATA_MANAGEMENT_WORKFLOW_CONFIGS[pageKey];
+    const expectedSourceKeys = new Set(config.sources.map((source) => source.sourceKey));
+    const unknownSourceKey = Object.keys(body.sources).find((sourceKey) => !expectedSourceKeys.has(sourceKey));
+    if (unknownSourceKey) throw new Error(`Unknown data management workflow source: ${unknownSourceKey}`);
+    for (const source of config.sources) {
+      const fileId = body.sources[source.sourceKey]?.fileId;
+      if (!fileId) throw new Error(`Missing data management workflow source: ${source.sourceKey}`);
+      await getProductFileOrThrow(fileId);
+    }
+    const run = await startDataManagementWorkflow(
+      db, workflowRunStore, workflowRunExecutor, pageKey, body.sources,
+    );
+    return reply.code(201).send(workflowRunToExecutionResult(run));
   });
 
   app.get('/api/workflows', async () => {

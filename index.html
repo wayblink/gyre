@@ -31,9 +31,9 @@
         <div class="auth-backdrop"></div>
         <section class="auth-panel" aria-labelledby="authBrandTitle">
             <div class="auth-brand">
-                <div class="logo-icon auth-logo-icon">CT</div>
+                    <div class="logo-icon auth-logo-icon">GYRE</div>
                 <div>
-                    <h1 class="auth-title" id="authBrandTitle">CapTable Equity Management</h1>
+                        <h1 class="auth-title" id="authBrandTitle">GYRE</h1>
                 </div>
             </div>
             <form class="auth-form" id="authForm">
@@ -64,9 +64,9 @@
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="logo">
-                <div class="logo-icon">CT</div>
+                <div class="logo-icon">GYRE</div>
                 <div class="logo-text">
-                    <div class="logo-title">CapTable</div>
+                    <div class="logo-title">GYRE</div>
                     <div class="logo-subtitle">Equity Management</div>
                 </div>
                 <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="收起导航栏" aria-expanded="true">
@@ -86,7 +86,7 @@
                     <span class="nav-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     </span>
-                    <span class="nav-text">Monthly Updates</span>
+                    <span class="nav-text">月度更新</span>
                 </div>
                 <div class="nav-item" data-page="esop-detail">
                     <span class="nav-icon">
@@ -159,11 +159,11 @@
                 </div>
             </nav>
             <div class="sidebar-footer">
-                <div class="nav-item nav-item--footer" data-page="docs" title="User Guide">
+                <div class="nav-item nav-item--footer" data-page="docs" title="使用手册">
                     <span class="nav-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                     </span>
-                    <span class="nav-text">User Guide</span>
+                    <span class="nav-text">使用手册</span>
                 </div>
                 <div class="nav-item nav-item--footer" data-page="settings" title="Settings">
                     <span class="nav-icon">
@@ -325,9 +325,18 @@
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="holdingsPaginationSummary">-</div>
                                 <div class="pagination-actions">
+                                    <label class="pagination-size-label">Rows
+                                        <select class="form-input pagination-size-select" id="holdingsPageSizeSelect">
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                        </select>
+                                    </label>
+                                    <button class="btn btn-secondary btn-sm" id="btnHoldingsFirstPage">« First</button>
                                     <button class="btn btn-secondary btn-sm" id="btnHoldingsPrevPage">Previous</button>
                                     <span class="pagination-page" id="holdingsPaginationPage">1 / 1</span>
                                     <button class="btn btn-secondary btn-sm" id="btnHoldingsNextPage">Next</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnHoldingsLastPage">Last »</button>
                                 </div>
                             </div>
                         </div>
@@ -392,9 +401,18 @@
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="exercisePaginationSummary">-</div>
                                 <div class="pagination-actions">
+                                    <label class="pagination-size-label">Rows
+                                        <select class="form-input pagination-size-select" id="exercisePageSizeSelect">
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                        </select>
+                                    </label>
+                                    <button class="btn btn-secondary btn-sm" id="btnExercisesFirstPage">« First</button>
                                     <button class="btn btn-secondary btn-sm" id="btnExercisesPrevPage">Previous</button>
                                     <span class="pagination-page" id="exercisePaginationPage">1 / 1</span>
                                     <button class="btn btn-secondary btn-sm" id="btnExercisesNextPage">Next</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnExercisesLastPage">Last »</button>
                                 </div>
                             </div>
                         </div>
@@ -465,9 +483,18 @@
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="soldSharesPaginationSummary">-</div>
                                 <div class="pagination-actions">
+                                    <label class="pagination-size-label">Rows
+                                        <select class="form-input pagination-size-select" id="soldSharesPageSizeSelect">
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                        </select>
+                                    </label>
+                                    <button class="btn btn-secondary btn-sm" id="btnSoldSharesFirstPage">« First</button>
                                     <button class="btn btn-secondary btn-sm" id="btnSoldSharesPrevPage">Previous</button>
                                     <span class="pagination-page" id="soldSharesPaginationPage">1 / 1</span>
                                     <button class="btn btn-secondary btn-sm" id="btnSoldSharesNextPage">Next</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnSoldSharesLastPage">Last »</button>
                                 </div>
                             </div>
                         </div>
@@ -497,6 +524,7 @@
                             </div>
                             <div class="transfer-plan-actions">
                                 <input type="file" id="transferPlanFileInput" accept=".xlsx" hidden>
+                                <button class="btn btn-secondary btn-sm" id="btnToggleTransferPlanTableView" type="button" aria-pressed="false">转置表格</button>
                                 <button class="btn btn-secondary btn-sm" id="btnImportTransferPlan">Import detail</button>
                                 <button class="btn btn-primary btn-sm" id="btnExportTransferPlan">Export detail</button>
                             </div>
@@ -550,7 +578,17 @@
                                             <th style="width:56px;">No.</th>
                                             <th class="sortable-th" data-employees-sort="name">Employee Name <span class="sort-indicator" data-sort-key="name"></span></th>
                                             <th style="width:130px;" class="sortable-th" data-employees-sort="empNo">Emp. No. <span class="sort-indicator" data-sort-key="empNo"></span></th>
-                                            <th style="width:88px;">Source</th>
+                                            <th style="width:128px;">
+                                                <div class="table-header-filter">
+                                                    <span>Source</span>
+                                                    <select id="filterEmployeesPageSource" class="table-header-select" aria-label="Filter employees by source">
+                                                        <option value="">All</option>
+                                                        <option value="futu">Futu</option>
+                                                        <option value="shareworks">Shareworks</option>
+                                                        <option value="manual">Manual</option>
+                                                    </select>
+                                                </div>
+                                            </th>
                                             <th>Linked</th>
                                             <th>Tags</th>
                                             <th style="width:96px;">Grant Count</th>
@@ -683,7 +721,7 @@
                     <div class="product-page-hero">
                         <div>
                             <div class="product-page-hero__eyebrow">使用手册</div>
-                            <h2>User Guide</h2>
+                            <h2>使用手册</h2>
                             <p>系统各页面与工作流的使用说明，按主题分多篇文档。</p>
                         </div>
                     </div>
@@ -697,7 +735,7 @@
                 <section class="page-section active" id="page-captable">
                     <div class="search-bar">
                         <div class="search-group">
-                            <label class="search-label">Month</label>
+                            <label class="search-label">月份</label>
                             <input type="month" id="monthPicker" class="search-input" value="2026-05">
                         </div>
                         <div class="search-actions">
@@ -713,9 +751,9 @@
                         <span class="info-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                         </span>
-                        <span class="info-text">Current View: <strong id="currentMonthText">May 2026</strong> Equity Data</span>
-                        <span class="info-badge">EOM: <span id="eomDate">2026/5/31</span></span>
-                        <span class="info-badge" id="capitalizationSourceBadge">Capitalization Source: Snapshot</span>
+                        <span class="info-text">当前视图：<strong id="currentMonthText">暂无汇总数据</strong></span>
+                        <span class="info-badge">EOM: <span id="eomDate">-</span></span>
+                        <span class="info-badge" id="capitalizationSourceBadge">股本来源：默认快照</span>
                     </div>
 
                     <!-- Table 1: Shares OS Reconciliation -->
@@ -723,9 +761,9 @@
                         <div class="card-header">
                             <h3 class="card-title">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                                Shares OS Reconciliation
+                                股本对账
                             </h3>
-                            <span class="card-subtitle">Equity Outstanding as of</span>
+                            <span class="card-subtitle">期末股本数据</span>
                         </div>
                         <div class="card-body">
                             <table class="data-table table-reconciliation" id="reconciliationTable">
@@ -752,13 +790,13 @@
                             <div>
                                 <h3 class="card-title">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                                    Capitalization Table (Summary View)
+                                    股权结构汇总
                                 </h3>
                             </div>
                             <div class="card-header-actions">
                                 <button class="btn btn-secondary btn-sm" id="btnExport">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                    Export
+                                    导出
                                 </button>
                             </div>
                         </div>
@@ -777,8 +815,8 @@
                                     <tr class="total-row-blue">
                                         <td></td>
                                         <td style="text-align:left; font-weight:var(--font-bold);">Total Fully Diluted Shares Outstand</td>
-                                        <td id="totalShares" style="font-weight:var(--font-bold);">133,527,448</td>
-                                        <td style="font-weight:var(--font-bold);">100%</td>
+                                        <td id="totalShares" style="font-weight:var(--font-bold);">-</td>
+                                        <td style="font-weight:var(--font-bold);">-</td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -790,20 +828,20 @@
                         <div class="card-header">
                             <h3 class="card-title">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                Notes
+                                备注
                             </h3>
                             <button class="btn btn-primary btn-sm" id="btnAddNote">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                Add Note
+                                添加备注
                             </button>
                         </div>
                         <div class="card-body">
                             <div class="notes-container" id="notesContainer"></div>
                             <div class="add-note-form hidden" id="addNoteForm">
-                                <textarea id="noteContent" class="note-input" placeholder="Enter note content..." rows="3"></textarea>
+                                <textarea id="noteContent" class="note-input" placeholder="请输入备注内容..." rows="3"></textarea>
                                 <div class="note-form-actions">
-                                    <button class="btn btn-primary" id="btnSaveNote">Save Note</button>
-                                    <button class="btn btn-secondary" id="btnCancelNote">Cancel</button>
+                                    <button class="btn btn-primary" id="btnSaveNote">保存备注</button>
+                                    <button class="btn btn-secondary" id="btnCancelNote">取消</button>
                                 </div>
                             </div>
                         </div>
@@ -814,36 +852,36 @@
                 <section class="page-section" id="page-monthly">
                     <div class="search-bar">
                         <div class="search-group">
-                            <label class="search-label">Month</label>
+                            <label class="search-label">月份</label>
                             <input type="month" id="monthPickerMonthly" class="search-input">
                             <button class="btn btn-primary" id="btnSearchMonthly">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                Search
+                                查询
                             </button>
                         </div>
                         <div class="search-actions">
                             <button class="btn btn-success" id="btnAddUpdate">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                New Update Plan
+                                新建月度更新
                             </button>
                         </div>
                     </div>
 
                     <div class="stats-row">
                         <div class="stat-card">
-                            <div class="stat-label">Total Plans</div>
+                            <div class="stat-label">计划总数</div>
                             <div class="stat-value" id="planTotalCount">-</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">Completed</div>
+                            <div class="stat-label">已完成</div>
                             <div class="stat-value stat-success" id="planCompletedCount">-</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">In Progress</div>
+                            <div class="stat-label">进行中</div>
                             <div class="stat-value stat-warning" id="planInProgressCount">-</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">Pending</div>
+                            <div class="stat-label">待处理</div>
                             <div class="stat-value stat-info" id="planPendingCount">-</div>
                         </div>
                     </div>
@@ -852,9 +890,9 @@
                         <div class="card-header">
                             <h3 class="card-title">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                                Monthly Update Plans
+                                月度更新计划
                             </h3>
-                            <span class="card-subtitle">Manage data update plans by month</span>
+                            <span class="card-subtitle">按月份管理数据更新计划</span>
                         </div>
                         <div class="card-body">
                             <div class="table-scroll">
@@ -879,13 +917,13 @@
                     <div class="modal-overlay hidden" id="addPlanModal">
                         <div class="modal-container monthly-plan-modal">
                             <div class="modal-header">
-                                <h3 class="modal-title">New Monthly Update Plan</h3>
+                                <h3 class="modal-title">新建月度更新计划</h3>
                                 <button class="modal-close" id="btnCloseAddModal">&times;</button>
                             </div>
                             <div class="modal-body">
                                 <div class="monthly-plan-modal__body">
                                     <div class="form-group">
-                                        <label>Month <span style="color:var(--danger-500);">*</span></label>
+                                        <label>月份 <span style="color:var(--danger-500);">*</span></label>
                                         <input type="month" id="newPlanMonth" class="form-input">
                                     </div>
                                     <div class="form-group">
@@ -895,7 +933,7 @@
                                 </div>
                             </div>
                             <div class="modal-footer">
-                                <button class="btn btn-secondary" id="btnCancelAddModal">Cancel</button>
+                                <button class="btn btn-secondary" id="btnCancelAddModal">取消</button>
                                 <button class="btn btn-primary" id="btnSubmitAdd">Create Plan</button>
                             </div>
                         </div>
@@ -905,22 +943,22 @@
                 <section class="page-section" id="page-monthlyrun">
                     <div class="monthly-run-hidden-controls hidden" aria-hidden="true">
                         <input type="month" id="monthlyRunMonth" value="2026-06">
-                        <button id="btnMonthlyRunConfigureSources" type="button">Configure Sources</button>
-                        <button id="btnMonthlyRunRefreshFiles" type="button">Refresh Files</button>
+                        <button id="btnMonthlyRunConfigureSources" type="button">配置输入源</button>
+                        <button id="btnMonthlyRunRefreshFiles" type="button">刷新文件</button>
                         <span id="monthlyRunSourceInfo"></span>
                     </div>
 
                     <div class="card monthly-run-input-card" id="monthlyRunInputCard">
                         <div class="card-header">
                             <div>
-                                <h3 class="card-title" id="modalTitle">Input Configuration</h3>
+                                <h3 class="card-title" id="modalTitle">输入配置</h3>
                             </div>
                             <div class="monthly-run-input-month">
-                                <span>Month</span>
+                                <span>月份</span>
                                 <strong id="monthlyRunInputMonth">-</strong>
                             </div>
                             <div class="monthly-run-input-actions">
-                                <button class="card-collapse__btn monthly-run-input-toggle" id="btnToggleMonthlyRunInput" type="button" aria-expanded="true" aria-controls="monthlyRunInputBody" title="Collapse Input Configuration">
+                                <button class="card-collapse__btn monthly-run-input-toggle" id="btnToggleMonthlyRunInput" type="button" aria-expanded="true" aria-controls="monthlyRunInputBody" title="收起输入配置">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                                 </button>
                             </div>
@@ -928,7 +966,7 @@
                         <div class="card-body monthly-run-input-body" id="monthlyRunInputBody">
                             <div id="sourceTablesContainer">
                                 <div class="source-table-section">
-                                    <div class="source-table-title">Fixed Value</div>
+                                    <div class="source-table-title">固定参数</div>
                                     <table class="source-table" id="fixedValueTable">
                                         <thead>
                                             <tr>
@@ -943,7 +981,7 @@
                                     </table>
                                 </div>
                                 <div class="source-table-section">
-                                    <div class="source-table-title">Table sourced from Shareworks</div>
+                                    <div class="source-table-title">来自 Shareworks 的输入表</div>
                                     <table class="source-table source-table--inputs" id="shareworksTable">
                                         <colgroup>
                                             <col class="source-table__col-file">
@@ -963,7 +1001,7 @@
                                     </table>
                                 </div>
                                 <div class="source-table-section">
-                                    <div class="source-table-title">Table sourced from Futu</div>
+                                    <div class="source-table-title">来自 Futu 的输入表</div>
                                     <table class="source-table source-table--inputs" id="futuTable">
                                         <colgroup>
                                             <col class="source-table__col-file">
@@ -990,11 +1028,11 @@
                         <div class="card-header">
                             <h3 class="card-title">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 6h8"/><path d="M7.5 7.5l3 7"/><path d="M16.5 7.5l-3 7"/></svg>
-                                Execution
+                                执行状态
                             </h3>
                             <button class="btn btn-primary" id="btnTriggerMonthlyRun" type="button">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                                Execute
+                                执行
                             </button>
                             <span class="card-subtitle hidden" id="monthlyRunSummary"></span>
                         </div>
@@ -1015,9 +1053,9 @@
                         <div class="card-header">
                             <h3 class="card-title">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 2 5-6"/></svg>
-                                Run History
+                                运行历史
                             </h3>
-                            <span class="card-subtitle">Business audit trail for monthly workflow executions</span>
+                            <span class="card-subtitle">记录每次月度工作流执行的输入、输出与状态</span>
                         </div>
                         <div class="card-body">
                             <table class="data-table">
@@ -1042,7 +1080,7 @@
                     <div class="modal-container modal-large monthly-run-source-modal">
                         <div class="modal-header">
                             <div>
-                                <h3 class="modal-title">Configure Monthly Sources</h3>
+                                <h3 class="modal-title">配置月度输入源</h3>
                                 <p class="modal-subtitle" id="monthlyRunSourceModalSubtitle">为本次月度执行配置每个 workflow 输入节点的文件来源。</p>
                             </div>
                             <button class="modal-close" id="btnCloseMonthlyRunSourceModal">&times;</button>
@@ -1050,7 +1088,7 @@
                         <div class="modal-body">
                             <div class="monthly-run-source-modal__meta">
                                 <div class="monthly-run-source-modal__month">
-                                    <span>Upload folder</span>
+                                    <span>上传目录</span>
                                     <strong id="monthlyRunSourceModalMonth">2026-06</strong>
                                 </div>
                                 <p>新上传文件会进入当前月份目录，但可继续复用历史月份已上传文件。</p>
@@ -1058,8 +1096,8 @@
                             <div class="monthly-run-source-list" id="monthlyRunSourceList"></div>
                         </div>
                         <div class="modal-footer">
-                            <button class="btn btn-secondary" id="btnCancelMonthlyRunSourceModal" type="button">Cancel</button>
-                            <button class="btn btn-primary" id="btnSaveMonthlyRunSourceModal" type="button">Save Sources</button>
+                            <button class="btn btn-secondary" id="btnCancelMonthlyRunSourceModal" type="button">取消</button>
+                            <button class="btn btn-primary" id="btnSaveMonthlyRunSourceModal" type="button">保存输入源</button>
                         </div>
                     </div>
                 </div>
@@ -1120,9 +1158,9 @@
 
                 <section class="page-section" id="page-workflow">
                     <div class="workflow-page" id="workflowPageLayout">
-                        <button class="rail rail--left hidden" id="workflowCollapsedRail" title="展开 Workflows" aria-label="展开 Workflows">
+                        <button class="rail rail--left hidden" id="workflowCollapsedRail" title="展开工作流列表" aria-label="展开工作流列表">
                             <span class="rail__arrow">›</span>
-                            <span class="rail__label">Workflows</span>
+                            <span class="rail__label">工作流</span>
                         </button>
 
                         <aside class="workflow-sidebar" id="workflowSidebar">
@@ -1130,7 +1168,7 @@
                                 <button
                                     class="card-collapse__btn"
                                     id="btnToggleWorkflowSidebar"
-                                    aria-label="收起 Workflows"
+                                    aria-label="收起工作流列表"
                                     title="收起"
                                     type="button"
                                 >
@@ -1139,12 +1177,12 @@
                             </div>
                             <div class="workflow-sidebar__header">
                                 <div>
-                                    <h3>Workflows</h3>
+                                    <h3>工作流</h3>
                                 </div>
                                 <div class="workflow-sidebar__actions">
-                                    <button class="btn btn-secondary btn-sm" id="btnImportWorkflow">Import</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnImportWorkflow">导入</button>
                                     <input id="workflowImportInput" type="file" accept="application/json,.json" hidden>
-                                    <button class="btn btn-primary btn-sm" id="btnCreateWorkflow">New</button>
+                                    <button class="btn btn-primary btn-sm" id="btnCreateWorkflow">新建</button>
                                 </div>
                             </div>
                             <div class="workflow-list" id="workflowList"></div>
@@ -1154,13 +1192,13 @@
                             <header class="workflow-toolbar">
                                 <div class="workflow-toolbar__meta">
                                     <div class="workflow-toolbar__identity">
-                                        <input id="workflowNameInput" class="search-input workflow-input workflow-input--title" placeholder="Workflow name">
+                                        <input id="workflowNameInput" class="search-input workflow-input workflow-input--title" placeholder="工作流名称">
                                     </div>
                                 </div>
                                 <div class="workflow-toolbar__actions">
-                                    <button class="btn btn-secondary" id="btnExecuteWorkflow">Execute</button>
-                                    <button class="btn btn-primary" id="btnSaveWorkflow">Save</button>
-                                    <button class="btn btn-danger" id="btnDeleteWorkflow">Delete</button>
+                                    <button class="btn btn-secondary" id="btnExecuteWorkflow">执行</button>
+                                    <button class="btn btn-primary" id="btnSaveWorkflow">保存</button>
+                                    <button class="btn btn-danger" id="btnDeleteWorkflow">删除</button>
                                 </div>
                                 <div class="workflow-toolbar__description" id="workflowDescriptionPanel">
                                     <div class="workflow-toolbar__description-row" id="workflowDescriptionDisplayRow">
@@ -1171,7 +1209,7 @@
                                             </svg>
                                         </button>
                                     </div>
-                                    <textarea id="workflowDescriptionInput" class="workflow-toolbar__description-input hidden" rows="3" placeholder="Description"></textarea>
+                                    <textarea id="workflowDescriptionInput" class="workflow-toolbar__description-input hidden" rows="3" placeholder="工作流描述"></textarea>
                                     <div class="workflow-runtime-summary hidden" id="workflowRuntimeParamsSummary"></div>
                                 </div>
                             </header>
@@ -1179,10 +1217,10 @@
                             <section class="workflow-run-panel hidden" id="workflowRunPanel">
                                 <div class="workflow-run-panel__header">
                                     <div>
-                                        <h3>Execution</h3>
-                                        <p id="workflowRunSummary">Ready to run</p>
+                                        <h3>执行状态</h3>
+                                        <p id="workflowRunSummary">准备执行</p>
                                     </div>
-                                    <button class="btn btn-secondary btn-sm" id="btnToggleWorkflowRunPanel" type="button">Hide</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnToggleWorkflowRunPanel" type="button">收起</button>
                                 </div>
                                 <div class="workflow-run-panel__progress">
                                     <div class="workflow-run-panel__progress-bar">
@@ -1196,9 +1234,9 @@
 
                             <div class="workflow-dag-shell">
                                 <div class="workflow-canvas-actions" aria-label="Workflow canvas actions">
-                                    <button class="workflow-add-task-control" id="btnAddWorkflowTask" type="button" aria-label="Add task">
+                                    <button class="workflow-add-task-control" id="btnAddWorkflowTask" type="button" aria-label="添加节点">
                                         <span class="workflow-add-task-control__icon">+</span>
-                                        <span>Add Task</span>
+                                        <span>添加节点</span>
                                     </button>
                                     <div class="workflow-zoom-controls" aria-label="Canvas view controls">
                                         <button class="workflow-zoom-controls__button" id="btnWorkflowZoomIn" type="button" aria-label="Zoom in">+</button>
@@ -1245,7 +1283,7 @@
                             <div class="workflow-inspector__section workflow-inspector__section--operators">
                                 <div class="workflow-inspector__title-row">
                                     <div class="workflow-inspector__title-group">
-                                        <h3>Operators</h3>
+                                        <h3>算子</h3>
                                         <span class="workflow-count-badge" id="workflowOperatorCount">0</span>
                                     </div>
                                 </div>

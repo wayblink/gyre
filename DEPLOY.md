@@ -7,7 +7,9 @@
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `AUTH_DISABLED` | `true` | **登录开关**：`true`=免登录直接进；`false`=启用账号登录 |
-| `SEED_ON_INIT` | `true`(代码默认) / `false`(prod compose) | 首次启动是否导入 demo 工作簿。生产用空库启动设 `false` |
+| `WORKFLOW_SEED_ON_INIT` | `true` | 启动时初始化 workflow operators 和内置 workflow definitions |
+| `DEMO_SEED_ON_INIT` | `false` | 是否导入 demo 业务数据；正式环境应保持 `false` |
+| `SEED_ON_INIT` | 兼容旧配置 | 旧版 demo seed 开关，等价于 `DEMO_SEED_ON_INIT`，仅用于兼容 |
 | `HOST` | `127.0.0.1` | 容器内必须设 `0.0.0.0` 才能被反代访问（镜像已默认） |
 | `PORT` | `60628` | 服务端口 |
 | `DATABASE_URL` | — | Postgres 连接串 |
@@ -24,14 +26,15 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 - 应用发布在 `127.0.0.1:60628`（仅回环，供反代转发）。
 - Postgres、上传文件分别持久化在命名卷 `pgdata`、`appdata`。
-- 想启用登录 / 空库启动：`AUTH_DISABLED=false SEED_ON_INIT=false docker compose -f docker-compose.prod.yml up -d --build`。
+- 想启用登录 / 空库启动：`AUTH_DISABLED=false DEMO_SEED_ON_INIT=false docker compose -f docker-compose.prod.yml up -d --build`。
+- 想加载演示业务数据：额外设置 `DEMO_SEED_ON_INIT=true`。
 
 只构建镜像（不带 compose）：
 
 ```bash
 docker build -t capmerge:latest .
 docker run -d --name capmerge -p 127.0.0.1:60628:60628 \
-  -e HOST=0.0.0.0 -e STORAGE_DRIVER=local -e AUTH_DISABLED=false -e SEED_ON_INIT=false \
+    -e HOST=0.0.0.0 -e STORAGE_DRIVER=local -e AUTH_DISABLED=false -e DEMO_SEED_ON_INIT=false \
   -e DATABASE_URL=postgres://user:pass@<db-host>:5432/captable \
   -v capmerge-data:/app/data capmerge:latest
 ```
@@ -65,5 +68,8 @@ ECS 安全组只放行 80/443；两个应用都只绑 `127.0.0.1`，不直接对
 
 ## 四、注意
 
-- 镜像默认 `SEED_ON_INIT=true` 会读取 `database/` 下的 demo 工作簿；prod compose 已改为 `false`，用空库启动更适合生产。
+- 应用默认会初始化 workflow operators 和内置 workflow definitions，但不会默认导入 demo 业务数据。
+- 若显式设置 `DEMO_SEED_ON_INIT=true`，启动时会读取 `database/` 下的 demo 工作簿和原型数据。
+- 需要手动导入演示业务数据时，可在项目目录执行 `npm run seed:demo -- --force`。
+- 若确需在生产环境导入演示数据，必须显式执行 `npm run seed:demo:prod`。
 - 升级：`docker compose -f docker-compose.prod.yml up -d --build` 会重建镜像并滚动重启，数据卷不受影响（schema 用 `create ... if not exists` 幂等）。
