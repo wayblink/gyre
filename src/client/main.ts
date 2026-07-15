@@ -39,6 +39,7 @@ import { createDocsPage } from './docsPage.js';
 import { resolveDefaultSummaryMonth } from './summaryPage.js';
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
 import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './transferPlanPage.js';
+import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
 import '../../css/style.css';
 import '@univerjs/design/lib/index.css';
 import '@univerjs/ui/lib/index.css';
@@ -102,6 +103,7 @@ const MONTHLY_RUN_INPUT_COLLAPSED_STORAGE_KEY = 'captable.monthlyRun.inputCollap
 let sidebarCollapsed = false;
 let monthlyRunInputCollapsed = false;
 let themeSelection: ThemeSelection = getStoredTheme();
+let currentLanguage: AppLanguage = readStoredLanguage();
 let appInitialized = false;
 let currentAccount: AccountProfile | null = null;
 
@@ -117,6 +119,7 @@ const filesPage = createFilesPage({
   formatFileSize,
   notify,
   confirmAction,
+  getLanguage: () => currentLanguage,
 });
 
 const workflowPage = createWorkflowPage({
@@ -127,9 +130,10 @@ const workflowPage = createWorkflowPage({
   refreshProductFiles: () => filesPage.refreshProductFiles(),
   notify,
   confirmAction,
+  getLanguage: () => currentLanguage,
 });
 
-const docsPage = createDocsPage({ el });
+const docsPage = createDocsPage({ el, getLanguage: () => currentLanguage });
 
 const monthlyRunPage = createMonthlyRunPage({
   el,
@@ -140,6 +144,7 @@ const monthlyRunPage = createMonthlyRunPage({
   refreshSummary: (month) => renderSummaryPage(month),
   notify,
   confirmAction,
+  getLanguage: () => currentLanguage,
   onMonthChanged: (month) => {
     if (getPageFromLocation() !== 'monthlyrun') return;
     void openMonthlyRunMonthOnly(month);
@@ -151,6 +156,371 @@ function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`Missing element #${id}`);
   return node as T;
+}
+
+function setPageSourceFiles(page: PageKey, files: string | Array<string | null | undefined> | null | undefined) {
+  const list = (Array.isArray(files) ? files : [files])
+    .map((file) => String(file ?? '').trim())
+    .filter(Boolean);
+  const section = document.getElementById(`page-${page}`);
+  const nameNode = section?.querySelector<HTMLElement>('[data-page-source-file-name]');
+  if (!nameNode) return;
+  const label = list.join(' / ');
+  nameNode.textContent = label || '-';
+  nameNode.setAttribute('title', label ? `SourceFile: ${label}` : '');
+}
+
+function productFileDisplayName(file: ProductFileRecord) {
+  return file.displayName || file.originalName;
+}
+
+function resetActivePageSourceFile() {
+  const activeSection = document.querySelector<HTMLElement>('.page-section.active');
+  const nameNode = activeSection?.querySelector<HTMLElement>('[data-page-source-file-name]');
+  if (!nameNode) return;
+  nameNode.textContent = '-';
+  nameNode.removeAttribute('title');
+}
+
+function responseSourceFiles(response: { sourceFiles?: string[]; sourceFileName?: string | null }) {
+  return response.sourceFiles?.length ? response.sourceFiles : response.sourceFileName;
+}
+
+const pageTitleTranslations: Record<PageKey, Record<AppLanguage, string>> = {
+  captable: { 'zh-CN': '股权汇总', 'en-US': 'CapTable' },
+  monthly: { 'zh-CN': '月度更新', 'en-US': 'Monthly Update' },
+  monthlyrun: { 'zh-CN': '月度运行', 'en-US': 'Monthly Run' },
+  'esop-detail': { 'zh-CN': 'ESOP 明细', 'en-US': 'ESOP Detail' },
+  'grant-record': { 'zh-CN': '授予记录', 'en-US': 'Grant Record' },
+  'exercise-record': { 'zh-CN': '行权记录', 'en-US': 'Exercise to Date' },
+  'sold-shares': { 'zh-CN': '卖出记录', 'en-US': 'Sold Shares' },
+  'transfer-plan': { 'zh-CN': '2025 转仓至 Futu', 'en-US': '2025 Transfer to Futu' },
+  'employee-management': { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
+  'plan-summary': { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
+  'five-percent-holders': { 'zh-CN': '5% 股东', 'en-US': '5% Holders' },
+  'fixed-value': { 'zh-CN': '固定参数', 'en-US': 'Fixed Value' },
+  files: { 'zh-CN': '文件中心', 'en-US': 'Files' },
+  workflow: { 'zh-CN': '工作流', 'en-US': 'Workflow' },
+  docs: { 'zh-CN': '使用手册', 'en-US': 'Docs' },
+  holdings: { 'zh-CN': '持仓明细', 'en-US': 'Holdings' },
+  employees: { 'zh-CN': '员工列表', 'en-US': 'Employees' },
+  account: { 'zh-CN': '账号设置', 'en-US': 'Account Settings' },
+  settings: { 'zh-CN': '系统设置', 'en-US': 'Settings' },
+};
+
+const uiText: Record<string, Record<AppLanguage, string>> = {
+  authUsername: { 'zh-CN': '用户名', 'en-US': 'Username' },
+  authPassword: { 'zh-CN': '密码', 'en-US': 'Password' },
+  authDisplayName: { 'zh-CN': '显示名称', 'en-US': 'Display name' },
+  authBootstrapSecret: { 'zh-CN': '初始化密钥', 'en-US': 'Bootstrap secret' },
+  login: { 'zh-CN': '登录', 'en-US': 'Log in' },
+  createAndLogin: { 'zh-CN': '创建并登录', 'en-US': 'Create and log in' },
+  collapseSidebar: { 'zh-CN': '收起导航栏', 'en-US': 'Collapse sidebar' },
+  expandSidebar: { 'zh-CN': '展开导航栏', 'en-US': 'Expand sidebar' },
+  devTools: { 'zh-CN': '开发工具', 'en-US': 'Developer Tools' },
+  account: { 'zh-CN': '账号', 'en-US': 'Account' },
+  logout: { 'zh-CN': '退出登录', 'en-US': 'Log out' },
+  search: { 'zh-CN': '搜索', 'en-US': 'Search' },
+  tag: { 'zh-CN': '标签', 'en-US': 'Tag' },
+  incentiveType: { 'zh-CN': '激励类型', 'en-US': 'Incentive Type' },
+  allTypes: { 'zh-CN': '全部类型', 'en-US': 'All Types' },
+  grantYear: { 'zh-CN': '授予年份', 'en-US': 'Grant Year' },
+  employmentStatus: { 'zh-CN': '在职状态', 'en-US': 'Employment Status' },
+  month: { 'zh-CN': '月份', 'en-US': 'Month' },
+  defaultSnapshot: { 'zh-CN': '默认快照数据', 'en-US': 'Default snapshot data' },
+  currentView: { 'zh-CN': '当前视图：', 'en-US': 'Current view: ' },
+  noSummaryData: { 'zh-CN': '暂无汇总数据', 'en-US': 'No summary data' },
+  export: { 'zh-CN': '导出', 'en-US': 'Export' },
+  save: { 'zh-CN': '保存', 'en-US': 'Save' },
+  cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
+  close: { 'zh-CN': '关闭', 'en-US': 'Close' },
+  edit: { 'zh-CN': '编辑', 'en-US': 'Edit' },
+  delete: { 'zh-CN': '删除', 'en-US': 'Delete' },
+  actions: { 'zh-CN': '操作', 'en-US': 'Actions' },
+  rows: { 'zh-CN': '行数', 'en-US': 'Rows' },
+  first: { 'zh-CN': '« 首页', 'en-US': '« First' },
+  previous: { 'zh-CN': '上一页', 'en-US': 'Previous' },
+  next: { 'zh-CN': '下一页', 'en-US': 'Next' },
+  last: { 'zh-CN': '末页 »', 'en-US': 'Last »' },
+  language: { 'zh-CN': '语言', 'en-US': 'Language' },
+  languageSubtitle: { 'zh-CN': '切换界面显示语言', 'en-US': 'Switch the interface language' },
+  uiLanguage: { 'zh-CN': '界面语言', 'en-US': 'Interface language' },
+  colorTheme: { 'zh-CN': '配色', 'en-US': 'Color Theme' },
+  colorThemeSubtitle: { 'zh-CN': '控制品牌主色与强调色倾向', 'en-US': 'Control the brand and accent color' },
+  colorScheme: { 'zh-CN': '配色方案', 'en-US': 'Color scheme' },
+  current: { 'zh-CN': '当前', 'en-US': 'Current' },
+  blueDesc: { 'zh-CN': '稳健的默认企业蓝', 'en-US': 'Stable default enterprise blue' },
+  tealDesc: { 'zh-CN': '更偏产品和数据工具的青绿色强调', 'en-US': 'Teal accent for product and data tools' },
+  amberDesc: { 'zh-CN': '偏暖的金橙色强调，更接近演示型工作台', 'en-US': 'Warm amber accent for demo-oriented workspaces' },
+  accountInfo: { 'zh-CN': '账号信息', 'en-US': 'Account Information' },
+  accountInfoSubtitle: { 'zh-CN': '管理当前登录账号的基础信息和联系方式', 'en-US': 'Manage the current account profile and contact details' },
+  username: { 'zh-CN': '账号名', 'en-US': 'Username' },
+  displayName: { 'zh-CN': '显示名', 'en-US': 'Display name' },
+  email: { 'zh-CN': '邮箱', 'en-US': 'Email' },
+  contact: { 'zh-CN': '联系方式', 'en-US': 'Contact' },
+  changePassword: { 'zh-CN': '修改密码', 'en-US': 'Change Password' },
+  saveAccount: { 'zh-CN': '保存账号信息', 'en-US': 'Save Account' },
+  changePasswordSubtitle: { 'zh-CN': '请输入原密码，并确认两次新密码一致', 'en-US': 'Enter the current password and confirm the new password twice' },
+  currentPassword: { 'zh-CN': '当前密码', 'en-US': 'Current password' },
+  newPassword: { 'zh-CN': '新密码', 'en-US': 'New password' },
+  confirmNewPassword: { 'zh-CN': '确认新密码', 'en-US': 'Confirm new password' },
+  updatePassword: { 'zh-CN': '更新密码', 'en-US': 'Update Password' },
+  sourceFile: { 'zh-CN': 'SourceFile', 'en-US': 'SourceFile' },
+  captableHeroEyebrow: { 'zh-CN': '股本汇总', 'en-US': 'Equity Summary' },
+  captableHeroText: { 'zh-CN': '展示月度 Capitalization Table Summary View，数据来自当前选择的 SourceFile。', 'en-US': 'View the monthly Capitalization Table Summary using the selected SourceFile.' },
+  grantHeroEyebrow: { 'zh-CN': '授予记录', 'en-US': 'Grant Records' },
+  grantHeroText: { 'zh-CN': '展示 Futu、Shareworks 及合并后的授予明细，数据来自对应 workflow 输出文件。', 'en-US': 'View Futu, Shareworks, and merged grant details from workflow output files.' },
+  exerciseHeroEyebrow: { 'zh-CN': '行权记录', 'en-US': 'Exercise Records' },
+  exerciseHeroText: { 'zh-CN': '展示 Futu 全部行权记录，数据来自 Files 中的独立工作簿。', 'en-US': 'View all Futu exercise records from the workbook stored in Files.' },
+  soldHeroEyebrow: { 'zh-CN': '卖出记录', 'en-US': 'Sold Share Records' },
+  soldHeroText: { 'zh-CN': '展示 Futu 卖出汇总记录，数据来自 Files 中的独立工作簿。', 'en-US': 'View Futu sold-share summary records from the workbook stored in Files.' },
+  transferHeroEyebrow: { 'zh-CN': '2025年计划', 'en-US': '2025 Plan' },
+  transferHeroText: { 'zh-CN': '按月汇总归属记录，取消数量可直接编辑；数据来自 Files 中的独立工作簿。', 'en-US': 'Summarize monthly vesting records and edit cancellation quantities directly.' },
+  employeeHeroEyebrow: { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
+  employeeHeroText: { 'zh-CN': '员工主数据由员工归集 workflow 从 ESOP 明细输入文件中生成，并支持手工补充。', 'en-US': 'Employee master data is generated from ESOP detail workflows and can be manually supplemented.' },
+  planHeroEyebrow: { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
+  planHeroText: { 'zh-CN': '按 Plan Name 聚合授予、行权、取消及 outstanding 数量。', 'en-US': 'Aggregate grants, exercises, cancellations, and outstanding quantities by Plan Name.' },
+  holdersHeroEyebrow: { 'zh-CN': '持股5%以上股东', 'en-US': '5% Holders' },
+  holdersHeroText: { 'zh-CN': '来源：Gyre Cap Table「5% Holders」sheet（EDGAR SC13 申报口径）。', 'en-US': 'Source: Gyre Cap Table “5% Holders” sheet, aligned with EDGAR SC13 filings.' },
+  fixedHeroEyebrow: { 'zh-CN': '管理可以更改的固定值', 'en-US': 'Manage Editable Fixed Values' },
+  fixedHeroText: { 'zh-CN': 'Data Management 下的固定值维护页，用于管理月度流程中可由管理员调整的业务常量。', 'en-US': 'Maintain business constants that admins can adjust in the monthly process.' },
+  docsHeroEyebrow: { 'zh-CN': '使用手册', 'en-US': 'Docs' },
+  docsHeroText: { 'zh-CN': '系统各页面与工作流的使用说明，按主题分多篇文档。', 'en-US': 'Usage guides for system pages and workflows, organized by topic.' },
+  esopHeroEyebrow: { 'zh-CN': '股权明细', 'en-US': 'ESOP Detail' },
+  esopHeroText: { 'zh-CN': '股权明细的业务总入口，包含授予、行权、卖出和 2025 转富途计划四类台账。', 'en-US': 'The ESOP detail hub for grants, exercises, sold shares, and the 2025 transfer plan.' },
+};
+
+const placeholderTranslations: Array<[string, Record<AppLanguage, string>]> = [
+  ['searchHolder', { 'zh-CN': '按姓名、计划、授予编号搜索...', 'en-US': 'Search by name, plan, grant...' }],
+  ['filterHoldingsTag', { 'zh-CN': '按员工标签筛选', 'en-US': 'Filter by employee tag' }],
+  ['searchExercises', { 'zh-CN': '按姓名、员工、授予编号搜索...', 'en-US': 'Search by name, employee, grant...' }],
+  ['searchSoldShares', { 'zh-CN': '按姓名、员工、账号搜索...', 'en-US': 'Search by name, employee, account...' }],
+  ['searchEmployeesPage', { 'zh-CN': '按姓名、工号、用户 ID 搜索...', 'en-US': 'Search by name, employee no., user id...' }],
+  ['filterEmployeesPageTag', { 'zh-CN': '按标签筛选', 'en-US': 'Filter by tag' }],
+  ['accountEmail', { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' }],
+  ['accountPhone', { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' }],
+  ['employeesPageNumber', { 'zh-CN': '输入工号（新增后不可改）', 'en-US': 'Enter employee no. (cannot be changed after creation)' }],
+  ['employeesPageName', { 'zh-CN': '输入员工姓名', 'en-US': 'Enter employee name' }],
+  ['employeesPageUserId', { 'zh-CN': '输入用户 ID', 'en-US': 'Enter user id' }],
+  ['employeesPageTags', { 'zh-CN': '用英文逗号分隔标签', 'en-US': 'Comma separated tags' }],
+  ['employeesMergeTargetNumber', { 'zh-CN': '输入目标员工的工号 / Emp. No.', 'en-US': 'Enter target employee no. / Emp. No.' }],
+];
+
+function t(key: keyof typeof uiText): string {
+  return uiText[key][currentLanguage] ?? uiText[key]['zh-CN'];
+}
+
+function pageTitleFor(page: PageKey): string {
+  return pageTitleTranslations[page]?.[currentLanguage] ?? pageTitles[page];
+}
+
+function setText(selector: string, text: string) {
+  const node = document.querySelector<HTMLElement>(selector);
+  if (node) node.textContent = text;
+}
+
+function setAllText(selector: string, text: string) {
+  document.querySelectorAll<HTMLElement>(selector).forEach((node) => {
+    node.textContent = text;
+  });
+}
+
+function setPlaceholder(id: string, text: string) {
+  const node = document.getElementById(id) as HTMLInputElement | null;
+  if (node) node.placeholder = text;
+}
+
+function setButtonLabel(id: string, label: string) {
+  const button = document.getElementById(id);
+  if (!button) return;
+  const svg = button.querySelector('svg');
+  button.textContent = '';
+  if (svg) button.appendChild(svg);
+  button.appendChild(document.createTextNode(svg ? ` ${label}` : label));
+}
+
+function setOptionText(selectId: string, value: string, text: string) {
+  const select = document.getElementById(selectId) as HTMLSelectElement | null;
+  const option = select?.querySelector<HTMLOptionElement>(`option[value="${value}"]`);
+  if (option) option.textContent = text;
+}
+
+function setSearchLabels(page: PageKey, labels: string[]) {
+  document.querySelectorAll<HTMLElement>(`#page-${page} .search-label`).forEach((node, index) => {
+    if (labels[index]) node.textContent = labels[index];
+  });
+}
+
+function getCurrentMonthTextNode(): HTMLElement {
+  const existing = document.getElementById('currentMonthText');
+  if (existing) return existing;
+
+  const node = document.createElement('strong');
+  node.id = 'currentMonthText';
+  node.textContent = t('noSummaryData');
+  const container = document.querySelector<HTMLElement>('#currentMonthInfo .info-text');
+  if (container) {
+    container.appendChild(node);
+  }
+  return node;
+}
+
+function syncCurrentViewInfoText() {
+  const container = document.querySelector<HTMLElement>('#currentMonthInfo .info-text');
+  if (!container) return;
+
+  const currentMonthText = getCurrentMonthTextNode();
+  const currentValue = currentMonthText.textContent?.trim();
+  container.replaceChildren(document.createTextNode(t('currentView')), currentMonthText);
+  if (!currentValue || currentValue === '暂无汇总数据' || currentValue === 'No summary data') {
+    currentMonthText.textContent = t('noSummaryData');
+  }
+}
+
+function setPageHero(page: PageKey, eyebrowKey: keyof typeof uiText, title: string, bodyKey: keyof typeof uiText) {
+  const section = document.getElementById(`page-${page}`);
+  if (!section) return;
+  const hero = section.querySelector<HTMLElement>('.product-page-hero');
+  const eyebrow = hero?.querySelector<HTMLElement>('.product-page-hero__eyebrow');
+  const heading = hero?.querySelector<HTMLElement>('h2');
+  const paragraph = hero?.querySelector<HTMLElement>('p');
+  if (eyebrow) eyebrow.textContent = t(eyebrowKey);
+  if (heading) heading.textContent = title;
+  if (paragraph) paragraph.textContent = t(bodyKey);
+}
+
+function syncLanguageButtons() {
+  document.querySelectorAll<HTMLButtonElement>('[data-language]').forEach((button) => {
+    const active = button.dataset.language === currentLanguage;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-checked', active ? 'true' : 'false');
+  });
+}
+
+function applyLanguage() {
+  document.documentElement.lang = currentLanguage;
+  document.body.dataset.language = currentLanguage;
+
+  document.querySelectorAll<HTMLElement>('.nav-item[data-page]').forEach((node) => {
+    const page = normalizePage(node.dataset.page ?? '') as PageKey;
+    const text = node.querySelector<HTMLElement>('.nav-text');
+    if (validPages.has(page) && text) {
+      text.textContent = pageTitleFor(page);
+      node.setAttribute('title', pageTitleFor(page));
+    }
+  });
+  setText('.nav-section-label', t('devTools'));
+  setText('#btnAccountPage', t('account'));
+  setText('#btnLogout', t('logout'));
+
+  setPageHero('esop-detail', 'esopHeroEyebrow', 'ESOP Detail', 'esopHeroText');
+  setPageHero('grant-record', 'grantHeroEyebrow', 'Grant Record', 'grantHeroText');
+  setPageHero('exercise-record', 'exerciseHeroEyebrow', 'Exercise to Date', 'exerciseHeroText');
+  setPageHero('sold-shares', 'soldHeroEyebrow', 'Sold Shares', 'soldHeroText');
+  setPageHero('transfer-plan', 'transferHeroEyebrow', '2025 Transfer to Futu', 'transferHeroText');
+  setPageHero('employee-management', 'employeeHeroEyebrow', 'Employee Management', 'employeeHeroText');
+  setPageHero('plan-summary', 'planHeroEyebrow', 'Plan Summary', 'planHeroText');
+  setPageHero('five-percent-holders', 'holdersHeroEyebrow', '5% Holders', 'holdersHeroText');
+  setPageHero('fixed-value', 'fixedHeroEyebrow', 'Fixed Value', 'fixedHeroText');
+  setPageHero('docs', 'docsHeroEyebrow', pageTitleFor('docs'), 'docsHeroText');
+  setPageHero('captable', 'captableHeroEyebrow', 'CapTable', 'captableHeroText');
+
+  setAllText('.product-page-hero__metric > span', t('sourceFile'));
+  [
+    'btnSearchHoldings',
+    'btnSearchExercises',
+    'btnSearchSoldShares',
+    'btnSearchEmployeesPage',
+  ].forEach((id) => setButtonLabel(id, t('search')));
+  setButtonLabel('btnExport', t('export'));
+  setButtonLabel('btnExportTransferPlan', `${t('export')} detail`);
+  setButtonLabel('btnImportTransferPlan', currentLanguage === 'zh-CN' ? '导入明细' : 'Import detail');
+  setButtonLabel('btnToggleTransferPlanTableView', transferPlanTableView === 'summaryRows'
+    ? (currentLanguage === 'zh-CN' ? '转置表格' : 'Transpose table')
+    : (currentLanguage === 'zh-CN' ? '恢复横向' : 'Restore horizontal'));
+  setButtonLabel('btnAddEmployeesPage', currentLanguage === 'zh-CN' ? '新增员工' : 'New Employee');
+  setAllText('#employeesPageModal [data-close="employeesPageModal"].btn', t('cancel'));
+  setText('#btnSubmitEmployeesPage', t('save'));
+  setAllText('#employeesMergeModal [data-close="employeesMergeModal"].btn', t('cancel'));
+  setText('#btnSubmitEmployeesMerge', currentLanguage === 'zh-CN' ? '关联' : 'Link');
+  setSearchLabels('captable', [t('month')]);
+  setSearchLabels('grant-record', [t('search'), t('tag'), t('incentiveType')]);
+  setSearchLabels('exercise-record', [t('search'), t('grantYear')]);
+  setSearchLabels('sold-shares', [t('search'), t('employmentStatus')]);
+  setSearchLabels('employee-management', [t('search'), t('tag')]);
+  setOptionText('capitalizationSourceFile', '', t('defaultSnapshot'));
+  setOptionText('filterGrantType', '', t('allTypes'));
+  syncCurrentViewInfoText();
+
+  placeholderTranslations.forEach(([id, copy]) => setPlaceholder(id, copy[currentLanguage]));
+
+  setText('#settingsLanguageTitle', t('language'));
+  setText('#settingsLanguageSubtitle', t('languageSubtitle'));
+  setText('#settingsLanguageLabel', t('uiLanguage'));
+  setText('#page-settings .settings-quick-card:nth-of-type(2) .card-title', t('colorTheme'));
+  setText('#page-settings .settings-quick-card:nth-of-type(2) .card-subtitle', t('colorThemeSubtitle'));
+  setText('#page-settings .settings-quick-card:nth-of-type(2) .settings-placeholder__label', t('colorScheme'));
+
+  setText('#page-account .card-title', t('accountInfo'));
+  setText('#page-account .card-subtitle', t('accountInfoSubtitle'));
+  setAllText('#page-account label', '');
+  const accountLabels = document.querySelectorAll<HTMLElement>('#page-account .form-group label');
+  [t('username'), t('displayName'), t('email'), t('contact')].forEach((copy, index) => {
+    if (accountLabels[index]) accountLabels[index].textContent = copy;
+  });
+  setText('#btnOpenChangePasswordModal', t('changePassword'));
+  setText('#btnSaveAccountProfile', t('saveAccount'));
+  setText('#accountPasswordModal .modal-title', t('changePassword'));
+  setText('#accountPasswordModal .card-subtitle', t('changePasswordSubtitle'));
+  const passwordLabels = document.querySelectorAll<HTMLElement>('#accountPasswordModal .form-group label');
+  [t('currentPassword'), t('newPassword'), t('confirmNewPassword')].forEach((copy, index) => {
+    if (passwordLabels[index]) passwordLabels[index].textContent = copy;
+  });
+  setText('#btnChangeAccountPassword', t('updatePassword'));
+  setAllText('[data-close="accountPasswordModal"].btn', t('cancel'));
+
+  setText('label.auth-field span', t('authUsername'));
+  const authLabels = document.querySelectorAll<HTMLElement>('.auth-field span');
+  [t('authUsername'), t('authPassword'), t('authDisplayName'), t('authBootstrapSecret')].forEach((copy, index) => {
+    if (authLabels[index]) authLabels[index].textContent = copy;
+  });
+
+  setText('#btnCloseLinkModalFooter', t('close'));
+  setText('#page-plan-summary .card-title', pageTitleFor('plan-summary'));
+  setText('#page-plan-summary .card-subtitle', currentLanguage === 'zh-CN' ? '由股权授予明细聚合生成' : 'Aggregated from equity grant detail');
+  setText('#page-five-percent-holders .card-title', pageTitleFor('five-percent-holders'));
+  setText('#page-fixed-value .card-title', currentLanguage === 'zh-CN' ? '固定值' : 'Fixed Values');
+  setText('#page-fixed-value .card-subtitle', currentLanguage === 'zh-CN' ? '管理员可维护' : 'Admin editable');
+  setAllText('.pagination-size-label', t('rows'));
+  setAllText('[id$="FirstPage"]', t('first'));
+  setAllText('[id$="PrevPage"]', t('previous'));
+  setAllText('[id$="NextPage"]', t('next'));
+  setAllText('[id$="LastPage"]', t('last'));
+
+  const activePage = getPageFromLocation();
+  el('pageTitle').textContent = activePage === 'monthlyrun'
+    ? `${pageTitleFor('monthly')} / ${pageTitleFor('monthlyrun')}`
+    : pageTitleFor(activePage);
+  el('authSubmit').textContent = authStatus?.bootstrapRequired ? t('createAndLogin') : t('login');
+  el('sidebarToggle').setAttribute('aria-label', sidebarCollapsed ? t('expandSidebar') : t('collapseSidebar'));
+  syncLanguageButtons();
+  renderThemeCards();
+  applyStaticTranslations(document, currentLanguage);
+}
+
+function localizeAppDom() {
+  applyStaticTranslations(document, currentLanguage);
+}
+
+function setLanguage(language: AppLanguage) {
+  if (currentLanguage === language) return;
+  currentLanguage = language;
+  persistLanguage(language);
+  applyLanguage();
+  docsPage.render();
+  filesPage.applyLanguage?.();
+  workflowPage.applyLanguage?.();
+  monthlyRunPage.applyLanguage?.();
 }
 
 async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -193,6 +563,12 @@ function formatNumber(num: unknown): string {
 
 function formatMonthCN(monthKey: string): string {
   const [year, month] = monthKey.split('-');
+  if (currentLanguage === 'en-US') {
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    if (!Number.isNaN(date.getTime())) {
+      return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(date);
+    }
+  }
   return `${year}年${Number(month)}月`;
 }
 
@@ -245,6 +621,16 @@ function statusClass(status: string): string {
 }
 
 function monthlyRunStatusLabel(status: string): string {
+  if (currentLanguage === 'en-US') {
+    if (status === 'completed') return 'Completed';
+    if (status === 'completed_with_warnings') return 'Completed';
+    if (status === 'running') return 'In Progress';
+    if (status === 'waiting_approval') return 'Pending review';
+    if (status === 'failed') return 'Failed';
+    if (status === 'skipped') return 'Cancelled';
+    if (status === 'draft') return 'Not started';
+    return status || 'Not started';
+  }
   if (status === 'completed') return '已完成';
   if (status === 'completed_with_warnings') return '已完成';
   if (status === 'running') return '进行中';
@@ -280,7 +666,13 @@ function initSidebarToggle() {
 
 function renderThemeCards() {
   el('themeColorOptions').innerHTML = COLOR_OPTIONS.map(
-    (option) => `
+    (option) => {
+      const descByColor: Record<ThemeColorName, string> = {
+        blue: t('blueDesc'),
+        teal: t('tealDesc'),
+        amber: t('amberDesc'),
+      };
+      return `
       <button
         class="theme-card${themeSelection.color === option.name ? ' active' : ''}"
         type="button"
@@ -289,14 +681,15 @@ function renderThemeCards() {
         <span class="theme-card-head">
           <span>
             <strong>${escapeHtml(option.label)}</strong>
-            <small>${escapeHtml(option.desc)}</small>
+            <small>${escapeHtml(descByColor[option.name])}</small>
           </span>
-          ${themeSelection.color === option.name ? '<span class="theme-check">当前</span>' : ''}
+          ${themeSelection.color === option.name ? `<span class="theme-check">${escapeHtml(t('current'))}</span>` : ''}
         </span>
         <span class="theme-swatches" aria-hidden="true">
           ${option.swatches.map((color) => `<span class="theme-swatch" style="background-color:${escapeHtml(color)}"></span>`).join('')}
         </span>
-      </button>`,
+      </button>`;
+    },
   ).join('');
 
   document.querySelectorAll<HTMLElement>('[data-theme-color]').forEach((button) => {
@@ -353,7 +746,7 @@ function clearAuthError() {
 }
 
 function setAuthMode(bootstrapRequired: boolean) {
-  el('authSubmit').textContent = bootstrapRequired ? '创建并登录' : '登录';
+  el('authSubmit').textContent = bootstrapRequired ? t('createAndLogin') : t('login');
   el('authDisplayNameField').classList.toggle('hidden', !bootstrapRequired);
   el('authBootstrapSecretField').classList.toggle('hidden', !bootstrapRequired);
   el<HTMLInputElement>('authPassword').autocomplete = bootstrapRequired ? 'new-password' : 'current-password';
@@ -484,68 +877,75 @@ function setActivePage(page: string) {
   document.querySelectorAll<HTMLElement>('.page-section').forEach((node) => {
     node.classList.toggle('active', node.id === `page-${targetPage}`);
   });
-  el('pageTitle').textContent = targetPage === 'monthlyrun' ? '月度更新 / 运行' : pageTitles[targetPage];
+  el('pageTitle').textContent = targetPage === 'monthlyrun'
+    ? `${pageTitleFor('monthly')} / ${pageTitleFor('monthlyrun')}`
+    : pageTitleFor(targetPage);
+  resetActivePageSourceFile();
 }
 
 async function activatePage(page: PageKey) {
-  if (page === 'captable') {
-    await refreshSummarySourceFileOptions();
-    if (currentMonth) await renderSummaryPage(currentMonth);
-    return;
-  }
+  try {
+    if (page === 'captable') {
+      await refreshSummarySourceFileOptions();
+      if (currentMonth) await renderSummaryPage(currentMonth);
+      return;
+    }
 
-  if (page === 'files') {
-    await filesPage.refreshProductFiles(getFileIdFromLocation());
-    return;
-  }
+    if (page === 'files') {
+      await filesPage.refreshProductFiles(getFileIdFromLocation());
+      return;
+    }
 
-  if (page === 'monthlyrun') {
-    await openMonthlyRunFromUrl();
-    return;
-  }
+    if (page === 'monthlyrun') {
+      await openMonthlyRunFromUrl();
+      return;
+    }
 
-  if (page === 'workflow') {
-    workflowPage.onActivate();
-  }
+    if (page === 'workflow') {
+      workflowPage.onActivate();
+    }
 
-  if (page === 'grant-record') {
-    await renderHoldingsPage(currentMonth);
-  }
+    if (page === 'grant-record') {
+      await renderHoldingsPage(currentMonth);
+    }
 
-  if (page === 'exercise-record') {
-    await renderExerciseRecords();
-  }
+    if (page === 'exercise-record') {
+      await renderExerciseRecords();
+    }
 
-  if (page === 'sold-shares') {
-    await renderSoldShares();
-  }
+    if (page === 'sold-shares') {
+      await renderSoldShares();
+    }
 
-  if (page === 'transfer-plan') {
-    await renderTransferPlan();
-  }
+    if (page === 'transfer-plan') {
+      await renderTransferPlan();
+    }
 
-  if (page === 'employee-management') {
-    await loadEmployeesPage();
-  }
+    if (page === 'employee-management') {
+      await loadEmployeesPage();
+    }
 
-  if (page === 'plan-summary') {
-    await renderPlanSummaryPage();
-  }
+    if (page === 'plan-summary') {
+      await renderPlanSummaryPage();
+    }
 
-  if (page === 'five-percent-holders') {
-    await renderFivePercentHoldersPage();
-  }
+    if (page === 'five-percent-holders') {
+      await renderFivePercentHoldersPage();
+    }
 
-  if (page === 'fixed-value') {
-    await renderFixedValuePage();
-  }
+    if (page === 'fixed-value') {
+      await renderFixedValuePage();
+    }
 
-  if (page === 'account') {
-    await loadAccountPage();
-  }
+    if (page === 'account') {
+      await loadAccountPage();
+    }
 
-  if (page === 'docs') {
-    docsPage.render();
+    if (page === 'docs') {
+      docsPage.render();
+    }
+  } finally {
+    localizeAppDom();
   }
 }
 
@@ -610,6 +1010,7 @@ async function openMonthlyRunMonthOnly(month: string) {
   el('shareworksBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">正在加载输入定义...</td></tr>';
   el('futuBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">正在加载输入定义...</td></tr>';
   setActivePage('monthlyrun');
+  localizeAppDom();
   await monthlyRunPage.openForMonth(month);
 }
 
@@ -709,12 +1110,24 @@ async function fetchAvailableMonths() {
 
 function renderEmptySummaryPage(message: string) {
   currentSummary = null;
-  el('currentMonthText').textContent = '暂无汇总数据';
+  resetActivePageSourceFile();
+  getCurrentMonthTextNode().textContent = t('noSummaryData');
   el('eomDate').textContent = '-';
   el('reconciliationBody').innerHTML = `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
   el('capitalizationBody').innerHTML = `<tr><td colspan="4" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
   applyCapitalizationSourceState(null);
   renderNotes([]);
+  localizeAppDom();
+}
+
+function formatCapitalizationPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '';
+  const numericValue = Number(value);
+  return numericValue <= 1 ? `${(numericValue * 100).toFixed(2)}%` : `${numericValue.toFixed(2)}%`;
+}
+
+function isTotalFullyDilutedRow(description: string): boolean {
+  return description.trim().toLowerCase().startsWith('total fully diluted shares outstand');
 }
 
 async function renderSummaryPage(month: string) {
@@ -723,7 +1136,8 @@ async function renderSummaryPage(month: string) {
     el<HTMLInputElement>('monthPicker').value = month;
     const data = await api<SummarySnapshot>(`/api/months/${month}/summary`);
     currentSummary = data;
-    el('currentMonthText').textContent = formatMonthCN(month);
+    setPageSourceFiles('captable', data.capitalizationSource?.fileName ?? t('defaultSnapshot'));
+    getCurrentMonthTextNode().textContent = formatMonthCN(month);
     el('eomDate').textContent = data.eomDate || getEOMDate(month);
     el('reconciliationBody').innerHTML = `
       <tr>
@@ -747,21 +1161,22 @@ async function renderSummaryPage(month: string) {
             <td class="col-number">${sharesHtml}</td><td></td>
           </tr>`;
         }
-        const percent = item.percent === null || item.percent === undefined ? '' : item.percent < 1 ? `${(item.percent * 100).toFixed(2)}%` : `${item.percent.toFixed(2)}%`;
-        return `<tr class="cap-data-row">
+        const percent = formatCapitalizationPercent(item.percent);
+        const isTotalRow = isTotalFullyDilutedRow(item.description);
+        return `<tr class="${isTotalRow ? 'total-row-blue' : 'cap-data-row'}">
           <td>${escapeHtml(item.number ?? '')}</td>
-          <td style="text-align:left;">${escapeHtml(item.description)}</td>
-          <td class="col-number">${formatNumber(item.shares)}</td>
-          <td class="col-percent">${percent}</td>
+          <td style="text-align:left;${isTotalRow ? ' font-weight:var(--font-bold);' : ''}">${escapeHtml(item.description)}</td>
+          <td class="col-number"${isTotalRow ? ' style="font-weight:var(--font-bold);"' : ''}>${formatNumber(item.shares)}</td>
+          <td class="col-percent"${isTotalRow ? ' style="font-weight:var(--font-bold);"' : ''}>${percent}</td>
         </tr>`;
       })
       .join('');
-    el('totalShares').textContent = formatNumber(data.totalFullyDiluted);
     applyCapitalizationSourceState(data.capitalizationSource ?? null);
     capBody.querySelectorAll<HTMLElement>('.link-blue').forEach((link) => {
       link.addEventListener('click', () => void openLinkModal(link.dataset.link ?? ''));
     });
     renderNotes(data.notes);
+    localizeAppDom();
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load summary data';
     if (/Month .* not found/i.test(message)) {
@@ -769,10 +1184,14 @@ async function renderSummaryPage(month: string) {
       return;
     }
     currentSummary = null;
+    resetActivePageSourceFile();
+    getCurrentMonthTextNode().textContent = t('noSummaryData');
+    el('eomDate').textContent = '-';
     el('reconciliationBody').innerHTML = `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
     el('capitalizationBody').innerHTML = '';
     applyCapitalizationSourceState(null);
     renderNotes([]);
+    localizeAppDom();
   }
 }
 
@@ -782,8 +1201,8 @@ async function refreshSummarySourceFileOptions() {
   const select = el<HTMLSelectElement>('capitalizationSourceFile');
   const currentValue = select.value;
   select.innerHTML = [
-    '<option value="">默认快照数据</option>',
-    ...summarySourceFiles.map((file) => `<option value="${file.id}">${escapeHtml(file.originalName)}</option>`),
+    `<option value="">${escapeHtml(t('defaultSnapshot'))}</option>`,
+    ...summarySourceFiles.map((file) => `<option value="${file.id}">${escapeHtml(productFileDisplayName(file))}</option>`),
   ].join('');
   if (currentValue && summarySourceFiles.some((file) => String(file.id) === currentValue)) {
     select.value = currentValue;
@@ -792,12 +1211,8 @@ async function refreshSummarySourceFileOptions() {
 
 function applyCapitalizationSourceState(source: SummaryCapitalizationSource | null) {
   const select = el<HTMLSelectElement>('capitalizationSourceFile');
-  const badge = el('capitalizationSourceBadge');
 
   select.value = source?.fileId ? String(source.fileId) : '';
-  badge.textContent = source?.fileName
-    ? `Capitalization Source: ${source.fileName}`
-    : 'Capitalization Source: Snapshot';
 }
 
 async function saveCapitalizationSource() {
@@ -827,6 +1242,7 @@ function renderNotes(notes: SummarySnapshot['notes']) {
   const container = el('notesContainer');
   if (!notes || notes.length === 0) {
     container.innerHTML = '<div class="note-empty">暂无备注，点击右上角添加备注按钮添加</div>';
+    localizeAppDom();
     return;
   }
   container.innerHTML = notes
@@ -848,6 +1264,7 @@ function renderNotes(notes: SummarySnapshot['notes']) {
       await renderSummaryPage(currentMonth);
     });
   });
+  localizeAppDom();
 }
 
 async function initMonthlyPage() {
@@ -905,6 +1322,7 @@ async function renderMonthlyPage(filterMonth: string) {
   const tbody = el('monthlyUpdateBody');
   if (updatePlans.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无月度更新计划</td></tr>';
+    localizeAppDom();
     return;
   }
   tbody.innerHTML = updatePlans
@@ -925,6 +1343,7 @@ async function renderMonthlyPage(filterMonth: string) {
     .join('');
   tbody.querySelectorAll<HTMLElement>('[data-action="view"]').forEach((button) => button.addEventListener('click', () => void openMonthlyRunPlan(Number(button.dataset.id))));
   tbody.querySelectorAll<HTMLElement>('[data-action="delete"]').forEach((button) => button.addEventListener('click', () => void deleteUpdatePlan(Number(button.dataset.id))));
+  localizeAppDom();
 }
 
 async function deleteUpdatePlan(id: number) {
@@ -1233,9 +1652,9 @@ function changeSoldSharesPageSize(size: number) {
 
 function applyGrantView() {
   const viewCopy: Record<GrantView, { title: string; subtitle: string }> = {
-    futu: { title: 'Futu Grant Record', subtitle: 'Futu 授予数据原始格式' },
-    shareworks: { title: 'Shareworks Grant Record', subtitle: 'Options OS Detail 原始格式' },
-    merge: { title: 'Merged Grant Record', subtitle: 'Futu + Shareworks 标准化拼表' },
+    futu: { title: 'Futu Grant Record', subtitle: currentLanguage === 'zh-CN' ? 'Futu 授予数据原始格式' : 'Raw Futu grant data' },
+    shareworks: { title: 'Shareworks Grant Record', subtitle: currentLanguage === 'zh-CN' ? 'Options OS Detail 原始格式' : 'Raw Options OS Detail data' },
+    merge: { title: 'Merged Grant Record', subtitle: currentLanguage === 'zh-CN' ? 'Futu + Shareworks 标准化拼表' : 'Standardized Futu + Shareworks merge' },
   };
   document.querySelectorAll<HTMLButtonElement>('[data-grant-view]').forEach((button) => {
     const active = button.dataset.grantView === activeGrantView;
@@ -1249,6 +1668,7 @@ function applyGrantView() {
   el('grantViewSubtitle').textContent = viewCopy[activeGrantView].subtitle;
   el<HTMLSelectElement>('filterGrantType').disabled = activeGrantView !== 'futu';
   el<HTMLInputElement>('filterHoldingsTag').disabled = activeGrantView === 'shareworks';
+  localizeAppDom();
 }
 
 function changeHoldingsPage(delta: number) {
@@ -1312,27 +1732,32 @@ async function renderHoldingsPage(month: string) {
     const data = await api<PaginatedResult<ShareworksGrant>>(
       `/api/grants/shareworks?query=${encodeURIComponent(query)}&page=${holdingsPage}&pageSize=${holdingsPageSize}`,
     );
+    setPageSourceFiles('grant-record', responseSourceFiles(data));
     const items = data.items ?? [];
     holdingsPage = data.page;
     holdingsTotal = data.total;
     renderHoldingsPagination(data.page, data.totalPages, data.total);
     renderShareworksGrants(items, data);
+    localizeAppDom();
     return;
   }
   if (activeGrantView === 'merge') {
     const data = await api<PaginatedResult<MergedGrant>>(
       `/api/grants/merge?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}&page=${holdingsPage}&pageSize=${holdingsPageSize}`,
     );
+    setPageSourceFiles('grant-record', responseSourceFiles(data));
     const items = data.items ?? [];
     holdingsPage = data.page;
     holdingsTotal = data.total;
     renderHoldingsPagination(data.page, data.totalPages, data.total);
     renderMergedGrants(items, data);
+    localizeAppDom();
     return;
   }
   const data = await api<PaginatedResult<Holding>>(
     `/api/holdings?month=${month}&query=${encodeURIComponent(query)}&grantType=${encodeURIComponent(grantType)}&tag=${encodeURIComponent(tag)}&page=${holdingsPage}&pageSize=${holdingsPageSize}`,
   );
+  setPageSourceFiles('grant-record', responseSourceFiles(data));
   const items = data.holdings ?? [];
   holdingsPage = data.page;
   holdingsTotal = data.total;
@@ -1340,6 +1765,7 @@ async function renderHoldingsPage(month: string) {
   const tbody = el('holdingsBody');
   if (items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="34" class="table-empty-cell">暂无符合条件的持仓记录</td></tr>';
+    localizeAppDom();
     return;
   }
   tbody.innerHTML = items
@@ -1383,12 +1809,14 @@ async function renderHoldingsPage(month: string) {
       </tr>`,
     )
     .join('');
+  localizeAppDom();
 }
 
 function renderShareworksGrants(items: ShareworksGrant[], data: PaginatedResult<ShareworksGrant>) {
   const tbody = el('shareworksGrantBody');
   if (items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="31" class="table-empty-cell">暂无符合条件的 Shareworks 记录</td></tr>';
+    localizeAppDom();
     return;
   }
   tbody.innerHTML = items
@@ -1429,12 +1857,14 @@ function renderShareworksGrants(items: ShareworksGrant[], data: PaginatedResult<
       </tr>`,
     )
     .join('');
+  localizeAppDom();
 }
 
 function renderMergedGrants(items: MergedGrant[], data: PaginatedResult<MergedGrant>) {
   const tbody = el('mergedGrantBody');
   if (items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="18" class="table-empty-cell">暂无符合条件的合并记录</td></tr>';
+    localizeAppDom();
     return;
   }
   tbody.innerHTML = items
@@ -1462,6 +1892,7 @@ function renderMergedGrants(items: MergedGrant[], data: PaginatedResult<MergedGr
       </tr>`,
     )
     .join('');
+  localizeAppDom();
 }
 
 async function renderExerciseRecords() {
@@ -1470,6 +1901,7 @@ async function renderExerciseRecords() {
   const data = await api<PaginatedResult<ExerciseRecord>>(
     `/api/exercises?query=${encodeURIComponent(query)}&grantYear=${encodeURIComponent(grantYear)}&page=${exercisePage}&pageSize=${exercisePageSize}`,
   );
+  setPageSourceFiles('exercise-record', responseSourceFiles(data));
   const items = data.items ?? [];
   exercisePage = data.page;
   exerciseTotal = data.total;
@@ -1478,6 +1910,7 @@ async function renderExerciseRecords() {
   const tbody = el('exerciseBody');
   if (items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="14" class="table-empty-cell">暂无符合条件的行权记录</td></tr>';
+    localizeAppDom();
     return;
   }
   tbody.innerHTML = items
@@ -1501,6 +1934,7 @@ async function renderExerciseRecords() {
       </tr>`,
     )
     .join('');
+  localizeAppDom();
 }
 
 function formatCurrency(value: number, currency: 'USD' | 'CNY' = 'USD') {
@@ -1514,6 +1948,7 @@ async function renderSoldShares() {
   const data = await api<PaginatedResult<SoldShare>>(
     `/api/sold-shares?query=${encodeURIComponent(query)}&employmentStatus=${encodeURIComponent(employmentStatus)}&page=${soldSharesPage}&pageSize=${soldSharesPageSize}`,
   );
+  setPageSourceFiles('sold-shares', responseSourceFiles(data));
   const items = data.items ?? [];
   soldSharesPage = data.page;
   soldSharesTotal = data.total;
@@ -1522,6 +1957,7 @@ async function renderSoldShares() {
   const tbody = el('soldSharesBody');
   if (items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="20" class="table-empty-cell">暂无符合条件的出售记录</td></tr>';
+    localizeAppDom();
     return;
   }
   tbody.innerHTML = items
@@ -1551,10 +1987,12 @@ async function renderSoldShares() {
       </tr>`,
     )
     .join('');
+  localizeAppDom();
 }
 
 async function renderTransferPlan() {
   const data = await api<TransferPlanResponse>('/api/transfer-plan');
+  setPageSourceFiles('transfer-plan', responseSourceFiles(data));
   transferPlanSourceFileId = data.sourceFileId;
   el('transferPlanSourceName').textContent = data.sourceFileName;
   el('transferPlanInTotal').textContent = formatNumber(data.totals.inTotal);
@@ -1567,8 +2005,11 @@ async function renderTransferPlan() {
   el('transferPlanSummaryBody').innerHTML = table.bodyHtml;
   el('transferPlanSummaryTable').classList.toggle('table-transfer-plan--transposed', transferPlanTableView === 'periodRows');
   const toggleButton = el<HTMLButtonElement>('btnToggleTransferPlanTableView');
-  toggleButton.textContent = transferPlanTableView === 'summaryRows' ? '转置表格' : '恢复横向';
+  setButtonLabel('btnToggleTransferPlanTableView', transferPlanTableView === 'summaryRows'
+    ? (currentLanguage === 'zh-CN' ? '转置表格' : 'Transpose table')
+    : (currentLanguage === 'zh-CN' ? '恢复横向' : 'Restore horizontal'));
   toggleButton.setAttribute('aria-pressed', String(transferPlanTableView === 'periodRows'));
+  localizeAppDom();
 }
 
 async function updateTransferPlanCancellation(input: HTMLInputElement) {
@@ -1632,12 +2073,14 @@ async function loadEmployeesPage() {
       sort: employeesSort,
     }),
   );
+  setPageSourceFiles('employee-management', responseSourceFiles(data));
   employees = data.items ?? [];
   employeesPage = data.page;
   employeesTotal = data.total;
   renderEmployeesSortIndicators();
   renderEmployeesPagination(data.page, data.totalPages, data.total);
   renderEmployeesPageTable();
+  localizeAppDom();
 }
 
 function renderEmployeesSortIndicators() {
@@ -1661,6 +2104,7 @@ function renderEmployeesPageTable() {
   if (employees.length === 0) {
     el('employeesPageBody').innerHTML =
       '<tr><td colspan="8" class="table-empty-cell">暂无符合条件的员工</td></tr>';
+    localizeAppDom();
     return;
   }
   el('employeesPageBody').innerHTML = employees
@@ -1701,12 +2145,15 @@ function renderEmployeesPageTable() {
   el('employeesPageBody')
     .querySelectorAll<HTMLElement>('[data-action="toggle-employee-page"]')
     .forEach((button) => button.addEventListener('click', () => void toggleEmployeeActive(Number(button.dataset.id))));
+  localizeAppDom();
 }
 
 function openEmployeesPageModal(id?: number) {
   editingEmployeeId = id ?? null;
   const item = employees.find((row) => row.id === id);
-  el('employeesPageModalTitle').textContent = item ? 'Edit Employee' : 'New Employee';
+  el('employeesPageModalTitle').textContent = item
+    ? (currentLanguage === 'zh-CN' ? '编辑员工' : 'Edit Employee')
+    : (currentLanguage === 'zh-CN' ? '新增员工' : 'New Employee');
   el('employeesPageNumberRow').style.display = '';
   const numberInput = el<HTMLInputElement>('employeesPageNumber');
   numberInput.value = item?.employeeNumber ?? '';
@@ -1792,6 +2239,7 @@ async function submitEmployeesMerge() {
 
 async function renderPlanSummaryPage() {
   const data = await api<PlanSummaryResponse>('/api/plan-summary');
+  setPageSourceFiles('plan-summary', responseSourceFiles(data));
   el('planSummaryPlanCount').textContent = formatNumber(data.totals.planCount);
   el('planSummaryGranted').textContent = formatNumber(data.totals.granted);
   el('planSummaryExercised').textContent = formatNumber(data.totals.exercised);
@@ -1799,6 +2247,7 @@ async function renderPlanSummaryPage() {
 
   if (data.items.length === 0) {
     el('planSummaryBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无计划汇总数据</td></tr>';
+    localizeAppDom();
     return;
   }
 
@@ -1815,6 +2264,7 @@ async function renderPlanSummaryPage() {
       </tr>`,
     )
     .join('');
+  localizeAppDom();
 }
 
 function formatHolderPercent(value: number | null): string {
@@ -1824,6 +2274,7 @@ function formatHolderPercent(value: number | null): string {
 
 async function renderFivePercentHoldersPage() {
   const data = await api<FivePercentHoldersResponse>('/api/five-percent-holders');
+  setPageSourceFiles('five-percent-holders', responseSourceFiles(data));
   const summary = data.summary;
   el('fivePercentHoldersSummary').innerHTML = `
     <div class="stat-chip"><span class="stat-chip__label">As of</span><span class="stat-chip__value">${escapeHtml(summary.asOfDate ?? '-')}</span></div>
@@ -1833,6 +2284,7 @@ async function renderFivePercentHoldersPage() {
   if (data.items.length === 0) {
     el('fivePercentHoldersBody').innerHTML =
       '<tr><td colspan="6" class="table-empty-cell">暂无 5% 股东记录</td></tr>';
+    localizeAppDom();
     return;
   }
 
@@ -1851,12 +2303,14 @@ async function renderFivePercentHoldersPage() {
       </tr>`;
     })
     .join('');
+  localizeAppDom();
 }
 
 async function renderFixedValuePage() {
   const data = await api<{ items: FixedValueRecord[] }>('/api/fixed-values');
   if (data.items.length === 0) {
     el('fixedValuePageBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无固定参数配置</td></tr>';
+    localizeAppDom();
     return;
   }
 
@@ -1877,6 +2331,7 @@ async function renderFixedValuePage() {
   el('fixedValuePageBody')
     .querySelectorAll<HTMLElement>('[data-action="edit-fixed-value"]')
     .forEach((button) => button.addEventListener('click', () => void editFixedValue(Number(button.dataset.id), data.items)));
+  localizeAppDom();
 }
 
 async function editFixedValue(id: number, items: FixedValueRecord[]) {
@@ -1907,7 +2362,14 @@ async function initSettingsPage() {
   document.querySelectorAll<HTMLElement>('[data-close]').forEach((button) => {
     button.addEventListener('click', () => el(button.dataset.close ?? '').classList.add('hidden'));
   });
+  document.querySelectorAll<HTMLButtonElement>('[data-language]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const language = button.dataset.language === 'en-US' ? 'en-US' : 'zh-CN';
+      setLanguage(language);
+    });
+  });
   renderThemeCards();
+  syncLanguageButtons();
 }
 
 async function loadEmployees() {
@@ -1938,6 +2400,7 @@ function renderEmployeeTable() {
     .join('');
   el('employeeBody').querySelectorAll<HTMLElement>('[data-action="edit-emp"]').forEach((button) => button.addEventListener('click', () => void editEmployee(Number(button.dataset.id))));
   el('employeeBody').querySelectorAll<HTMLElement>('[data-action="del-emp"]').forEach((button) => button.addEventListener('click', () => void deleteEmployee(Number(button.dataset.id))));
+  localizeAppDom();
 }
 
 function renderPlanManageTable() {
@@ -1953,6 +2416,7 @@ function renderPlanManageTable() {
     .join('');
   el('planManageBody').querySelectorAll<HTMLElement>('[data-action="edit-plan"]').forEach((button) => button.addEventListener('click', () => void editTrackedPlan(Number(button.dataset.id))));
   el('planManageBody').querySelectorAll<HTMLElement>('[data-action="del-plan"]').forEach((button) => button.addEventListener('click', () => void deleteTrackedPlan(Number(button.dataset.id))));
+  localizeAppDom();
 }
 
 function renderShareholderTable() {
@@ -1969,6 +2433,7 @@ function renderShareholderTable() {
   el('shareholderBody').querySelectorAll<HTMLInputElement>('input[data-field="track"]').forEach((input) => input.addEventListener('change', () => void patchShareholder(Number(input.dataset.id), { track: input.checked })));
   el('shareholderBody').querySelectorAll<HTMLElement>('[data-action="edit-sh"]').forEach((button) => button.addEventListener('click', () => void editShareholder(Number(button.dataset.id))));
   el('shareholderBody').querySelectorAll<HTMLElement>('[data-action="del-sh"]').forEach((button) => button.addEventListener('click', () => void deleteShareholder(Number(button.dataset.id))));
+  localizeAppDom();
 }
 
 async function submitEmployee() {
@@ -2090,7 +2555,6 @@ function exportData() {
   currentSummary.capitalization.forEach((item) => {
     csv += `"${item.description}",${item.shares ?? ''},${item.percent ?? ''}\n`;
   });
-  csv += `完全稀释总股份,${currentSummary.totalFullyDiluted},100%\n`;
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
@@ -2117,6 +2581,7 @@ async function openLinkModal(key: string) {
     </tbody></table></div>`;
   el('linkModalContent').innerHTML = html;
   el('linkDetailModal').classList.remove('hidden');
+  localizeAppDom();
 }
 
 function initLinkModal() {
@@ -2148,6 +2613,7 @@ async function initializeApp() {
   await initAccountPage();
   await initSettingsPage();
   initLinkModal();
+  applyLanguage();
   el('currentUserAvatar').addEventListener('click', (event) => {
     event.stopPropagation();
     toggleUserMenu();
@@ -2173,6 +2639,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const status = await fetchAuthStatus();
     if (!status.authenticated) {
       showAuthShell(status);
+      applyLanguage();
       document.body.classList.remove('app-booting');
       return;
     }

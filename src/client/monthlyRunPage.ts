@@ -14,6 +14,7 @@ import type {
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { createWorkflowRunClient } from './workflow/runClient.js';
+import type { AppLanguage } from './i18n.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
@@ -26,6 +27,7 @@ type MonthlyRunPageDeps = {
   refreshSummary: (month: string) => Promise<unknown>;
   notify: NotifyFn;
   confirmAction: ConfirmActionFn;
+  getLanguage?: () => AppLanguage;
   onMonthChanged?: (month: string) => void;
   onPlanStatusChanged?: () => void | Promise<void>;
 };
@@ -42,7 +44,16 @@ export function retainAvailableSourceBindings(
   );
 }
 
-function statusLabel(status: string): string {
+function statusLabel(status: string, language: AppLanguage = 'zh-CN'): string {
+  if (language === 'zh-CN') {
+    if (status === 'completed') return '已完成';
+    if (status === 'completed_with_warnings') return '完成（含告警）';
+    if (status === 'waiting_approval') return '需复核';
+    if (status === 'failed') return '失败';
+    if (status === 'skipped') return '已跳过';
+    if (status === 'running') return '运行中';
+    return status || '待启动';
+  }
   if (status === 'completed') return 'Completed';
   if (status === 'completed_with_warnings') return 'Completed with warnings';
   if (status === 'waiting_approval') return 'Needs review';
@@ -52,7 +63,16 @@ function statusLabel(status: string): string {
   return status || 'Pending';
 }
 
-function taskStateLabel(status: WorkflowExecutionTaskState): string {
+function taskStateLabel(status: WorkflowExecutionTaskState, language: AppLanguage = 'zh-CN'): string {
+  if (language === 'zh-CN') {
+    if (status === 'completed') return '已完成';
+    if (status === 'running') return '运行中';
+    if (status === 'failed') return '失败';
+    if (status === 'blocked') return '已阻塞';
+    if (status === 'warning') return '需复核';
+    if (status === 'skipped') return '已跳过';
+    return '待启动';
+  }
   if (status === 'completed') return 'Completed';
   if (status === 'running') return 'Running';
   if (status === 'failed') return 'Failed';
@@ -83,6 +103,7 @@ export function createMonthlyRunPage({
   refreshSummary,
   notify,
   confirmAction,
+  getLanguage,
   onMonthChanged,
   onPlanStatusChanged,
 }: MonthlyRunPageDeps) {
@@ -99,6 +120,51 @@ export function createMonthlyRunPage({
   let isRunning = false;
   let isSavingSources = false;
   const expandedWarningTaskIds = new Set<string>();
+  const text = {
+    selectMonth: { 'zh-CN': '请选择月份', 'en-US': 'Please select a month' },
+    codeDefined: { 'zh-CN': '代码定义', 'en-US': 'Code defined' },
+    noFixedDefinitions: { 'zh-CN': '暂无固定参数定义', 'en-US': 'No fixed parameter definitions' },
+    noInputDefinitions: { 'zh-CN': '暂无输入定义', 'en-US': 'No input definitions' },
+    loadingSourceConfig: { 'zh-CN': '正在加载 source 配置…', 'en-US': 'Loading source configuration…' },
+    configureSourcesHint: { 'zh-CN': '请先配置每个 workflow 输入节点需要使用的源文件。', 'en-US': 'Configure the source files required by each workflow input node first.' },
+    notConfigured: { 'zh-CN': '未配置', 'en-US': 'Not configured' },
+    chooseUploadedFile: { 'zh-CN': '选择已上传文件', 'en-US': 'Choose uploaded file' },
+    currentFile: { 'zh-CN': '当前文件', 'en-US': 'Current file' },
+    uploadNewFile: { 'zh-CN': '上传新文件', 'en-US': 'Upload new file' },
+    defaultSheet: { 'zh-CN': '默认 Sheet', 'en-US': 'Default Sheet' },
+    removeConfigTitle: { 'zh-CN': '删除 Uploaded file 配置', 'en-US': 'Delete Uploaded file configuration' },
+    removeConfigConfirm: { 'zh-CN': '确定删除', 'en-US': 'Delete the Uploaded file configuration for' },
+    removeConfigSuffix: { 'zh-CN': '的 Uploaded file 配置吗？文件中心里的文件不会被删除。', 'en-US': '? The file in Files will not be deleted.' },
+    removedConfig: { 'zh-CN': '已删除', 'en-US': 'Deleted the Uploaded file configuration for' },
+    removedConfigSuffix: { 'zh-CN': '的 Uploaded file 配置', 'en-US': '' },
+    chooseFileFor: { 'zh-CN': '请先为', 'en-US': 'Please select a file for' },
+    completeSourceConfig: { 'zh-CN': '请先完成 source 配置', 'en-US': 'Complete source configuration first' },
+    submittingRun: { 'zh-CN': '正在提交 Monthly Run...', 'en-US': 'Submitting Monthly Run...' },
+    submittedRun: { 'zh-CN': 'Monthly Run 已提交', 'en-US': 'Monthly Run submitted' },
+    emptyRunState: { 'zh-CN': '执行后会在这里显示节点状态。', 'en-US': 'Node status will appear here after execution.' },
+    reviewRequired: { 'zh-CN': '需人工复核', 'en-US': 'review required' },
+    showWarningDetails: { 'zh-CN': '查看告警详情', 'en-US': 'View warning details' },
+    hideWarningDetails: { 'zh-CN': '收起告警详情', 'en-US': 'Hide warning details' },
+    noHistory: { 'zh-CN': '暂无执行历史', 'en-US': 'No execution history' },
+    fileCount: { 'zh-CN': '个文件', 'en-US': 'files' },
+    noInputSnapshot: { 'zh-CN': '暂无输入快照', 'en-US': 'No input snapshot' },
+    runHistory: { 'zh-CN': '运行历史', 'en-US': 'Run history' },
+    cannotDeleteRunning: { 'zh-CN': '运行中或待审批的记录不能删除', 'en-US': 'Running or approval-pending records cannot be deleted' },
+    deleteHistoryTitle: { 'zh-CN': '删除运行历史及输出文件', 'en-US': 'Delete run history and output file' },
+    deleteHistoryConfirm: { 'zh-CN': '确定删除这条运行历史吗？', 'en-US': 'Delete this run history?' },
+    outputDeleteNotice: { 'zh-CN': '对应输出文件', 'en-US': 'The output file' },
+    outputDeleteNoticeSuffix: { 'zh-CN': '也会被永久删除。', 'en-US': 'will also be permanently deleted.' },
+    historyDeleted: { 'zh-CN': '运行历史及对应输出文件已删除', 'en-US': 'Run history and corresponding output file deleted' },
+    delete: { 'zh-CN': '删除', 'en-US': 'Delete' },
+  } satisfies Record<string, Record<AppLanguage, string>>;
+
+  function lang(): AppLanguage {
+    return getLanguage?.() ?? 'zh-CN';
+  }
+
+  function tt(key: keyof typeof text): string {
+    return text[key][lang()] ?? text[key]['zh-CN'];
+  }
 
   async function init() {
     el('btnMonthlyRunConfigureSources').addEventListener('click', () => void openSourceModal());
@@ -174,7 +240,7 @@ export function createMonthlyRunPage({
 
   async function saveInstance(patch: MonthlyRunInstanceUpsertRequest) {
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
-    if (!month) throw new Error('请选择月份');
+    if (!month) throw new Error(tt('selectMonth'));
     const data = await api<{ instance: MonthlyRunInstanceRecord }>(`/api/monthly-runs/instance?month=${encodeURIComponent(month)}`, {
       method: 'PUT',
       body: JSON.stringify(patch),
@@ -214,11 +280,11 @@ export function createMonthlyRunPage({
                 <td style="text-align:left;">${escapeHtml(item.description)}</td>
                 <td class="col-number">${escapeHtml(String(currentInstance?.fixedValues[item.key] ?? item.defaultValue))}</td>
                 <td>${renderUsedValue(item.required)}</td>
-                <td><span class="source-empty-value">代码定义</span></td>
+                <td><span class="source-empty-value">${escapeHtml(tt('codeDefined'))}</span></td>
               </tr>`,
           )
           .join('')
-      : '<tr><td colspan="5" class="table-empty-cell">暂无固定参数定义</td></tr>';
+      : `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(tt('noFixedDefinitions'))}</td></tr>`;
 
     el('shareworksBody').innerHTML = renderBusinessDefinedSourceRows('shareworks');
     el('futuBody').innerHTML = renderBusinessDefinedSourceRows('futu');
@@ -228,6 +294,14 @@ export function createMonthlyRunPage({
         const sourceKey = button.dataset.businessSourceUpload;
         if (!sourceKey) return;
         void uploadSourceFileFor(sourceKey);
+      });
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('[data-business-source-remove]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const sourceKey = button.dataset.businessSourceRemove;
+        if (!sourceKey) return;
+        void removeSourceFileFor(sourceKey);
       });
     });
 
@@ -243,19 +317,29 @@ export function createMonthlyRunPage({
 
   function renderBusinessDefinedSourceRows(sourceGroup: 'shareworks' | 'futu') {
     const sources = sourceDefinitions.filter((source) => source.sourceGroup === sourceGroup);
-    if (!sources.length) return '<tr><td colspan="4" class="table-empty-cell">暂无输入定义</td></tr>';
+    if (!sources.length) return `<tr><td colspan="6" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
     return sources
       .map((source) => {
         const binding = selectedSources[source.sourceKey] ?? null;
         const file = binding ? getFileById(binding.fileId) : null;
+        const displayName = file ? getFileDisplayName(file) : '';
         const uploaded = file
-          ? `<div class="source-file-actions"><a href="/files?fileId=${file.id}" class="source-file-link" data-product-file-id="${file.id}" title="${escapeHtml(file.originalName)}">${escapeHtml(file.originalName)}</a></div>`
-          : `<span class="source-not-uploaded">Not uploaded</span> <button class="source-upload-btn" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>`;
+          ? `<div class="source-file-actions"><a href="/files?fileId=${file.id}" class="source-file-link" data-product-file-id="${file.id}" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</a></div>`
+          : '<span class="source-not-uploaded">Not uploaded</span>';
+        const uploadedTime = file ? formatCompactTimestamp(file.createdAt) : '-';
+        const actions = file
+          ? `<div class="source-file-action-group">
+              <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Update</button>
+              <button class="source-file-delete source-file-delete--text" type="button" data-business-source-remove="${escapeHtml(source.sourceKey)}">Delete</button>
+            </div>`
+          : `<button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>`;
         return `<tr>
           <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
           <td>${renderUsedValue(source.required)}</td>
           <td>${source.required ? '<span class="source-required-badge">Required</span>' : '<span class="source-optional-badge">Optional</span>'}</td>
           <td>${uploaded}</td>
+          <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>
+          <td>${actions}</td>
         </tr>`;
       })
       .join('');
@@ -276,23 +360,34 @@ export function createMonthlyRunPage({
     return files.find((file) => file.id === fileId) ?? null;
   }
 
+  function getFileDisplayName(file: ProductFileRecord) {
+    return file.displayName || file.originalName;
+  }
+
+  function formatCompactTimestamp(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    const pad = (part: number) => String(part).padStart(2, '0');
+    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+  }
+
   function renderSourceInfo() {
     const info = el('monthlyRunSourceInfo');
     if (!sourceDefinitions.length) {
-      info.innerHTML = '<span>正在加载 source 配置…</span>';
+      info.innerHTML = `<span>${escapeHtml(tt('loadingSourceConfig'))}</span>`;
       return;
     }
 
     const configured = sourceDefinitions.filter((source) => selectedSources[source.sourceKey]?.fileId);
     if (!configured.length) {
-      info.innerHTML = '<span>请先配置每个 workflow 输入节点需要使用的源文件。</span>';
+      info.innerHTML = `<span>${escapeHtml(tt('configureSourcesHint'))}</span>`;
       return;
     }
 
     info.innerHTML = configured
       .map((source) => {
         const file = getFileById(selectedSources[source.sourceKey]?.fileId);
-        return `<span class="monthly-run-source-pill"><strong>${escapeHtml(source.label)}</strong>${file ? escapeHtml(file.originalName) : '未配置'}</span>`;
+        return `<span class="monthly-run-source-pill"><strong>${escapeHtml(source.label)}</strong>${file ? escapeHtml(getFileDisplayName(file)) : escapeHtml(tt('notConfigured'))}</span>`;
       })
       .join('');
   }
@@ -318,10 +413,10 @@ export function createMonthlyRunPage({
         const binding = draftSources[source.sourceKey];
         const file = binding ? getFileById(binding.fileId) : null;
         const options = [
-          '<option value="">选择已上传文件</option>',
+          `<option value="">${escapeHtml(tt('chooseUploadedFile'))}</option>`,
           ...files.map((productFile) => {
             const selected = binding?.fileId === productFile.id ? ' selected' : '';
-            return `<option value="${productFile.id}"${selected}>${escapeHtml(productFile.originalName)} · ${escapeHtml(formatDateTime(productFile.createdAt))}</option>`;
+            return `<option value="${productFile.id}"${selected}>${escapeHtml(getFileDisplayName(productFile))} · ${escapeHtml(formatDateTime(productFile.createdAt))}</option>`;
           }),
         ].join('');
 
@@ -335,19 +430,19 @@ export function createMonthlyRunPage({
               <span class="monthly-run-source-card__task">${escapeHtml(source.taskId)}</span>
             </div>
             <div class="monthly-run-source-card__current">
-              <span>当前文件</span>
-              <strong>${file ? escapeHtml(file.originalName) : '未配置'}</strong>
+              <span>${escapeHtml(tt('currentFile'))}</span>
+              <strong>${file ? escapeHtml(getFileDisplayName(file)) : escapeHtml(tt('notConfigured'))}</strong>
             </div>
             <div class="monthly-run-source-card__controls">
               <select class="search-input monthly-run-source-card__select" data-source-select="${escapeHtml(source.sourceKey)}">
                 ${options}
               </select>
               <button class="btn btn-secondary monthly-run-source-card__upload" type="button" data-source-upload="${escapeHtml(source.sourceKey)}">
-                上传新文件
+                ${escapeHtml(tt('uploadNewFile'))}
               </button>
             </div>
             <div class="monthly-run-source-card__hint">
-              <span>默认 Sheet</span>
+              <span>${escapeHtml(tt('defaultSheet'))}</span>
               <strong>${escapeHtml(source.defaultSheetName ?? '-')}</strong>
             </div>
           </section>
@@ -401,10 +496,35 @@ export function createMonthlyRunPage({
     input.click();
   }
 
+  async function removeSourceFileFor(sourceKey: string) {
+    const source = sourceDefinitions.find((item) => item.sourceKey === sourceKey);
+    const label = source?.label ?? sourceKey;
+    if (!(await confirmAction(`${tt('removeConfigConfirm')} ${label} ${tt('removeConfigSuffix')}`, {
+      title: tt('removeConfigTitle'),
+      confirmText: tt('delete'),
+      tone: 'danger',
+    }))) {
+      return;
+    }
+
+    delete selectedSources[sourceKey];
+    draftSources[sourceKey] = null;
+    await saveInstance({
+      operator: currentInstance?.operator ?? 'Administrator',
+      sources: { [sourceKey]: null },
+    });
+    renderSourceInfo();
+    renderBusinessDefinedInputConfiguration();
+    if (!el('monthlyRunSourceModal').classList.contains('hidden')) {
+      renderSourceModal();
+    }
+    notify(`${tt('removedConfig')} ${label} ${tt('removedConfigSuffix')}`.trim(), { type: 'success' });
+  }
+
   async function saveSourceModal() {
     const missing = sourceDefinitions.find((source) => source.required && !draftSources[source.sourceKey]?.fileId);
     if (missing) {
-      notify(`请先为 ${missing.label} 选择文件`, { type: 'warning' });
+      notify(`${tt('chooseFileFor')} ${missing.label}`, { type: 'warning' });
       return;
     }
     isSavingSources = true;
@@ -428,11 +548,11 @@ export function createMonthlyRunPage({
   async function triggerMonthlyRun() {
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
     if (!month) {
-      notify('请选择月份', { type: 'warning' });
+      notify(tt('selectMonth'), { type: 'warning' });
       return;
     }
     if (!sourceDefinitions.every((source) => !source.required || selectedSources[source.sourceKey]?.fileId)) {
-      notify('请先完成 source 配置', { type: 'warning' });
+      notify(tt('completeSourceConfig'), { type: 'warning' });
       return;
     }
     if (isRunning) return;
@@ -441,7 +561,7 @@ export function createMonthlyRunPage({
     activeHistoryId = null;
     activeRun = null;
     expandedWarningTaskIds.clear();
-    renderRunPanel('正在提交 Monthly Run...');
+    renderRunPanel(tt('submittingRun'));
     let failedMessage: string | null = null;
 
     try {
@@ -455,7 +575,7 @@ export function createMonthlyRunPage({
       });
       activeHistoryId = response.history.id;
       activeRun = response.executionResult.run ?? null;
-      renderRunPanel('Monthly Run 已提交');
+      renderRunPanel(tt('submittedRun'));
       if (activeRun) {
         await runClient.pollUntilSettled(activeRun.id, {
           minimumPollCount: 1,
@@ -561,7 +681,7 @@ export function createMonthlyRunPage({
         summary.classList.add('hidden');
         summary.innerHTML = '';
       }
-      taskList.innerHTML = '<div class="monthly-run-empty">执行后会在这里显示节点状态。</div>';
+      taskList.innerHTML = `<div class="monthly-run-empty">${escapeHtml(tt('emptyRunState'))}</div>`;
       progressBar.style.width = '0%';
       progressText.textContent = '0 / 0';
       actions.classList.add('hidden');
@@ -577,7 +697,7 @@ export function createMonthlyRunPage({
     const shouldShowSummary = isMonthlyRunAttentionMessage(overrideMessage) || Boolean(run.errorMessage) || isMonthlyRunAttentionStatus(run.status);
     if (shouldShowSummary) {
       summary.classList.remove('hidden');
-      summary.innerHTML = `<span class="monthly-run-status monthly-run-status--${escapeHtml(statusCode)}">${escapeHtml(statusLabel(run.status))}</span>${
+      summary.innerHTML = `<span class="monthly-run-status monthly-run-status--${escapeHtml(statusCode)}">${escapeHtml(statusLabel(run.status, lang()))}</span>${
         overrideMessage || run.errorMessage ? `<span>${escapeHtml(overrideMessage ?? run.errorMessage)}</span>` : ''
       }`;
     } else {
@@ -585,7 +705,7 @@ export function createMonthlyRunPage({
       summary.innerHTML = '';
     }
     progressBar.style.width = `${ratio * 100}%`;
-    progressText.textContent = pendingApprovals.length ? `${reached} / ${total} · 需人工复核` : `${reached} / ${total}`;
+    progressText.textContent = pendingApprovals.length ? `${reached} / ${total} · ${tt('reviewRequired')}` : `${reached} / ${total}`;
     taskList.innerHTML = run.steps
       .map((step, index) => {
         const warningMessage = step.status === 'warning' ? getWarningMessageForTask(run, step.taskId) : null;
@@ -604,12 +724,12 @@ export function createMonthlyRunPage({
             ${
               isWarningExpandable
                 ? `<button type="button" class="monthly-run-task__warning-toggle" data-warning-task-id="${escapeHtml(step.taskId)}">
-                    ${escapeHtml(isExpanded ? '收起告警详情' : '查看告警详情')}
+                    ${escapeHtml(isExpanded ? tt('hideWarningDetails') : tt('showWarningDetails'))}
                   </button>`
                 : ''
             }
           </div>
-          <span class="monthly-run-task__status">${escapeHtml(taskStateLabel(step.status))}</span>
+          <span class="monthly-run-task__status">${escapeHtml(taskStateLabel(step.status, lang()))}</span>
           ${isExpanded && warningMessage ? `<div class="monthly-run-task__warning-detail">${escapeHtml(warningMessage)}</div>` : ''}
           ${failureMessage ? `<div class="monthly-run-task__failure-detail">${escapeHtml(failureMessage)}</div>` : ''}
         </div>`;
@@ -637,14 +757,14 @@ export function createMonthlyRunPage({
   function renderHistory(items: MonthlyRunHistoryRecord[]) {
     const body = el('monthlyRunHistoryBody');
     if (!items.length) {
-      body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:#64748b;">暂无执行历史</td></tr>';
+      body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:28px;color:#64748b;">${escapeHtml(tt('noHistory'))}</td></tr>`;
       return;
     }
     body.innerHTML = items
       .map((item) => {
         const canDelete = !['pending', 'running', 'waiting_approval'].includes(item.status);
         const inputSummary = item.inputFiles.length
-          ? `${escapeHtml(item.inputFiles.filter((input) => input.fileId || input.fileName).length.toString())}/${escapeHtml(item.inputFiles.length.toString())} 个文件`
+          ? `${escapeHtml(item.inputFiles.filter((input) => input.fileId || input.fileName).length.toString())}/${escapeHtml(item.inputFiles.length.toString())} ${escapeHtml(tt('fileCount'))}`
           : '-';
         const inputDetails = item.inputFiles.length
           ? item.inputFiles
@@ -656,22 +776,22 @@ export function createMonthlyRunPage({
                   </div>`,
               )
               .join('')
-              : '<div class="monthly-run-history__input-empty">暂无输入快照</div>';
+              : `<div class="monthly-run-history__input-empty">${escapeHtml(tt('noInputSnapshot'))}</div>`;
         return `
         <tr class="monthly-run-history__row">
           <td class="monthly-run-history__run-cell">
             <button class="table-link-button table-link-button--subtle" data-history-toggle="${item.id}" type="button">
-              ${item.workflowRunId ? `#${item.workflowRunId}` : `运行历史 #${item.id}`}
+              ${item.workflowRunId ? `#${item.workflowRunId}` : `${escapeHtml(tt('runHistory'))} #${item.id}`}
             </button>
           </td>
           <td>
             <button class="table-link-button table-link-button--subtle" data-history-toggle="${item.id}" type="button">${inputSummary}</button>
           </td>
-          <td><span class="monthly-run-status monthly-run-status--${escapeHtml(item.status === 'completed_with_warnings' ? 'warning' : item.status)}">${escapeHtml(statusLabel(item.status))}</span></td>
+          <td><span class="monthly-run-status monthly-run-status--${escapeHtml(item.status === 'completed_with_warnings' ? 'warning' : item.status)}">${escapeHtml(statusLabel(item.status, lang()))}</span></td>
           <td>${escapeHtml(item.producedFileName ?? (item.producedFileId ? `#${item.producedFileId}` : '-'))}</td>
           <td>${escapeHtml(formatDateTime(item.triggeredAt))}</td>
           <td>${escapeHtml(item.errorMessage ?? '-')}</td>
-          <td><button class="btn btn-danger btn-sm" data-history-delete="${item.id}" type="button" ${canDelete ? '' : 'disabled title="运行中或待审批的记录不能删除"'}>删除</button></td>
+          <td><button class="btn btn-danger btn-sm" data-history-delete="${item.id}" type="button" ${canDelete ? '' : `disabled title="${escapeHtml(tt('cannotDeleteRunning'))}"`}>${escapeHtml(tt('delete'))}</button></td>
         </tr>
         <tr class="monthly-run-history__detail-row hidden" data-history-detail="${item.id}">
           <td colspan="7">
@@ -700,9 +820,9 @@ export function createMonthlyRunPage({
         if (!historyId) return;
         const history = items.find((item) => item.id === historyId);
         const outputNotice = history?.producedFileName
-          ? `\n对应输出文件“${history.producedFileName}”也会被永久删除。`
+          ? `\n${tt('outputDeleteNotice')} “${history.producedFileName}” ${tt('outputDeleteNoticeSuffix')}`
           : '';
-        if (!(await confirmAction(`确定删除这条运行历史吗？${outputNotice}`, { title: '删除运行历史及输出文件', confirmText: '删除', tone: 'danger' }))) return;
+        if (!(await confirmAction(`${tt('deleteHistoryConfirm')}${outputNotice}`, { title: tt('deleteHistoryTitle'), confirmText: tt('delete'), tone: 'danger' }))) return;
         await api(`/api/monthly-runs/${historyId}`, { method: 'DELETE' });
         if (activeHistoryId === historyId) {
           activeHistoryId = null;
@@ -712,7 +832,7 @@ export function createMonthlyRunPage({
         await Promise.all([refreshHistory(), refreshFiles(), refreshInstance(), refreshProductFiles()]);
         const month = el<HTMLInputElement>('monthlyRunMonth').value;
         if (month) await refreshSummary(month);
-        notify('运行历史及对应输出文件已删除', { type: 'success' });
+        notify(tt('historyDeleted'), { type: 'success' });
       });
     });
   }
@@ -721,5 +841,11 @@ export function createMonthlyRunPage({
     init,
     onActivate,
     openForMonth,
+    applyLanguage() {
+      renderSourceInfo();
+      renderBusinessDefinedInputConfiguration();
+      renderRunPanel();
+      void refreshHistory();
+    },
   };
 }

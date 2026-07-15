@@ -21,6 +21,7 @@ import type {
 } from '../shared/types.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
+import { applyStaticTranslations, type AppLanguage } from './i18n.js';
 import { renderOperatorConfigForm, syncOperatorConfigForm } from './workflow/operatorConfigForm.js';
 import {
   applyTaskOperatorDefaults,
@@ -66,9 +67,14 @@ type WorkflowPageDeps = {
   refreshProductFiles: () => Promise<unknown>;
   notify: NotifyFn;
   confirmAction: ConfirmActionFn;
+  getLanguage?: () => AppLanguage;
 };
 
-export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refreshProductFiles, notify, confirmAction }: WorkflowPageDeps) {
+export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refreshProductFiles, notify, confirmAction, getLanguage }: WorkflowPageDeps) {
+  function productFileDisplayName(file: ProductFileRecord) {
+    return file.displayName || file.originalName;
+  }
+
   const WORKFLOW_NODE_WIDTH = 300;
   const WORKFLOW_NODE_HEADER_BASE_HEIGHT = 64;
   const WORKFLOW_SLOT_ROW_MIN_HEIGHT = 34;
@@ -84,12 +90,12 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   const WORKFLOW_ZOOM_STEP = 0.1;
   const WORKFLOW_SIDEBAR_COLLAPSED_KEY = 'captable.workflow.sidebarCollapsed';
   const WORKFLOW_INSPECTOR_COLLAPSED_KEY = 'captable.workflow.inspectorCollapsed';
-  const WORKFLOW_OPERATOR_GROUPS: Array<{ category: WorkflowOperator['category']; label: string }> = [
-    { category: 'Input', label: '输入' },
-    { category: 'Transform', label: '计算' },
-    { category: 'Output', label: '输出' },
-    { category: 'Database', label: '数据库' },
-    { category: 'Validation', label: '断言' },
+  const WORKFLOW_OPERATOR_GROUPS: Array<{ category: WorkflowOperator['category']; label: Record<AppLanguage, string> }> = [
+    { category: 'Input', label: { 'zh-CN': '输入', 'en-US': 'Input' } },
+    { category: 'Transform', label: { 'zh-CN': '计算', 'en-US': 'Transform' } },
+    { category: 'Output', label: { 'zh-CN': '输出', 'en-US': 'Output' } },
+    { category: 'Database', label: { 'zh-CN': '数据库', 'en-US': 'Database' } },
+    { category: 'Validation', label: { 'zh-CN': '断言', 'en-US': 'Validation' } },
   ];
   type WorkflowRunState = {
     isOpen: boolean;
@@ -188,6 +194,15 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
+  function lang(): AppLanguage {
+    return getLanguage?.() ?? 'zh-CN';
+  }
+
+  function localizeWorkflowDom() {
+    const page = document.getElementById('page-workflow');
+    if (page) applyStaticTranslations(page, lang());
+  }
+
   function getWorkflowOperatorKey(operator: WorkflowOperator) {
     return `${operator.code}@${operator.version}`;
   }
@@ -198,7 +213,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   }
 
   function getWorkflowOperatorGroupLabel(category: WorkflowOperator['category']) {
-    return WORKFLOW_OPERATOR_GROUPS.find((group) => group.category === category)?.label ?? category;
+    const label = WORKFLOW_OPERATOR_GROUPS.find((group) => group.category === category)?.label;
+    return label ? label[lang()] : category;
   }
 
   function getGroupedWorkflowOperators() {
@@ -387,6 +403,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     inspectorToggle.setAttribute('aria-expanded', String(!isWorkflowInspectorCollapsed));
     sidebarToggle.textContent = '«';
     inspectorToggle.textContent = '»';
+    localizeWorkflowDom();
   }
 
   function setWorkflowCanvasZoom(nextZoom: number) {
@@ -634,6 +651,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const container = el('workflowList');
     if (!workflowDefinitions.length) {
       container.innerHTML = '<div class="workflow-empty">暂无工作流</div>';
+      localizeWorkflowDom();
       return;
     }
     container.innerHTML = workflowDefinitions
@@ -683,6 +701,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         void duplicateWorkflow(Number(node.dataset.id));
       });
     });
+    localizeWorkflowDom();
   }
 
   function startWorkflowDescriptionEdit(workflowId: number) {
@@ -800,7 +819,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     select.innerHTML = getGroupedWorkflowOperators()
       .map(
         (group) => `
-          <optgroup label="${escapeHtml(group.label)}">
+          <optgroup label="${escapeHtml(group.label[lang()])}">
             ${group.operators
               .map(
                 (operator) =>
@@ -1003,7 +1022,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       const fileId = runtimeProductFileId(value);
       if (!fileId) return '未设置默认文件';
       const file = getProductFiles().find((item) => item.id === fileId);
-      return file ? `${file.originalName} (#${fileId})` : `File #${fileId}`;
+      return file ? `${productFileDisplayName(file)} (#${fileId})` : `File #${fileId}`;
     }
     return formatRuntimeSummaryValue(value);
   }
@@ -1027,7 +1046,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         `<option value="">No default</option>`,
         ...getProductFiles().map(
           (file) =>
-            `<option value="${file.id}"${file.id === currentValue ? ' selected' : ''}>${escapeHtml(file.originalName)} (#${file.id})</option>`,
+            `<option value="${file.id}"${file.id === currentValue ? ' selected' : ''}>${escapeHtml(productFileDisplayName(file))} (#${file.id})</option>`,
         ),
       ];
       return `<select class="workflow-runtime-summary__control" data-runtime-default-path="${pathAttr}" data-runtime-default-type="fileRef">${options.join('')}</select>`;
@@ -1471,6 +1490,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
     if (!workflow || !workflowRunState.isOpen || workflowRunState.workflowId !== workflow.id) {
       panel.classList.add('hidden');
+      localizeWorkflowDom();
       return;
     }
 
@@ -1566,6 +1586,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           <span class="workflow-run-panel__error">${escapeHtml(workflowRunState.errorMessage)}</span>
         </div>
       `;
+      localizeWorkflowDom();
       return;
     }
     if (!workflowRunState.isRunning && hasWaitingWarning) {
@@ -1581,6 +1602,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           </div>
         </div>
       `;
+      localizeWorkflowDom();
       return;
     }
     if (workflowRunState.isRunning && workflowRunState.runId) {
@@ -1591,6 +1613,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           </div>
         </div>
       `;
+      localizeWorkflowDom();
       return;
     }
     footer.innerHTML =
@@ -1599,6 +1622,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           ? '<span class="workflow-run-panel__warning">Workflow completed with warnings.</span>'
           : '<span class="workflow-run-panel__success">Workflow execution completed.</span>'
         : '<span class="workflow-run-panel__hint">节点会按依赖顺序显示执行状态。</span>';
+    localizeWorkflowDom();
   }
 
   function applyAutoLayoutToWorkflow(workflow: WorkflowDefinition | null) {
@@ -1755,6 +1779,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       dag.innerHTML = '<div class="workflow-empty">请先创建或选择工作流</div>';
       renderWorkflowRuntimeParamsSummary(null);
       renderTaskEditor();
+      localizeWorkflowDom();
       return;
     }
     renderWorkflowRuntimeParamsSummary(workflow);
@@ -1952,6 +1977,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     };
 
     renderTaskEditor();
+    localizeWorkflowDom();
   }
 
   function renderTaskEditor() {
@@ -2799,7 +2825,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const runtimeDefaultFileId = workflow && runtimeFilePath ? workflowRuntimeDefaultFileId(workflow, runtimeFilePath) : null;
     fileSelect.innerHTML = [
       `<option value="">${runtimeFilePath ? '未设置默认文件' : '请选择文件'}</option>`,
-      ...getProductFiles().map((file) => `<option value="${file.id}">${escapeHtml(file.originalName)}</option>`),
+      ...getProductFiles().map((file) => `<option value="${file.id}">${escapeHtml(productFileDisplayName(file))}</option>`),
     ]
       .join('');
     fileSelect.dataset.runtimeDefaultPath = runtimeFilePath ?? '';
@@ -3588,6 +3614,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       panel.classList.add('hidden');
       summary.innerHTML = '';
       table.innerHTML = '';
+      localizeWorkflowDom();
       return;
     }
 
@@ -3596,6 +3623,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     if (!activeWorkflowPreview) {
       summary.innerHTML = '<div class="workflow-empty workflow-preview__empty">点击 Preview 执行当前节点，预览节点输出</div>';
       table.innerHTML = '';
+      localizeWorkflowDom();
       return;
     }
 
@@ -3612,12 +3640,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           Preview 不会写入 Files。点击 Execute 后，该节点才会生成 Excel 文件并记录为 workflow artifact。
         </div>
       `;
+      localizeWorkflowDom();
       return;
     }
 
     if (preview.kind === 'file') {
       summary.innerHTML = `
-        <div class="workflow-preview__summary-item"><strong>File</strong><span>${escapeHtml(preview.file.originalName)}</span></div>
+        <div class="workflow-preview__summary-item"><strong>File</strong><span>${escapeHtml(productFileDisplayName(preview.file))}</span></div>
         <div class="workflow-preview__summary-item"><strong>File ID</strong><span>${escapeHtml(preview.file.id)}</span></div>
         <div class="workflow-preview__summary-item"><strong>Sheets</strong><span>${escapeHtml(preview.file.workbookSheetCount)}</span></div>
         <div class="workflow-preview__summary-item"><strong>Rows</strong><span>${escapeHtml(preview.file.workbookRowCount)}</span></div>
@@ -3627,11 +3656,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
           文件已持久化到 Files。你可以到 Files 页查看或下载，也可以继续使用该节点输出的 dataframe。
         </div>
       `;
+      localizeWorkflowDom();
       return;
     }
 
     if (preview.kind === 'assert') {
       renderAssertionPreview(preview.assertion, preview.dataFrame);
+      localizeWorkflowDom();
       return;
     }
 
@@ -3642,6 +3673,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       <div class="workflow-preview__summary-item"><strong>Columns</strong><span>${escapeHtml(dataFrame.columns.length)}</span></div>
     `;
     table.innerHTML = renderWorkflowDataFramePreviewTable(dataFrame, workflowPreviewPage, 'workflowPreviewPage');
+    localizeWorkflowDom();
   }
 
   function renderAssertionPreview(assertion: WorkflowAssertionResult, dataFrame: WorkflowDataFrame) {
@@ -3818,6 +3850,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const container = el('workflowOperators');
     if (!workflowOperators.length) {
       container.innerHTML = '<div class="workflow-empty">暂无算子</div>';
+      localizeWorkflowDom();
       return;
     }
     container.innerHTML = getGroupedWorkflowOperators()
@@ -3825,7 +3858,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         (group) => `
         <section class="workflow-operator-group">
           <div class="workflow-operator-group__header">
-            <span>${escapeHtml(group.label)}</span>
+            <span>${escapeHtml(group.label[lang()])}</span>
             <span>${group.operators.length}</span>
           </div>
           <div class="workflow-operator-group__list">
@@ -3863,6 +3896,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         open();
       });
     });
+    localizeWorkflowDom();
   }
 
   async function createWorkflow() {
@@ -4003,5 +4037,12 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   return {
     init,
     onActivate,
+    applyLanguage() {
+      renderWorkflowLayout();
+      renderWorkflowList();
+      renderWorkflowEditor();
+      renderWorkflowOperators();
+      localizeWorkflowDom();
+    },
   };
 }

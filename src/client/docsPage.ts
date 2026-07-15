@@ -1,9 +1,11 @@
 import { marked } from 'marked';
+import type { AppLanguage } from './i18n.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
 type DocsPageDeps = {
   el: DomGetter;
+  getLanguage?: () => AppLanguage;
 };
 
 type DocPage = {
@@ -16,7 +18,7 @@ type DocPage = {
 
 // User Guide content. Authored in Markdown and rendered with `marked`; content is
 // first-party (trusted), so no sanitization step is required.
-const DOC_PAGES: DocPage[] = [
+const DOC_PAGES_ZH: DocPage[] = [
   {
     id: 'overview',
     title: '系统概览',
@@ -261,17 +263,193 @@ Files 页用于上传、预览、下载工作簿文件。上传后的文件成�
   },
 ];
 
-const DOC_GROUP_ORDER = ['入门', '页面指南', '工作流', '参考'];
+const DOC_PAGES_EN: DocPage[] = [
+  {
+    id: 'overview',
+    title: 'System Overview',
+    group: 'Getting Started',
+    summary: 'What the product does and how it is organized',
+    body: `# System Overview
 
-export function createDocsPage({ el }: DocsPageDeps) {
-  let activeDocId = DOC_PAGES[0]?.id ?? '';
-  let built = false;
+CapTable Equity Management consolidates equity and ESOP data from sources such as Futu and Shareworks, reconciles monthly activity, generates Capitalization Summary outputs, and maintains master data such as employees, plans, and 5% holders.
+
+## Three layers
+
+| Layer | Purpose | Pages |
+| --- | --- | --- |
+| Business data | View and maintain details and master data | Captable, ESOP Detail, Employee Management, Plan Summary, 5% Holders, Fixed Value |
+| Process | Monthly updates and workflow orchestration | Monthly Updates, Workflow |
+| Tools | File management and system settings | Files, Settings |
+
+The left navigation follows this structure. Indented items are sub-pages under ESOP Detail.`,
+  },
+  {
+    id: 'navigation',
+    title: 'Navigation and Login',
+    group: 'Getting Started',
+    summary: 'Page navigation and current login behavior',
+    body: `# Navigation and Login
+
+Use the left sidebar to switch pages. The URL is synchronized with the active page, so routes such as \`/five-percent-holders\` can be bookmarked or shared.
+
+During development, login is temporarily disabled and the app opens as Developer. When the product is ready, set \`AUTH_DISABLED=false\` on the server and restart to restore login, session checks, and account management.`,
+  },
+  {
+    id: 'captable',
+    title: 'Captable',
+    group: 'Page Guides',
+    summary: 'EOM reconciliation and Capitalization Summary',
+    body: `# Captable
+
+Captable is the month-end summary view. It shows Shares OS Reconciliation and Capitalization Table (Summary View) using the selected SourceFile or the default monthly output.
+
+Use the month selector and SourceFile selector at the top to switch the displayed result.`,
+  },
+  {
+    id: 'monthly',
+    title: 'Monthly Updates',
+    group: 'Page Guides',
+    summary: 'Monthly update plan and runs',
+    body: `# Monthly Updates
+
+Monthly Updates manages each month's update plan and run history.
+
+Typical flow:
+
+1. Create or select the monthly plan and configure source files.
+2. Run the monthly workflow.
+3. Review warnings if manual approval is required.
+4. Use the generated Capitalization Summary from the Captable page.
+
+Each run records inputs, outputs, status, and execution time.`,
+  },
+  {
+    id: 'esop-detail',
+    title: 'ESOP Detail',
+    group: 'Page Guides',
+    summary: 'Grant, exercise, sold share, and transfer detail',
+    body: `# ESOP Detail
+
+ESOP Detail contains four file-driven, searchable, paginated detail pages:
+
+| Page | Content |
+| --- | --- |
+| Grant Record | Futu, Shareworks, and merged grant views |
+| Exercise to Date | Futu exercise records |
+| Sold Shares | Futu sold-share records |
+| 2025 Transfer to Futu | Period transfer summary with editable cancellations |
+
+The Merge view standardizes Futu and Shareworks grant records for cross-source review.`,
+  },
+  {
+    id: 'employees',
+    title: 'Employee Management',
+    group: 'Page Guides',
+    summary: 'Employee master data, sources, and linking',
+    body: `# Employee Management
+
+Employee Management stores the employee master list generated from ESOP detail workflows, with optional manual supplements.
+
+Key concepts:
+
+- **Emp. No. = employee_id**: the business key from source files.
+- **Source**: Futu, Shareworks, or manual.
+- **Linked**: aliases merged into the primary employee record.
+
+Employees are retained for traceability. Deactivation or linking is used instead of physical deletion.`,
+  },
+  {
+    id: 'plan-summary',
+    title: 'Plan Summary',
+    group: 'Page Guides',
+    summary: 'Grant and exercise aggregation by plan',
+    body: `# Plan Summary
+
+Plan Summary aggregates grants, exercises, cancellations, and outstanding quantities by incentive plan. It is intended for a quick view of plan usage and remaining pool.`,
+  },
+  {
+    id: 'five-percent',
+    title: '5% Holders',
+    group: 'Page Guides',
+    summary: 'EDGAR SC13 style 5% holder view',
+    body: `# 5% Holders
+
+This page displays shareholders above the 5% threshold from the "5% Holders" sheet in the Gyre Cap Table workbook. The top summary shows As of date, Fully Diluted shares, and Common Stock OS.`,
+  },
+  {
+    id: 'fixed-value',
+    title: 'Fixed Value',
+    group: 'Page Guides',
+    summary: 'Editable constants used by monthly workflows',
+    body: `# Fixed Value
+
+Fixed Value maintains admin-editable business constants used by the monthly workflow, such as outstanding or available option values.`,
+  },
+  {
+    id: 'workflows',
+    title: 'Workflows and Operators',
+    group: 'Workflow',
+    summary: 'Visual orchestration for data processing',
+    body: `# Workflows and Operators
+
+Workflow orchestrates "read file → transform → validate → output/write database" as an operator graph.
+
+Main operator categories include input extraction, SQL computation, dataframe union, validation, Excel persistence, and database upsert. Database writes are restricted by server-side allowlists and conflict keys.`,
+  },
+  {
+    id: 'employee-import',
+    title: 'Employee Import Workflow',
+    group: 'Workflow',
+    summary: 'Idempotent employee reload from source files',
+    body: `# Employee Import Workflow
+
+The built-in employee-import workflow demonstrates a file-driven reload into the employees table:
+
+1. Extract Futu grant records and Shareworks records.
+2. Normalize both sides with SQL compute.
+3. Union by column name.
+4. Upsert employees by \`employee_id\`.
+
+Re-running with the same employee number updates existing rows instead of creating duplicates.`,
+  },
+  {
+    id: 'files',
+    title: 'Files',
+    group: 'Workflow',
+    summary: 'Upload and preview workbooks',
+    body: `# Files
+
+Files is used to upload, preview, download, rename, update, and delete workbook files. Uploaded files become product files that workflows can reference as runtime inputs.`,
+  },
+  {
+    id: 'data-model',
+    title: 'Data Model and Linking',
+    group: 'Reference',
+    summary: 'Employee identity, employee number, linking, and tombstones',
+    body: `# Data Model and Linking
+
+The employee identity key is **employee_id / Emp. No.**, taken directly from detail files. Futu and Shareworks may use different identifiers for the same person, so linking is used to connect aliases to one primary employee record.
+
+Linked records are retained for traceability instead of being physically deleted.`,
+  },
+];
+
+const DOC_GROUP_ORDER: Record<AppLanguage, string[]> = {
+  'zh-CN': ['入门', '页面指南', '工作流', '参考'],
+  'en-US': ['Getting Started', 'Page Guides', 'Workflow', 'Reference'],
+};
+
+export function createDocsPage({ el, getLanguage }: DocsPageDeps) {
+  const docs = () => (getLanguage?.() === 'en-US' ? DOC_PAGES_EN : DOC_PAGES_ZH);
+  const groupOrder = () => DOC_GROUP_ORDER[getLanguage?.() === 'en-US' ? 'en-US' : 'zh-CN'];
+  let activeDocId = docs()[0]?.id ?? '';
 
   function renderNav() {
-    const groups = DOC_GROUP_ORDER.filter((group) => DOC_PAGES.some((doc) => doc.group === group));
+    const pages = docs();
+    const groups = groupOrder().filter((group) => pages.some((doc) => doc.group === group));
     el('docNav').innerHTML = groups
       .map((group) => {
-        const items = DOC_PAGES.filter((doc) => doc.group === group)
+        const items = pages.filter((doc) => doc.group === group)
           .map(
             (doc) => `
             <button type="button" class="doc-nav__item${doc.id === activeDocId ? ' is-active' : ''}" data-doc="${doc.id}">
@@ -295,7 +473,8 @@ export function createDocsPage({ el }: DocsPageDeps) {
   }
 
   function renderContent() {
-    const doc = DOC_PAGES.find((item) => item.id === activeDocId) ?? DOC_PAGES[0];
+    const pages = docs();
+    const doc = pages.find((item) => item.id === activeDocId) ?? pages[0];
     if (!doc) return;
     const html = marked.parse(doc.body, { async: false }) as string;
     el('docContent').innerHTML = `<div class="doc-article">${html}</div>`;
@@ -311,10 +490,7 @@ export function createDocsPage({ el }: DocsPageDeps) {
   }
 
   function render() {
-    if (!built) {
-      renderNav();
-      built = true;
-    }
+    renderNav();
     renderContent();
   }
 

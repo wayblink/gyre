@@ -207,6 +207,14 @@
                 </section>
 
                 <section class="page-section" id="page-grant-record">
+                    <div class="product-page-hero">
+                        <div>
+                            <div class="product-page-hero__eyebrow">授予记录</div>
+                            <h2>Grant Record</h2>
+                            <p>展示 Futu、Shareworks 及合并后的授予明细，数据来自对应 workflow 输出文件。</p>
+                        </div>
+                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="grantRecordSourceFileName">-</strong></div>
+                    </div>
                     <div class="search-bar">
                         <div class="search-group">
                             <label class="search-label">Search</label>
@@ -350,7 +358,7 @@
                             <h2>Exercise to Date</h2>
                             <p>展示 Futu 全部行权记录，数据来自 Files 中的独立工作簿。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>Source File</span><strong>Files #54</strong></div>
+                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="exerciseRecordSourceFileName">-</strong></div>
                     </div>
                     <div class="search-bar">
                         <div class="search-group">
@@ -426,7 +434,7 @@
                             <h2>Sold Shares</h2>
                             <p>展示 Futu 卖出汇总记录，数据来自 Files 中的独立工作簿。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>Source</span><strong>Files</strong></div>
+                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="soldSharesSourceFileName">-</strong></div>
                     </div>
                     <div class="search-bar">
                         <div class="search-group">
@@ -508,7 +516,7 @@
                             <h2>2025 Transfer to Futu</h2>
                             <p>按月汇总归属记录，取消数量可直接编辑；数据来自 Files 中的独立工作簿。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>Source</span><strong>Files</strong></div>
+                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="transferPlanHeroSourceName">-</strong></div>
                     </div>
                     <div class="transfer-plan-metrics">
                         <div class="transfer-plan-metric"><span>In total</span><strong id="transferPlanInTotal">-</strong></div>
@@ -544,6 +552,14 @@
                 </section>
 
                 <section class="page-section" id="page-employee-management">
+                    <div class="product-page-hero">
+                        <div>
+                            <div class="product-page-hero__eyebrow">员工管理</div>
+                            <h2>Employee Management</h2>
+                            <p>员工主数据由员工归集 workflow 从 ESOP 明细输入文件中生成，并支持手工补充。</p>
+                        </div>
+                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="employeesSourceFileName">-</strong></div>
+                    </div>
                     <div class="search-bar">
                         <div class="search-group">
                             <label class="search-label">Search</label>
@@ -654,6 +670,14 @@
                 </section>
 
                 <section class="page-section" id="page-plan-summary">
+                    <div class="product-page-hero">
+                        <div>
+                            <div class="product-page-hero__eyebrow">计划汇总</div>
+                            <h2>Plan Summary</h2>
+                            <p>按 Plan Name 聚合授予、行权、取消及 outstanding 数量。</p>
+                        </div>
+                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="planSummarySourceFileName">-</strong></div>
+                    </div>
                     <div class="stats-row">
                         <div class="stat-card"><div class="stat-label">Plans</div><div class="stat-value" id="planSummaryPlanCount">-</div></div>
                         <div class="stat-card"><div class="stat-label">Granted</div><div class="stat-value" id="planSummaryGranted">-</div></div>
@@ -678,6 +702,7 @@
                             <h2>5% Holders</h2>
                             <p>来源：Gyre Cap Table「5% Holders」sheet（EDGAR SC13 申报口径）。</p>
                         </div>
+                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="fivePercentHoldersSourceFileName">-</strong></div>
                     </div>
                     <div class="card">
                         <div class="card-header"><h3 class="card-title">5% Holders</h3><span class="card-subtitle">EDGAR SC13 Ownership</span></div>
@@ -733,27 +758,27 @@
 
                 <!-- Captable Page -->
                 <section class="page-section active" id="page-captable">
+                    <div class="product-page-hero">
+                        <div>
+                            <div class="product-page-hero__eyebrow">股本汇总</div>
+                            <h2>CapTable</h2>
+                            <p>展示月度 Capitalization Table Summary View，数据来自当前选择的 SourceFile。</p>
+                        </div>
+                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="capitalizationSourceFileName">-</strong></div>
+                    </div>
                     <div class="search-bar">
                         <div class="search-group">
                             <label class="search-label">月份</label>
                             <input type="month" id="monthPicker" class="search-input" value="2026-05">
                         </div>
-                        <div class="search-actions">
-                            <div class="summary-source-config">
-                                <select id="capitalizationSourceFile" class="search-input summary-source-select">
-                                    <option value="">默认快照数据</option>
-                                </select>
-                            </div>
-                        </div>
                     </div>
 
-                    <div class="info-banner" id="currentMonthInfo">
-                        <span class="info-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                        </span>
-                        <span class="info-text">当前视图：<strong id="currentMonthText">暂无汇总数据</strong></span>
-                        <span class="info-badge">EOM: <span id="eomDate">-</span></span>
-                        <span class="info-badge" id="capitalizationSourceBadge">股本来源：默认快照</span>
+                    <div class="hidden" aria-hidden="true">
+                        <select id="capitalizationSourceFile">
+                            <option value="">默认快照数据</option>
+                        </select>
+                        <strong id="currentMonthText">暂无汇总数据</strong>
+                        <span id="eomDate">-</span>
                     </div>
 
                     <!-- Table 1: Shares OS Reconciliation -->
@@ -811,14 +836,6 @@
                                     </tr>
                                 </thead>
                                 <tbody id="capitalizationBody"></tbody>
-                                <tfoot>
-                                    <tr class="total-row-blue">
-                                        <td></td>
-                                        <td style="text-align:left; font-weight:var(--font-bold);">Total Fully Diluted Shares Outstand</td>
-                                        <td id="totalShares" style="font-weight:var(--font-bold);">-</td>
-                                        <td style="font-weight:var(--font-bold);">-</td>
-                                    </tr>
-                                </tfoot>
                             </table>
                         </div>
                     </div>
@@ -988,6 +1005,8 @@
                                             <col class="source-table__col-used">
                                             <col class="source-table__col-required">
                                             <col class="source-table__col-uploaded">
+                                            <col class="source-table__col-uploaded-time">
+                                            <col class="source-table__col-actions">
                                         </colgroup>
                                         <thead>
                                             <tr>
@@ -995,6 +1014,8 @@
                                                 <th style="width:72px;">Used</th>
                                                 <th style="width:80px;">Is required</th>
                                                 <th>Uploaded file</th>
+                                                <th>Uploaded time</th>
+                                                <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="shareworksBody"></tbody>
@@ -1008,6 +1029,8 @@
                                             <col class="source-table__col-used">
                                             <col class="source-table__col-required">
                                             <col class="source-table__col-uploaded">
+                                            <col class="source-table__col-uploaded-time">
+                                            <col class="source-table__col-actions">
                                         </colgroup>
                                         <thead>
                                             <tr>
@@ -1015,6 +1038,8 @@
                                                 <th style="width:72px;">Used</th>
                                                 <th style="width:80px;">Is required</th>
                                                 <th>Uploaded file</th>
+                                                <th>Uploaded time</th>
+                                                <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="futuBody"></tbody>
@@ -1136,6 +1161,10 @@
                                         <p id="filesCountBadge">0 个</p>
                                     </div>
                                     <div class="workbook-list__actions">
+                                        <div class="files-view-toggle" role="group" aria-label="文件显示方式">
+                                            <button type="button" class="files-view-toggle__btn is-active" id="btnFilesViewList">列表</button>
+                                            <button type="button" class="files-view-toggle__btn" id="btnFilesViewTree">树状</button>
+                                        </div>
                                         <button type="button" class="btn btn-secondary btn-sm" id="btnSaveProductFile" disabled>保存</button>
                                         <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshFiles">刷新</button>
                                     </div>
@@ -1621,6 +1650,21 @@
                 <!-- Settings Page -->
                 <section class="page-section" id="page-settings">
                     <div class="settings-shell">
+                        <div class="card settings-quick-card">
+                            <div class="card-header">
+                                <div>
+                                    <h3 class="card-title" id="settingsLanguageTitle">语言</h3>
+                                    <span class="card-subtitle" id="settingsLanguageSubtitle">切换界面显示语言</span>
+                                </div>
+                            </div>
+                            <div class="card-body settings-placeholder">
+                                <label class="settings-placeholder__label" id="settingsLanguageLabel">界面语言</label>
+                                <div class="language-toggle" role="radiogroup" aria-labelledby="settingsLanguageLabel">
+                                    <button class="language-toggle__btn" id="btnLanguageZh" type="button" data-language="zh-CN" role="radio" aria-checked="true">中文</button>
+                                    <button class="language-toggle__btn" id="btnLanguageEn" type="button" data-language="en-US" role="radio" aria-checked="false">English</button>
+                                </div>
+                            </div>
+                        </div>
                         <div class="card settings-quick-card">
                             <div class="card-header">
                                 <div>
