@@ -3741,6 +3741,10 @@ a.product-card:focus-visible {
   min-width: 96px;
 }
 
+.employee-management-actions .btn {
+  min-width: 104px;
+}
+
 /* ============ 7. Buttons ============ */
 .btn {
   padding: var(--space-2) var(--space-4);
@@ -5484,6 +5488,86 @@ textarea.form-input {
   max-width: 480px;
 }
 
+.global-parameter-modal {
+  width: 100%;
+  max-width: 760px;
+}
+
+.global-parameter-modal .modal-body {
+  overflow-x: hidden;
+}
+
+.global-parameter-modal .form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.global-parameter-modal .form-group,
+.global-parameter-modal .form-input {
+  min-width: 0;
+  width: 100%;
+}
+
+.upload-progress-modal {
+  max-width: 440px;
+}
+
+.upload-progress__header {
+  border-bottom: none;
+  padding-bottom: var(--space-3);
+}
+
+.upload-progress__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: 0;
+}
+
+.upload-progress__track {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--slate-100);
+  border: 1px solid var(--border-light);
+}
+
+.upload-progress__fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary-500), var(--primary-400));
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.35);
+  transition: width 0.18s ease;
+}
+
+.upload-progress__track--indeterminate .upload-progress__fill {
+  position: absolute;
+  left: -45%;
+  width: 45%;
+  animation: uploadProgressIndeterminate 1.1s ease-in-out infinite;
+}
+
+.upload-progress__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.upload-progress__meta strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  min-width: 48px;
+}
+
+@keyframes uploadProgressIndeterminate {
+  from { left: -45%; }
+  to { left: 100%; }
+}
+
 .monthly-plan-modal {
   width: 100%;
   max-width: 760px;
@@ -7114,6 +7198,9 @@ textarea.form-input {
     width: 100%;
   }
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .global-parameter-modal .form-grid {
     grid-template-columns: 1fr;
   }
   .stats-row {

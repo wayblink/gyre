@@ -625,11 +625,18 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
                                 Employee Management
                             </h3>
-                            <div class="card-header-actions">
-                                <button class="btn btn-warning" id="btnManageEmployeeLabels" type="button">标签管理</button>
+                            <div class="card-header-actions employee-management-actions">
+                                <button class="btn btn-warning" id="btnManageEmployeeLabels" type="button">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+                                    <span>标签管理</span>
+                                </button>
+                                <button class="btn btn-primary" type="button" data-workflow-update-page="employee-management">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg>
+                                    <span data-workflow-action-label>Update</span>
+                                </button>
                                 <button class="btn btn-success" id="btnAddEmployeesPage">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                    New Employee
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                                    <span>New Employee</span>
                                 </button>
                             </div>
                         </div>
@@ -857,7 +864,15 @@
                         </div>
                     </div>
                     <div class="card">
-                        <div class="card-header"><h3 class="card-title">Global Parameter</h3><span class="card-subtitle">管理员可维护</span></div>
+                        <div class="card-header">
+                            <h3 class="card-title">参数</h3>
+                            <div class="card-header-actions">
+                                <button class="btn btn-primary btn-sm admin-only-control hidden" id="btnAddFixedValue" data-admin-only="true" type="button" title="新增全局参数">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+                                    <span>New</span>
+                                </button>
+                            </div>
+                        </div>
                         <div class="card-body">
                             <table class="data-table product-spec-table">
                                 <thead><tr><th>Key</th><th>Item</th><th>Value</th><th>Effective From</th><th>Updated By</th><th>Actions</th></tr></thead>
@@ -866,6 +881,42 @@
                         </div>
                     </div>
                 </section>
+
+                <div class="modal-overlay hidden" id="fixedValueModal">
+                    <div class="modal-container global-parameter-modal">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title">新增 Global Parameter</h3>
+                                <span class="card-subtitle">仅管理员可创建</span>
+                            </div>
+                            <button class="modal-close" data-close="fixedValueModal" type="button" aria-label="关闭">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="fixedValueKey">Key</label>
+                                    <input type="text" id="fixedValueKey" class="form-input" autocomplete="off" placeholder="例如: options_available_gyre">
+                                </div>
+                                <div class="form-group">
+                                    <label for="fixedValueLabel">Item</label>
+                                    <input type="text" id="fixedValueLabel" class="form-input" autocomplete="off" placeholder="参数名称">
+                                </div>
+                                <div class="form-group">
+                                    <label for="fixedValueValue">Value</label>
+                                    <input type="text" id="fixedValueValue" class="form-input" inputmode="decimal" autocomplete="off" placeholder="0">
+                                </div>
+                                <div class="form-group">
+                                    <label for="fixedValueEffectiveFrom">Effective From</label>
+                                    <input type="text" id="fixedValueEffectiveFrom" class="form-input" inputmode="numeric" autocomplete="off" placeholder="2026-07">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" data-close="fixedValueModal" type="button">取消</button>
+                            <button class="btn btn-primary" id="btnSubmitFixedValue" type="button">创建参数</button>
+                        </div>
+                    </div>
+                </div>
 
                 <section class="page-section" id="page-docs">
                     <div class="doc-layout">
@@ -1263,6 +1314,26 @@
                         <div class="modal-footer">
                             <button class="btn btn-secondary" id="btnCancelWorkflowUpdateModal" type="button">Cancel</button>
                             <button class="btn btn-primary" id="btnConfirmWorkflowUpdate" type="button">Confirm & Run</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay hidden" id="uploadProgressModal" aria-hidden="true">
+                    <div class="modal-container modal-small upload-progress-modal" role="dialog" aria-modal="true" aria-labelledby="uploadProgressTitle">
+                        <div class="modal-header upload-progress__header">
+                            <div>
+                                <h3 class="modal-title" id="uploadProgressTitle">Uploading file</h3>
+                                <p class="modal-subtitle" id="uploadProgressFileName"></p>
+                            </div>
+                        </div>
+                        <div class="modal-body upload-progress__body">
+                            <div class="upload-progress__track" id="uploadProgressBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                                <div class="upload-progress__fill" id="uploadProgressFill"></div>
+                            </div>
+                            <div class="upload-progress__meta">
+                                <strong id="uploadProgressPercent">0%</strong>
+                                <span id="uploadProgressStatus">Preparing upload...</span>
+                            </div>
                         </div>
                     </div>
                 </div>

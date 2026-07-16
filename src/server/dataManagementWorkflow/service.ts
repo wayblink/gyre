@@ -3,7 +3,7 @@ import { resolveWorkflowRuntimeConfiguration } from '../workflow/runtimeParamete
 import type { WorkflowRunCreateInput } from '../workflow/runRepository.js';
 import {
   DATA_MANAGEMENT_WORKFLOW_CONFIGS,
-  FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS,
+  FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS,
   buildDataManagementWorkflowRuntimeParameters,
   type DataManagementPageKey,
   type DataManagementSourceBindings,
@@ -23,7 +23,7 @@ function parseJson<T>(value: unknown, fallback: T): T {
 }
 
 async function loadFivePercentHolderRuntimeOverrides(db: QueryDb) {
-  const keys = Object.values(FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS);
+  const keys = Object.values(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS);
   const rows = await db.query<{ key: string; value: number; updated_by?: string | null }>(
     `select distinct on (key) key, value, updated_by
        from global_parameters

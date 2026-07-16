@@ -48,6 +48,7 @@ import { resolveDefaultSummaryMonth } from './summaryPage.js';
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
 import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './transferPlanPage.js';
 import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
+import { uploadFormDataWithProgress } from './uploadProgress.js';
 import '../../css/style.css';
 import '@univerjs/design/lib/index.css';
 import '@univerjs/ui/lib/index.css';
@@ -131,6 +132,7 @@ type WorkflowUpdatePageKey =
   | 'exercise-record'
   | 'sold-shares'
   | 'transfer-plan'
+  | 'employee-management'
   | 'plan-summary'
   | 'five-percent-holders';
 
@@ -141,6 +143,7 @@ const workflowUpdatePageKinds: Record<WorkflowUpdatePageKey, WorkflowUpdateKind>
   'exercise-record': 'esop',
   'sold-shares': 'esop',
   'transfer-plan': 'esop',
+  'employee-management': 'data-management',
   'plan-summary': 'data-management',
   'five-percent-holders': 'data-management',
 };
@@ -150,21 +153,21 @@ const workflowResultFilesByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowR
 let workflowUpdateConfigs: Partial<Record<WorkflowUpdatePageKey, WorkflowPageConfig>> = {};
 let activeWorkflowUpdatePage: WorkflowUpdatePageKey | null = null;
 let workflowUpdateSelectedFiles: Record<string, number | null> = {};
-const fivePercentHolderFixedValueKeys = {
+const fivePercentHolderGlobalParameterKeys = {
   gniCommonStock: 'fivePercentHoldersGniCommonStock',
   gniTotalCses: 'fivePercentHoldersGniTotalCses',
   songjiangMaCommonStock: 'fivePercentHoldersSongjiangMaCommonStock',
   songjiangMaTotalCses: 'fivePercentHoldersSongjiangMaTotalCses',
 } as const;
-const fivePercentHolderFixedValueLabels: Record<string, string> = {
-  [fivePercentHolderFixedValueKeys.gniCommonStock]: '5% Holders - GNI Group Ltd. Common Stock',
-  [fivePercentHolderFixedValueKeys.gniTotalCses]: '5% Holders - GNI Group Ltd. Total CSEs',
-  [fivePercentHolderFixedValueKeys.songjiangMaCommonStock]: '5% Holders - Songjiang Ma Common Stock',
-  [fivePercentHolderFixedValueKeys.songjiangMaTotalCses]: '5% Holders - Songjiang Ma Total CSEs',
+const fivePercentHolderGlobalParameterLabels: Record<string, string> = {
+  [fivePercentHolderGlobalParameterKeys.gniCommonStock]: '5% Holders - GNI Group Ltd. Common Stock',
+  [fivePercentHolderGlobalParameterKeys.gniTotalCses]: '5% Holders - GNI Group Ltd. Total CSEs',
+  [fivePercentHolderGlobalParameterKeys.songjiangMaCommonStock]: '5% Holders - Songjiang Ma Common Stock',
+  [fivePercentHolderGlobalParameterKeys.songjiangMaTotalCses]: '5% Holders - Songjiang Ma Total CSEs',
 };
 let fivePercentHoldersEditMode = false;
 let fivePercentHoldersSaving = false;
-let fivePercentHolderFixedValues: FixedValueRecord[] = [];
+let fivePercentHolderGlobalParameters: FixedValueRecord[] = [];
 
 const filesPage = createFilesPage({
   el,
@@ -294,9 +297,10 @@ function workflowUpdateConfigEndpoint(kind: WorkflowUpdateKind) {
 
 function workflowUpdateRunEndpoint(page: WorkflowUpdatePageKey) {
   const kind = workflowUpdatePageKinds[page];
+  const apiPageKey = page === 'employee-management' ? 'employee' : page;
   return kind === 'esop'
-    ? `/api/esop-workflows/${page}/runs`
-    : `/api/data-management-workflows/${page}/runs`;
+    ? `/api/esop-workflows/${apiPageKey}/runs`
+    : `/api/data-management-workflows/${apiPageKey}/runs`;
 }
 
 async function loadWorkflowUpdateConfigs() {
@@ -306,6 +310,7 @@ async function loadWorkflowUpdateConfigs() {
   ]);
   workflowUpdateConfigs = Object.fromEntries(
     [...esop.items, ...dataManagement.items]
+      .map((config) => (config.pageKey === 'employee' ? { ...config, pageKey: 'employee-management' } : config))
       .filter((config) => isWorkflowUpdatePage(config.pageKey))
       .map((config) => [config.pageKey, config]),
   ) as Partial<Record<WorkflowUpdatePageKey, WorkflowPageConfig>>;
@@ -416,7 +421,10 @@ async function uploadWorkflowUpdateSourceFile(sourceKey: string) {
     form.append('uploadedBy', `Workflow Update · ${page} · ${sourceKey}`);
     try {
       el('workflowUpdateStatus').textContent = 'Uploading file...';
-      const data = await api<{ file: ProductFileRecord }>('/api/files/upload', { method: 'POST', body: form });
+      const data = await uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
+        fileName: file.name,
+        title: { 'zh-CN': '正在上传 Workflow 输入文件', 'en-US': 'Uploading workflow input' },
+      });
       await filesPage.refreshProductFiles(data.file.id);
       workflowUpdateSelectedFiles[sourceKey] = data.file.id;
       renderWorkflowUpdateModalSources();
@@ -451,6 +459,8 @@ async function refreshWorkflowUpdatePage(page: WorkflowUpdatePageKey) {
     await renderSoldShares();
   } else if (page === 'transfer-plan') {
     await renderTransferPlan();
+  } else if (page === 'employee-management') {
+    await loadEmployeesPage();
   } else if (page === 'plan-summary') {
     await renderPlanSummaryPage();
   } else if (page === 'five-percent-holders') {
@@ -531,6 +541,9 @@ function canAccessPage(page: PageKey): boolean {
 
 function applyRoleVisibility() {
   document.querySelectorAll<HTMLElement>('.nav-dev-tools').forEach((node) => {
+    node.classList.toggle('hidden', !isAdminUser());
+  });
+  document.querySelectorAll<HTMLElement>('[data-admin-only="true"]').forEach((node) => {
     node.classList.toggle('hidden', !isAdminUser());
   });
   // Re-render the manual so admin-only doc pages appear/disappear with the role.
@@ -802,6 +815,7 @@ function applyLanguage() {
   setPageHero('plan-summary', 'planHeroText');
   setPageHero('five-percent-holders', 'holdersHeroText');
   setPageHero('fixed-value', 'fixedHeroText');
+  setText('#page-fixed-value h2', pageTitleFor('fixed-value'));
   setPageHero('docs', 'docsHeroText');
   setPageHero('captable', 'captableHeroText');
 
@@ -889,8 +903,7 @@ function applyLanguage() {
   setText('#page-plan-summary .card-title', pageTitleFor('plan-summary'));
   setText('#page-plan-summary .card-subtitle', currentLanguage === 'zh-CN' ? '由股权授予明细聚合生成' : 'Aggregated from equity grant detail');
   setText('#page-five-percent-holders .card-title', pageTitleFor('five-percent-holders'));
-  setText('#page-fixed-value .card-title', currentLanguage === 'zh-CN' ? 'Global Parameter' : 'Global Parameter');
-  setText('#page-fixed-value .card-subtitle', currentLanguage === 'zh-CN' ? '管理员可维护' : 'Admin editable');
+  setText('#page-fixed-value .card-title', currentLanguage === 'zh-CN' ? '参数' : 'Global Parameter');
   setAllText('.pagination-size-label', t('rows'));
   setAllText('[id$="FirstPage"]', t('first'));
   setAllText('[id$="PrevPage"]', t('previous'));
@@ -2667,7 +2680,11 @@ async function importTransferPlanWorkbook() {
   const form = new FormData();
   form.append('file', file);
   try {
-    await api('/api/transfer-plan/import', { method: 'POST', body: form });
+    await uploadFormDataWithProgress('/api/transfer-plan/import', form, {
+      fileName: file.name,
+      title: { 'zh-CN': '正在导入 Transfer 明细', 'en-US': 'Importing transfer detail' },
+      completedText: { 'zh-CN': '导入完成', 'en-US': 'Import completed' },
+    });
     await renderTransferPlan();
     await filesPage.refreshProductFiles();
     notify('Transfer detail 已导入', { type: 'success' });
@@ -3066,15 +3083,15 @@ function setFivePercentHoldersUpdateButtonState() {
 }
 
 function fixedValueByKey(key: string): FixedValueRecord | null {
-  return fivePercentHolderFixedValues.find((item) => item.key === key) ?? null;
+  return fivePercentHolderGlobalParameters.find((item) => item.key === key) ?? null;
 }
 
 function fixedValueKeyForHolderCell(holderIndex: number, field: 'commonStock' | 'totalCses'): string | null {
   if (holderIndex === 0) {
-    return field === 'commonStock' ? fivePercentHolderFixedValueKeys.gniCommonStock : fivePercentHolderFixedValueKeys.gniTotalCses;
+    return field === 'commonStock' ? fivePercentHolderGlobalParameterKeys.gniCommonStock : fivePercentHolderGlobalParameterKeys.gniTotalCses;
   }
   if (holderIndex === 1) {
-    return field === 'commonStock' ? fivePercentHolderFixedValueKeys.songjiangMaCommonStock : fivePercentHolderFixedValueKeys.songjiangMaTotalCses;
+    return field === 'commonStock' ? fivePercentHolderGlobalParameterKeys.songjiangMaCommonStock : fivePercentHolderGlobalParameterKeys.songjiangMaTotalCses;
   }
   return null;
 }
@@ -3091,15 +3108,15 @@ function renderFivePercentHolderEditableNumber(item: FivePercentHoldersResponse[
   return `<input class="form-input fixed-value-inline-input" type="text" inputmode="decimal" value="${escapeHtml(String(inputValue))}"${idAttribute} data-five-percent-fixed-value-key="${escapeHtml(key)}">`;
 }
 
-async function loadFivePercentHolderFixedValues() {
-  const keys = new Set<string>(Object.values(fivePercentHolderFixedValueKeys));
+async function loadFivePercentHolderGlobalParameters() {
+  const keys = new Set<string>(Object.values(fivePercentHolderGlobalParameterKeys));
   const data = await api<{ items: FixedValueRecord[] }>('/api/five-percent-holders/fixed-values');
-  fivePercentHolderFixedValues = data.items.filter((item) => keys.has(item.key) && item.updatedBy !== 'system');
+  fivePercentHolderGlobalParameters = data.items.filter((item) => keys.has(item.key) && item.updatedBy !== 'system');
 }
 
 async function renderFivePercentHoldersPage() {
   const data = await api<FivePercentHoldersResponse>('/api/five-percent-holders');
-  await loadFivePercentHolderFixedValues();
+  await loadFivePercentHolderGlobalParameters();
   setWorkflowPageFiles('five-percent-holders', data);
   setFivePercentHoldersUpdateButtonState();
   const summary = data.summary;
@@ -3133,7 +3150,7 @@ async function renderFivePercentHoldersPage() {
   localizeAppDom();
 }
 
-function readFivePercentHolderFixedValueDrafts() {
+function readFivePercentHolderGlobalParameterDrafts() {
   const drafts = Array.from(document.querySelectorAll<HTMLInputElement>('[data-five-percent-fixed-value-key]')).map((input) => {
     const rawId = input.dataset.fivePercentFixedValueId;
     const id = rawId ? Number(rawId) : null;
@@ -3167,15 +3184,15 @@ async function runFivePercentHoldersWorkflowWithPreviousSource() {
   return run;
 }
 
-async function saveFivePercentHolderFixedValuesAndRunWorkflow() {
-  const drafts = readFivePercentHolderFixedValueDrafts();
+async function saveFivePercentHolderGlobalParametersAndRunWorkflow() {
+  const drafts = readFivePercentHolderGlobalParameterDrafts();
   fivePercentHoldersSaving = true;
   setFivePercentHoldersUpdateButtonState();
   try {
     for (const draft of drafts) {
       const payload = {
         key: draft.key,
-        label: fivePercentHolderFixedValueLabels[draft.key] ?? draft.key,
+        label: fivePercentHolderGlobalParameterLabels[draft.key] ?? draft.key,
         value: draft.value,
         updatedBy: authStatus?.user?.displayName ?? 'Administrator',
       };
@@ -3214,11 +3231,11 @@ async function handleFivePercentHoldersUpdateClick() {
     await renderFivePercentHoldersPage();
     return;
   }
-  await saveFivePercentHolderFixedValuesAndRunWorkflow();
+  await saveFivePercentHolderGlobalParametersAndRunWorkflow();
 }
 
 async function renderFixedValuePage() {
-  const data = await api<{ items: FixedValueRecord[] }>('/api/fixed-values');
+  const data = await api<{ items: FixedValueRecord[] }>('/api/global-parameters');
   if (data.items.length === 0) {
     el('fixedValuePageBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无 Global Parameter 配置</td></tr>';
     localizeAppDom();
@@ -3234,7 +3251,16 @@ async function renderFixedValuePage() {
         <td class="col-number">${formatNumber(item.value)}</td>
         <td>${escapeHtml(item.effectiveFrom)}</td>
         <td>${escapeHtml(item.updatedBy)}</td>
-        <td><button class="btn btn-secondary btn-sm" data-action="edit-fixed-value" data-id="${item.id}" ${item.editable ? '' : 'disabled'}>edit</button></td>
+        <td>
+          ${isAdminUser() && item.editable
+            ? `<div class="action-buttons">
+                <button class="btn btn-secondary btn-sm" data-action="edit-fixed-value" data-id="${item.id}" type="button">edit</button>
+                <button class="btn btn-danger btn-sm" data-action="delete-fixed-value" data-id="${item.id}" type="button" aria-label="删除 ${escapeHtml(item.label)}" title="删除">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
+                </button>
+              </div>`
+            : '<span>-</span>'}
+        </td>
       </tr>`,
     )
     .join('');
@@ -3242,10 +3268,14 @@ async function renderFixedValuePage() {
   el('fixedValuePageBody')
     .querySelectorAll<HTMLElement>('[data-action="edit-fixed-value"]')
     .forEach((button) => button.addEventListener('click', () => void editFixedValue(Number(button.dataset.id), data.items)));
+  el('fixedValuePageBody')
+    .querySelectorAll<HTMLElement>('[data-action="delete-fixed-value"]')
+    .forEach((button) => button.addEventListener('click', () => void deleteFixedValue(Number(button.dataset.id), data.items)));
   localizeAppDom();
 }
 
 async function editFixedValue(id: number, items: FixedValueRecord[]) {
+  if (!isAdminUser()) return;
   const item = items.find((row) => row.id === id);
   if (!item) return;
   const next = prompt(`Update ${item.label}:`, String(item.value));
@@ -3255,11 +3285,79 @@ async function editFixedValue(id: number, items: FixedValueRecord[]) {
     notify('请输入有效数字', { type: 'warning' });
     return;
   }
-  await api(`/api/fixed-values/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ value, updatedBy: authStatus?.user?.displayName ?? 'Administrator' }),
-  });
-  await renderFixedValuePage();
+  try {
+    await api(`/api/global-parameters/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value, updatedBy: authStatus?.user?.displayName ?? 'Administrator' }),
+    });
+    await renderFixedValuePage();
+  } catch (error) {
+    notify((error as Error).message, { type: 'error' });
+  }
+}
+
+function openFixedValueModal() {
+  if (!isAdminUser()) return;
+  el<HTMLInputElement>('fixedValueKey').value = '';
+  el<HTMLInputElement>('fixedValueLabel').value = '';
+  el<HTMLInputElement>('fixedValueValue').value = '';
+  el<HTMLInputElement>('fixedValueEffectiveFrom').value = currentMonth || new Date().toISOString().slice(0, 7);
+  el('fixedValueModal').classList.remove('hidden');
+  el<HTMLInputElement>('fixedValueKey').focus();
+}
+
+async function createFixedValue() {
+  if (!isAdminUser()) return;
+  const key = el<HTMLInputElement>('fixedValueKey').value.trim();
+  const label = el<HTMLInputElement>('fixedValueLabel').value.trim();
+  const rawValue = el<HTMLInputElement>('fixedValueValue').value.replace(/,/g, '').trim();
+  const value = Number(rawValue);
+  const effectiveFrom = el<HTMLInputElement>('fixedValueEffectiveFrom').value.trim();
+  if (!key || !label || !rawValue || !effectiveFrom || !Number.isFinite(value)) {
+    notify('请完整填写 Key、Item、Value 和 Effective From', { type: 'warning' });
+    return;
+  }
+
+  const submitButton = el<HTMLButtonElement>('btnSubmitFixedValue');
+  submitButton.disabled = true;
+  try {
+    await api('/api/global-parameters', {
+      method: 'POST',
+      body: JSON.stringify({
+        key,
+        label,
+        value,
+        effectiveFrom,
+        updatedBy: authStatus?.user?.displayName ?? 'Administrator',
+      }),
+    });
+    el('fixedValueModal').classList.add('hidden');
+    await renderFixedValuePage();
+    notify('Global Parameter 已新增', { type: 'success' });
+  } catch (error) {
+    notify((error as Error).message, { type: 'error' });
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+async function deleteFixedValue(id: number, items: FixedValueRecord[]) {
+  if (!isAdminUser()) return;
+  const item = items.find((row) => row.id === id);
+  if (!item) return;
+  if (!(await confirmAction(`确定删除 Global Parameter「${item.label}」吗？此操作不可撤销。`, {
+    title: '删除 Global Parameter',
+    confirmText: '删除',
+    tone: 'danger',
+  }))) return;
+
+  try {
+    await api(`/api/global-parameters/${id}`, { method: 'DELETE' });
+    await renderFixedValuePage();
+    notify('Global Parameter 已删除', { type: 'success' });
+  } catch (error) {
+    notify((error as Error).message, { type: 'error' });
+  }
 }
 
 function getGrantTypeClass(type: string): string {
@@ -3279,6 +3377,8 @@ async function initSettingsPage() {
       setLanguage(language);
     });
   });
+  el('btnAddFixedValue').addEventListener('click', openFixedValueModal);
+  el('btnSubmitFixedValue').addEventListener('click', () => void createFixedValue());
   renderThemeCards();
   syncLanguageButtons();
 }

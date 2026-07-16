@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import { config } from './config.js';
 import { schemaSql } from './schema.js';
-import { ensureWorkflowSeedData, seedDemoBusinessData } from './seed.js';
+import { ensureWorkflowSeedData } from './seed.js';
 import { fileStorage } from './storage.js';
 
 export type Queryable = {
@@ -27,9 +27,6 @@ export class AppDb {
     await this.pool.query(schemaSql);
     if (config.workflowSeedOnInit) {
       await ensureWorkflowSeedData(this);
-    }
-    if (config.demoSeedOnInit) {
-      await seedDemoBusinessData(this);
     }
   }
 

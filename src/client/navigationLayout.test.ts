@@ -5,6 +5,9 @@ import { test } from 'node:test';
 const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
 const filesPageSource = readFileSync(new URL('./filesPage.ts', import.meta.url), 'utf8');
+const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+const monthlyRunPageSource = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+const uploadProgressSource = readFileSync(new URL('./uploadProgress.ts', import.meta.url), 'utf8');
 const docsPageSource = readFileSync(new URL('./docsPage.ts', import.meta.url), 'utf8');
 
 function pageLabel(page: string): string {
@@ -119,6 +122,24 @@ test('new product pages expose real data containers instead of placeholder-only 
   assert.doesNotMatch(html, /id="page-grant-record"[\s\S]*待接入[\s\S]*id="page-exercise-record"/);
 });
 
+test('file uploads use a shared visible progress dialog', () => {
+  assert.match(html, /id="uploadProgressModal"[\s\S]*role="dialog"[\s\S]*id="uploadProgressTitle"/);
+  assert.match(html, /id="uploadProgressBar"[^>]*role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"/);
+  assert.match(html, /id="uploadProgressFill"/);
+  assert.match(html, /id="uploadProgressPercent"/);
+  assert.match(html, /id="uploadProgressStatus"/);
+  assert.match(css, /\.upload-progress__track\s*\{[\s\S]*overflow:\s*hidden;/);
+  assert.match(css, /\.upload-progress__track--indeterminate \.upload-progress__fill/);
+
+  assert.match(uploadProgressSource, /new XMLHttpRequest\(\)/);
+  assert.match(uploadProgressSource, /xhr\.upload\.onprogress/);
+  assert.match(filesPageSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
+  assert.match(filesPageSource, /uploadFormDataWithProgress\(`\/api\/files\/\$\{currentProductFileDetail\.file\.id\}\/content`, form,/);
+  assert.match(mainSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
+  assert.match(mainSource, /uploadFormDataWithProgress\('\/api\/transfer-plan\/import'/);
+  assert.match(monthlyRunPageSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
+});
+
 test('Grant Record exposes Futu, Shareworks, and Merge tabs with source-specific tables', () => {
   const grantPage = html.match(/id="page-grant-record"[\s\S]*?id="page-exercise-record"/)?.[0] ?? '';
 
@@ -202,6 +223,8 @@ test('workflow-backed product pages expose update actions and shared update moda
     assert.match(html, new RegExp(`data-workflow-update-page="${page}"`));
     assert.match(html, new RegExp(`data-workflow-export-page="${page}"`));
   }
+  assert.match(html, /id="page-employee-management"[\s\S]*data-workflow-update-page="employee-management"/);
+  assert.doesNotMatch(html.match(/id="page-employee-management"[\s\S]*?id="page-plan-summary"/)?.[0] ?? '', /data-workflow-export-page="employee-management"/);
 
   assert.match(html, /id="workflowUpdateModal"/);
   assert.match(html, /id="workflowUpdateModalTitle"/);
@@ -232,6 +255,14 @@ test('workflow update and export actions live in table card headers, not hero fi
       new RegExp(`(?:card-header-actions product-table-actions|transfer-plan-actions)[\\s\\S]*data-workflow-update-page="${page}"[\\s\\S]*data-workflow-export-page="${page}"`),
     );
   }
+
+  const employeeSection = pageSection('employee-management', 'plan-summary');
+  const employeeHeroMetrics = employeeSection.match(/product-page-hero__metrics[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? '';
+  assert.doesNotMatch(employeeHeroMetrics, /data-workflow-update-page="employee-management"/);
+  assert.match(
+    employeeSection,
+    /card-header-actions[\s\S]*data-workflow-update-page="employee-management"[\s\S]*id="btnManageEmployeeLabels"[\s\S]*id="btnAddEmployeesPage"/,
+  );
 });
 
 test('ESOP Detail hero cards link to their corresponding pages', () => {
@@ -314,6 +345,26 @@ test('admin-only tools are gated by role and labelled "Admin Only"', () => {
   assert.match(docsPageSource, /export function visibleDocPages/);
 });
 
+test('Global Parameter exposes administrator-only create and delete controls', () => {
+  const fixedValuePage = pageSection('fixed-value', 'docs');
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+
+  assert.match(fixedValuePage, /<h2>Global Parameter<\/h2>/);
+  assert.match(fixedValuePage, /<h3 class="card-title">参数<\/h3>/);
+  assert.doesNotMatch(fixedValuePage, /管理员可维护/);
+  assert.match(mainSource, /'fixed-value':\s*\{\s*'zh-CN':\s*'Global Parameter',\s*'en-US':\s*'Global Parameter'\s*\}/);
+  assert.match(fixedValuePage, /id="btnAddFixedValue"/);
+  assert.match(fixedValuePage, /data-admin-only="true"/);
+  assert.match(mainSource, /function renderFixedValuePage\(\)/);
+  assert.match(mainSource, /data-action="delete-fixed-value"/);
+  assert.match(mainSource, /if \(!isAdminUser\(\)\) return/);
+  assert.match(mainSource, /method:\s*'DELETE'/);
+  assert.match(serverSource, /app\.post\('\/api\/global-parameters'/);
+  assert.match(serverSource, /app\.delete\('\/api\/global-parameters\/:id'/);
+  assert.match(serverSource, /requireAdminUser\(request as typeof request & RequestWithAuth, reply\)/);
+});
+
 test('Files page uses Browser tree view by default with file search control', () => {
   const filesPage = pageSection('files', 'workflow');
   assert.match(filesPage, /<h2[^>]*data-no-static-translate[^>]*>Browser<\/h2>/);
@@ -394,4 +445,20 @@ test('workflow update and export actions include svg icons and stable labels', (
       new RegExp(`data-workflow-export-page="${page}"[\\s\\S]*?<svg[\\s\\S]*?<span data-workflow-action-label>Export</span>`),
     );
   }
+  assert.match(
+    html,
+    /data-workflow-update-page="employee-management"[\s\S]*?<svg[\s\S]*?<span data-workflow-action-label>Update<\/span>/,
+  );
+});
+
+test('Employee Management update runs the employee data-management workflow and exposes failures', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+
+  assert.match(mainSource, /'employee-management': 'data-management'/);
+  assert.match(mainSource, /page === 'employee-management' \? 'employee' : page/);
+  assert.match(mainSource, /else if \(page === 'employee-management'\) \{\s*await loadEmployeesPage\(\);/);
+  assert.match(mainSource, /Workflow failed: \$\{\(error as Error\)\.message\}/);
+  assert.match(serverSource, /latestWorkflowInputSourceBindings\(\s*'employee-import',\s*DATA_MANAGEMENT_WORKFLOW_CONFIGS\.employee\.sources/);
+  assert.match(serverSource, /workflowSourceBindings: inputSourceBindings/);
 });

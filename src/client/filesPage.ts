@@ -3,6 +3,7 @@ import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { createWorkbookViewer } from './univer/createWorkbookViewer.js';
 import { bufferToUniverWorkbook } from './univer/xlsxToUniver.js';
 import type { AppLanguage } from './i18n.js';
+import { uploadFormDataWithProgress } from './uploadProgress.js';
 import * as XLSX from 'xlsx';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
@@ -110,17 +111,21 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     return productFiles;
   }
 
-  async function uploadWorkbookBuffer(fileName: string, buffer: BlobPart) {
+  async function uploadWorkbookFile(file: File) {
     const form = new FormData();
-    form.append(
-      'file',
-      new File([buffer], fileName, {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      }),
-    );
+    form.append('file', file);
     form.append('uploadedBy', 'Administrator');
-    const data = await api<{ file: ProductFileRecord }>('/api/files/upload', { method: 'POST', body: form });
+    const data = await uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
+      fileName: file.name,
+      title: { 'zh-CN': '正在上传文件', 'en-US': 'Uploading file' },
+    });
     await loadProductFiles(data.file.id);
+  }
+
+  async function uploadWorkbookBuffer(fileName: string, buffer: BlobPart) {
+    await uploadWorkbookFile(new File([buffer], fileName, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }));
   }
 
   async function loadProductFiles(selectedId?: number) {
@@ -573,7 +578,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       if (!file) return;
-      await uploadWorkbookBuffer(file.name, await file.arrayBuffer());
+      await uploadWorkbookFile(file);
     });
     input.click();
   }
@@ -663,9 +668,11 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     updateFileActionState();
 
     try {
-      await api(`/api/files/${currentProductFileDetail.file.id}/content`, {
+      await uploadFormDataWithProgress(`/api/files/${currentProductFileDetail.file.id}/content`, form, {
         method: 'PUT',
-        body: form,
+        fileName: currentProductFileDetail.file.originalName,
+        title: { 'zh-CN': '正在保存文件', 'en-US': 'Saving file' },
+        completedText: { 'zh-CN': '保存完成', 'en-US': 'Save completed' },
       });
       productFileSaving = false;
       renderProductFilesList();

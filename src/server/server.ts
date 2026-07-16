@@ -95,7 +95,7 @@ import { parseFivePercentHoldersGrid } from './fivePercentHolders/persistence.js
 import { startDataManagementWorkflow } from './dataManagementWorkflow/service.js';
 import {
   DATA_MANAGEMENT_WORKFLOW_CONFIGS,
-  FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS,
+  FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS,
   type DataManagementPageKey,
 } from './dataManagementWorkflow/workflowDefinitions.js';
 import { upsertTableRows } from './workflow/tableUpsert.js';
@@ -131,11 +131,11 @@ import type {
 const db = await createDb();
 const app = Fastify({ logger: true });
 
-const fivePercentHolderFixedValueOrder = [
-  FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniCommonStock,
-  FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniTotalCses,
-  FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaCommonStock,
-  FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaTotalCses,
+const fivePercentHolderGlobalParameterOrder = [
+  FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniCommonStock,
+  FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniTotalCses,
+  FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaCommonStock,
+  FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses,
 ] as const;
 
 type RequestWithAuth = {
@@ -322,22 +322,37 @@ const fixedValuePatchSchema = z.object({
   updatedBy: z.string().trim().min(1).optional().default('Administrator'),
 });
 
+const globalParameterKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .regex(/^[A-Za-z][A-Za-z0-9_.-]*$/, 'Key must start with a letter and contain only letters, numbers, dots, dashes, or underscores');
+
+const globalParameterCreateSchema = z.object({
+  key: globalParameterKeySchema,
+  label: z.string().trim().min(1).max(200),
+  value: z.number().finite(),
+  effectiveFrom: z.string().trim().min(1).max(40),
+  updatedBy: z.string().trim().min(1).optional().default('Administrator'),
+});
+
 const fixedValueUpsertSchema = fixedValuePatchSchema.extend({
   key: z.enum([
-    FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniCommonStock,
-    FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniTotalCses,
-    FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaCommonStock,
-    FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaTotalCses,
+    FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniCommonStock,
+    FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniTotalCses,
+    FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaCommonStock,
+    FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses,
   ]),
   label: z.string().trim().min(1).max(200).optional(),
   effectiveFrom: z.string().trim().min(1).max(40).optional().default('current'),
 });
 
 const fixedValueLabels: Record<string, string> = {
-  [FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniCommonStock]: '5% Holders - GNI Group Ltd. Common Stock',
-  [FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniTotalCses]: '5% Holders - GNI Group Ltd. Total CSEs',
-  [FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaCommonStock]: '5% Holders - Songjiang Ma Common Stock',
-  [FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaTotalCses]: '5% Holders - Songjiang Ma Total CSEs',
+  [FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniCommonStock]: '5% Holders - GNI Group Ltd. Common Stock',
+  [FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniTotalCses]: '5% Holders - GNI Group Ltd. Total CSEs',
+  [FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaCommonStock]: '5% Holders - Songjiang Ma Common Stock',
+  [FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses]: '5% Holders - Songjiang Ma Total CSEs',
 };
 
 const fixedValuePageKeyOrder = [
@@ -347,6 +362,9 @@ const fixedValuePageKeyOrder = [
   'options_outstanding_cullgen',
   'options_available_cullgen',
 ] as const;
+
+const fivePercentHolderGlobalParameterKeys = Object.values(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS);
+const fivePercentHolderGlobalParameterKeySet = new Set<string>(fivePercentHolderGlobalParameterKeys);
 
 function isUniqueConstraintViolation(error: unknown): boolean {
   return typeof error === 'object'
@@ -718,7 +736,7 @@ async function loadLatestFixedValuesByKey(keys: readonly string[]): Promise<Map<
     .map((row) => [String(row.key), row]));
 }
 
-function applyFivePercentHolderFixedValues(
+function applyFivePercentHolderGlobalParameters(
   workbook: ReturnType<typeof parseFivePercentHoldersGrid>,
   fixedValues: Map<string, Record<string, unknown>>,
 ): ReturnType<typeof parseFivePercentHoldersGrid>['holders'] {
@@ -726,14 +744,14 @@ function applyFivePercentHolderFixedValues(
   return workbook.holders.map((row) => {
     if (row.rowType !== 'holder') return row;
     const commonStockKey = holderIndex === 0
-      ? FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniCommonStock
+      ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniCommonStock
       : holderIndex === 1
-        ? FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaCommonStock
+        ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaCommonStock
         : null;
     const totalCsesKey = holderIndex === 0
-      ? FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniTotalCses
+      ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniTotalCses
       : holderIndex === 1
-        ? FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaTotalCses
+        ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses
         : null;
     holderIndex += 1;
     if (!commonStockKey || !totalCsesKey) return row;
@@ -747,8 +765,8 @@ function applyFivePercentHolderFixedValues(
   });
 }
 
-function hasCompleteFivePercentHolderFixedValues(fixedValues: Map<string, Record<string, unknown>>): boolean {
-  return fivePercentHolderFixedValueOrder.every((key) => Number.isFinite(Number(fixedValues.get(key)?.value)));
+function hasCompleteFivePercentHolderGlobalParameters(fixedValues: Map<string, Record<string, unknown>>): boolean {
+  return fivePercentHolderGlobalParameterOrder.every((key) => Number.isFinite(Number(fixedValues.get(key)?.value)));
 }
 
 function emptyFivePercentHolderRows(fixedValues: Map<string, Record<string, unknown>>) {
@@ -761,8 +779,8 @@ function emptyFivePercentHolderRows(fixedValues: Map<string, Record<string, unkn
       id: 1,
       rowType: 'holder' as const,
       name: 'GNI Group Ltd. **',
-      commonStock: valueFor(FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniCommonStock),
-      totalCses: valueFor(FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniTotalCses),
+      commonStock: valueFor(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniCommonStock),
+      totalCses: valueFor(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniTotalCses),
       pctOfClass: null,
       pctFullyDiluted: null,
       sc13Filing: null,
@@ -772,8 +790,8 @@ function emptyFivePercentHolderRows(fixedValues: Map<string, Record<string, unkn
       id: 2,
       rowType: 'holder' as const,
       name: 'Songjiang Ma',
-      commonStock: valueFor(FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaCommonStock),
-      totalCses: valueFor(FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaTotalCses),
+      commonStock: valueFor(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaCommonStock),
+      totalCses: valueFor(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses),
       pctOfClass: null,
       pctFullyDiluted: null,
       sc13Filing: null,
@@ -2900,10 +2918,15 @@ async function registerRoutes() {
        limit $5 offset $6`,
       [labelIdFilter, normalizedQuery, like, normalizedSource, pageSize, offset],
     );
-    const sourceFiles = await latestWorkflowInputSourceFiles('employee-import');
+    const inputSourceBindings = await latestWorkflowInputSourceBindings(
+      'employee-import',
+      DATA_MANAGEMENT_WORKFLOW_CONFIGS.employee.sources,
+    );
+    const sourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     return {
       items: rows.map(toEmployee),
       sourceFiles,
+      workflowSourceBindings: inputSourceBindings,
       resultFileName: null,
       resultFiles: [],
       total: Number(totalRow?.count ?? 0),
@@ -3076,9 +3099,76 @@ async function registerRoutes() {
          from global_parameters
         where key = any($1::text[])
         order by array_position($1::text[], key), effective_from desc, id asc`,
-      [[...fivePercentHolderFixedValueOrder]],
+      [[...fivePercentHolderGlobalParameterOrder]],
     );
     return { items: rows.map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0])) };
+  });
+
+  app.get('/api/global-parameters', async () => {
+    const rows = await db.query<Record<string, unknown>>(
+      `select *
+         from global_parameters
+        where key <> all($2::text[])
+        order by coalesce(array_position($1::text[], key), 2147483647), effective_from desc, id asc`,
+      [[...fixedValuePageKeyOrder], fivePercentHolderGlobalParameterKeys],
+    );
+    return { items: rows.map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0])) };
+  });
+
+  app.post('/api/global-parameters', async (request, reply) => {
+    if (!requireAdminUser(request as typeof request & RequestWithAuth, reply)) return;
+    const body = globalParameterCreateSchema.parse(request.body ?? {});
+    if (fivePercentHolderGlobalParameterKeySet.has(body.key)) {
+      return reply.code(400).send({ error: '5% Holder parameters must be maintained from the 5% Holders page' });
+    }
+    try {
+      const row = await db.queryOne<Record<string, unknown>>(
+        `insert into global_parameters (key, label, value, effective_from, editable, updated_by, updated_at)
+         values ($1, $2, $3, $4, true, $5, current_timestamp)
+         returning *`,
+        [body.key, body.label, body.value, body.effectiveFrom, body.updatedBy],
+      );
+      return reply.code(201).send(toFixedValue(row as Parameters<typeof toFixedValue>[0]));
+    } catch (error) {
+      if (isUniqueConstraintViolation(error)) {
+        return reply.code(409).send({ error: '相同 Key 和 Effective From 的参数已存在' });
+      }
+      throw error;
+    }
+  });
+
+  app.patch('/api/global-parameters/:id', async (request, reply) => {
+    if (!requireAdminUser(request as typeof request & RequestWithAuth, reply)) return;
+    const { id } = userIdParamSchema.parse(request.params);
+    const body = fixedValuePatchSchema.parse(request.body ?? {});
+    const row = await db.queryOne<Record<string, unknown>>(
+      `update global_parameters
+          set value = $1,
+              updated_by = $2,
+              updated_at = current_timestamp
+        where id = $3
+          and editable = true
+          and key <> all($4::text[])
+        returning *`,
+      [body.value, body.updatedBy, id, fivePercentHolderGlobalParameterKeys],
+    );
+    if (!row) throw notFound('Global Parameter not found or not editable');
+    return toFixedValue(row as Parameters<typeof toFixedValue>[0]);
+  });
+
+  app.delete('/api/global-parameters/:id', async (request, reply) => {
+    if (!requireAdminUser(request as typeof request & RequestWithAuth, reply)) return;
+    const { id } = userIdParamSchema.parse(request.params);
+    const row = await db.queryOne<{ id: number }>(
+      `delete from global_parameters
+        where id = $1
+          and editable = true
+          and key <> all($2::text[])
+        returning id`,
+      [id, fivePercentHolderGlobalParameterKeys],
+    );
+    if (!row) throw notFound('Global Parameter not found');
+    return reply.code(204).send();
   });
 
   app.post('/api/fixed-values', async (request) => {
@@ -3095,7 +3185,7 @@ async function registerRoutes() {
        returning *`,
       [
         body.key,
-        body.label ?? fixedValueLabels[body.key],
+        body.label ?? fixedValueLabels[body.key] ?? body.key,
         body.value,
         body.effectiveFrom,
         body.updatedBy,
@@ -3123,8 +3213,8 @@ async function registerRoutes() {
   app.get('/api/five-percent-holders', async () => {
     const inputSourceBindings = await latestFivePercentHolderInputSourceBindings();
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
-    const fixedValues = await loadLatestFixedValuesByKey(fivePercentHolderFixedValueOrder);
-    const fixedValuesComplete = hasCompleteFivePercentHolderFixedValues(fixedValues);
+    const fixedValues = await loadLatestFixedValuesByKey(fivePercentHolderGlobalParameterOrder);
+    const fixedValuesComplete = hasCompleteFivePercentHolderGlobalParameters(fixedValues);
     const emptyResult = {
       sourceFiles: inputSourceFiles,
       workflowSourceBindings: inputSourceBindings,
@@ -3158,7 +3248,7 @@ async function registerRoutes() {
       ]
       : [];
     const workbook = parseFivePercentHoldersGrid(grid);
-    const holders = applyFivePercentHolderFixedValues(workbook, fixedValues);
+    const holders = applyFivePercentHolderGlobalParameters(workbook, fixedValues);
     return {
       sourceFiles: inputSourceFiles,
       workflowSourceBindings: inputSourceBindings,

@@ -14,15 +14,14 @@ ENV NODE_ENV=production \
     PORT=60628 \
     STORAGE_DRIVER=local \
     AUTH_DISABLED=true \
-    WORKFLOW_SEED_ON_INIT=true \
-    DEMO_SEED_ON_INIT=false
+    WORKFLOW_SEED_ON_INIT=true
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # Compiled server (dist/src/...) + bundled client (dist/client)
 COPY --from=build /app/dist ./dist
-# Demo workbooks are only needed when DEMO_SEED_ON_INIT=true.
+# Bundled workbooks used by the transfer-plan parser and Excel-loading tests.
 COPY database ./database
 
 EXPOSE 60628

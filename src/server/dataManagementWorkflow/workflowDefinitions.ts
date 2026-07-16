@@ -60,7 +60,7 @@ from {grants}
 where trim(concat('', coalesce([Plan Name], ''))) <> ''
 group by trim(concat('', [Plan Name]))`;
 
-export const FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS = {
+export const FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS = {
   gniCommonStock: 'fivePercentHoldersGniCommonStock',
   gniTotalCses: 'fivePercentHoldersGniTotalCses',
   songjiangMaCommonStock: 'fivePercentHoldersSongjiangMaCommonStock',
@@ -270,10 +270,10 @@ from {capitalization}`,
         tableBindings: [{ tableName: 'capitalization', inputSlot: 'capitalization' }],
         constants: {
           workflowMonth: { $fromRuntime: 'month', $type: 'string', $label: 'Workflow Month' },
-          gniCommonStock: { $fromRuntime: `fixedValues.${FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniCommonStock}`, $type: 'number', $label: 'GNI Group Common Stock' },
-          gniTotalCses: { $fromRuntime: `fixedValues.${FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.gniTotalCses}`, $type: 'number', $label: 'GNI Group Total CSEs' },
-          songjiangMaCommonStock: { $fromRuntime: `fixedValues.${FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaCommonStock}`, $type: 'number', $label: 'Songjiang Ma Common Stock' },
-          songjiangMaTotalCses: { $fromRuntime: `fixedValues.${FIVE_PERCENT_HOLDER_FIXED_VALUE_KEYS.songjiangMaTotalCses}`, $type: 'number', $label: 'Songjiang Ma Total CSEs' },
+          gniCommonStock: { $fromRuntime: `fixedValues.${FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniCommonStock}`, $type: 'number', $label: 'GNI Group Common Stock' },
+          gniTotalCses: { $fromRuntime: `fixedValues.${FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniTotalCses}`, $type: 'number', $label: 'GNI Group Total CSEs' },
+          songjiangMaCommonStock: { $fromRuntime: `fixedValues.${FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaCommonStock}`, $type: 'number', $label: 'Songjiang Ma Common Stock' },
+          songjiangMaTotalCses: { $fromRuntime: `fixedValues.${FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses}`, $type: 'number', $label: 'Songjiang Ma Total CSEs' },
         },
       },
       inputs: { capitalization: { from: 'assert_five_percent_denominators', slot: 'dataframe' } }, dependsOn: [],

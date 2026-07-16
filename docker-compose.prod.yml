@@ -38,10 +38,8 @@ services:
       # 首次创建管理员(bootstrap)所需口令；设了之后 /api/auth/bootstrap 必须带上它，
       # 防止陌生人抢注第一个管理员。强烈建议在生产设置。
       AUTH_BOOTSTRAP_SECRET: ${AUTH_BOOTSTRAP_SECRET:-}
-      # 内置 workflow/operator 元数据默认保留，确保工作流定义可用。
+      # 内置 workflow/operator 元数据与全局参数默认保留，确保工作流定义与参数可用。
       WORKFLOW_SEED_ON_INIT: ${WORKFLOW_SEED_ON_INIT:-true}
-      # 产品业务 demo 数据必须显式开启；生产默认 false。
-      DEMO_SEED_ON_INIT: ${DEMO_SEED_ON_INIT:-false}
     volumes:
       # 持久化本地存储（上传件 / product files 写在 /app/data 下）
       - appdata:/app/data

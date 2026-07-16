@@ -14,6 +14,7 @@ import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { createWorkflowRunClient } from './workflow/runClient.js';
 import type { AppLanguage } from './i18n.js';
+import { uploadFormDataWithProgress } from './uploadProgress.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
@@ -491,7 +492,10 @@ export function createMonthlyRunPage({
       form.append('file', file);
       form.append('uploadedBy', `Monthly Run · ${sourceKey}`);
       form.append('folderPrefix', monthFolder(el<HTMLInputElement>('monthlyRunMonth').value));
-      const data = await api<{ file: ProductFileRecord }>('/api/files/upload', { method: 'POST', body: form });
+      const data = await uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
+        fileName: file.name,
+        title: { 'zh-CN': '正在上传月度输入文件', 'en-US': 'Uploading monthly input' },
+      });
       await refreshFiles();
       await refreshProductFiles();
       draftSources[sourceKey] = { fileId: data.file.id };
