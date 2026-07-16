@@ -129,6 +129,9 @@ export type ShareworksGrantSourceRow = {
 export type ShareworksGrantResponseRow = {
   id: number;
   employeeNumber: string | null;
+  labelIds?: number[];
+  labels?: Array<{ id: number; name: string; color: string }>;
+  tags?: string[];
   lastName: string | null;
   firstName: string | null;
   middleName: string | null;
@@ -162,6 +165,9 @@ export type FutuMergeSourceRow = {
   id: number;
   employeeName: string;
   employeeNumber: string;
+  labelIds?: number[];
+  labels?: Array<{ id: number; name: string; color: string }>;
+  tags?: string[];
   grantNumber: string;
   incentiveType: string;
   grantDate: string | null;
@@ -182,6 +188,9 @@ export type FutuMergeSourceRow = {
 export type ShareworksMergeSourceRow = Pick<
   ShareworksGrantResponseRow,
   | 'id'
+  | 'labelIds'
+  | 'labels'
+  | 'tags'
   | 'lastName'
   | 'firstName'
   | 'middleName'
@@ -208,6 +217,9 @@ export type MergedGrantRow = {
   employeeName: string;
   grantNumber: string;
   employeeNumber: string;
+  labelIds: number[];
+  labels: Array<{ id: number; name: string; color: string }>;
+  tags: string[];
   incentiveType: string;
   grantDate: string | null;
   grantQuantity: number | null;
@@ -475,6 +487,9 @@ export function mergeFutuGrant(row: FutuMergeSourceRow): MergedGrantRow {
     employeeName: row.employeeName,
     grantNumber: row.grantNumber,
     employeeNumber: row.employeeNumber,
+    labelIds: row.labelIds ?? [],
+    labels: row.labels ?? [],
+    tags: row.tags ?? [],
     incentiveType: row.incentiveType,
     grantDate: row.grantDate,
     grantQuantity: row.grantQuantity,
@@ -498,6 +513,9 @@ export function mergeShareworksGrant(row: ShareworksMergeSourceRow): MergedGrant
     employeeName: assembleShareworksName(row.lastName, row.firstName, row.middleName),
     grantNumber: row.employeeGrantNumber ?? '',
     employeeNumber: row.employeeNumber ?? '',
+    labelIds: row.labelIds ?? [],
+    labels: row.labels ?? [],
+    tags: row.tags ?? [],
     incentiveType: row.grantType ?? '',
     grantDate: row.grantDate,
     grantQuantity: row.sharesGranted,

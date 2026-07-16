@@ -26,9 +26,9 @@ async function loadFivePercentHolderRuntimeOverrides(db: QueryDb) {
   const keys = Object.values(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS);
   const rows = await db.query<{ key: string; value: number; updated_by?: string | null }>(
     `select distinct on (key) key, value, updated_by
-       from global_parameters
-      where key = any($1)
-      order by key, effective_from desc, updated_at desc, id desc`,
+      from global_parameters
+     where key = any($1)
+      order by key, updated_at desc, id desc`,
     [keys],
   );
   const fixedValues: Record<string, number> = {};

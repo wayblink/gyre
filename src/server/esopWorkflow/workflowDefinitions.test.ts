@@ -57,6 +57,12 @@ test('ESOP workflow inputs are one-to-one and never reused through another bindi
   const sold = ESOP_PAGE_WORKFLOW_CONFIGS['sold-shares'];
   const transfer = ESOP_PAGE_WORKFLOW_CONFIGS['transfer-plan'];
   assert.deepEqual(exercise.sources.map((source) => source.sourceKey), ['futu_exercises']);
+  const exerciseDefinition = buildEsopPageWorkflowSeedDefinitions().find((definition) => definition.code === 'esop-exercise-record-sync');
+  const exerciseFilter = exerciseDefinition?.tasks.find((task) => task.id === 'filter_exercise_rows');
+  const exercisePersist = exerciseDefinition?.tasks.find((task) => task.id === 'persist_exercise_record_file');
+  assert.equal(exerciseFilter?.operatorCode, 'sql.compute');
+  assert.equal(exerciseFilter?.inputs.input1.from, 'extract_exercises');
+  assert.equal(exercisePersist?.inputs.input1.from, 'filter_exercise_rows');
   assert.deepEqual(sold.sources.map((source) => source.sourceKey), ['futu_sold_shares']);
   const soldDefinition = buildEsopPageWorkflowSeedDefinitions().find((definition) => definition.code === 'esop-sold-shares-sync');
   const soldFilter = soldDefinition?.tasks.find((task) => task.id === 'filter_sold_shares_rows');
@@ -72,6 +78,48 @@ test('ESOP workflow inputs are one-to-one and never reused through another bindi
     config.sources.map((source) => source.sourceKey),
   );
   assert.equal(new Set(allSourceKeys).size, allSourceKeys.length);
+});
+
+test('Exercise workflow filters translated header rows before persisting output', async () => {
+  const definition = buildEsopPageWorkflowSeedDefinitions().find((item) => item.code === 'esop-exercise-record-sync');
+  const task = definition?.tasks.find((item) => item.id === 'filter_exercise_rows');
+  assert.ok(task);
+
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    assert.equal(slot, 'input1');
+    return rowsToDataFrame(
+      [
+        {
+          Name: '姓名',
+          'Employee No.': '员工编号',
+          'Futubull ID': 'Futubull 账号',
+          'User ID': '用户 ID',
+          'Grant No.': '授予编号',
+          'Grant Date': '授予日期',
+          'Grant Price(USD)': 0,
+          'Exercise Date': '行权日期',
+          'Ordered Qty': 0,
+        },
+        {
+          Name: '叶卫国',
+          'Employee No.': 'K00252',
+          'Futubull ID': '26823650',
+          'User ID': '12942000007',
+          'Grant No.': 'K00252',
+          'Grant Date': '2023-10-31',
+          'Grant Price(USD)': 0.75,
+          'Exercise Date': '2026-05-29',
+          'Ordered Qty': 0,
+        },
+      ],
+      { sheetName: 'Futu BCI Exercises to Date', a1Range: 'A1:M3' },
+    );
+  });
+
+  assert.deepEqual(
+    result.dataFrame.rows.map((row) => row['Employee No.']),
+    ['K00252'],
+  );
 });
 
 test('Sold Shares workflow filters note and blank rows before persisting output', async () => {

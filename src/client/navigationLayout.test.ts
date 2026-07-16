@@ -99,7 +99,7 @@ test('new product pages expose real data containers instead of placeholder-only 
   assert.doesNotMatch(employeePage, /id="employeesResultFileName"/);
   assert.doesNotMatch(employeePage, /Employee master records summarized from ESOP detail/);
   assert.match(employeePage, /id="filterEmployeesPageTag"[\s\S]*All Tags/);
-  assert.match(employeePage, /class="card-header"[\s\S]*class="btn btn-warning" id="btnManageEmployeeLabels"[\s\S]*id="btnAddEmployeesPage"[\s\S]*id="employeesPageTable"/);
+  assert.match(employeePage, /class="card-header"[\s\S]*class="btn btn-warning" id="btnManageEmployeeLabels"[\s\S]*data-workflow-update-page="employee-management"[\s\S]*id="btnAddEmployeesPage"[\s\S]*id="employeesPageTable"/);
   assert.match(employeePage, /名称或颜色变更会自动影响所有员工/);
   assert.match(employeePage, /id="employeeLabelsTable"/);
   assert.match(employeePage, /id="employeeLabelsBody"/);
@@ -154,15 +154,54 @@ test('Grant Record exposes Futu, Shareworks, and Merge tabs with source-specific
   assert.doesNotMatch(grantPage, /Participant Type @ Report Date/);
   assert.match(grantPage, /Shares Cancelled\/Expired/);
   assert.match(grantPage, /Data Source/);
+  assert.match(grantPage, /<select id="filterHoldingsTag"/);
   assert.match(grantPage, /id="holdingsPageSizeSelect"/);
   assert.match(grantPage, /id="btnHoldingsFirstPage"/);
   assert.match(grantPage, /id="btnHoldingsLastPage"/);
+});
+
+test('Grant Record employee tag filter is wired through label ids for every grant source', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+
+  assert.match(html, /id="filterHoldingsTag"/);
+  assert.match(mainSource, /renderEmployeeLabelFilter\('filterHoldingsTag'\)/);
+  assert.match(mainSource, /filterHoldingsTag'\)\.addEventListener\('change', searchHoldingsPage\)/);
+  assert.match(mainSource, /\/api\/grants\/shareworks\?query=.*tagId=/);
+  assert.match(mainSource, /\/api\/grants\/merge\?query=.*tagId=/);
+  assert.match(mainSource, /\/api\/holdings\?month=.*tagId=/);
+
+  assert.match(serverSource, /async function employeeLabelsByNumber\(\)/);
+  assert.match(serverSource, /coalesce\(e\.merged_into_id, e\.id\) as canonical_employee_id/);
+  assert.match(serverSource, /app\.get\('\/api\/grants\/shareworks'/);
+  assert.match(serverSource, /labelIdFilter && !row\.labelIds\.includes\(labelIdFilter\)/);
+  assert.doesNotMatch(serverSource, /const shareworksRows =\s*normalizedTag === ''/);
+});
+
+test('Exercise and Sold Shares employee tag filters are wired through label ids', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+
+  assert.match(html, /id="filterExerciseTag"/);
+  assert.match(html, /id="filterSoldSharesTag"/);
+  assert.match(mainSource, /renderEmployeeLabelFilter\('filterExerciseTag'\)/);
+  assert.match(mainSource, /renderEmployeeLabelFilter\('filterSoldSharesTag'\)/);
+  assert.match(mainSource, /filterExerciseTag'\)\.addEventListener\('change', searchExercises\)/);
+  assert.match(mainSource, /filterSoldSharesTag'\)\.addEventListener\('change', searchSoldShares\)/);
+  assert.match(mainSource, /\/api\/exercises\?query=.*tagId=/);
+  assert.match(mainSource, /\/api\/sold-shares\?query=.*tagId=/);
+
+  assert.match(serverSource, /app\.get\('\/api\/exercises'/);
+  assert.match(serverSource, /const employeeNumber = textValue\(row\['Employee No\.'\]\) \?\? '';/);
+  assert.match(serverSource, /app\.get\('\/api\/sold-shares'/);
+  assert.match(serverSource, /const employeeNumber = textValue\(row\['工号'\]\) \?\? '';/);
 });
 
 test('Exercise to Date exposes file-backed filters, table, and pagination', () => {
   const exercisePage = html.match(/id="page-exercise-record"[\s\S]*?id="page-sold-shares"/)?.[0] ?? '';
 
   assert.match(exercisePage, /id="searchExercises"/);
+  assert.match(exercisePage, /id="filterExerciseTag"/);
   assert.match(exercisePage, /id="filterExerciseGrantYear"/);
   assert.match(exercisePage, /id="exerciseTable"/);
   assert.match(exercisePage, /id="exerciseBody"/);
@@ -181,6 +220,7 @@ test('Sold Shares exposes file-backed filters, nineteen-column table, and pagina
   const soldSharesPage = html.match(/id="page-sold-shares"[\s\S]*?id="page-transfer-plan"/)?.[0] ?? '';
 
   assert.match(soldSharesPage, /id="searchSoldShares"/);
+  assert.match(soldSharesPage, /id="filterSoldSharesTag"/);
   assert.match(soldSharesPage, /id="filterSoldSharesEmploymentStatus"/);
   assert.match(soldSharesPage, /id="soldSharesTable"/);
   assert.match(soldSharesPage, /id="soldSharesBody"/);
@@ -205,10 +245,17 @@ test('Transfer to Futu exposes file-backed monthly summary, cancellation editing
   assert.match(transferPage, /id="transferPlanSummaryBody"/);
   assert.match(transferPage, /Options cancelled\/forfeited/);
   assert.match(transferPage, /data-transfer-cancelled/);
+  assert.match(transferPage, /id="btnEditTransferPlan"/);
+  assert.match(transferPage, /id="btnSaveTransferPlanEdit"[\s\S]*Confirm &amp; Run/);
+  assert.match(transferPage, /id="btnCancelTransferPlanEdit"/);
   assert.doesNotMatch(transferPage, /id="btnImportTransferPlan"/);
   assert.doesNotMatch(transferPage, /id="btnExportTransferPlan"/);
   assert.doesNotMatch(transferPage, /id="transferPlanFileInput"/);
   assert.match(transferPage, /id="btnToggleTransferPlanTableView"[\s\S]*<svg/);
+  assert.match(transferPage, /id="btnToggleTransferPlanTableView"[\s\S]*<rect x="6" y="3" width="8" height="14" rx="2"/);
+  assert.match(transferPage, /id="btnToggleTransferPlanTableView"[\s\S]*v-3\.1h3\.1/);
+  assert.match(mainSource, /\[data-workflow-update-page="transfer-plan"\], \[data-workflow-export-page="transfer-plan"\]/);
+  assert.match(mainSource, /button\.classList\.toggle\('hidden', transferPlanEditMode\)/);
 });
 
 test('workflow-backed product pages expose update actions and shared update modal', () => {
@@ -231,8 +278,24 @@ test('workflow-backed product pages expose update actions and shared update moda
   assert.match(html, /id="workflowUpdateModalSubtitle"/);
   assert.match(html, /id="workflowUpdateSourceList"/);
   assert.match(html, /id="workflowUpdateStatus"/);
+  assert.match(html, /id="workflowUpdateProgress"/);
+  assert.match(html, /id="workflowUpdateProgressBar"[^>]*role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"/);
   assert.match(html, /id="btnCancelWorkflowUpdateModal"/);
   assert.match(html, /id="btnConfirmWorkflowUpdate"/);
+});
+
+test('workflow update modal renders run progress while polling workflow status', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  const cssSource = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
+
+  assert.match(mainSource, /function renderWorkflowUpdateProgress\(run: WorkflowRunRecord\)/);
+  assert.match(mainSource, /pollWorkflowUpdateRunUntilFinished\(runId, renderWorkflowUpdateProgress\)/);
+  assert.match(mainSource, /function openWorkflowRunProgressModal/);
+  assert.match(mainSource, /workflowUpdateModalCloseLocked = true/);
+  assert.match(mainSource, /workflowUpdateProgressFill/);
+  assert.match(mainSource, /workflowUpdateReachedStepStatuses/);
+  assert.match(cssSource, /\.workflow-update-progress__track/);
+  assert.match(cssSource, /\.workflow-update-progress\.is-error/);
 });
 
 test('workflow update and export actions live in table card headers, not hero file metrics', () => {
@@ -261,7 +324,7 @@ test('workflow update and export actions live in table card headers, not hero fi
   assert.doesNotMatch(employeeHeroMetrics, /data-workflow-update-page="employee-management"/);
   assert.match(
     employeeSection,
-    /card-header-actions[\s\S]*data-workflow-update-page="employee-management"[\s\S]*id="btnManageEmployeeLabels"[\s\S]*id="btnAddEmployeesPage"/,
+    /card-header-actions employee-management-actions[\s\S]*id="btnManageEmployeeLabels"[\s\S]*data-workflow-update-page="employee-management"[\s\S]*id="btnAddEmployeesPage"/,
   );
 });
 
@@ -352,6 +415,9 @@ test('Global Parameter exposes administrator-only create and delete controls', (
 
   assert.match(fixedValuePage, /<h2>Global Parameter<\/h2>/);
   assert.match(fixedValuePage, /<h3 class="card-title">参数<\/h3>/);
+  assert.match(fixedValuePage, /<th>Updated At<\/th>/);
+  assert.doesNotMatch(fixedValuePage, /<th>Effective From<\/th>/);
+  assert.doesNotMatch(fixedValuePage, /id="fixedValueEffectiveFrom"/);
   assert.doesNotMatch(fixedValuePage, /管理员可维护/);
   assert.match(mainSource, /'fixed-value':\s*\{\s*'zh-CN':\s*'Global Parameter',\s*'en-US':\s*'Global Parameter'\s*\}/);
   assert.match(fixedValuePage, /id="btnAddFixedValue"/);
@@ -449,6 +515,14 @@ test('workflow update and export actions include svg icons and stable labels', (
     html,
     /data-workflow-update-page="employee-management"[\s\S]*?<svg[\s\S]*?<span data-workflow-action-label>Update<\/span>/,
   );
+  assert.match(
+    html,
+    /id="btnManageEmployeeLabels"[\s\S]*?<svg[\s\S]*?<span>标签管理<\/span>/,
+  );
+  assert.match(
+    html,
+    /id="btnAddEmployeesPage"[\s\S]*?<svg[\s\S]*?<span>New Employee<\/span>/,
+  );
 });
 
 test('Employee Management update runs the employee data-management workflow and exposes failures', () => {
@@ -458,7 +532,62 @@ test('Employee Management update runs the employee data-management workflow and 
   assert.match(mainSource, /'employee-management': 'data-management'/);
   assert.match(mainSource, /page === 'employee-management' \? 'employee' : page/);
   assert.match(mainSource, /else if \(page === 'employee-management'\) \{\s*await loadEmployeesPage\(\);/);
-  assert.match(mainSource, /Workflow failed: \$\{\(error as Error\)\.message\}/);
+  assert.match(mainSource, /workflowUpdateStatusMessage\('failed', \(error as Error\)\.message\)/);
   assert.match(serverSource, /latestWorkflowInputSourceBindings\(\s*'employee-import',\s*DATA_MANAGEMENT_WORKFLOW_CONFIGS\.employee\.sources/);
   assert.match(serverSource, /workflowSourceBindings: inputSourceBindings/);
+});
+
+test('workflow action labels are localized by language state', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  assert.match(mainSource, /update: \{ 'zh-CN': '更新', 'en-US': 'Update' \}/);
+  assert.match(mainSource, /confirmAndRun: \{ 'zh-CN': '确认并运行', 'en-US': 'Confirm & Run' \}/);
+  assert.match(mainSource, /function syncWorkflowActionLabels\(\)/);
+  assert.match(mainSource, /label\.textContent = t\('update'\)/);
+  assert.match(mainSource, /label\.textContent = t\('export'\)/);
+  assert.match(mainSource, /fivePercentHoldersEditMode \? t\('confirmAndRun'\) : t\('update'\)/);
+});
+
+test('Employee Management deactivate action uses danger styling', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  assert.match(mainSource, /const toggleButtonClass = item\.active \? 'btn-danger' : 'btn-secondary'/);
+  assert.doesNotMatch(mainSource, /btn-warning btn-sm" data-action="toggle-employee-page"/);
+});
+
+test('5% Holders edit mode exposes localized Confirm & Run and Cancel actions', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  const holdersSection = pageSection('five-percent-holders', 'fixed-value');
+
+  assert.match(holdersSection, /data-workflow-update-page="five-percent-holders"/);
+  assert.match(holdersSection, /id="btnCancelFivePercentHoldersEdit"[\s\S]*<span>Cancel<\/span>/);
+  assert.match(mainSource, /function fivePercentHoldersCancelButton\(\)/);
+  assert.match(mainSource, /cancelButton\.classList\.toggle\('hidden', !fivePercentHoldersEditMode\)/);
+  assert.match(mainSource, /setButtonLabel\('btnCancelFivePercentHoldersEdit', t\('cancel'\)\)/);
+  assert.match(mainSource, /function cancelFivePercentHoldersEdit\(\)/);
+  assert.match(mainSource, /fivePercentHoldersEditMode = false;\s*await renderFivePercentHoldersPage\(\);/);
+  assert.match(mainSource, /btnCancelFivePercentHoldersEdit'\)\.addEventListener\('click', \(\) => void cancelFivePercentHoldersEdit\(\)\)/);
+});
+
+test('Global Parameter editing uses the application modal instead of a browser prompt', () => {
+  const fixedValueSection = pageSection('fixed-value', 'docs');
+  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+
+  assert.match(fixedValueSection, /id="fixedValueEditModal"[\s\S]*class="modal-container global-parameter-modal"/);
+  assert.match(fixedValueSection, /id="fixedValueEditKey"[^>]*readonly/);
+  assert.match(fixedValueSection, /id="fixedValueEditLabel"[^>]*autocomplete="off"/);
+  assert.match(fixedValueSection, /id="fixedValueEditValue"[^>]*inputmode="decimal"/);
+  assert.doesNotMatch(fixedValueSection, /id="fixedValueEditEffectiveFrom"/);
+  assert.match(fixedValueSection, /id="btnSubmitFixedValueEdit"/);
+  assert.match(fixedValueSection, /data-close="fixedValueEditModal"/);
+  const fixedValueEditSource = mainSource.match(/async function editFixedValue[\s\S]*?function openFixedValueModal/)?.[0] ?? '';
+  assert.doesNotMatch(fixedValueEditSource, /\bprompt\(/);
+  assert.match(mainSource, /let editingFixedValueId: number \| null = null;/);
+  assert.match(mainSource, /function openFixedValueEditModal\(item: FixedValueRecord\)/);
+  assert.match(mainSource, /el(?:<[^>]+>)?\('fixedValueEditKey'\)\.value = item\.key;/);
+  assert.match(mainSource, /body: JSON\.stringify\(\{ label, value \}\)/);
+  assert.match(serverSource, /set label = coalesce\(\$1, label\),[\s\S]*value = \$2/);
+  assert.match(serverSource, /updatedByFromRequest\(request as typeof request & RequestWithAuth\)/);
+  assert.match(mainSource, /el\('fixedValueEditModal'\)\.classList\.remove\('hidden'\)/);
+  assert.match(mainSource, /async function saveFixedValueEdit\(\)/);
+  assert.match(mainSource, /`\/api\/global-parameters\/\$\{editingFixedValueId\}`/);
+  assert.match(mainSource, /btnSubmitFixedValueEdit'\)\.addEventListener\('click', \(\) => void saveFixedValueEdit\(\)\)/);
 });

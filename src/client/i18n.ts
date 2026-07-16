@@ -264,7 +264,7 @@ const STATIC_TEXT_TRANSLATIONS: Record<string, string> = {
   仅管理员可创建: 'Admins only',
   创建参数: 'Create Parameter',
   参数名称: 'Parameter name',
-  '请完整填写 Key、Item、Value 和 Effective From': 'Please fill in Key, Item, Value, and Effective From',
+  '请完整填写 Key、Item 和 Value': 'Please fill in Key, Item, and Value',
   'Global Parameter 已新增': 'Global Parameter created',
   'Global Parameter 已删除': 'Global Parameter deleted',
   '删除 Global Parameter': 'Delete Global Parameter',

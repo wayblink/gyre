@@ -276,9 +276,9 @@ const MONTHLY_RUNTIME_FIXED_VALUE_KEYS = {
 export async function loadMonthlyRunRuntimeFixedValues(db: MonthlyRunDb): Promise<Record<string, number>> {
   const rows = await db.query<Record<string, unknown>>(
     `select distinct on (key) *
-       from global_parameters
-      where key = any($1::text[])
-      order by key, effective_from desc, updated_at desc, id desc`,
+      from global_parameters
+     where key = any($1::text[])
+      order by key, updated_at desc, id desc`,
     [[MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsOutstandingCullgen, MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsAvailableCullgen]],
   );
   const byKey = new Map(rows.map((row) => [String(row.key), Number(row.value)]));

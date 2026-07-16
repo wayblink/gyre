@@ -108,5 +108,5 @@ test('monthly runtime fixed values are loaded from latest global parameters', as
   });
   const normalizedSql = calls[0]?.text.replace(/\s+/g, ' ').trim() ?? '';
   assert.match(normalizedSql, /from global_parameters/);
-  assert.match(normalizedSql, /order by key, effective_from desc, updated_at desc, id desc/);
+  assert.match(normalizedSql, /order by key, updated_at desc, id desc/);
 });

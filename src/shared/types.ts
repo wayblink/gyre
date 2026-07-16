@@ -114,6 +114,8 @@ export type Holding = {
   employeeName: string;
   employeeNumber: string;
   userId: string | null;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
   tags: string[];
   grantNumber: string;
   incentiveType: string;
@@ -151,6 +153,9 @@ export type ExerciseRecord = {
   id: number;
   name: string;
   employeeNumber: string;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
+  tags: string[];
   futubullId: string;
   userId: string;
   grantNumber: string;
@@ -168,6 +173,9 @@ export type SoldShare = {
   id: number;
   name: string;
   employeeNumber: string;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
+  tags: string[];
   futubullId: string;
   userId: string;
   employmentStatus: string;
@@ -220,6 +228,9 @@ export type TransferPlanResponse = {
 export type ShareworksGrant = {
   id: number;
   employeeNumber: string | null;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
+  tags: string[];
   lastName: string | null;
   firstName: string | null;
   middleName: string | null;
@@ -255,6 +266,9 @@ export type MergedGrant = {
   employeeName: string;
   grantNumber: string;
   employeeNumber: string;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
+  tags: string[];
   incentiveType: string;
   grantDate: string | null;
   grantQuantity: number | null;

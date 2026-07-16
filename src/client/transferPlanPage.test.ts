@@ -56,9 +56,17 @@ test('renders transfer plan summary rows as the default table view', () => {
   assert.match(table.headHtml, /<th>2025-01<\/th>/);
   assert.match(table.bodyHtml, /<th>In total<\/th>/);
   assert.match(table.bodyHtml, /<th>Options cancelled\/forfeited<\/th>/);
-  assert.match(table.bodyHtml, /data-transfer-cancelled-id="12"/);
-  assert.match(table.bodyHtml, /class="transfer-plan-cancel-input is-edited"/);
+  assert.doesNotMatch(table.bodyHtml, /data-transfer-cancelled-period/);
+  assert.doesNotMatch(table.bodyHtml, /transfer-plan-cancel-input/);
   assert.match(table.bodyHtml, /<th>Transfer to Futu<\/th>/);
+});
+
+test('renders cancellation inputs only in transfer plan edit mode', () => {
+  const table = renderTransferPlanSummaryTable(data, 'summaryRows', deps, { editable: true });
+
+  assert.match(table.bodyHtml, /data-transfer-cancelled-period="2025-01"/);
+  assert.match(table.bodyHtml, /class="transfer-plan-cancel-input"/);
+  assert.match(table.bodyHtml, /value="-4"/);
 });
 
 test('renders transfer plan period rows in the transposed table view', () => {
@@ -67,7 +75,7 @@ test('renders transfer plan period rows in the transposed table view', () => {
   assert.match(table.headHtml, /<th>Period<\/th>/);
   assert.match(table.headHtml, /<th>Options cancelled\/forfeited<\/th>/);
   assert.match(table.bodyHtml, /<th>2025-01<\/th>/);
-  assert.match(table.bodyHtml, /data-transfer-cancelled-id="11"/);
+  assert.doesNotMatch(table.bodyHtml, /data-transfer-cancelled-period/);
   assert.match(table.bodyHtml, /<th>Total<\/th>/);
   assert.match(table.bodyHtml, /<td class="transfer-plan-total">293<\/td>/);
   assert.doesNotMatch(table.bodyHtml, /<th>Summary<\/th>/);

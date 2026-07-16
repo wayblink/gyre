@@ -6899,17 +6899,52 @@ textarea.form-input {
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  position: relative;
+  padding-right: 22px;
 }
 
 .sortable-th:hover {
   color: var(--primary-600);
 }
 
+/* Dual-chevron sort indicator: both arrows grey by default, the active
+   direction turns blue. Positioned absolutely so it stays vertically centered
+   next to the (possibly two-line bilingual) header without shifting the row. */
 .sort-indicator {
-  display: inline-block;
-  min-width: 10px;
-  font-size: 10px;
-  color: var(--primary-600);
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 0;
+  pointer-events: none;
+}
+
+.sort-indicator::before,
+.sort-indicator::after {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+}
+
+.sort-indicator::before {
+  border-bottom: 5px solid var(--slate-400, #94a3b8);
+}
+
+.sort-indicator::after {
+  border-top: 5px solid var(--slate-400, #94a3b8);
+}
+
+.sort-indicator[data-dir="asc"]::before {
+  border-bottom-color: var(--primary-600, #2563eb);
+}
+
+.sort-indicator[data-dir="desc"]::after {
+  border-top-color: var(--primary-600, #2563eb);
 }
 
 .table-header-filter {
@@ -9047,6 +9082,73 @@ textarea.form-input {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-2);
     align-items: center;
+}
+
+.workflow-update-progress {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    background: #ffffff;
+    box-shadow: var(--shadow-xs);
+}
+
+.workflow-update-progress.hidden {
+    display: none;
+}
+
+.workflow-update-progress__summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+.workflow-update-progress__summary strong {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.workflow-update-progress__track {
+    position: relative;
+    height: 10px;
+    overflow: hidden;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-light);
+    background: var(--slate-100);
+}
+
+.workflow-update-progress__track span {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--primary-500), var(--primary-400));
+    box-shadow: 0 0 18px rgba(59, 130, 246, 0.28);
+    transition: width 0.24s ease;
+}
+
+.workflow-update-progress.is-success .workflow-update-progress__track span {
+    background: linear-gradient(90deg, var(--success-500), var(--primary-400));
+}
+
+.workflow-update-progress.is-warning .workflow-update-progress__track span {
+    background: linear-gradient(90deg, var(--warning-500), var(--primary-400));
+}
+
+.workflow-update-progress.is-error .workflow-update-progress__track span {
+    background: linear-gradient(90deg, var(--danger-500), var(--danger-400, var(--danger-500)));
+}
+
+.workflow-update-progress__step {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    word-break: break-word;
 }
 
 .fixed-value-inline-input {

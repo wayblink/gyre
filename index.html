@@ -240,7 +240,9 @@
                             <label class="search-label">Search</label>
                             <input type="text" id="searchHolder" class="search-input" placeholder="Search by name, plan, grant...">
                             <label class="search-label">Tag</label>
-                            <input type="text" id="filterHoldingsTag" class="search-input" placeholder="Filter by employee tag">
+                            <select id="filterHoldingsTag" class="search-input">
+                                <option value="">All Tags</option>
+                            </select>
                             <label class="search-label">Incentive Type</label>
                             <select id="filterGrantType" class="form-input" style="min-width:160px;height:36px;">
                                 <option value="">All Types</option>
@@ -276,10 +278,10 @@
                                     <thead>
                                         <tr>
                                             <th style="min-width:60px;">No.<br><span class="sub-label">序号</span></th>
-                                            <th style="min-width:140px;">Employee Name<br><span class="sub-label">姓名</span></th>
+                                            <th style="min-width:140px;" class="sortable-th" data-grant-sort="name">Employee Name<br><span class="sub-label">姓名</span> <span class="sort-indicator" data-sort-key="name"></span></th>
                                             <th style="min-width:100px;">Grant No.<br><span class="sub-label">授予编号</span></th>
                                             <th style="min-width:120px;">User ID<br><span class="sub-label">用户ID</span></th>
-                                            <th style="min-width:100px;">Employee No.<br><span class="sub-label">工号</span></th>
+                                            <th style="min-width:100px;" class="sortable-th" data-grant-sort="empNo">Employee No.<br><span class="sub-label">工号</span> <span class="sort-indicator" data-sort-key="empNo"></span></th>
                                             <th style="min-width:120px;">Incentive Type<br><span class="sub-label">激励类型</span></th>
                                             <th style="min-width:110px;">Grant Date<br><span class="sub-label">授予日期</span></th>
                                             <th style="min-width:120px;" class="col-number">Grant Qty<br><span class="sub-label">授予数量</span></th>
@@ -319,8 +321,8 @@
                                 <div class="table-scroll">
                                 <table class="data-table table-holdings" id="grantTable-shareworks">
                                     <thead><tr>
-                                        <th>No.</th><th>Employee Number</th>
-                                        <th>Last Name</th><th>First Name</th><th>Middle Name</th><th>Plan Name</th><th>Grant Name</th>
+                                        <th>No.</th><th class="sortable-th" data-grant-sort="empNo">Employee Number <span class="sort-indicator" data-sort-key="empNo"></span></th>
+                                        <th class="sortable-th" data-grant-sort="name">Last Name <span class="sort-indicator" data-sort-key="name"></span></th><th>First Name</th><th>Middle Name</th><th>Plan Name</th><th>Grant Name</th>
                                         <th>Grant Type</th><th>Employee Grant Number</th><th>Grant Date</th><th>Vesting Start Date</th>
                                         <th>Service Start Date</th><th>Original VCD (migrated grants)</th><th>Expire Date</th>
                                         <th>Expire Date (participant view)</th><th>Earliest Expire Cancel Date</th><th>Latest Expire Cancel Date</th>
@@ -339,8 +341,8 @@
                                 <div class="table-scroll">
                                 <table class="data-table table-holdings" id="grantTable-merge">
                                     <thead><tr>
-                                        <th>No.</th><th>Employee Name<br><span class="sub-label">姓名</span></th>
-                                        <th>Grant No.<br><span class="sub-label">授予编号</span></th><th>Employee No.<br><span class="sub-label">工号</span></th>
+                                        <th>No.</th><th class="sortable-th" data-grant-sort="name">Employee Name<br><span class="sub-label">姓名</span> <span class="sort-indicator" data-sort-key="name"></span></th>
+                                        <th>Grant No.<br><span class="sub-label">授予编号</span></th><th class="sortable-th" data-grant-sort="empNo">Employee No.<br><span class="sub-label">工号</span> <span class="sort-indicator" data-sort-key="empNo"></span></th>
                                         <th>Incentive Type<br><span class="sub-label">激励类型</span></th><th>Grant Date<br><span class="sub-label">授予日期</span></th>
                                         <th class="col-number">Grant Qty<br><span class="sub-label">授予数量</span></th>
                                         <th class="col-number">Grant Price (USD)<br><span class="sub-label">授予价</span></th>
@@ -390,6 +392,10 @@
                         <div class="search-group">
                             <label class="search-label" for="searchExercises">Search</label>
                             <input type="text" id="searchExercises" class="search-input" placeholder="Search by name, employee, grant...">
+                            <label class="search-label" for="filterExerciseTag">Tag</label>
+                            <select id="filterExerciseTag" class="search-input">
+                                <option value="">All Tags</option>
+                            </select>
                             <label class="search-label" for="filterExerciseGrantYear">Grant Year</label>
                             <select id="filterExerciseGrantYear" class="form-input" style="min-width:150px;height:36px;">
                                 <option value="">All Years</option>
@@ -419,8 +425,8 @@
                                 <table class="data-table table-exercises" id="exerciseTable">
                                     <thead><tr>
                                         <th>No.</th>
-                                        <th>Name<br><span class="sub-label">姓名</span></th>
-                                        <th>Employee No.<br><span class="sub-label">员工编号</span></th>
+                                        <th class="sortable-th" data-exercise-sort="name">Name<br><span class="sub-label">姓名</span> <span class="sort-indicator" data-sort-key="name"></span></th>
+                                        <th class="sortable-th" data-exercise-sort="empNo">Employee No.<br><span class="sub-label">员工编号</span> <span class="sort-indicator" data-sort-key="empNo"></span></th>
                                         <th>Futubull ID<br><span class="sub-label">Futubull 账号</span></th>
                                         <th>User ID<br><span class="sub-label">用户 ID</span></th>
                                         <th>Grant No.<br><span class="sub-label">授予编号</span></th>
@@ -472,6 +478,10 @@
                         <div class="search-group">
                             <label class="search-label" for="searchSoldShares">Search</label>
                             <input type="text" id="searchSoldShares" class="search-input" placeholder="Search by name, employee, account...">
+                            <label class="search-label" for="filterSoldSharesTag">Tag</label>
+                            <select id="filterSoldSharesTag" class="search-input">
+                                <option value="">All Tags</option>
+                            </select>
                             <label class="search-label" for="filterSoldSharesEmploymentStatus">Employment Status</label>
                             <select id="filterSoldSharesEmploymentStatus" class="form-input" style="min-width:150px;height:36px;">
                                 <option value="">All Statuses</option>
@@ -501,8 +511,8 @@
                                 <table class="data-table table-sold-shares" id="soldSharesTable">
                                     <thead><tr>
                                         <th>No.</th>
-                                        <th>Name<br><span class="sub-label">姓名</span></th>
-                                        <th>Employee No.<br><span class="sub-label">工号</span></th>
+                                        <th class="sortable-th" data-sold-sort="name">Name<br><span class="sub-label">姓名</span> <span class="sort-indicator" data-sort-key="name"></span></th>
+                                        <th class="sortable-th" data-sold-sort="empNo">Employee No.<br><span class="sub-label">工号</span> <span class="sort-indicator" data-sort-key="empNo"></span></th>
                                         <th>Futubull ID<br><span class="sub-label">牛牛号</span></th>
                                         <th>User ID<br><span class="sub-label">用户 ID</span></th>
                                         <th>Employment Status<br><span class="sub-label">在职状态</span></th>
@@ -550,7 +560,7 @@
                         <div>
                             <div class="product-page-hero__eyebrow">2025年计划</div>
                             <h2>2025 Transfer to Futu</h2>
-                            <p>按月汇总归属记录，取消数量可直接编辑；数据来自 Files 中的独立工作簿。</p>
+                            <p>按月汇总归属记录；取消数量需进入 Edit 模式修改，保存后生成新输入文件并运行 workflow。</p>
                         </div>
                         <div class="product-page-hero__metrics">
                             <div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="transferPlanHeroSourceFilesName">-</strong></div>
@@ -569,12 +579,19 @@
                                 <span class="card-subtitle" id="transferPlanSourceName">2025 BC Subplan Transfer.xlsx</span>
                             </div>
                             <div class="transfer-plan-actions">
+                                <button class="btn btn-secondary btn-sm" id="btnEditTransferPlan" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Edit</span></button>
+                                <button class="btn btn-primary btn-sm hidden" id="btnSaveTransferPlanEdit" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"/></svg><span>Confirm &amp; Run</span></button>
+                                <button class="btn btn-secondary btn-sm hidden" id="btnCancelTransferPlanEdit" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg><span>Cancel</span></button>
                                 <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="transfer-plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
                                 <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="transfer-plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
                                 <button class="btn btn-secondary btn-sm" id="btnToggleTransferPlanTableView" type="button" aria-pressed="false">
                                     <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-                                        <path d="M5 6h10M5 10h6M5 14h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                                        <path d="M13 4.5 16 7.5 13 10.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <rect x="6" y="3" width="8" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                                        <path d="M9.2 5.4h1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                        <path d="M4.2 7.2A6.8 6.8 0 0 1 15.4 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                        <path d="M15.6 4.8v3.1h-3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <path d="M15.8 12.8A6.8 6.8 0 0 1 4.6 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                        <path d="M4.4 15.2v-3.1h3.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                                     </svg>
                                     转置表格
                                 </button>
@@ -588,7 +605,8 @@
                                 </table>
                             </div>
                             <div class="transfer-plan-note">
-                                <strong>Options cancelled/forfeited</strong> 可编辑；修改后 Transfer to Futu 将即时按 “In total + cancelled” 重新计算。
+                                <strong>Options cancelled/forfeited</strong> 仅在 Edit 模式可编辑；保存后会生成新的输入文件并触发 workflow，页面最终渲染新的结果文件。
+                                <span id="transferPlanEditStatus"></span>
                             </div>
                         </div>
                     </div>
@@ -836,6 +854,7 @@
                             <span class="card-subtitle">EDGAR SC13 Ownership</span>
                             <div class="card-header-actions product-table-actions">
                                 <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="five-percent-holders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
+                                <button class="btn btn-secondary btn-sm hidden" id="btnCancelFivePercentHoldersEdit" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg><span>Cancel</span></button>
                                 <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="five-percent-holders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
                             </div>
                         </div>
@@ -875,7 +894,7 @@
                         </div>
                         <div class="card-body">
                             <table class="data-table product-spec-table">
-                                <thead><tr><th>Key</th><th>Item</th><th>Value</th><th>Effective From</th><th>Updated By</th><th>Actions</th></tr></thead>
+                                <thead><tr><th>Key</th><th>Item</th><th>Value</th><th>Updated At</th><th>Updated By</th><th>Actions</th></tr></thead>
                                 <tbody id="fixedValuePageBody"></tbody>
                             </table>
                         </div>
@@ -905,15 +924,43 @@
                                     <label for="fixedValueValue">Value</label>
                                     <input type="text" id="fixedValueValue" class="form-input" inputmode="decimal" autocomplete="off" placeholder="0">
                                 </div>
-                                <div class="form-group">
-                                    <label for="fixedValueEffectiveFrom">Effective From</label>
-                                    <input type="text" id="fixedValueEffectiveFrom" class="form-input" inputmode="numeric" autocomplete="off" placeholder="2026-07">
-                                </div>
                             </div>
                         </div>
                         <div class="modal-footer">
                             <button class="btn btn-secondary" data-close="fixedValueModal" type="button">取消</button>
                             <button class="btn btn-primary" id="btnSubmitFixedValue" type="button">创建参数</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay hidden" id="fixedValueEditModal">
+                    <div class="modal-container global-parameter-modal" role="dialog" aria-modal="true" aria-labelledby="fixedValueEditModalTitle">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title" id="fixedValueEditModalTitle">编辑 Global Parameter</h3>
+                                <span class="card-subtitle">仅管理员可编辑</span>
+                            </div>
+                            <button class="modal-close" data-close="fixedValueEditModal" type="button" aria-label="关闭">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="fixedValueEditKey">Key</label>
+                                    <input type="text" id="fixedValueEditKey" class="form-input" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label for="fixedValueEditLabel">Item</label>
+                                    <input type="text" id="fixedValueEditLabel" class="form-input" autocomplete="off" placeholder="参数名称">
+                                </div>
+                                <div class="form-group">
+                                    <label for="fixedValueEditValue">Value</label>
+                                    <input type="text" id="fixedValueEditValue" class="form-input" inputmode="decimal" autocomplete="off" placeholder="0">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" data-close="fixedValueEditModal" type="button">取消</button>
+                            <button class="btn btn-primary" id="btnSubmitFixedValueEdit" type="button">保存</button>
                         </div>
                     </div>
                 </div>
@@ -1310,6 +1357,16 @@
                         <div class="modal-body">
                             <div class="workflow-update-source-list" id="workflowUpdateSourceList"></div>
                             <p class="form-hint" id="workflowUpdateStatus">默认使用上一次成功执行的输入文件；上传新文件后会自动替换当前输入项。</p>
+                            <div class="workflow-update-progress hidden" id="workflowUpdateProgress">
+                                <div class="workflow-update-progress__summary">
+                                    <span id="workflowUpdateProgressLabel">Workflow progress</span>
+                                    <strong id="workflowUpdateProgressText">0 / 0</strong>
+                                </div>
+                                <div class="workflow-update-progress__track" id="workflowUpdateProgressBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                                    <span id="workflowUpdateProgressFill"></span>
+                                </div>
+                                <div class="workflow-update-progress__step" id="workflowUpdateProgressStep">Waiting to start</div>
+                            </div>
                         </div>
                         <div class="modal-footer">
                             <button class="btn btn-secondary" id="btnCancelWorkflowUpdateModal" type="button">Cancel</button>

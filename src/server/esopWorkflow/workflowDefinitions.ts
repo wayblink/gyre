@@ -153,6 +153,7 @@ from {shareworks_grants}`;
 }
 
 function persistInputTaskIdForSource(config: EsopPageWorkflowConfig, source: EsopWorkflowSourceDefinition) {
+  if (config.pageKey === 'exercise-record') return 'filter_exercise_rows';
   if (config.pageKey === 'sold-shares') return 'filter_sold_shares_rows';
   if (config.pageKey === 'grant-record' && source.sourceKey === 'shareworks_grants') return 'project_shareworks_grants_columns';
   return source.extractTaskId;
@@ -265,6 +266,28 @@ where trim(concat('', coalesce([工号], ''))) <> ''
               tableBindings: [{ inputSlot: 'input1', tableName: 'sold_shares' }],
             },
             inputs: { input1: { from: 'extract_sold_shares', slot: 'dataframe' } },
+            dependsOn: [],
+          },
+        ]
+      : []),
+    ...(config.pageKey === 'exercise-record'
+      ? [
+          {
+            id: 'filter_exercise_rows',
+            name: 'Filter Exercise Rows',
+            operatorCode: 'sql.compute',
+            operatorVersion: '1.0.0',
+            description: '过滤 Futu BCI Exercises 顶部中文表头/说明行，只保留有员工编号的业务明细。',
+            x: 284,
+            y: 48,
+            params: {
+              sql: `select *
+from {exercises}
+where trim(concat('', coalesce([Employee No.], ''))) <> ''
+  and trim(concat('', coalesce([Employee No.], ''))) <> '员工编号'`,
+              tableBindings: [{ inputSlot: 'input1', tableName: 'exercises' }],
+            },
+            inputs: { input1: { from: 'extract_exercises', slot: 'dataframe' } },
             dependsOn: [],
           },
         ]

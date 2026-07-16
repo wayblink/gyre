@@ -6,6 +6,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
+import * as XLSX from 'xlsx';
 import { config } from './config.js';
 import { createDb } from './db.js';
 import {
@@ -172,6 +173,10 @@ function toIsoTimestamp(value: unknown): string {
   return new Date(String(value)).toISOString();
 }
 
+function updatedByFromRequest(request: RequestWithAuth): string {
+  return request.currentUser?.username?.trim() || 'system';
+}
+
 const updatePlanSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   remark: z.string().optional().default(''),
@@ -219,6 +224,13 @@ const esopPageKeySchema = z.enum(['grant-record', 'exercise-record', 'sold-share
 
 const esopWorkflowRunBodySchema = z.object({
   sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() })),
+});
+
+const transferPlanEditBodySchema = z.object({
+  edits: z.array(z.object({
+    period: z.string().trim().min(1),
+    cancelledQuantity: z.number().finite(),
+  })).min(1),
 });
 const dataManagementPageKeySchema = z.enum(['employee', 'plan-summary', 'five-percent-holders']);
 const dataManagementWorkflowRunBodySchema = esopWorkflowRunBodySchema;
@@ -319,7 +331,6 @@ const userIdParamSchema = z.object({
 
 const fixedValuePatchSchema = z.object({
   value: z.number(),
-  updatedBy: z.string().trim().min(1).optional().default('Administrator'),
 });
 
 const globalParameterKeySchema = z
@@ -333,8 +344,10 @@ const globalParameterCreateSchema = z.object({
   key: globalParameterKeySchema,
   label: z.string().trim().min(1).max(200),
   value: z.number().finite(),
-  effectiveFrom: z.string().trim().min(1).max(40),
-  updatedBy: z.string().trim().min(1).optional().default('Administrator'),
+});
+
+const globalParameterPatchSchema = fixedValuePatchSchema.extend({
+  label: z.string().trim().min(1).max(200).optional(),
 });
 
 const fixedValueUpsertSchema = fixedValuePatchSchema.extend({
@@ -345,7 +358,6 @@ const fixedValueUpsertSchema = fixedValuePatchSchema.extend({
     FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses,
   ]),
   label: z.string().trim().min(1).max(200).optional(),
-  effectiveFrom: z.string().trim().min(1).max(40).optional().default('current'),
 });
 
 const fixedValueLabels: Record<string, string> = {
@@ -524,6 +536,17 @@ function parseTags(value: unknown): string[] {
 }
 
 const DEFAULT_EMPLOYEE_LABEL_COLOR = '#2563eb';
+
+function parseEmployeeLabelRefs(value: unknown): EmployeeLabelRef[] {
+  const rawLabels = Array.isArray(value) ? value : parseJson<Array<Record<string, unknown>>>(value, []);
+  return rawLabels
+    .map((label) => ({
+      id: Number(label.id),
+      name: String(label.name ?? '').trim(),
+      color: normalizeEmployeeLabelColor(label.color),
+    }))
+    .filter((label) => Number.isInteger(label.id) && label.id > 0 && label.name !== '');
+}
 
 function normalizeEmployeeLabelColor(value: unknown): string {
   const color = String(value ?? '').trim();
@@ -726,9 +749,9 @@ async function readLatestWorkflowDataFrameArtifact(params: {
 async function loadLatestFixedValuesByKey(keys: readonly string[]): Promise<Map<string, Record<string, unknown>>> {
   const rows = await db.query<Record<string, unknown>>(
     `select distinct on (key) *
-       from global_parameters
-      where key = any($1)
-      order by key, effective_from desc, updated_at desc, id desc`,
+      from global_parameters
+     where key = any($1)
+      order by key, updated_at desc, id desc`,
     [[...keys]],
   );
   return new Map(rows
@@ -968,15 +991,73 @@ function paginateItems<T>(items: T[], page: number, pageSize: number) {
   };
 }
 
-async function employeeTagsByNumber(): Promise<Map<string, string[]>> {
+// Optional Name / Employee No. column sort shared by the ESOP detail tables
+// (grant record, exercise, sold shares). Applied after the endpoint's default
+// ordering, before pagination, so it sorts the full result set (not one page).
+type NameEmpNoSort = { by: 'name' | 'empNo' | null; dir: 'asc' | 'desc' };
+
+function readNameEmpNoSort(query: unknown): NameEmpNoSort {
+  const raw = (query ?? {}) as { sort?: string; dir?: string };
+  const by = raw.sort === 'name' ? 'name' : raw.sort === 'empNo' ? 'empNo' : null;
+  const dir = raw.dir === 'desc' ? 'desc' : 'asc';
+  return { by, dir };
+}
+
+function sortRowsByNameOrEmpNo<T>(
+  rows: T[],
+  sort: NameEmpNoSort,
+  nameOf: (row: T) => string,
+  empNoOf: (row: T) => string,
+): T[] {
+  if (!sort.by) return rows;
+  const mul = sort.dir === 'desc' ? -1 : 1;
+  const primary = sort.by === 'name' ? nameOf : empNoOf;
+  const collator = { numeric: true, sensitivity: 'base' } as const;
+  return [...rows].sort((a, b) => {
+    const cmp = primary(a).localeCompare(primary(b), undefined, collator);
+    if (cmp !== 0) return mul * cmp;
+    return empNoOf(a).localeCompare(empNoOf(b), undefined, collator);
+  });
+}
+
+type EmployeeLabelRef = {
+  id: number;
+  name: string;
+  color: string;
+};
+
+async function employeeLabelsByNumber(): Promise<Map<string, EmployeeLabelRef[]>> {
   const rows = await db.query<Record<string, unknown>>(
-    `select e.employee_id, coalesce(array_agg(l.name order by l.name) filter (where l.id is not null), '{}') as tags
-       from employees e
-       left join employee_label_assignment ela on ela.employee_id = e.id
+    `with employee_aliases as (
+       select e.employee_id, coalesce(e.merged_into_id, e.id) as canonical_employee_id
+         from employees e
+        where btrim(coalesce(e.employee_id, '')) <> ''
+     )
+     select a.employee_id,
+            coalesce(
+              json_agg(json_build_object('id', l.id, 'name', l.name, 'color', l.color) order by l.name)
+                filter (where l.id is not null),
+              '[]'::json
+            ) as labels
+       from employee_aliases a
+       left join employee_label_assignment ela on ela.employee_id = a.canonical_employee_id
        left join employee_label l on l.id = ela.label_id
-      group by e.id`,
+      group by a.employee_id`,
   );
-  return new Map(rows.map((row) => [String(row.employee_id ?? ''), parseTags(row.tags)]));
+  return new Map(
+    rows.map((row) => [
+      String(row.employee_id ?? ''),
+      parseEmployeeLabelRefs(row.labels),
+    ]),
+  );
+}
+
+function employeeLabelIds(labels: EmployeeLabelRef[]): number[] {
+  return labels.map((label) => label.id);
+}
+
+function employeeLabelNames(labels: EmployeeLabelRef[]): string[] {
+  return labels.map((label) => label.name);
 }
 
 function rowMatches(row: Record<string, unknown>, query: string, keys: string[]) {
@@ -984,7 +1065,7 @@ function rowMatches(row: Record<string, unknown>, query: string, keys: string[])
   return keys.map((key) => row[key]).join(' ').toLowerCase().includes(query);
 }
 
-function futuGrantFromWorkflowRow(row: Record<string, unknown>, index: number, tags: string[]) {
+function futuGrantFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
   const employeeNumber = textValue(row['工号']) ?? '';
   return {
     id: index + 1,
@@ -992,7 +1073,9 @@ function futuGrantFromWorkflowRow(row: Record<string, unknown>, index: number, t
     employeeName: textValue(row['姓名']) ?? employeeNumber,
     employeeNumber,
     userId: textValue(row['用户ID']),
-    tags,
+    labelIds: employeeLabelIds(labels),
+    labels,
+    tags: employeeLabelNames(labels),
     grantNumber: textValue(row['授予编号']) ?? '',
     incentiveType: textValue(row['激励类型']) ?? '',
     grantDate: dateTextValue(row['授予日期']),
@@ -1026,10 +1109,13 @@ function futuGrantFromWorkflowRow(row: Record<string, unknown>, index: number, t
   };
 }
 
-function shareworksGrantFromWorkflowRow(row: Record<string, unknown>, index: number) {
+function shareworksGrantFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
   return {
     id: index + 1,
     employeeNumber: textValue(row['Employee Number']),
+    labelIds: employeeLabelIds(labels),
+    labels,
+    tags: employeeLabelNames(labels),
     lastName: textValue(row['Last Name']),
     firstName: textValue(row['First Name']),
     middleName: textValue(row['Middle Name']),
@@ -1060,11 +1146,14 @@ function shareworksGrantFromWorkflowRow(row: Record<string, unknown>, index: num
   };
 }
 
-function exerciseFromWorkflowRow(row: Record<string, unknown>, index: number) {
+function exerciseFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
   return {
     id: index + 1,
     name: textValue(row.Name) ?? '',
     employeeNumber: textValue(row['Employee No.']) ?? '',
+    labelIds: employeeLabelIds(labels),
+    labels,
+    tags: employeeLabelNames(labels),
     futubullId: textValue(row['Futubull ID']) ?? '',
     userId: textValue(row['User ID']) ?? '',
     grantNumber: textValue(row['Grant No.']) ?? '',
@@ -1079,11 +1168,14 @@ function exerciseFromWorkflowRow(row: Record<string, unknown>, index: number) {
   };
 }
 
-function soldShareFromWorkflowRow(row: Record<string, unknown>, index: number) {
+function soldShareFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
   return {
     id: index + 1,
     name: textValue(row['姓名']) ?? '',
     employeeNumber: textValue(row['工号']) ?? '',
+    labelIds: employeeLabelIds(labels),
+    labels,
+    tags: employeeLabelNames(labels),
     futubullId: textValue(row['牛牛号']) ?? '',
     userId: textValue(row['用户ID']) ?? '',
     employmentStatus: textValue(row['在职状态']) ?? '',
@@ -1130,6 +1222,56 @@ function transferPlanFromWorkflowRows(rows: Array<Record<string, unknown>>, sour
       detailCount: details.length,
     };
   });
+}
+
+function transferPlanEditedWorkbookBuffer(
+  rows: Array<Record<string, unknown>>,
+  edits: Array<{ period: string; cancelledQuantity: number }>,
+): Buffer {
+  if (rows.length === 0) throw badRequest('Transfer Plan result file has no rows to edit');
+  const firstRow = rows[0] ?? {};
+  const rowLabelColumn = Object.keys(firstRow).find((column) => column.trim() === '行标签') ?? '行标签';
+  const columns = Object.keys(firstRow);
+  if (!columns.includes(rowLabelColumn)) columns.unshift(rowLabelColumn);
+  const periodColumns = columns.filter((column) => {
+    const normalized = column.trim();
+    return normalized && normalized !== rowLabelColumn && !['(空白)', '总计'].includes(normalized);
+  });
+  const totalColumn = columns.find((column) => column.trim() === '总计') ?? '总计';
+  if (!columns.includes(totalColumn)) columns.push(totalColumn);
+
+  const editedRows = rows.map((row) => ({ ...row }));
+  const totalRows = editedRows.filter((row) => textValue(row[rowLabelColumn]) === '总计');
+  if (totalRows.length < 2) {
+    throw badRequest('Transfer Plan result file is missing source and adjusted total rows');
+  }
+  const sourceTotalRow = totalRows[0]!;
+  const adjustedTotalRow = totalRows[1]!;
+  const editsByPeriod = new Map(edits.map((edit) => [edit.period, edit.cancelledQuantity]));
+  const unknownPeriod = [...editsByPeriod.keys()].find((period) => !periodColumns.includes(period));
+  if (unknownPeriod) throw badRequest(`Unknown Transfer Plan period: ${unknownPeriod}`);
+
+  for (const period of periodColumns) {
+    const sourceValue = numberValue(sourceTotalRow[period]);
+    const cancelledQuantity = editsByPeriod.get(period);
+    if (cancelledQuantity !== undefined) {
+      adjustedTotalRow[period] = sourceValue + cancelledQuantity;
+    }
+  }
+  sourceTotalRow[totalColumn] = periodColumns.reduce((total, period) => total + numberValue(sourceTotalRow[period]), 0);
+  adjustedTotalRow[totalColumn] = periodColumns.reduce((total, period) => total + numberValue(adjustedTotalRow[period]), 0);
+
+  const sheetRows = [
+    [],
+    [],
+    [],
+    columns,
+    ...editedRows.map((row) => columns.map((column) => row[column] ?? null)),
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, '2025 BC Subplan Transfer');
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }
 
 async function settingRows(table: 'employee_mappings' | 'tracked_plans' | 'shareholder_tags') {
@@ -2302,12 +2444,15 @@ async function registerRoutes() {
 
   app.get('/api/holdings', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', grantType = '', tag = '' } = request.query as {
+    const { query = '', grantType = '', tagId = '', tag = '' } = request.query as {
       query?: string;
       grantType?: string;
+      tagId?: string;
       tag?: string;
     };
     const normalizedQuery = query.trim().toLowerCase();
+    const normalizedLabelId = Number(tagId);
+    const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
     const normalizedTag = tag.trim();
     const artifact = await readLatestWorkflowDataFrameArtifact({
       workflowCode: 'esop-grant-record-sync',
@@ -2319,15 +2464,16 @@ async function registerRoutes() {
       ESOP_PAGE_WORKFLOW_CONFIGS['grant-record'].sources,
     );
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
-    const tagsByEmployee = await employeeTagsByNumber();
+    const labelsByEmployee = await employeeLabelsByNumber();
     const rows = (artifact?.rows ?? [])
       .map((row, index) => {
         const employeeNumber = textValue(row['工号']) ?? '';
-        return futuGrantFromWorkflowRow(row, index, tagsByEmployee.get(employeeNumber) ?? []);
+        return futuGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
       })
       .filter((row) => {
         if (grantType && row.incentiveType !== grantType) return false;
-        if (normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
         if (!normalizedQuery) return true;
         return [
           row.employeeName,
@@ -2344,7 +2490,13 @@ async function registerRoutes() {
           String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
           left.grantNumber.localeCompare(right.grantNumber),
       );
-    const paginated = paginateItems(rows, page, pageSize);
+    const sortedRows = sortRowsByNameOrEmpNo(
+      rows,
+      readNameEmpNoSort(request.query),
+      (row) => row.employeeName ?? '',
+      (row) => row.employeeNumber ?? '',
+    );
+    const paginated = paginateItems(sortedRows, page, pageSize);
     return {
       holdings: paginated.items,
       sourceFiles: inputSourceFiles,
@@ -2361,8 +2513,11 @@ async function registerRoutes() {
 
   app.get('/api/grants/shareworks', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '' } = request.query as { query?: string };
+    const { query = '', tagId = '', tag = '' } = request.query as { query?: string; tagId?: string; tag?: string };
     const normalizedQuery = query.trim().toLowerCase();
+    const normalizedLabelId = Number(tagId);
+    const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
+    const normalizedTag = tag.trim();
     const artifact = await readLatestWorkflowDataFrameArtifact({
       workflowCode: 'esop-grant-record-sync',
       taskId: 'persist_grant_record_shareworks_file',
@@ -2373,9 +2528,18 @@ async function registerRoutes() {
       ESOP_PAGE_WORKFLOW_CONFIGS['grant-record'].sources,
     );
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
+    const labelsByEmployee = await employeeLabelsByNumber();
     const rows = (artifact?.rows ?? [])
-      .map(shareworksGrantFromWorkflowRow)
+      .map((row, index) => {
+        const employeeNumber = textValue(row['Employee Number']) ?? '';
+        return shareworksGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+      })
       .filter((row) => Boolean(row.employeeGrantNumber))
+      .filter((row) => {
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        return true;
+      })
       .filter((row) =>
         [
           row.lastName,
@@ -2394,7 +2558,13 @@ async function registerRoutes() {
           String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
           String(left.employeeGrantNumber ?? '').localeCompare(String(right.employeeGrantNumber ?? '')),
       );
-    const paginated = paginateItems(rows, page, pageSize);
+    const sortedRows = sortRowsByNameOrEmpNo(
+      rows,
+      readNameEmpNoSort(request.query),
+      (row) => `${row.lastName ?? ''} ${row.firstName ?? ''}`.trim(),
+      (row) => String(row.employeeNumber ?? ''),
+    );
+    const paginated = paginateItems(sortedRows, page, pageSize);
     return {
       items: paginated.items,
       sourceFiles: inputSourceFiles,
@@ -2411,10 +2581,12 @@ async function registerRoutes() {
 
   app.get('/api/grants/merge', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', tag = '' } = request.query as { query?: string; tag?: string };
+    const { query = '', tagId = '', tag = '' } = request.query as { query?: string; tagId?: string; tag?: string };
     const normalizedQuery = query.trim().toLowerCase();
+    const normalizedLabelId = Number(tagId);
+    const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
     const normalizedTag = tag.trim();
-    const [futuArtifact, shareworksArtifact, tagsByEmployee] = await Promise.all([
+    const [futuArtifact, shareworksArtifact, labelsByEmployee] = await Promise.all([
       readLatestWorkflowDataFrameArtifact({
         workflowCode: 'esop-grant-record-sync',
         taskId: 'persist_grant_record_futu_file',
@@ -2425,18 +2597,29 @@ async function registerRoutes() {
         taskId: 'persist_grant_record_shareworks_file',
         fallbackSheetName: 'Shareworks Grants',
       }),
-      employeeTagsByNumber(),
+      employeeLabelsByNumber(),
     ]);
     const futuRows = (futuArtifact?.rows ?? [])
       .map((row, index) => {
         const employeeNumber = textValue(row['工号']) ?? '';
-        return futuGrantFromWorkflowRow(row, index, tagsByEmployee.get(employeeNumber) ?? []);
+        return futuGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
       })
-      .filter((row) => normalizedTag === '' || row.tags.includes(normalizedTag));
-    const shareworksRows =
-      normalizedTag === ''
-        ? (shareworksArtifact?.rows ?? []).map(shareworksGrantFromWorkflowRow).filter((row) => Boolean(row.employeeGrantNumber))
-        : [];
+      .filter((row) => {
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        return true;
+      });
+    const shareworksRows = (shareworksArtifact?.rows ?? [])
+      .map((row, index) => {
+        const employeeNumber = textValue(row['Employee Number']) ?? '';
+        return shareworksGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+      })
+      .filter((row) => Boolean(row.employeeGrantNumber))
+      .filter((row) => {
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        return true;
+      });
     const items = [
       ...futuRows.map((row) => mergeFutuGrant(row)),
       ...shareworksRows.map((row) => mergeShareworksGrant(row)),
@@ -2462,14 +2645,20 @@ async function registerRoutes() {
           String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
           left.grantNumber.localeCompare(right.grantNumber),
       );
-    const total = items.length;
+    const sortedItems = sortRowsByNameOrEmpNo(
+      items,
+      readNameEmpNoSort(request.query),
+      (row) => row.employeeName ?? '',
+      (row) => row.employeeNumber ?? '',
+    );
+    const total = sortedItems.length;
     const offset = (page - 1) * pageSize;
     const inputSourceBindings = await latestWorkflowInputSourceBindings(
       'esop-grant-record-sync',
       ESOP_PAGE_WORKFLOW_CONFIGS['grant-record'].sources,
     );
     return {
-      items: items.slice(offset, offset + pageSize),
+      items: sortedItems.slice(offset, offset + pageSize),
       sourceFiles: inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[],
       workflowSourceBindings: inputSourceBindings,
       workflowResultFiles: resultFilesFromArtifacts(futuArtifact, shareworksArtifact),
@@ -2483,9 +2672,17 @@ async function registerRoutes() {
 
   app.get('/api/exercises', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', grantYear = '' } = request.query as { query?: string; grantYear?: string };
+    const { query = '', grantYear = '', tagId = '', tag = '' } = request.query as {
+      query?: string;
+      grantYear?: string;
+      tagId?: string;
+      tag?: string;
+    };
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedGrantYear = grantYear.trim();
+    const normalizedLabelId = Number(tagId);
+    const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
+    const normalizedTag = tag.trim();
     const artifact = await readLatestWorkflowDataFrameArtifact({
       workflowCode: 'esop-exercise-record-sync',
       taskId: 'persist_exercise_record_file',
@@ -2496,8 +2693,17 @@ async function registerRoutes() {
       ESOP_PAGE_WORKFLOW_CONFIGS['exercise-record'].sources,
     );
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
+    const labelsByEmployee = await employeeLabelsByNumber();
     const rows = (artifact?.rows ?? [])
-      .map(exerciseFromWorkflowRow)
+      .map((row, index) => {
+        const employeeNumber = textValue(row['Employee No.']) ?? '';
+        return exerciseFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+      })
+      .filter((row) => {
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        return true;
+      })
       .filter((row) => !normalizedGrantYear || row.grantDate.slice(0, 4) === normalizedGrantYear)
       .filter((row) =>
         [
@@ -2517,7 +2723,13 @@ async function registerRoutes() {
           left.grantNumber.localeCompare(right.grantNumber) ||
           left.id - right.id,
       );
-    const paginated = paginateItems(rows, page, pageSize);
+    const sortedRows = sortRowsByNameOrEmpNo(
+      rows,
+      readNameEmpNoSort(request.query),
+      (row) => row.name ?? '',
+      (row) => row.employeeNumber ?? '',
+    );
+    const paginated = paginateItems(sortedRows, page, pageSize);
     return {
       items: paginated.items,
       sourceFiles: inputSourceFiles,
@@ -2534,12 +2746,17 @@ async function registerRoutes() {
 
   app.get('/api/sold-shares', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', employmentStatus = '' } = request.query as {
+    const { query = '', employmentStatus = '', tagId = '', tag = '' } = request.query as {
       query?: string;
       employmentStatus?: string;
+      tagId?: string;
+      tag?: string;
     };
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedEmploymentStatus = employmentStatus.trim();
+    const normalizedLabelId = Number(tagId);
+    const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
+    const normalizedTag = tag.trim();
     const artifact = await readLatestWorkflowDataFrameArtifact({
       workflowCode: 'esop-sold-shares-sync',
       taskId: 'persist_sold_shares_file',
@@ -2550,8 +2767,17 @@ async function registerRoutes() {
       ESOP_PAGE_WORKFLOW_CONFIGS['sold-shares'].sources,
     );
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
+    const labelsByEmployee = await employeeLabelsByNumber();
     const rows = (artifact?.rows ?? [])
-      .map(soldShareFromWorkflowRow)
+      .map((row, index) => {
+        const employeeNumber = textValue(row['工号']) ?? '';
+        return soldShareFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+      })
+      .filter((row) => {
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        return true;
+      })
       .filter((row) => !normalizedEmploymentStatus || row.employmentStatus === normalizedEmploymentStatus)
       .filter((row) =>
         [
@@ -2564,7 +2790,13 @@ async function registerRoutes() {
         ].join(' ').toLowerCase().includes(normalizedQuery),
       )
       .sort((left, right) => left.employeeNumber.localeCompare(right.employeeNumber) || left.id - right.id);
-    const paginated = paginateItems(rows, page, pageSize);
+    const sortedRows = sortRowsByNameOrEmpNo(
+      rows,
+      readNameEmpNoSort(request.query),
+      (row) => row.name ?? '',
+      (row) => row.employeeNumber ?? '',
+    );
+    const paginated = paginateItems(sortedRows, page, pageSize);
     return {
       items: paginated.items,
       sourceFiles: inputSourceFiles,
@@ -2590,23 +2822,9 @@ async function registerRoutes() {
       ESOP_PAGE_WORKFLOW_CONFIGS['transfer-plan'].sources,
     );
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
-    const overrideRows = await db.query<Record<string, unknown>>(
-      'select * from transfer_plan_periods order by sort_order, id',
-    );
-    const overridesByPeriod = new Map(overrideRows.map((row) => [String(row.period ?? ''), toTransferPlanPeriod(row as never)]));
     const baseItems = transferPlanFromWorkflowRows(artifact?.rows ?? [], artifact?.fileId ?? null);
     const detailCount = baseItems[0]?.detailCount ?? 0;
-    const items = baseItems.map(({ detailCount: _detailCount, ...item }) => {
-      const override = overridesByPeriod.get(item.period);
-      if (!override) return item;
-      return {
-        ...item,
-        id: override.id,
-        cancelledQuantity: override.cancelledQuantity,
-        transferToFutu: item.inTotal + override.cancelledQuantity,
-        manuallyEdited: override.manuallyEdited,
-      };
-    });
+    const items = baseItems.map(({ detailCount: _detailCount, ...item }) => item);
     const sourceFileId = items[0]?.sourceFileId ?? null;
     const totals = items.reduce(
       (result, item) => ({
@@ -2630,6 +2848,36 @@ async function registerRoutes() {
       items,
       totals,
     };
+  });
+
+  app.post('/api/transfer-plan/edits', async (request, reply) => {
+    const body = transferPlanEditBodySchema.parse(request.body ?? {});
+    const artifact = await readLatestWorkflowDataFrameArtifact({
+      workflowCode: 'esop-transfer-to-futu-sync',
+      taskId: 'persist_transfer_plan_file',
+      fallbackSheetName: '2025 BC Subplan Transfer',
+    });
+    if (!artifact) throw notFound('Transfer Plan result file not found');
+
+    const buffer = transferPlanEditedWorkbookBuffer(artifact.rows, body.edits);
+    const saved = await saveProductWorkbook({
+      originalName: '2025 BC Subplan Transfer.xlsx',
+      buffer,
+      uploadedBy: `Transfer Plan Edit · ${updatedByFromRequest(request as RequestWithAuth)}`,
+      folderPrefix: inputStorageFolderPrefix('transfer-plan'),
+    });
+    const run = await startEsopPageWorkflow(
+      db,
+      workflowRunStore,
+      workflowRunExecutor,
+      'transfer-plan',
+      { transfer_plan: { fileId: Number(saved.file.id) } },
+    );
+
+    return reply.code(201).send({
+      file: toProductFile(saved.file),
+      ...workflowRunToExecutionResult(run),
+    });
   });
 
   app.patch('/api/transfer-plan/:id', async (request) => {
@@ -3084,35 +3332,61 @@ async function registerRoutes() {
 
   app.get('/api/fixed-values', async () => {
     const rows = await db.query<Record<string, unknown>>(
-      `select *
+      `select distinct on (key) *
          from global_parameters
         where key = any($1::text[])
-        order by array_position($1::text[], key), effective_from desc, id asc`,
+        order by key, updated_at desc, id desc`,
       [[...fixedValuePageKeyOrder]],
     );
-    return { items: rows.map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0])) };
+    const order: Record<string, number> = Object.fromEntries(fixedValuePageKeyOrder.map((key, index) => [key, index]));
+    const items = rows
+      .map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0]))
+      .sort((left, right) => {
+        const leftRank = order[left.key] ?? 2147483647;
+        const rightRank = order[right.key] ?? 2147483647;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        const updatedDiff = Date.parse(toIsoTimestamp(right.updatedAt)) - Date.parse(toIsoTimestamp(left.updatedAt));
+        if (updatedDiff !== 0) return updatedDiff;
+        return left.key.localeCompare(right.key);
+      });
+    return { items };
   });
 
   app.get('/api/five-percent-holders/fixed-values', async () => {
     const rows = await db.query<Record<string, unknown>>(
-      `select *
+      `select distinct on (key) *
          from global_parameters
         where key = any($1::text[])
-        order by array_position($1::text[], key), effective_from desc, id asc`,
+        order by key, updated_at desc, id desc`,
       [[...fivePercentHolderGlobalParameterOrder]],
     );
-    return { items: rows.map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0])) };
+    const order: Record<string, number> = Object.fromEntries(fivePercentHolderGlobalParameterOrder.map((key, index) => [key, index]));
+    const items = rows
+      .map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0]))
+      .sort((left, right) => {
+        const leftRank = order[left.key] ?? 2147483647;
+        const rightRank = order[right.key] ?? 2147483647;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        const updatedDiff = Date.parse(toIsoTimestamp(right.updatedAt)) - Date.parse(toIsoTimestamp(left.updatedAt));
+        if (updatedDiff !== 0) return updatedDiff;
+        return left.key.localeCompare(right.key);
+      });
+    return { items };
   });
 
   app.get('/api/global-parameters', async () => {
     const rows = await db.query<Record<string, unknown>>(
-      `select *
+      `select distinct on (key) *
          from global_parameters
-        where key <> all($2::text[])
-        order by coalesce(array_position($1::text[], key), 2147483647), effective_from desc, id asc`,
-      [[...fixedValuePageKeyOrder], fivePercentHolderGlobalParameterKeys],
+        where key <> all($1::text[])
+        order by key, updated_at desc, id desc`,
+      [fivePercentHolderGlobalParameterKeys],
     );
-    return { items: rows.map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0])) };
+    const order: Record<string, number> = Object.fromEntries(fixedValuePageKeyOrder.map((key, index) => [key, index]));
+    const items = rows
+      .map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0]))
+      .sort((left, right) => (order[left.key] ?? 2147483647) - (order[right.key] ?? 2147483647) || left.key.localeCompare(right.key));
+    return { items };
   });
 
   app.post('/api/global-parameters', async (request, reply) => {
@@ -3123,15 +3397,17 @@ async function registerRoutes() {
     }
     try {
       const row = await db.queryOne<Record<string, unknown>>(
-        `insert into global_parameters (key, label, value, effective_from, editable, updated_by, updated_at)
-         values ($1, $2, $3, $4, true, $5, current_timestamp)
+        `with stamp as (select clock_timestamp() as value)
+         insert into global_parameters (key, label, value, effective_from, editable, updated_by, updated_at)
+         select $1, $2, $3, stamp.value::text, true, $4, stamp.value
+           from stamp
          returning *`,
-        [body.key, body.label, body.value, body.effectiveFrom, body.updatedBy],
+        [body.key, body.label, body.value, updatedByFromRequest(request as typeof request & RequestWithAuth)],
       );
       return reply.code(201).send(toFixedValue(row as Parameters<typeof toFixedValue>[0]));
     } catch (error) {
       if (isUniqueConstraintViolation(error)) {
-        return reply.code(409).send({ error: '相同 Key 和 Effective From 的参数已存在' });
+        return reply.code(409).send({ error: '相同 Key 的参数创建时间冲突，请重试' });
       }
       throw error;
     }
@@ -3140,17 +3416,18 @@ async function registerRoutes() {
   app.patch('/api/global-parameters/:id', async (request, reply) => {
     if (!requireAdminUser(request as typeof request & RequestWithAuth, reply)) return;
     const { id } = userIdParamSchema.parse(request.params);
-    const body = fixedValuePatchSchema.parse(request.body ?? {});
+    const body = globalParameterPatchSchema.parse(request.body ?? {});
     const row = await db.queryOne<Record<string, unknown>>(
       `update global_parameters
-          set value = $1,
-              updated_by = $2,
+          set label = coalesce($1, label),
+              value = $2,
+              updated_by = $3,
               updated_at = current_timestamp
-        where id = $3
+        where id = $4
           and editable = true
-          and key <> all($4::text[])
-        returning *`,
-      [body.value, body.updatedBy, id, fivePercentHolderGlobalParameterKeys],
+          and key <> all($5::text[])
+          returning *`,
+      [body.label ?? null, body.value, updatedByFromRequest(request as typeof request & RequestWithAuth), id, fivePercentHolderGlobalParameterKeys],
     );
     if (!row) throw notFound('Global Parameter not found or not editable');
     return toFixedValue(row as Parameters<typeof toFixedValue>[0]);
@@ -3174,21 +3451,16 @@ async function registerRoutes() {
   app.post('/api/fixed-values', async (request) => {
     const body = fixedValueUpsertSchema.parse(request.body);
     const row = await db.queryOne<Record<string, unknown>>(
-      `insert into global_parameters (key, label, value, effective_from, editable, updated_by, updated_at)
-       values ($1, $2, $3, $4, true, $5, current_timestamp)
-       on conflict (key, effective_from) do update set
-         label = excluded.label,
-         value = excluded.value,
-         editable = true,
-         updated_by = excluded.updated_by,
-         updated_at = current_timestamp
+      `with stamp as (select clock_timestamp() as value)
+       insert into global_parameters (key, label, value, effective_from, editable, updated_by, updated_at)
+       select $1, $2, $3, stamp.value::text, true, $4, stamp.value
+         from stamp
        returning *`,
       [
         body.key,
         body.label ?? fixedValueLabels[body.key] ?? body.key,
         body.value,
-        body.effectiveFrom,
-        body.updatedBy,
+        updatedByFromRequest(request as typeof request & RequestWithAuth),
       ],
     );
     return toFixedValue(row as Parameters<typeof toFixedValue>[0]);
@@ -3204,7 +3476,7 @@ async function registerRoutes() {
            updated_at = current_timestamp
        where id = $3 and editable = true
        returning *`,
-      [body.value, body.updatedBy, Number(id)],
+      [body.value, updatedByFromRequest(request as typeof request & RequestWithAuth), Number(id)],
     );
     if (!row) throw notFound('Fixed value not found or not editable');
     return toFixedValue(row as Parameters<typeof toFixedValue>[0]);
