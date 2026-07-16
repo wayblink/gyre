@@ -41,16 +41,26 @@ export type SummaryCapitalizationSource = {
   sheetName: string | null;
 };
 
+export type UserRole = 'admin' | 'user';
+
 export type AuthenticatedUser = {
   id: number;
   username: string;
   displayName: string;
-  role: string;
+  role: UserRole | string;
   email: string | null;
   phone: string | null;
 };
 
 export type AccountProfile = AuthenticatedUser;
+
+export type ManagedUser = AuthenticatedUser & {
+  role: UserRole;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type AuthStatus = {
   authenticated: boolean;
@@ -192,6 +202,11 @@ export type TransferPlanPeriod = {
 export type TransferPlanResponse = {
   sourceFileId: number | null;
   sourceFileName: string;
+  sourceFiles?: string[];
+  workflowSourceBindings?: WorkflowPageSourceBinding[];
+  workflowResultFiles?: WorkflowResultFileBinding[];
+  resultFileName?: string | null;
+  resultFiles?: string[];
   detailCount: number;
   items: TransferPlanPeriod[];
   totals: {
@@ -204,8 +219,6 @@ export type TransferPlanResponse = {
 
 export type ShareworksGrant = {
   id: number;
-  costCenter: string | null;
-  participantType: string | null;
   employeeNumber: string | null;
   lastName: string | null;
   firstName: string | null;
@@ -270,12 +283,29 @@ export type Employee = {
   employeeNumber: string;
   employeeName: string;
   userId: string | null;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
   tags: string[];
   grantCount: number;
   source: EmployeeSource;
   hasFileEvidence: boolean;
   active: boolean;
   linkedIdentities: LinkedEmployeeIdentity[];
+};
+
+export type EmployeeLabelRef = {
+  id: number;
+  name: string;
+  color: string;
+};
+
+export type EmployeeLabel = {
+  id: number;
+  name: string;
+  color: string;
+  employeeCount: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type EmployeeMapping = {
@@ -310,6 +340,11 @@ export type PlanSummaryItem = {
 };
 
 export type PlanSummaryResponse = {
+  sourceFiles?: string[];
+  workflowSourceBindings?: WorkflowPageSourceBinding[];
+  workflowResultFiles?: WorkflowResultFileBinding[];
+  resultFileName?: string | null;
+  resultFiles?: string[];
   items: PlanSummaryItem[];
   totals: {
     planCount: number;
@@ -346,6 +381,11 @@ export type FivePercentHolder = {
 };
 
 export type FivePercentHoldersResponse = {
+  sourceFiles?: string[];
+  workflowSourceBindings?: WorkflowPageSourceBinding[];
+  workflowResultFiles?: WorkflowResultFileBinding[];
+  resultFileName?: string | null;
+  resultFiles?: string[];
   summary: {
     asOfDate: string | null;
     fullyDiluted: number | null;
@@ -364,7 +404,9 @@ export type LinkDetail = {
 export type ProductFileRecord = {
   id: number;
   originalName: string;
+  displayName: string;
   storedName: string;
+  displayPath: string;
   fileExt: string;
   fileSizeBytes: number;
   mimeType: string;
@@ -504,10 +546,35 @@ export type WorkflowInputGuard = {
 export type PaginatedResult<T> = {
   items?: T[];
   holdings?: T[];
+  sourceFiles?: string[];
+  workflowSourceBindings?: WorkflowPageSourceBinding[];
+  workflowResultFiles?: WorkflowResultFileBinding[];
+  resultFileName?: string | null;
+  resultFiles?: string[];
   total: number;
   page: number;
   pageSize: number;
   totalPages: number;
+};
+
+export type WorkflowPageSourceBinding = {
+  sourceKey: string;
+  label: string;
+  fileId: number | null;
+  fileName: string | null;
+};
+
+export type WorkflowResultFileBinding = {
+  fileId: number;
+  fileName: string;
+};
+
+export type WorkflowPageConfig = {
+  pageKey: string;
+  workflowCode: string;
+  workflowName: string;
+  description: string;
+  sources: Array<{ sourceKey: string; label: string }>;
 };
 
 export type WorkflowOperatorSlot = {

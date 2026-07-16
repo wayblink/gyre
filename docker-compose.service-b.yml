@@ -16,7 +16,7 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: captable-files
       AUTH_DISABLED: "true"
-      WORKFLOW_SEED_ON_INIT: "false"
+      WORKFLOW_SEED_ON_INIT: "true"
       DEMO_SEED_ON_INIT: "false"
     ports:
       - "127.0.0.1:60638:60628"

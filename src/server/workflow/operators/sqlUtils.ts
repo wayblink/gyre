@@ -12,7 +12,55 @@ const BLOCKED_SQL_PATTERN =
   /\b(attach|alter|create|delete|detach|drop|insert|into|merge|replace|truncate|update|upsert|use)\b/i;
 
 function createIsolatedSqlDatabase(): AlaSqlDatabase {
+  alasql.fn.wf_month_key = workflowMonthKey;
+  alasql.fn.wf_eom_label = workflowEomLabel;
   return new alasql.Database() as AlaSqlDatabase;
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function dateToMonthKey(date: Date): string | null {
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}`;
+}
+
+function dateToEomLabel(date: Date): string | null {
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getUTCFullYear()}/${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
+}
+
+function dateFromExcelSerial(serial: number): Date | null {
+  if (!Number.isFinite(serial) || serial < 1) return null;
+  return new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86_400_000);
+}
+
+function dateFromWorkflowValue(value: unknown): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'number') return dateFromExcelSerial(value);
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (Number.isFinite(numeric) && numeric > 10_000) return dateFromExcelSerial(numeric);
+  const normalized = text.replace(/\//g, '-');
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function workflowMonthKey(value: unknown): string | null {
+  const date = dateFromWorkflowValue(value);
+  return date ? dateToMonthKey(date) : null;
+}
+
+export function workflowEomLabel(value: unknown): string | null {
+  const month = String(value ?? '').trim();
+  const match = month.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthNumber = Number(match[2]);
+  const eom = new Date(Date.UTC(year, monthNumber, 0));
+  return dateToEomLabel(eom);
 }
 
 function assertSafeReadOnlySql(sql: string) {

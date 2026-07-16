@@ -20,6 +20,7 @@ type MonthlyRunInstanceRow = Record<string, unknown>;
 const SOURCE_COLUMN_BY_KEY: Record<string, string> = {
   control_book: 'control_book_file_id',
   summary_source: 'summary_source_file_id',
+  previous_capitalization_summary: 'previous_capitalization_summary_file_id',
   futu_exercises: 'futu_exercises_file_id',
   option_plans: 'option_plans_file_id',
 };
@@ -53,6 +54,9 @@ export function monthlyRunInstanceToRecord(row: MonthlyRunInstanceRow): MonthlyR
   const sourceFileNameByKey = {
     control_book: row.control_book_file_name ? String(row.control_book_file_name) : null,
     summary_source: row.summary_source_file_name ? String(row.summary_source_file_name) : null,
+    previous_capitalization_summary: row.previous_capitalization_summary_file_name
+      ? String(row.previous_capitalization_summary_file_name)
+      : null,
     futu_exercises: row.futu_exercises_file_name ? String(row.futu_exercises_file_name) : null,
     option_plans: row.option_plans_file_name ? String(row.option_plans_file_name) : null,
   };
@@ -97,12 +101,14 @@ export async function getMonthlyRunInstance(db: MonthlyRunDb, monthKey: string):
     `select i.*,
             control_book.original_name as control_book_file_name,
             summary_source.original_name as summary_source_file_name,
+            previous_capitalization_summary.original_name as previous_capitalization_summary_file_name,
             futu_exercises.original_name as futu_exercises_file_name,
             option_plans.original_name as option_plans_file_name,
             output_file.original_name as latest_output_file_name
        from monthly_run_instances i
        left join product_files control_book on control_book.id = i.control_book_file_id
        left join product_files summary_source on summary_source.id = i.summary_source_file_id
+       left join product_files previous_capitalization_summary on previous_capitalization_summary.id = i.previous_capitalization_summary_file_id
        left join product_files futu_exercises on futu_exercises.id = i.futu_exercises_file_id
        left join product_files option_plans on option_plans.id = i.option_plans_file_id
        left join product_files output_file on output_file.id = i.latest_output_file_id
@@ -120,12 +126,14 @@ export async function listMonthlyRunInstances(
     `select i.*,
             control_book.original_name as control_book_file_name,
             summary_source.original_name as summary_source_file_name,
+            previous_capitalization_summary.original_name as previous_capitalization_summary_file_name,
             futu_exercises.original_name as futu_exercises_file_name,
             option_plans.original_name as option_plans_file_name,
             output_file.original_name as latest_output_file_name
        from monthly_run_instances i
        left join product_files control_book on control_book.id = i.control_book_file_id
        left join product_files summary_source on summary_source.id = i.summary_source_file_id
+       left join product_files previous_capitalization_summary on previous_capitalization_summary.id = i.previous_capitalization_summary_file_id
        left join product_files futu_exercises on futu_exercises.id = i.futu_exercises_file_id
        left join product_files option_plans on option_plans.id = i.option_plans_file_id
        left join product_files output_file on output_file.id = i.latest_output_file_id
@@ -223,10 +231,11 @@ export async function upsertMonthlyRunInstance(
         set operator = $2,
             control_book_file_id = $3,
             summary_source_file_id = $4,
-            futu_exercises_file_id = $5,
-            option_plans_file_id = $6,
-            options_outstanding_cullgen = $7,
-            options_available_cullgen = $8,
+            previous_capitalization_summary_file_id = $5,
+            futu_exercises_file_id = $6,
+            option_plans_file_id = $7,
+            options_outstanding_cullgen = $8,
+            options_available_cullgen = $9,
             updated_at = current_timestamp
       where month_key = $1
       returning *`,
@@ -235,6 +244,7 @@ export async function upsertMonthlyRunInstance(
       params.operator ?? existing.operator,
       nextSourceFileIds.control_book,
       nextSourceFileIds.summary_source,
+      nextSourceFileIds.previous_capitalization_summary,
       nextSourceFileIds.futu_exercises,
       nextSourceFileIds.option_plans,
       nextFixedValues.optionsOutstandingCullgen,
@@ -256,6 +266,30 @@ export function monthlyRunInstanceToRuntimeParameters(instance: MonthlyRunInstan
     ),
     fixedValues: instance.fixedValues,
   });
+}
+
+const MONTHLY_RUNTIME_FIXED_VALUE_KEYS = {
+  optionsOutstandingCullgen: 'options_outstanding_cullgen',
+  optionsAvailableCullgen: 'options_available_cullgen',
+} as const;
+
+export async function loadMonthlyRunRuntimeFixedValues(db: MonthlyRunDb): Promise<Record<string, number>> {
+  const rows = await db.query<Record<string, unknown>>(
+    `select distinct on (key) *
+       from global_parameters
+      where key = any($1::text[])
+      order by key, effective_from desc, updated_at desc, id desc`,
+    [[MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsOutstandingCullgen, MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsAvailableCullgen]],
+  );
+  const byKey = new Map(rows.map((row) => [String(row.key), Number(row.value)]));
+  const missingKeys = Object.values(MONTHLY_RUNTIME_FIXED_VALUE_KEYS).filter((key) => !Number.isFinite(byKey.get(key)));
+  if (missingKeys.length) {
+    throw new Error(`Missing monthly runtime fixed values: ${missingKeys.join(', ')}`);
+  }
+  return {
+    optionsOutstandingCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsOutstandingCullgen)),
+    optionsAvailableCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsAvailableCullgen)),
+  };
 }
 
 export async function updateMonthlyRunInstanceExecutionState(

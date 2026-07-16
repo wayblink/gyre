@@ -36,6 +36,29 @@ function withPersistedSheetName(dataframe: WorkflowDataFrame, sheetName: string)
   };
 }
 
+function timestampVersionTag(date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join('');
+}
+
+function isOutputFolder(folderPrefix: unknown): boolean {
+  const normalized = String(folderPrefix ?? '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  return normalized === 'output' || normalized.startsWith('output/');
+}
+
+function withOutputFileVersion(fileName: string, folderPrefix: unknown): string {
+  if (!isOutputFolder(folderPrefix)) return fileName;
+  if (/\.v\d{14}\.[^.]+$/i.test(fileName)) return fileName;
+  return fileName.replace(/(\.[^.]+)$/i, `.v${timestampVersionTag()}$1`);
+}
+
 export const dataframePersistExcelOperator = defineWorkflowOperator({
   code: 'dataframe.persist.excel',
   name: 'Persist DataFrame To Excel',
@@ -61,6 +84,7 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
   paramsSchema: {
     fileName: { type: 'string', label: '文件名', required: true, placeholder: 'workflow-output.xlsx', default: 'workflow-output.xlsx' },
     fileNamePrefix: { type: 'string', label: '文件名前缀', required: false, placeholder: '2026-05', default: '' },
+    folderPrefix: { type: 'string', label: '输出目录', required: false, placeholder: 'output/captable', default: '' },
     sheetName: { type: 'string', label: 'Sheet 名称', required: false, placeholder: 'Sheet1', default: 'Sheet1' },
     uploadedBy: { type: 'string', label: '上传人', required: false, placeholder: 'Workflow', default: 'Workflow' },
   },
@@ -90,7 +114,8 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
     const { task, runtime } = context;
     const dataframe = await requireInputDataFrame(context, 'input1');
     const baseFileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
-    const fileName = prefixPersistExcelFileName(baseFileName, task.params.fileNamePrefix);
+    const folderPrefix = String(task.params.folderPrefix ?? '').trim() || undefined;
+    const fileName = withOutputFileVersion(prefixPersistExcelFileName(baseFileName, task.params.fileNamePrefix), folderPrefix);
     const sheetName = String(task.params.sheetName ?? '').trim() || dataframe.range.sheetName || 'Sheet1';
     const uploadedBy = String(task.params.uploadedBy ?? '').trim() || 'Workflow';
     const buffer = runtime.dataFrameToWorkbookBuffer(dataframe, { sheetName });
@@ -100,6 +125,7 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
       originalName: fileName,
       buffer,
       uploadedBy,
+      folderPrefix,
     });
 
     return {

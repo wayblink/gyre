@@ -948,7 +948,11 @@ async function seedParametersAndDecisions(db: DbClient, firstPlanId: number | un
   ];
   for (const [key, label, value] of parameters) {
     await db.execute(
-      'insert into global_parameters (key, label, value, effective_from, editable) values ($1, $2, $3, $4, true)',
+      `insert into global_parameters (key, label, value, effective_from, editable)
+       values ($1, $2, $3, $4, true)
+       on conflict (key, effective_from) do update set
+         label = excluded.label,
+         editable = true`,
       [key, label, value, '2026-05'],
     );
   }

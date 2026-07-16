@@ -157,7 +157,7 @@ function buildArtifactInput(task: WorkflowTask, stepId: number, result: Workflow
       ...base,
       artifactType: 'file' as const,
       fileId: result.file.id,
-      name: result.file.originalName,
+      name: result.file.displayName || result.file.originalName,
       metadata: {
         file: result.file,
         rows: result.dataFrame.rows.length,

@@ -21,14 +21,15 @@ export function normalizeEmployeeSourceFilter(raw: unknown): '' | EmployeeSource
 
 /**
  * Assemble a Shareworks `last / first / middle` triple into a single display name.
- * Order and filtering mirror the Merge convention in esopPages.ts.
+ * Shareworks stores name parts separately; display and merged grant matching use
+ * First Name + Middle Name + Last Name.
  */
 export function assembleShareworksName(
   last: string | null | undefined,
   first: string | null | undefined,
   middle: string | null | undefined,
 ): string {
-  return [last, first, middle]
+  return [first, middle, last]
     .map((part) => (part == null ? '' : String(part).trim()))
     .filter(Boolean)
     .join(' ');

@@ -1,5 +1,4 @@
-import type { WorkflowDataFrame } from '../../shared/types.js';
-import type { AppDb, DbClient } from '../db.js';
+import type { DbClient } from '../db.js';
 
 export type FivePercentHolderRow = {
   rowType: 'holder' | 'total';
@@ -17,15 +16,6 @@ export type FivePercentHoldersWorkbook = {
   fullyDiluted: number | null;
   commonStockOs: number | null;
   holders: FivePercentHolderRow[];
-};
-
-export type FivePercentHoldersPersistInput = {
-  dataframe: WorkflowDataFrame;
-  sourceFileId: number;
-};
-
-export type FivePercentHoldersPersistResult = {
-  rowsWritten: number;
 };
 
 function asText(value: unknown): string | null {
@@ -52,7 +42,77 @@ function parsePercent(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed / 100 : null;
 }
 
+function normalizeHeader(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function parseStructuredFivePercentHoldersGrid(grid: unknown[][]): FivePercentHoldersWorkbook | null {
+  const rawHeaders = grid[0] ?? [];
+  const headers = rawHeaders.map(normalizeHeader);
+  const columnIndex = (candidates: string[]): number => {
+    const normalizedCandidates = candidates.map(normalizeHeader);
+    return headers.findIndex((header) => normalizedCandidates.includes(header));
+  };
+  const columnIndexWhere = (predicate: (rawHeader: string, normalizedHeader: string) => boolean): number =>
+    rawHeaders.findIndex((header, index) => predicate(String(header ?? ''), headers[index] ?? ''));
+
+  const nameIndex = columnIndex(['Name', 'Shareholder']);
+  const commonStockIndex = columnIndex(['Common Stock']);
+  const totalCsesIndex = columnIndex(['Total CSEs']);
+  if (nameIndex < 0 || commonStockIndex < 0 || totalCsesIndex < 0) return null;
+
+  const rowTypeIndex = columnIndex(['Row Type']);
+  const pctOfClassIndex = columnIndex(['% of Class', 'Pct Of Class']);
+  const pctFullyDilutedIndex = columnIndex(['% Fully Diluted', 'Pct Fully Diluted']);
+  const sc13Index = columnIndex(['SC13 Filing']);
+  const noteIndex = columnIndex(['Note']);
+  const asOfDateIndex = columnIndex(['As Of Date']);
+  const fullyDilutedIndex = columnIndexWhere((rawHeader, normalizedHeader) =>
+    normalizedHeader === 'fullydiluted' && !rawHeader.includes('%'));
+  const commonStockOsIndex = columnIndex(['Common Stock OS']);
+
+  const holders: FivePercentHolderRow[] = [];
+  let asOfDate: string | null = null;
+  let fullyDiluted: number | null = null;
+  let commonStockOs: number | null = null;
+
+  for (let i = 1; i < grid.length; i += 1) {
+    const row = grid[i] ?? [];
+    const name = asText(row[nameIndex]);
+    if (!name) continue;
+    const rowTypeText = rowTypeIndex >= 0 ? asText(row[rowTypeIndex])?.toLowerCase() : null;
+    const commonStock = parseGroupedNumber(row[commonStockIndex]);
+    const totalCses = parseGroupedNumber(row[totalCsesIndex]);
+    const rowAsOfDate = asOfDateIndex >= 0 ? asText(row[asOfDateIndex]) : null;
+    const rowFullyDiluted = fullyDilutedIndex >= 0 ? parseGroupedNumber(row[fullyDilutedIndex]) : null;
+    const rowCommonStockOs = commonStockOsIndex >= 0 ? parseGroupedNumber(row[commonStockOsIndex]) : null;
+
+    asOfDate ??= rowAsOfDate;
+    fullyDiluted ??= rowFullyDiluted;
+    commonStockOs ??= rowCommonStockOs;
+
+    holders.push({
+      rowType: rowTypeText === 'total' || name.toLowerCase().startsWith('total') ? 'total' : 'holder',
+      name,
+      commonStock,
+      totalCses,
+      pctOfClass: pctOfClassIndex >= 0 ? parsePercent(row[pctOfClassIndex]) : null,
+      pctFullyDiluted: pctFullyDilutedIndex >= 0 ? parsePercent(row[pctFullyDilutedIndex]) : null,
+      sc13Filing: sc13Index >= 0 ? asText(row[sc13Index]) : null,
+      note: noteIndex >= 0 ? asText(row[noteIndex]) : null,
+    });
+  }
+
+  return { asOfDate, fullyDiluted, commonStockOs, holders };
+}
+
 export function parseFivePercentHoldersGrid(grid: unknown[][]): FivePercentHoldersWorkbook {
+  const structured = parseStructuredFivePercentHoldersGrid(grid);
+  if (structured) return structured;
+
   const cell = (row: number, col: number): string | null => asText((grid[row] ?? [])[col]);
   const findRow = (col: number, needle: string): number =>
     grid.findIndex((row) => (asText((row ?? [])[col]) ?? '').toLowerCase().includes(needle.toLowerCase()));
@@ -93,10 +153,6 @@ export function parseFivePercentHoldersGrid(grid: unknown[][]): FivePercentHolde
   };
 }
 
-export function parseFivePercentHoldersDataFrame(dataframe: WorkflowDataFrame): FivePercentHoldersWorkbook {
-  return parseFivePercentHoldersGrid(dataframe.matrix);
-}
-
 export async function replaceFivePercentHolders(
   db: DbClient,
   data: FivePercentHoldersWorkbook,
@@ -135,14 +191,4 @@ export async function replaceFivePercentHolders(
     count += 1;
   }
   return count;
-}
-
-export async function persistFivePercentHolders(
-  db: AppDb,
-  input: FivePercentHoldersPersistInput,
-): Promise<FivePercentHoldersPersistResult> {
-  const data = parseFivePercentHoldersDataFrame(input.dataframe);
-  if (data.holders.length === 0) throw new Error('5% Holders workflow did not extract any holder rows');
-  const rowsWritten = await db.transaction((client) => replaceFivePercentHolders(client, data, input.sourceFileId));
-  return { rowsWritten };
 }

@@ -28,6 +28,15 @@ export const MONTHLY_RUN_SOURCE_DEFINITIONS: MonthlyRunSourceDefinition[] = [
     required: true,
   },
   {
+    sourceGroup: 'shareworks',
+    sourceKey: 'previous_capitalization_summary',
+    taskId: 'extract_previous_capitalization_summary',
+    label: 'Previous Capitalization Summary',
+    description: '可选：用于校验当前 EQ Control Book 算出的 Last Month 是否等于上月股权结构汇总表的 EOM。',
+    defaultSheetName: 'Capitalization Summary',
+    required: false,
+  },
+  {
     sourceGroup: 'futu',
     sourceKey: 'futu_exercises',
     taskId: 'extract_futu_exercises',
@@ -77,6 +86,7 @@ const MONTHLY_RUNTIME_FILE_REF_DEFAULTS = {
   futu_exercises: { provider: 'product-files', id: 54 },
   option_plans: { provider: 'product-files', id: 55 },
   summary_source: { provider: 'product-files', id: 56 },
+  previous_capitalization_summary: {},
 } as const;
 
 export const MONTHLY_RUNTIME_PARAMS_SCHEMA: WorkflowRuntimeParametersSchema = {
@@ -88,11 +98,12 @@ export const MONTHLY_RUNTIME_PARAMS_SCHEMA: WorkflowRuntimeParametersSchema = {
       futu_exercises: { type: 'object', label: 'Futu exercises workbook' },
       option_plans: { type: 'object', label: 'Option plans workbook' },
       summary_source: { type: 'object', label: 'Detailed Cap Table workbook' },
+      previous_capitalization_summary: { type: 'object', label: 'Previous capitalization summary workbook' },
     },
   },
   fixedValues: {
     type: 'object',
-    label: 'Fixed Values',
+    label: 'Global Parameters',
     properties: {
       optionsOutstandingCullgen: {
         type: 'number',
@@ -173,6 +184,12 @@ const summarySourceRuntimeFileRef = {
   $label: 'Detailed Cap Table workbook',
   $default: MONTHLY_RUNTIME_FILE_REF_DEFAULTS.summary_source,
 };
+const previousCapitalizationSummaryRuntimeFileRef = {
+  $fromRuntime: 'fileRefs.previous_capitalization_summary',
+  $type: 'object',
+  $label: 'Previous capitalization summary workbook',
+  $default: MONTHLY_RUNTIME_FILE_REF_DEFAULTS.previous_capitalization_summary,
+};
 
 export const MONTHLY_SUMMARY_TOTAL_FULLY_DILUTED = 133_527_448;
 export const MONTHLY_SUMMARY_CONTROL_BOOK_TOTAL = 111_488_849;
@@ -184,6 +201,8 @@ export const MONTHLY_SUMMARY_COLUMNS = [
   'Common Shares Equivalent',
   '% of fully diluted',
 ];
+
+export const MONTHLY_RECONCILIATION_COLUMNS = ['Item', 'As of', 'Last Month', 'New Shares', 'EOM Balance'];
 
 export const buildMonthlyCapitalizationSummarySql = `
 select '' as Number, 'Issued Shares -Equity Asset Class' as Description,
@@ -279,6 +298,24 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
     {
       x: 48,
       y: 404,
+      id: 'extract_previous_capitalization_summary',
+      name: 'Extract Previous Capitalization Summary',
+      inputs: {},
+      params: {
+        range: 'A1:E30',
+        fileRef: previousCapitalizationSummaryRuntimeFileRef,
+        headerRow: 1,
+        dropTrailingEmptyRows: true,
+        sheetName: 'Capitalization Summary',
+      },
+      dependsOn: [],
+      description: '可选抽取上一个月的 Capitalization Summary；未配置文件时输出空 dataframe，不阻断 workflow。',
+      operatorCode: 'sheet.optional-range.extract',
+      operatorVersion: '1.0.0',
+    },
+    {
+      x: 48,
+      y: 582,
       id: 'extract_futu_exercises',
       name: 'Extract Futu BCI Exercises',
       inputs: {},
@@ -295,7 +332,7 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
     },
     {
       x: 48,
-      y: 582,
+      y: 760,
       id: 'extract_option_plans',
       name: 'Extract Option Plans Sections',
       inputs: {},
@@ -346,11 +383,38 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
         },
       },
       params: {
-        sql: "select\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and [As of Date] > 0 order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  sum(case when [Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.') then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}",
+        sql: "select\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) < {constants.workflowMonth} order by __workflow_row_number desc limit 1) as last_month_eq_balance_os,\n  (select wf_month_key([As of Date]) from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null order by __workflow_row_number desc limit 1) as last_control_book_month,\n  sum(case when [Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.') then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}",
         tableBindings: [{ inputSlot: 'control_book', tableName: 'control_book' }],
+        constants: {
+          workflowMonth: {
+            $fromRuntime: 'month',
+            $type: 'string',
+            $label: 'Workflow Month',
+          },
+        },
       },
       dependsOn: [],
       description: '计算 EOM EQ Balance OS 和 Control Book 口径的 2025 BC Subplan transfer。',
+      operatorCode: 'sql.compute',
+      operatorVersion: '1.0.0',
+    },
+    {
+      x: 416,
+      y: 226,
+      id: 'calc_previous_capitalization_summary_metrics',
+      name: 'Calc Previous Capitalization Summary Metrics',
+      inputs: {
+        previous_summary: {
+          from: 'extract_previous_capitalization_summary',
+          slot: 'dataframe',
+        },
+      },
+      params: {
+        sql: "select\n  count(*) as previous_summary_row_count,\n  max(case when [Description] like 'Asset Class Summary:%' then [Common Shares Equivalent] else null end) as previous_eom_eq_balance_os\nfrom {previous_summary}",
+        tableBindings: [{ inputSlot: 'previous_summary', tableName: 'previous_summary' }],
+      },
+      dependsOn: [],
+      description: '从可选上月 Capitalization Summary 中读取上月 EOM EQ Balance OS；未传文件时 row_count=0。',
       operatorCode: 'sql.compute',
       operatorVersion: '1.0.0',
     },
@@ -581,6 +645,111 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
     {
       x: 1152,
       y: 48,
+      id: 'assert_control_book_workflow_month',
+      name: 'Assert EQ Control Book Workflow Month',
+      inputs: {
+        control_metrics: {
+          from: 'calc_control_book_metrics',
+          slot: 'dataframe',
+        },
+      },
+      params: {
+        sql: 'select case when last_control_book_month = {constants.workflowMonth} then 1 else 0 end as actual from {control_metrics}',
+        operator: '=',
+        expectedValue: 1,
+        tableBindings: [{ inputSlot: 'control_metrics', tableName: 'control_metrics' }],
+        constants: {
+          workflowMonth: {
+            $fromRuntime: 'month',
+            $type: 'string',
+            $label: 'Workflow Month',
+          },
+        },
+        failureMessage: 'EQ Control Book input file error: last row month does not match workflow month',
+        failureStrategy: 'block',
+      },
+      dependsOn: [],
+      description: '阻断错月输入：EQ Control Book 最后一条有效 Issued & Outstanding 的 As of Date 必须属于 workflow 月份。',
+      operatorCode: 'dataframe.sql.assert',
+      operatorVersion: '1.0.0',
+    },
+    {
+      x: 1152,
+      y: 226,
+      id: 'assert_previous_summary_last_month',
+      name: 'Assert Previous Summary Last Month',
+      inputs: {
+        control_metrics: {
+          from: 'calc_control_book_metrics',
+          slot: 'dataframe',
+        },
+        previous_summary_metrics: {
+          from: 'calc_previous_capitalization_summary_metrics',
+          slot: 'dataframe',
+        },
+      },
+      params: {
+        sql: 'select case when p.previous_summary_row_count = 0 then 1 when p.previous_eom_eq_balance_os = c.last_month_eq_balance_os then 1 else 0 end as actual from {control_metrics} c, {previous_summary_metrics} p',
+        operator: '=',
+        expectedValue: 1,
+        tableBindings: [
+          { inputSlot: 'control_metrics', tableName: 'control_metrics' },
+          { inputSlot: 'previous_summary_metrics', tableName: 'previous_summary_metrics' },
+        ],
+        failureMessage: 'Previous Capitalization Summary EOM does not match EQ Control Book Last Month',
+        failureStrategy: 'block',
+      },
+      dependsOn: ['assert_control_book_workflow_month'],
+      description: '若传入上月股权结构汇总表，则校验其 EOM 等于当前 EQ Control Book 计算出的 Last Month；未传文件时通过。',
+      operatorCode: 'dataframe.sql.assert',
+      operatorVersion: '1.0.0',
+    },
+    {
+      x: 1152,
+      y: 404,
+      id: 'build_shares_os_reconciliation',
+      name: 'Build Shares OS Reconciliation',
+      inputs: {
+        control_metrics: {
+          from: 'calc_control_book_metrics',
+          slot: 'dataframe',
+          guards: [
+            {
+              id: 'guard_assert_last_month_balance_available',
+              name: 'Assert Last Month Balance Available',
+              type: 'dataframe.sql.assert',
+              params: {
+                sql: 'select case when last_month_eq_balance_os is not null then 1 else 0 end as actual from {control_metrics}',
+                operator: '=',
+                expectedValue: 1,
+                tableBindings: [{ inputSlot: 'control_metrics', tableName: 'control_metrics' }],
+                failureMessage: 'EQ Control Book input file error: cannot derive Last Month from rows before workflow month',
+                failureStrategy: 'block',
+              },
+              enabled: true,
+            },
+          ],
+        },
+      },
+      params: {
+        sql: "select\n  'Equity Outstanding as of' as Item,\n  wf_eom_label({constants.workflowMonth}) as [As of],\n  last_month_eq_balance_os as [Last Month],\n  eom_eq_balance_os - last_month_eq_balance_os as [New Shares],\n  eom_eq_balance_os as [EOM Balance]\nfrom {control_metrics}",
+        tableBindings: [{ inputSlot: 'control_metrics', tableName: 'control_metrics' }],
+        constants: {
+          workflowMonth: {
+            $fromRuntime: 'month',
+            $type: 'string',
+            $label: 'Workflow Month',
+          },
+        },
+      },
+      dependsOn: ['assert_control_book_workflow_month', 'assert_previous_summary_last_month'],
+      description: '从 EQ Control Book 单表生成 Shares OS Reconciliation：Last Month 取 workflow 月份之前最后一条 I&O，EOM 取整表最后一条 I&O。',
+      operatorCode: 'sql.compute',
+      operatorVersion: '1.0.0',
+    },
+    {
+      x: 1520,
+      y: 48,
       id: 'build_capitalization_summary',
       name: 'Build Capitalization Summary',
       inputs: {
@@ -750,12 +919,30 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
       operatorVersion: '1.0.0',
     },
     {
-      x: 1520,
+      x: 1888,
       y: 48,
       id: 'persist_capitalization_summary',
       name: 'Persist Capitalization Summary Excel',
       inputs: {
-        input1: {
+        reconciliation: {
+          from: 'build_shares_os_reconciliation',
+          slot: 'dataframe',
+          guards: [
+            {
+              id: 'guard_assert_reconciliation_schema',
+              name: 'Assert Reconciliation Schema',
+              type: 'dataframe.schema.assert',
+              params: {
+                mode: 'contains',
+                failureMessage: 'Assert Shares OS Reconciliation Schema failed',
+                expectedColumns: MONTHLY_RECONCILIATION_COLUMNS.join(', '),
+                failureStrategy: 'block',
+              },
+              enabled: true,
+            },
+          ],
+        },
+        capitalization: {
           from: 'build_capitalization_summary',
           slot: 'dataframe',
           guards: [
@@ -833,12 +1020,16 @@ export function buildMonthlyWorkflowTasks(): WorkflowTask[] {
       params: {
         fileName: 'Capitalization_Table_Summary_View.xlsx',
         fileNamePrefix: { $fromRuntime: 'month' },
-        sheetName: 'Capitalization Summary',
+        folderPrefix: 'output/captable',
+        sheets: [
+          { inputSlot: 'reconciliation', sheetName: 'Shares OS Reconciliation' },
+          { inputSlot: 'capitalization', sheetName: 'Capitalization Summary' },
+        ],
         uploadedBy: 'Workflow',
       },
       dependsOn: [],
       description: '将通过校验后的 Summary View 持久化为 Excel 并写入 Files；百分比列导出为 Excel 百分号格式但保留真实小数值。',
-      operatorCode: 'dataframe.persist.excel',
+      operatorCode: 'workbook.persist.excel',
       operatorVersion: '1.0.0',
     },
   ];

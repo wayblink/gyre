@@ -1,5 +1,4 @@
 import type {
-  MonthlyRunFixedValueDefinition,
   MonthlyRunHistoryRecord,
   MonthlyRunInstanceRecord,
   MonthlyRunInstanceUpsertRequest,
@@ -111,7 +110,6 @@ export function createMonthlyRunPage({
   let files: ProductFileRecord[] = [];
   let monthlyWorkflowCode = '';
   let sourceDefinitions: MonthlyRunSourceDefinition[] = [];
-  let fixedValueDefinitions: MonthlyRunFixedValueDefinition[] = [];
   let currentInstance: MonthlyRunInstanceRecord | null = null;
   let selectedSources: Record<string, MonthlyRunSourceBinding> = {};
   let draftSources: SourceDraftBindings = {};
@@ -123,7 +121,6 @@ export function createMonthlyRunPage({
   const text = {
     selectMonth: { 'zh-CN': '请选择月份', 'en-US': 'Please select a month' },
     codeDefined: { 'zh-CN': '代码定义', 'en-US': 'Code defined' },
-    noFixedDefinitions: { 'zh-CN': '暂无固定参数定义', 'en-US': 'No fixed parameter definitions' },
     noInputDefinitions: { 'zh-CN': '暂无输入定义', 'en-US': 'No input definitions' },
     loadingSourceConfig: { 'zh-CN': '正在加载 source 配置…', 'en-US': 'Loading source configuration…' },
     configureSourcesHint: { 'zh-CN': '请先配置每个 workflow 输入节点需要使用的源文件。', 'en-US': 'Configure the source files required by each workflow input node first.' },
@@ -212,7 +209,6 @@ export function createMonthlyRunPage({
     const data = await api<MonthlyRunSourceConfigResponse>('/api/monthly-runs/source-config');
     monthlyWorkflowCode = data.workflowCode;
     sourceDefinitions = data.sources;
-    fixedValueDefinitions = data.fixedValues;
     ensureSelectedSourceBindings();
     renderSourceInfo();
     renderBusinessDefinedInputConfiguration();
@@ -271,22 +267,8 @@ export function createMonthlyRunPage({
   }
 
   function renderBusinessDefinedInputConfiguration() {
-    el('fixedValueBody').innerHTML = fixedValueDefinitions.length
-      ? fixedValueDefinitions
-          .map(
-            (item) => `
-              <tr>
-                <td style="text-align:left;">${escapeHtml(item.label)}</td>
-                <td style="text-align:left;">${escapeHtml(item.description)}</td>
-                <td class="col-number">${escapeHtml(String(currentInstance?.fixedValues[item.key] ?? item.defaultValue))}</td>
-                <td>${renderUsedValue(item.required)}</td>
-                <td><span class="source-empty-value">${escapeHtml(tt('codeDefined'))}</span></td>
-              </tr>`,
-          )
-          .join('')
-      : `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(tt('noFixedDefinitions'))}</td></tr>`;
-
-    el('shareworksBody').innerHTML = renderBusinessDefinedSourceRows('shareworks');
+    el('shareworksBody').innerHTML = renderBusinessDefinedSourceRows('shareworks', (source) => source.sourceKey !== 'previous_capitalization_summary');
+    el('previousCapitalizationSummaryBody').innerHTML = renderBusinessDefinedSingleSourceRow('previous_capitalization_summary');
     el('futuBody').innerHTML = renderBusinessDefinedSourceRows('futu');
 
     document.querySelectorAll<HTMLButtonElement>('[data-business-source-upload]').forEach((button) => {
@@ -315,8 +297,11 @@ export function createMonthlyRunPage({
     });
   }
 
-  function renderBusinessDefinedSourceRows(sourceGroup: 'shareworks' | 'futu') {
-    const sources = sourceDefinitions.filter((source) => source.sourceGroup === sourceGroup);
+  function renderBusinessDefinedSourceRows(
+    sourceGroup: 'shareworks' | 'futu',
+    predicate: (source: MonthlyRunSourceDefinition) => boolean = () => true,
+  ) {
+    const sources = sourceDefinitions.filter((source) => source.sourceGroup === sourceGroup && predicate(source));
     if (!sources.length) return `<tr><td colspan="6" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
     return sources
       .map((source) => {
@@ -343,6 +328,32 @@ export function createMonthlyRunPage({
         </tr>`;
       })
       .join('');
+  }
+
+  function renderBusinessDefinedSingleSourceRow(sourceKey: string) {
+    const source = sourceDefinitions.find((item) => item.sourceKey === sourceKey);
+    if (!source) return `<tr><td colspan="6" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
+    const binding = selectedSources[source.sourceKey] ?? null;
+    const file = binding ? getFileById(binding.fileId) : null;
+    const displayName = file ? getFileDisplayName(file) : '';
+    const uploaded = file
+      ? `<div class="source-file-actions"><a href="/files?fileId=${file.id}" class="source-file-link" data-product-file-id="${file.id}" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</a></div>`
+      : '<span class="source-not-uploaded">Not uploaded</span>';
+    const uploadedTime = file ? formatCompactTimestamp(file.createdAt) : '-';
+    const actions = file
+      ? `<div class="source-file-action-group">
+          <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Update</button>
+          <button class="source-file-delete source-file-delete--text" type="button" data-business-source-remove="${escapeHtml(source.sourceKey)}">Delete</button>
+        </div>`
+      : `<button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>`;
+    return `<tr>
+      <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
+      <td>${renderUsedValue(source.required)}</td>
+      <td>${source.required ? '<span class="source-required-badge">Required</span>' : '<span class="source-optional-badge">Optional</span>'}</td>
+      <td>${uploaded}</td>
+      <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>
+      <td>${actions}</td>
+    </tr>`;
   }
 
   function ensureSelectedSourceBindings() {

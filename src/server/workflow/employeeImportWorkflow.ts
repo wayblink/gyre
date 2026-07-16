@@ -21,12 +21,12 @@ select distinct
 from {futu}
 where trim(concat('', coalesce([工号], ''))) <> ''`;
 
-// Shareworks employee number → employee_id, name assembled from last/first/middle.
+// Shareworks employee number → employee_id, name assembled as first/middle/last.
 const SHAREWORKS_TRANSFORM_SQL = `
 select distinct
   upper(trim(concat('', coalesce([Employee Number], '')))) as employee_id,
   'shareworks' as source,
-  trim(concat(coalesce([Last Name], ''), ' ', coalesce([First Name], ''), ' ', coalesce([Middle Name], ''))) as employee_name,
+  trim(concat(coalesce([First Name], ''), ' ', coalesce([Middle Name], ''), ' ', coalesce([Last Name], ''))) as employee_name,
   true as has_file_evidence
 from {sw}
 where trim(concat('', coalesce([Employee Number], ''))) <> ''`;

@@ -6,6 +6,9 @@ type DomGetter = <T extends HTMLElement>(id: string) => T;
 type DocsPageDeps = {
   el: DomGetter;
   getLanguage?: () => AppLanguage;
+  // Returns whether the current viewer is an admin. When omitted, admin-only pages
+  // are shown (used by non-role-aware callers such as tests/tooling).
+  isAdmin?: () => boolean;
 };
 
 type DocPage = {
@@ -14,438 +17,617 @@ type DocPage = {
   group: string;
   summary: string;
   body: string;
+  // Admin-only pages document features that are hidden from regular users
+  // (Files, Workflow). They are filtered out of the manual for non-admins.
+  adminOnly?: boolean;
 };
 
 // User Guide content. Authored in Markdown and rendered with `marked`; content is
-// first-party (trusted), so no sanitization step is required.
+// first-party (trusted), so no sanitization step is required. Screenshots live under
+// `public/guide/` and are referenced by their served path, e.g. `/guide/captable.png`.
 const DOC_PAGES_ZH: DocPage[] = [
   {
     id: 'overview',
-    title: '系统概览',
-    group: '入门',
-    summary: '产品是做什么的、整体结构',
-    body: `# 系统概览
+    title: '这是什么系统',
+    group: '快速上手',
+    summary: '一分钟了解系统能做什么',
+    body: `# 这是什么系统
 
-CapTable Equity Management 是一套**股权/期权（ESOP）管理系统**，把来自 Futu、Shareworks 等来源的明细数据汇集、对账，生成月度 Capitalization Summary，并维护员工、计划、5% 股东等业务主数据。
+Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据的系统。它把来自 Futu、Shareworks、Control Book、历史 Capitalization Summary 等来源的 Excel 表格集中管理，自动完成抽取、清洗、汇总和校验，最后在各业务页面上呈现可核对、可导出的结果。
 
-## 三层结构
+![登录后默认进入的股权汇总页](/guide/captable.png)
+*打开系统后默认进入「股权汇总（CapTable）」页面*
 
-| 层 | 作用 | 对应页面 |
-| --- | --- | --- |
-| 业务数据 | 查看/维护各类明细与主数据 | Captable、ESOP Detail、Employee Management、Plan Summary、5% Holders、Fixed Value |
-| 流程 | 月度更新与工作流编排 | Monthly Updates、Workflow |
-| 工具 | 文件管理、系统设置 | Files、Settings |
+## 你可以用它做什么
 
-> **提示：** 左侧导航按上面的分组排列；带缩进的是子页面（如 ESOP Detail 下的 Grant Record / Exercise / Sold Shares / Transfer）。
+- 每月更新一次股权数据，得到最新的股本对账与 Capitalization Summary。
+- 查看授予、行权、卖出、转仓等 ESOP 明细台账。
+- 维护员工主数据、计划汇总、5% 股东与全局参数。
+- 上传、预览和管理所有来源与产出的 Excel 文件。
 
-## 数据从哪来
+## 数据是怎么流动的
 
-系统的员工与授予明细来自两套外部系统：
+1. 在 **文件中心** 上传来源 Excel。
+2. 在 **月度更新** 里选择本月要用的文件并运行。
+3. 系统自动抽取数据、计算汇总、校验结果，并生成新的 Excel。
+4. 授予、行权、计划汇总、5% 股东、CapTable 等页面展示最新结果。
 
-- **Futu（富途）**：中文姓名 + 工号（如 \`K00385\`），涵盖授予、行权、出售等明细。
-- **Shareworks**：英文姓名 + SW 号（如 \`100010\`）。
-
-同一个人在两边号码不同、姓名语言不同，通过「关联」在员工主数据里连成一个人。详见 [数据模型](#) 一节。`,
+因为每一步都基于文件和运行记录，任何一个数字都能追溯到它来自哪份文件、哪一次运行。`,
   },
   {
     id: 'navigation',
-    title: '导航与登录',
-    group: '入门',
-    summary: '如何在页面间跳转、当前登录状态',
-    body: `# 导航与登录
+    title: '界面与导航',
+    group: '快速上手',
+    summary: '认识左侧菜单、顶部栏和页面地址',
+    body: `# 界面与导航
 
-## 页面导航
+系统界面分为三块：左侧菜单、顶部栏和中间的主内容区。
 
-左侧边栏列出所有页面，点击即可切换；地址栏会同步成 \`/<页面>\`（例如 \`/five-percent-holders\`），可直接收藏或分享链接。顶部标题会显示当前页面名称。
+![左侧菜单、顶部栏与用户菜单](/guide/user-menu.png)
+*左侧是业务菜单，右上角是使用手册、设置与用户菜单*
 
-侧边栏可以用左上角的折叠按钮收起，给内容区腾出空间。
+## 左侧菜单
 
-## 登录状态
+左侧菜单是主要入口，从上到下依次是：
 
-> **开发期说明：** 登录功能当前**临时禁用**，打开即以「Developer」身份进入，无需账号密码。
+- **股权汇总 / 月度更新**：每月更新与最终结果。
+- **ESOP 明细**：授予记录、行权记录、卖出记录、2025 转仓至 Futu 四个明细页。
+- **员工管理 / 计划汇总 / 5% 股东 / 固定值**：主数据与汇总。
 
-产品成熟后，把服务端环境变量 \`AUTH_DISABLED=false\` 后重启即可恢复登录：届时会出现登录页、会话校验与账户管理。此开关不改动任何业务代码。`,
+如果你是管理员，左侧菜单底部还会出现 **Admin Only** 分区（文件中心、工作流、用户管理），普通用户看不到这些入口。
+
+菜单顶部的箭头可以收起 / 展开侧边栏，腾出更多阅读空间。
+
+## 顶部栏
+
+顶部栏右上角有三个入口：**使用手册**（本手册）、**设置**（语言与配色）、**用户头像**（账号与退出登录）。
+
+## 页面地址
+
+每个页面都有独立地址，例如 \`/grant-record\`、\`/files\`、\`/workflow\`，可以直接刷新，也可以把链接分享给同事。`,
+  },
+  {
+    id: 'quickstart',
+    title: '快速开始',
+    group: '快速上手',
+    summary: '五步走完第一次月度更新',
+    body: `# 快速开始：走完一次月度更新
+
+如果你是第一次使用，按下面五步就能得到本月的股权汇总结果。
+
+![月度更新页](/guide/monthly.png)
+*「月度更新」页按月份管理每一次数据更新*
+
+1. 打开左侧 **月度更新**，点击 **新建月度更新**，选择月份（例如 2026-06）。
+2. 在计划列表点 **查看详情**，进入该月的运行页面。
+3. 在 **Input Configuration** 里，为 Shareworks、Futu、Control Book、Option Plans 等来源逐项选择或上传本月文件。
+4. 点右上角 **执行**，等待系统跑完抽取、计算与校验。
+5. 运行成功后，打开 **股权汇总（CapTable）** 就能看到本月的股本对账与 Capitalization Summary。
+
+如果运行中出现提示（warning），先按提示确认或修正再继续；如果运行失败，页面会给出错误原因，据此调整输入文件后重跑即可。`,
+  },
+  {
+    id: 'monthly-flow',
+    title: '月度更新与运行',
+    group: '月度主流程',
+    summary: '建立月份、配置文件、运行与回退',
+    body: `# 月度更新与运行
+
+**月度更新** 是系统的主线：每个月建立一个计划，配置好本月的输入文件，运行后得到最新的股权结果。
+
+## 月度更新列表
+
+进入 **月度更新** 页，顶部四张卡片显示计划总数、已完成、进行中、待处理数量；下面的列表是每个月的计划，可以 **查看详情**、**删除**，或用 **新建月度更新** 建立新的月份。
+
+## 运行页面
+
+点某个月的 **查看详情** 进入运行页面，它分成两部分：
+
+![月度运行的输入配置与执行状态](/guide/monthly-run.png)
+*运行页面：上方配置输入文件，下方查看执行状态*
+
+- **Input Configuration**：按来源（Shareworks、Futu、Previous Capitalization Summary 等）列出每份需要的文件。带 **Required** 的是必填项，**Optional** 可以留空。用每行的 **Update / Upload** 选择或上传文件。
+- **执行状态**：点 **执行** 后，这里会实时显示每个步骤的进度、成功或失败，以及产出的文件。
+
+## 运行记录与回退
+
+每次运行都会保留使用的输入文件、产出文件、状态、耗时和错误信息。删除某次月度运行时，系统会清理它的产出，并让该月回到上一份可用的成功结果，方便随时追溯与纠错。`,
   },
   {
     id: 'captable',
-    title: 'Captable',
-    group: '页面指南',
-    summary: '期末对账与 Capitalization Summary',
-    body: `# Captable
+    title: '看懂 CapTable',
+    group: '月度主流程',
+    summary: '股本对账与股权结构汇总',
+    body: `# 看懂 CapTable
 
-Captable 是系统的汇总视图，展示某个月末（EOM）的：
+**股权汇总（CapTable）** 展示某个月的核心结果，是月度更新跑完后最常查看的页面。
 
-- **Shares OS Reconciliation**：期初、本期新增、期末余额的对账。
-- **Capitalization Table (Summary View)**：完全稀释口径下各类股本/激励的份额与占比。
+![CapTable 页面](/guide/captable.png)
+*CapTable：上方是股本对账，下方是股权结构汇总*
 
-页面顶部可切换月份与 Capitalization 的来源文件。数据由月度工作流计算生成（见 [Monthly Updates](#) 与 [工作流](#)）。`,
-  },
-  {
-    id: 'monthly',
-    title: 'Monthly Updates',
-    group: '页面指南',
-    summary: '月度更新计划与运行',
-    body: `# Monthly Updates
+## 页面结构
 
-月度更新页管理每个月的数据更新计划（Update Plan）及其运行历史。
+- 顶部的 **月份** 选择器：切换要查看的月份。
+- **股本对账（Shares OS Reconciliation）**：对齐上月余额、本月新增和期末余额。
+- **股权结构汇总（Capitalization Table Summary View）**：以 fully diluted 口径展示各类股份的数量与占比。
 
-## 典型流程
+## 更新与导出
 
-1. 选择/新建当月计划，上传当月来源文件（EQ Control Book、Futu Exercises、Option Plans Summary 等）。
-2. 触发月度工作流运行；系统按算子链提取 → 计算 → 校验 → 产出。
-3. 校验项若命中差异会以 **warning** 形式要求人工确认（如 1 股差异的 transfer 决策）。
-4. 运行成功后产出 Capitalization Summary，供 Captable 页查看。
+股权结构汇总卡片右上角有两个按钮：**Update** 跳转到月度更新流程去重新生成结果；**导出** 把当前汇总导出为 Excel。
 
-每次运行都会记录在运行历史中，包含来源文件、产出文件、状态与耗时。`,
+页面默认显示所选月份最新一次成功运行的结果；如果该月还没有成功结果，会自动回退到最近一份可用的结果。`,
   },
   {
     id: 'esop-detail',
-    title: 'ESOP Detail',
-    group: '页面指南',
-    summary: 'Grant / Exercise / Sold / Transfer 明细',
-    body: `# ESOP Detail
+    title: 'ESOP 明细',
+    group: '数据页面',
+    summary: '授予 / 行权 / 卖出 / 转仓四个台账',
+    body: `# ESOP 明细：授予 / 行权 / 卖出 / 转仓
 
-ESOP Detail 下有四个明细子页，都是文件驱动、可搜索、可分页：
+**ESOP 明细** 下有四个台账页面，分别展示不同类型的持股数据。它们不是手工录入表，而是由月度流程自动生成的结果页。
 
-| 子页 | 内容 |
+![授予记录页](/guide/grant-record.png)
+*授予记录：可切换 Futu / Shareworks / Merge 三个视图*
+
+| 页面 | 展示内容 |
 | --- | --- |
-| **Grant Record** | 授予记录，含 Futu / Shareworks / Merge 三个视图 |
-| **Exercise to Date** | 累计行权明细 |
-| **Sold Shares** | 出售明细 |
-| **2025 Transfer to Futu** | 按期次的转移汇总，取消数可人工编辑 |
+| 授予记录 | 授予明细，可切换 Futu、Shareworks、Merge（合并对齐）三个视图 |
+| 行权记录 | Futu 行权记录 |
+| 卖出记录 | Futu 卖出记录 |
+| 2025 转仓至 Futu | 按月份汇总的转仓数据 |
 
-Grant Record 的 **Merge** 视图把 Futu 与 Shareworks 授予按统一列口径合并展示，便于跨来源核对。`,
+## 通用操作
+
+授予、行权、卖出三页用法一致：
+
+- **搜索**：按姓名、编号、用户 ID 等查找；部分页面还能按 **员工标签** 或 **激励类型** 筛选。
+- **SourceFiles**：页面顶部标注了本页数据来自哪些来源文件。
+- **Update / 导出**：**Update** 重新选择来源并生成最新数据；**导出** 下载当前表格。
+
+## 2025 转仓至 Futu
+
+![2025 转仓至 Futu 页](/guide/transfer-plan.png)
+*转仓页：按月份汇总，可编辑取消数量，并可切换转置表格*
+
+转仓页顶部用卡片汇总总量、取消 / 作废、转入 Futu 与明细条数。表格里 **Options cancelled/forfeited** 一行可以直接编辑，修改后「Transfer to Futu」会即时重算。右上角 **转置表格** 可在横向与转置视图之间切换。`,
   },
   {
     id: 'employees',
-    title: 'Employee Management',
-    group: '页面指南',
-    summary: '员工主数据、来源、关联',
-    body: `# Employee Management
+    title: '员工管理',
+    group: '数据页面',
+    summary: '员工主数据、标签、关联与停用',
+    body: `# 员工管理
 
-员工主数据是一份**只进不出**的名单。
+**员工管理** 维护员工主数据。员工既可以由月度流程从 Futu / Shareworks 明细中自动归集，也可以手工新增。工号（Emp. No. / employee_id）是员工的唯一业务标识，创建后不能修改。
 
-## 关键概念
-
-- **Emp. No.（工号）= employee_id**：来自明细文件的业务键（Futu 工号 / SW 号），是员工的身份。系统内部另有一个无意义的自增 id 仅作技术主键。
-- **Source**：标明该行来自 \`futu\` / \`shareworks\` / 手工。
-- **Linked（关联标识）**：被「关联」并入本人的其他行（例如同一个人的 Shareworks 英文名条目）。
+![员工管理页](/guide/employee-management.png)
+*员工管理：搜索、标签筛选，以及编辑 / 关联 / 停用操作*
 
 ## 常用操作
 
-| 操作 | 说明 |
-| --- | --- |
-| 排序 | 点 Employee Name / Emp. No. 表头可升降序 |
-| 分页 | 支持每页 20 / 50 / 100，含首页/末页 |
-| 新增 | 手工新增**必须填工号**；工号重复会拦截 |
-| 编辑 | 姓名/标签可改，工号（键）不可改 |
-| 关联 | 把当前行并入目标工号所属员工，用于打通 Futu / SW 同一人 |
-| 停用 | 只进不出，用停用代替删除 |
-
-> **为什么要关联？** 同一个人在 Futu 是中文名+工号、在 Shareworks 是英文名+SW 号，号码不同。导入时两边各自成行，用「关联」把它们认定为同一个人。`,
+- **搜索与筛选**：按姓名、工号、用户 ID 搜索，或按 **标签** 过滤。
+- **标签管理**：点 **标签管理** 维护标签的名称与颜色（如「董监高」「已离职」）。
+- **新增 / 编辑员工**：维护姓名、用户 ID、来源、状态与标签。
+- **关联**：把同一个人在 Futu、Shareworks 中的不同编号关联到同一名员工。
+- **停用**：离职或作废的员工用「停用」而不是删除，以保留历史可追溯。`,
   },
   {
-    id: 'plan-summary',
-    title: 'Plan Summary',
-    group: '页面指南',
-    summary: '按计划汇总授予与行权',
-    body: `# Plan Summary
+    id: 'plan-holders-parameters',
+    title: '计划汇总、5% 股东与 Global Parameter',
+    group: '数据页面',
+    summary: '按计划看、按大股东看，以及可调参数',
+    body: `# 计划汇总、5% 股东与 Global Parameter
 
-按激励计划（Plan）汇总统计：授予数、已行权、已取消、Outstanding 等，并给出总计。用于快速掌握各计划的池子使用情况。`,
-  },
-  {
-    id: 'five-percent',
-    title: '5% Holders',
-    group: '页面指南',
-    summary: 'EDGAR SC13 口径的 5% 以上股东',
-    body: `# 5% Holders
+这三个页面分别回答「按计划看」「按大股东看」和「可调整的参数」三类问题。
 
-展示持股 5% 以上股东，数据来自 Gyre Cap Table 工作簿的「5% Holders」sheet（EDGAR SC13 申报口径）。
+## 计划汇总
 
-顶部卡片给出上下文：**As of** 日期、**Fully Diluted** 总数、**Common Stock OS**。表格逐行列出：
+按计划名称（Plan Name）汇总授予、行权、取消和 outstanding 数量，顶部卡片给出计划数与各项总量。
 
-- Shareholder（股东）
-- Common Stock（普通股）
-- Total CSEs（普通股等价物合计）
-- % of Class（占本类比例）
-- % Fully Diluted（占完全稀释比例）
-- SC13 Filing（申报文件与链接备注）
+![计划汇总页](/guide/plan-summary.png)
+*计划汇总：按 Plan Name 聚合各项数量*
 
-底部高亮行为 **Total >5%** 汇总。`,
-  },
-  {
-    id: 'fixed-value',
-    title: 'Fixed Value',
-    group: '页面指南',
-    summary: '月度流程中的可调常量',
-    body: `# Fixed Value
+## 5% 股东
 
-维护月度计算中由管理员调整的业务常量（固定值），例如 Cullgen 的期权 outstanding / available 等。每条含 Key、Item、Value、生效起始与更新人，可编辑。这些值会被月度工作流的计算节点引用。`,
-  },
-  {
-    id: 'workflows',
-    title: '工作流与算子',
-    group: '工作流',
-    summary: '编排数据处理的可视化流程',
-    body: `# 工作流与算子
+按 EDGAR SC13 的口径展示持股 5% 以上的股东。它读取 Capitalization Summary 的分母，并结合 Global Parameter 中维护的数字，计算 Common Stock、Total CSEs、% of Class 和 % Fully Diluted。
 
-工作流（Workflow）把「读文件 → 转换 → 校验 → 产出/写库」编排成一张可视化的算子图。每个节点是一个**通用算子**，通过配置复用，无需写代码。
+![5% 股东页](/guide/five-percent-holders.png)
+*5% 股东：按 EDGAR SC13 口径展示主要股东*
 
-## 算子类别
+## Global Parameter（固定值）
 
-| 类别 | 算子 | 作用 |
-| --- | --- | --- |
-| 输入 | \`sheet.range.extract\` / \`sheet.sections.extract\` | 从 Excel 指定 sheet/范围提取 dataframe |
-| 计算 | \`sql.compute\` | 把上游 dataframe 绑成表跑只读 SQL |
-| 计算 | \`dataframe.union\` | 多个 dataframe 按列名对齐纵向合并 |
-| 断言 | \`dataframe.assert\` / \`.sql.assert\` / \`.schema.assert\` / \`.shape.assert\` | 对数据做校验（block / warning） |
-| 输出 | \`dataframe.persist.excel\` | 把结果落成 Excel 文件 |
-| 数据库 | \`db.upsert\` | 按冲突键把 dataframe UPSERT 进白名单业务表 |
+维护可由管理员调整的业务常量，例如 Cullgen common stock、各类期权数量等。每个参数都有 Key、数值、生效月份和维护人。
 
-> **db.upsert 的安全边界：** 只能写服务端白名单里的表、必须指定冲突键、预览不写库。这样工作流才能安全地把数据写回业务库。
+![Global Parameter 页](/guide/global-parameter.png)
+*Global Parameter：管理员可维护的全局业务常量*
 
-节点之间用输入槽连接；SQL/Union 之类算子可接多个上游。运行时可对某个节点做预览（不产生副作用），也可整流程执行。`,
-  },
-  {
-    id: 'employee-import',
-    title: '员工归集工作流',
-    group: '工作流',
-    summary: '换文件即幂等重导员工',
-    body: `# 员工归集工作流（employee-import）
-
-这是一条已内置的工作流，演示「换文件 → 重新归集进 employees 表」全部用通用算子实现：
-
-\`\`\`text
-Extract Futu 授予记录 ─┐
-                       ├─ 各自 sql.compute 规范成 (employee_id, source, employee_name)
-Extract Shareworks ────┘
-        → dataframe.union（按列名对齐合并）
-        → db.upsert employees（on conflict(employee_id)）
-\`\`\`
-
-## 用法
-
-1. 在 **Files** 上传新的 Futu 授予报表 / Shareworks Cap Table。
-2. 打开 **Workflow**，选择 \`Employee Import / 员工归集\`。
-3. 把两个文件输入（\`fileRefs.futu_grants\` / \`fileRefs.shareworks\`）指向刚上传的文件，运行。
-
-> **幂等：** 相同工号重跑只更新、不重复建行；新工号才插入。跨来源同人仍由 Employee Management 里的「关联」处理。`,
+计划汇总和 5% 股东都是结果页：改动来源文件或参数后，用页面上的 **Update** 重新生成即可。`,
   },
   {
     id: 'files',
-    title: 'Files',
-    group: '工作流',
-    summary: '上传与预览工作簿',
-    body: `# Files
+    title: '文件中心',
+    group: '文件与工作流',
+    summary: '上传、浏览、在线预览与管理文件',
+    adminOnly: true,
+    body: `# 文件中心
 
-Files 页用于上传、预览、下载工作簿文件。上传后的文件成为 **product file**，可被工作流作为输入引用（通过运行时的 \`fileRefs\`）。支持在线预览表格内容。`,
+**文件中心** 是所有来源文件和产出文件的统一管理处。月度更新和工作流都从这里读取和写回文件。
+
+![文件中心页](/guide/files.png)
+*文件中心：左侧是文件目录树，右侧可在线预览工作簿*
+
+## 左侧：文件目录
+
+- 文件按 **input / output** 等目录分组，可展开查看。
+- 顶部可 **搜索**、**刷新**、**上传**（支持 \`.xlsx\`、\`.xls\`、\`.csv\`），也可 **新建** 文件。
+- 每个文件项都可以重命名或删除。
+
+## 右侧：在线预览
+
+点开一个文件，右侧会打开工作簿，可以逐个 Sheet 查看内容，无需下载到本地。
+
+上传后的文件会成为「产品文件」，可以在月度更新或工作流里被选作输入。`,
   },
   {
-    id: 'data-model',
-    title: '数据模型与关联',
-    group: '参考',
-    summary: '员工身份、工号、关联/墓碑',
-    body: `# 数据模型与关联
+    id: 'workflow',
+    title: '工作流',
+    group: '文件与工作流',
+    summary: '可视化流程图：读文件、转换、校验、输出',
+    adminOnly: true,
+    body: `# 工作流
 
-## 员工身份
+**工作流** 把「读取文件 → 转换 → 校验 → 输出 / 写库」的处理过程画成一张可视化流程图。日常月度更新背后运行的就是这些工作流；一般用户不需要改动它们，管理员可以在这里查看和维护。
 
-- 身份键是 **employee_id（工号）**，直接来自明细文件，有业务含义。
-- Futu 与 Shareworks 各用自己的号，各自成行；同一个人跨来源用「关联」连接。
-- 数据库自增 \`id\` 只是技术主键，不对外体现。
+![工作流页](/guide/workflow.png)
+*工作流：左侧流程列表，中间画布，右侧算子库*
 
-## 关联（Merge）与墓碑
+## 三栏布局
 
-「关联」把 B 员工并入 A：B 的授予（grants）重指到 A，B 被标记为 \`merged_into\` 墓碑并停用（**只进不出**，不物理删除）。列表默认隐藏墓碑；A 的「Linked」列会列出被并入的其他标识。
+- **左侧**：工作流列表，可搜索、导入、复制或新建。
+- **中间**：当前工作流的画布，展示各个节点（算子）如何连接，可 **执行**、**导出**、**保存**、**删除**。
+- **右侧**：算子库，列出可用的处理节点，点 **Details** 查看每个算子的说明。
 
-## 只进不出
+## 算子分工
 
-员工、关联都遵循「只进不出」：不做物理删除，用停用 / 墓碑保留可追溯性。`,
+不同算子各司其职：输入类算子从 Excel 抽取数据，计算类（SQL 等）算子做转换，校验类算子在异常时给出 warning 或直接拦截，输出类算子生成 Excel 或写回数据库。部分算子支持 **预览**，预览只看中间结果，不会写库或产出最终文件。`,
+  },
+  {
+    id: 'settings',
+    title: '语言、配色与账号',
+    group: '设置',
+    summary: '切换中英文、配色方案与账号',
+    body: `# 语言、配色与账号
+
+## 界面语言
+
+顶部栏的 **设置** 里可以切换 **中文 / English**，整个界面（包括本手册）会立即跟随切换。表格中的许多字段名保留英文，是为了和来源 Excel、对外交付文件保持一致。
+
+![系统设置页](/guide/settings.png)
+*设置页：切换界面语言与配色方案*
+
+## 配色
+
+同样在 **设置** 里，可以选择 Blue、Teal、Amber 等配色方案，改变界面主色调。
+
+## 账号
+
+点右上角 **用户头像** 打开菜单，可进入 **账号** 页维护资料，或 **退出登录**。`,
   },
 ];
 
 const DOC_PAGES_EN: DocPage[] = [
   {
     id: 'overview',
-    title: 'System Overview',
+    title: 'What This System Does',
     group: 'Getting Started',
-    summary: 'What the product does and how it is organized',
-    body: `# System Overview
+    summary: 'A one-minute overview of the system',
+    body: `# What This System Does
 
-CapTable Equity Management consolidates equity and ESOP data from sources such as Futu and Shareworks, reconciles monthly activity, generates Capitalization Summary outputs, and maintains master data such as employees, plans, and 5% holders.
+Gyre CapTable is a system for managing a company's equity and employee stock (ESOP) data. It centralizes source Excel workbooks from Futu, Shareworks, Control Book, and prior Capitalization Summary files, automatically extracts, cleans, aggregates, and validates the data, and presents auditable, exportable results across the business pages.
 
-## Three layers
+![The Cap Table page shown right after opening the app](/guide/en/captable.png)
+*Opening the app lands you on the CapTable page*
 
-| Layer | Purpose | Pages |
-| --- | --- | --- |
-| Business data | View and maintain details and master data | Captable, ESOP Detail, Employee Management, Plan Summary, 5% Holders, Fixed Value |
-| Process | Monthly updates and workflow orchestration | Monthly Updates, Workflow |
-| Tools | File management and system settings | Files, Settings |
+## What you can do with it
 
-The left navigation follows this structure. Indented items are sub-pages under ESOP Detail.`,
+- Run a monthly equity update to get the latest shares reconciliation and Capitalization Summary.
+- Review ESOP ledgers: grants, exercises, sold shares, and transfers.
+- Maintain employee master data, plan summaries, 5% holders, and global parameters.
+- Upload, preview, and manage every source and output workbook.
+
+## How data flows
+
+1. Upload source workbooks in **Files**.
+2. In **Monthly Updates**, pick this month's files and run.
+3. The system extracts data, computes summaries, validates results, and generates new Excel files.
+4. Grant, exercise, plan summary, 5% holders, and CapTable pages show the latest results.
+
+Because every step is based on files and run records, any number can be traced back to the file and the run it came from.`,
   },
   {
     id: 'navigation',
-    title: 'Navigation and Login',
+    title: 'Interface and Navigation',
     group: 'Getting Started',
-    summary: 'Page navigation and current login behavior',
-    body: `# Navigation and Login
+    summary: 'The sidebar, top bar, and page URLs',
+    body: `# Interface and Navigation
 
-Use the left sidebar to switch pages. The URL is synchronized with the active page, so routes such as \`/five-percent-holders\` can be bookmarked or shared.
+The interface has three parts: the left menu, the top bar, and the main content area.
 
-During development, login is temporarily disabled and the app opens as Developer. When the product is ready, set \`AUTH_DISABLED=false\` on the server and restart to restore login, session checks, and account management.`,
+![The sidebar, top bar, and user menu](/guide/en/user-menu.png)
+*The left side is the business menu; the top-right holds Docs, Settings, and the user menu*
+
+## Left menu
+
+The left menu is the main navigation, from top to bottom:
+
+- **CapTable / Monthly Updates**: monthly runs and final results.
+- **ESOP Detail**: the Grant Record, Exercise to Date, Sold Shares, and 2025 Transfer to Futu pages.
+- **Employee Management / Plan Summary / 5% Holders / Global Parameter**: master data and rollups.
+
+If you are an administrator, an **Admin Only** section (Files, Workflow, User Management) also appears at the bottom of the left menu; regular users don't see these entries.
+
+The arrow at the top of the menu collapses or expands the sidebar.
+
+## Top bar
+
+The top-right of the bar has three entries: **Docs** (this guide), **Settings** (language and theme), and the **user avatar** (account and logout).
+
+## Page URLs
+
+Every page has its own URL, such as \`/grant-record\`, \`/files\`, or \`/workflow\`, so pages can be refreshed or shared with colleagues.`,
+  },
+  {
+    id: 'quickstart',
+    title: 'Quick Start',
+    group: 'Getting Started',
+    summary: 'Run your first monthly update in five steps',
+    body: `# Quick Start: Run a Monthly Update
+
+If this is your first time, these five steps produce this month's equity results.
+
+![The Monthly Updates page](/guide/en/monthly.png)
+*The Monthly Updates page manages each data update by month*
+
+1. Open **Monthly Updates**, click **New Monthly Update**, and pick a month (for example 2026-06).
+2. In the plan list, click **View Details** to open that month's run page.
+3. Under **Input Configuration**, select or upload this month's files for each source (Shareworks, Futu, Control Book, Option Plans, and so on).
+4. Click **Run** in the top-right and wait for extraction, computation, and validation to finish.
+5. Once the run succeeds, open **CapTable** to see this month's shares reconciliation and Capitalization Summary.
+
+If a warning appears during the run, review and confirm or fix it before continuing. If the run fails, the page shows the reason so you can adjust the inputs and re-run.`,
+  },
+  {
+    id: 'monthly-flow',
+    title: 'Monthly Updates and Runs',
+    group: 'Monthly Process',
+    summary: 'Create a month, configure files, run, and roll back',
+    body: `# Monthly Updates and Runs
+
+**Monthly Updates** is the system's main line: each month you create a plan, configure its input files, and run it to get the latest equity results.
+
+## The updates list
+
+On the **Monthly Updates** page, four cards at the top show the total, completed, in-progress, and pending plan counts. Below is the list of monthly plans, where you can **View Details**, **Delete**, or use **New Monthly Update** to add a month.
+
+## The run page
+
+Clicking a month's **View Details** opens the run page, which has two parts:
+
+![The Monthly Run input configuration and execution status](/guide/en/monthly-run.png)
+*The run page: configure input files above, watch execution status below*
+
+- **Input Configuration**: lists each required file by source (Shareworks, Futu, Previous Capitalization Summary, and so on). Items marked **Required** are mandatory; **Optional** ones can be left empty. Use each row's **Update / Upload** to choose or upload a file.
+- **Execution status**: after you click **Run**, this shows each step's progress, success or failure, and the files produced, in real time.
+
+## Run history and rollback
+
+Every run keeps its input files, output files, status, duration, and error messages. When you delete a monthly run, the system cleans up its output and lets the month fall back to the previous successful result, so you can always trace and correct.`,
   },
   {
     id: 'captable',
-    title: 'Captable',
-    group: 'Page Guides',
-    summary: 'EOM reconciliation and Capitalization Summary',
-    body: `# Captable
+    title: 'Reading the CapTable',
+    group: 'Monthly Process',
+    summary: 'Shares reconciliation and the summary view',
+    body: `# Reading the CapTable
 
-Captable is the month-end summary view. It shows Shares OS Reconciliation and Capitalization Table (Summary View) using the selected SourceFile or the default monthly output.
+**CapTable** shows a month's core results and is the page you'll open most after a monthly update finishes.
 
-Use the month selector and SourceFile selector at the top to switch the displayed result.`,
-  },
-  {
-    id: 'monthly',
-    title: 'Monthly Updates',
-    group: 'Page Guides',
-    summary: 'Monthly update plan and runs',
-    body: `# Monthly Updates
+![The CapTable page](/guide/en/captable.png)
+*CapTable: shares reconciliation on top, ownership summary below*
 
-Monthly Updates manages each month's update plan and run history.
+## Page layout
 
-Typical flow:
+- The **month** selector at the top switches which month you view.
+- **Shares OS Reconciliation**: aligns last month's balance, new shares, and the ending balance.
+- **Capitalization Table Summary View**: shows each share class's quantity and percentage on a fully diluted basis.
 
-1. Create or select the monthly plan and configure source files.
-2. Run the monthly workflow.
-3. Review warnings if manual approval is required.
-4. Use the generated Capitalization Summary from the Captable page.
+## Update and export
 
-Each run records inputs, outputs, status, and execution time.`,
+The ownership summary card has two buttons in its top-right: **Update** jumps to the monthly update flow to regenerate results, and **Export** downloads the current summary as Excel.
+
+The page defaults to the latest successful run for the selected month; if the month has no successful result yet, it falls back to the most recent available result.`,
   },
   {
     id: 'esop-detail',
     title: 'ESOP Detail',
-    group: 'Page Guides',
-    summary: 'Grant, exercise, sold share, and transfer detail',
-    body: `# ESOP Detail
+    group: 'Data Pages',
+    summary: 'Grant, exercise, sold-share, and transfer ledgers',
+    body: `# ESOP Detail: Grants / Exercises / Sold Shares / Transfers
 
-ESOP Detail contains four file-driven, searchable, paginated detail pages:
+**ESOP Detail** contains four ledger pages, each showing a different type of holding data. They are not manual entry tables — they are result pages generated automatically by the monthly process.
+
+![The Grant Record page](/guide/en/grant-record.png)
+*Grant Record: switch between the Futu, Shareworks, and Merge views*
 
 | Page | Content |
 | --- | --- |
-| Grant Record | Futu, Shareworks, and merged grant views |
+| Grant Record | Grant details, with Futu, Shareworks, and Merge (normalized) views |
 | Exercise to Date | Futu exercise records |
 | Sold Shares | Futu sold-share records |
-| 2025 Transfer to Futu | Period transfer summary with editable cancellations |
+| 2025 Transfer to Futu | Transfer data summarized by month |
 
-The Merge view standardizes Futu and Shareworks grant records for cross-source review.`,
+## Common actions
+
+The grant, exercise, and sold-share pages work the same way:
+
+- **Search**: find records by name, number, or user ID; some pages also filter by **employee label** or **incentive type**.
+- **SourceFiles**: the top of the page shows which source files this page's data came from.
+- **Update / Export**: **Update** reselects sources and regenerates the data; **Export** downloads the current table.
+
+## 2025 Transfer to Futu
+
+![The 2025 Transfer to Futu page](/guide/en/transfer-plan.png)
+*Transfer page: summarized by month, editable cancellation quantity, and a transpose toggle*
+
+The transfer page summarizes totals, cancellations/forfeitures, transfers to Futu, and detail record counts in cards at the top. The **Options cancelled/forfeited** row in the table is editable — changing it recalculates "Transfer to Futu" instantly. The **Transpose** button in the top-right switches between the horizontal and transposed views.`,
   },
   {
     id: 'employees',
     title: 'Employee Management',
-    group: 'Page Guides',
-    summary: 'Employee master data, sources, and linking',
+    group: 'Data Pages',
+    summary: 'Employee master data, labels, linking, deactivation',
     body: `# Employee Management
 
-Employee Management stores the employee master list generated from ESOP detail workflows, with optional manual supplements.
+**Employee Management** maintains the employee master list. Employees can be collected automatically from Futu / Shareworks details by the monthly process, or added manually. The employee number (Emp. No. / employee_id) is the unique business identifier and cannot be changed after creation.
 
-Key concepts:
+![The Employee Management page](/guide/en/employee-management.png)
+*Employee Management: search, label filter, and edit / link / deactivate actions*
 
-- **Emp. No. = employee_id**: the business key from source files.
-- **Source**: Futu, Shareworks, or manual.
-- **Linked**: aliases merged into the primary employee record.
+## Common actions
 
-Employees are retained for traceability. Deactivation or linking is used instead of physical deletion.`,
+- **Search and filter**: search by name, employee number, or user ID, or filter by **label**.
+- **Manage labels**: click **Manage Labels** to maintain label names and colors (such as "Director/Officer" or "Departed").
+- **Add / edit employee**: maintain name, user ID, source, status, and labels.
+- **Link**: link the different Futu and Shareworks identifiers that belong to the same person.
+- **Deactivate**: departed or invalid employees are deactivated rather than deleted, preserving traceability.`,
   },
   {
-    id: 'plan-summary',
-    title: 'Plan Summary',
-    group: 'Page Guides',
-    summary: 'Grant and exercise aggregation by plan',
-    body: `# Plan Summary
+    id: 'plan-holders-parameters',
+    title: 'Plan Summary, 5% Holders, and Global Parameter',
+    group: 'Data Pages',
+    summary: 'By plan, by major holder, and adjustable parameters',
+    body: `# Plan Summary, 5% Holders, and Global Parameter
 
-Plan Summary aggregates grants, exercises, cancellations, and outstanding quantities by incentive plan. It is intended for a quick view of plan usage and remaining pool.`,
-  },
-  {
-    id: 'five-percent',
-    title: '5% Holders',
-    group: 'Page Guides',
-    summary: 'EDGAR SC13 style 5% holder view',
-    body: `# 5% Holders
+These three pages answer three questions: "by plan," "by major holder," and "which parameters can be adjusted."
 
-This page displays shareholders above the 5% threshold from the "5% Holders" sheet in the Gyre Cap Table workbook. The top summary shows As of date, Fully Diluted shares, and Common Stock OS.`,
-  },
-  {
-    id: 'fixed-value',
-    title: 'Fixed Value',
-    group: 'Page Guides',
-    summary: 'Editable constants used by monthly workflows',
-    body: `# Fixed Value
+## Plan Summary
 
-Fixed Value maintains admin-editable business constants used by the monthly workflow, such as outstanding or available option values.`,
-  },
-  {
-    id: 'workflows',
-    title: 'Workflows and Operators',
-    group: 'Workflow',
-    summary: 'Visual orchestration for data processing',
-    body: `# Workflows and Operators
+Aggregates grants, exercises, cancellations, and outstanding quantities by Plan Name, with plan counts and totals in the cards at the top.
 
-Workflow orchestrates "read file → transform → validate → output/write database" as an operator graph.
+![The Plan Summary page](/guide/en/plan-summary.png)
+*Plan Summary: quantities aggregated by Plan Name*
 
-Main operator categories include input extraction, SQL computation, dataframe union, validation, Excel persistence, and database upsert. Database writes are restricted by server-side allowlists and conflict keys.`,
-  },
-  {
-    id: 'employee-import',
-    title: 'Employee Import Workflow',
-    group: 'Workflow',
-    summary: 'Idempotent employee reload from source files',
-    body: `# Employee Import Workflow
+## 5% Holders
 
-The built-in employee-import workflow demonstrates a file-driven reload into the employees table:
+Shows shareholders above the 5% threshold in EDGAR SC13 style. It reads denominators from the Capitalization Summary and combines them with the numbers maintained in Global Parameter to compute Common Stock, Total CSEs, % of Class, and % Fully Diluted.
 
-1. Extract Futu grant records and Shareworks records.
-2. Normalize both sides with SQL compute.
-3. Union by column name.
-4. Upsert employees by \`employee_id\`.
+![The 5% Holders page](/guide/en/five-percent-holders.png)
+*5% Holders: major shareholders in EDGAR SC13 style*
 
-Re-running with the same employee number updates existing rows instead of creating duplicates.`,
+## Global Parameter
+
+Maintains admin-adjustable business constants, such as Cullgen common stock and various option counts. Each parameter has a Key, value, effective month, and the person who maintained it.
+
+![The Global Parameter page](/guide/en/global-parameter.png)
+*Global Parameter: global business constants that admins can maintain*
+
+Plan Summary and 5% Holders are result pages: after changing source files or parameters, use **Update** on the page to regenerate.`,
   },
   {
     id: 'files',
     title: 'Files',
-    group: 'Workflow',
-    summary: 'Upload and preview workbooks',
+    group: 'Files & Workflow',
+    summary: 'Upload, browse, preview, and manage files',
+    adminOnly: true,
     body: `# Files
 
-Files is used to upload, preview, download, rename, update, and delete workbook files. Uploaded files become product files that workflows can reference as runtime inputs.`,
+**Files** is the single place that manages all source and output workbooks. Both Monthly Updates and Workflow read from and write back to it.
+
+![The Files page](/guide/en/files.png)
+*Files: a folder tree on the left, an in-browser workbook preview on the right*
+
+## Left: the folder tree
+
+- Files are grouped into folders like **input / output** that you can expand.
+- The top lets you **search**, **refresh**, and **upload** (\`.xlsx\`, \`.xls\`, \`.csv\`), or **create** a new file.
+- Each file can be renamed or deleted.
+
+## Right: in-browser preview
+
+Open a file to view its workbook on the right, inspecting each sheet without downloading it.
+
+Uploaded files become "product files" that can be selected as inputs in Monthly Updates or Workflow.`,
   },
   {
-    id: 'data-model',
-    title: 'Data Model and Linking',
-    group: 'Reference',
-    summary: 'Employee identity, employee number, linking, and tombstones',
-    body: `# Data Model and Linking
+    id: 'workflow',
+    title: 'Workflow',
+    group: 'Files & Workflow',
+    summary: 'The visual pipeline behind the monthly process',
+    adminOnly: true,
+    body: `# Workflow
 
-The employee identity key is **employee_id / Emp. No.**, taken directly from detail files. Futu and Shareworks may use different identifiers for the same person, so linking is used to connect aliases to one primary employee record.
+**Workflow** draws the "read file → transform → validate → output / write database" process as a visual pipeline. These workflows are what run behind the daily monthly updates; regular users don't need to change them, but administrators can view and maintain them here.
 
-Linked records are retained for traceability instead of being physically deleted.`,
+![The Workflow page](/guide/en/workflow.png)
+*Workflow: the pipeline list on the left, the canvas in the center, the operator library on the right*
+
+## Three-column layout
+
+- **Left**: the workflow list, which you can search, import, copy, or create.
+- **Center**: the current workflow's canvas, showing how the nodes (operators) connect, with **Run**, **Export**, **Save**, and **Delete**.
+- **Right**: the operator library, listing available processing nodes; click **Details** for each operator's description.
+
+## What operators do
+
+Each operator has a role: input operators extract data from Excel, compute operators (SQL and others) transform it, assert operators warn or block on anomalies, and output operators generate Excel or write back to the database. Some operators support **Preview**, which shows intermediate results only and does not write to the database or produce final files.`,
+  },
+  {
+    id: 'settings',
+    title: 'Language, Theme, and Account',
+    group: 'Settings',
+    summary: 'Switch language, theme, and manage your account',
+    body: `# Language, Theme, and Account
+
+## Interface language
+
+The **Settings** entry in the top bar switches between **中文 / English**, and the whole interface — including this guide — follows immediately. Many table field names stay in English to stay aligned with source Excel and external deliverables.
+
+![The Settings page](/guide/en/settings.png)
+*Settings: switch the interface language and color theme*
+
+## Theme
+
+Also in **Settings**, you can choose a color theme such as Blue, Teal, or Amber to change the interface's accent color.
+
+## Account
+
+Click the **user avatar** in the top-right to open the menu, where you can open the **Account** page to maintain your profile, or **log out**.`,
   },
 ];
 
 const DOC_GROUP_ORDER: Record<AppLanguage, string[]> = {
-  'zh-CN': ['入门', '页面指南', '工作流', '参考'],
-  'en-US': ['Getting Started', 'Page Guides', 'Workflow', 'Reference'],
+  'zh-CN': ['快速上手', '月度主流程', '数据页面', '文件与工作流', '设置'],
+  'en-US': ['Getting Started', 'Monthly Process', 'Data Pages', 'Files & Workflow', 'Settings'],
 };
 
-export function createDocsPage({ el, getLanguage }: DocsPageDeps) {
-  const docs = () => (getLanguage?.() === 'en-US' ? DOC_PAGES_EN : DOC_PAGES_ZH);
-  const groupOrder = () => DOC_GROUP_ORDER[getLanguage?.() === 'en-US' ? 'en-US' : 'zh-CN'];
+// Pure selector: the doc pages a viewer should see, filtered by role. Regular
+// (non-admin) users never see admin-only pages such as Files and Workflow.
+export function visibleDocPages(language: AppLanguage, isAdmin: boolean): DocPage[] {
+  const pages = language === 'en-US' ? DOC_PAGES_EN : DOC_PAGES_ZH;
+  return isAdmin ? pages : pages.filter((doc) => !doc.adminOnly);
+}
+
+export function createDocsPage({ el, getLanguage, isAdmin }: DocsPageDeps) {
+  const language = () => (getLanguage?.() === 'en-US' ? 'en-US' : 'zh-CN');
+  const docs = () => visibleDocPages(language(), isAdmin?.() ?? true);
+  const groupOrder = () => DOC_GROUP_ORDER[language()];
   let activeDocId = docs()[0]?.id ?? '';
 
   function renderNav() {
     const pages = docs();
+    if (!pages.some((doc) => doc.id === activeDocId)) {
+      activeDocId = pages[0]?.id ?? '';
+    }
     const groups = groupOrder().filter((group) => pages.some((doc) => doc.group === group));
     el('docNav').innerHTML = groups
       .map((group) => {

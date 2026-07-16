@@ -25,6 +25,13 @@ export type PublicAccount = {
   phone: string | null;
 };
 
+export type ManagedUserAccount = PublicAccount & {
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AuthStatusPayload = {
   authenticated: boolean;
   bootstrapRequired: boolean;
@@ -254,6 +261,27 @@ function toPublicAccount(row: {
   };
 }
 
+function toManagedUserAccount(row: {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  email: string | null;
+  phone: string | null;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+}): ManagedUserAccount {
+  return {
+    ...toPublicAccount(row),
+    isActive: Boolean(row.is_active),
+    lastLoginAt: row.last_login_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export async function getPublicAccount(db: Queryable, userId: number): Promise<PublicAccount | null> {
   const row = await db.query<{
     id: number;
@@ -269,6 +297,146 @@ export async function getPublicAccount(db: Queryable, userId: number): Promise<P
     [userId],
   );
   return row[0] ? toPublicAccount(row[0]) : null;
+}
+
+export async function listManagedUsers(db: Queryable): Promise<ManagedUserAccount[]> {
+  const rows = await db.query<{
+    id: number;
+    username: string;
+    display_name: string;
+    role: string;
+    email: string | null;
+    phone: string | null;
+    is_active: boolean;
+    last_login_at: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `select id, username, display_name, role, email, phone, is_active, last_login_at, created_at, updated_at
+     from app_users
+     order by id`,
+  );
+  return rows.map(toManagedUserAccount);
+}
+
+export async function getManagedUser(db: Queryable, userId: number): Promise<ManagedUserAccount | null> {
+  const row = await db.query<{
+    id: number;
+    username: string;
+    display_name: string;
+    role: string;
+    email: string | null;
+    phone: string | null;
+    is_active: boolean;
+    last_login_at: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `select id, username, display_name, role, email, phone, is_active, last_login_at, created_at, updated_at
+     from app_users
+     where id = $1`,
+    [userId],
+  );
+  return row[0] ? toManagedUserAccount(row[0]) : null;
+}
+
+export async function countActiveAdmins(db: Queryable, excludeUserId?: number): Promise<number> {
+  const rows = await db.query<{ count: number }>(
+    `select count(*)::int as count
+     from app_users
+     where is_active = true
+       and role = 'admin'
+       and ($1::int is null or id <> $1::int)`,
+    [excludeUserId ?? null],
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function createManagedUser(db: Queryable, params: {
+  username: string;
+  password: string;
+  displayName?: string;
+  role?: string;
+  email?: string | null;
+  phone?: string | null;
+}): Promise<ManagedUserAccount> {
+  const username = params.username.trim();
+  const displayName = params.displayName?.trim() || username;
+  const role = params.role === 'admin' ? 'admin' : 'user';
+  const email = params.email?.trim() || null;
+  const phone = params.phone?.trim() || null;
+  const rows = await db.query<{
+    id: number;
+    username: string;
+    display_name: string;
+    role: string;
+    email: string | null;
+    phone: string | null;
+    is_active: boolean;
+    last_login_at: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `insert into app_users (username, password_hash, display_name, role, email, phone)
+     values ($1, $2, $3, $4, $5, $6)
+     returning id, username, display_name, role, email, phone, is_active, last_login_at, created_at, updated_at`,
+    [username, await hashPassword(params.password), displayName, role, email, phone],
+  );
+  return toManagedUserAccount(rows[0]);
+}
+
+export async function updateManagedUser(db: Queryable, userId: number, params: {
+  username?: string;
+  password?: string;
+  displayName?: string;
+  role?: string;
+  email?: string | null;
+  phone?: string | null;
+  isActive?: boolean;
+}): Promise<ManagedUserAccount> {
+  const existing = await getManagedUser(db, userId);
+  if (!existing) throw new Error('User not found');
+  const username = params.username?.trim() || existing.username;
+  const displayName = params.displayName?.trim() || username;
+  const role = params.role ?? existing.role;
+  const email = params.email === undefined ? existing.email : (params.email?.trim() || null);
+  const phone = params.phone === undefined ? existing.phone : (params.phone?.trim() || null);
+  const isActive = params.isActive ?? existing.isActive;
+  const passwordHash = params.password ? await hashPassword(params.password) : null;
+  const rows = await db.query<{
+    id: number;
+    username: string;
+    display_name: string;
+    role: string;
+    email: string | null;
+    phone: string | null;
+    is_active: boolean;
+    last_login_at: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `update app_users
+     set username = $2,
+         display_name = $3,
+         role = $4,
+         email = $5,
+         phone = $6,
+         is_active = $7,
+         password_hash = coalesce($8, password_hash),
+         updated_at = current_timestamp
+     where id = $1
+     returning id, username, display_name, role, email, phone, is_active, last_login_at, created_at, updated_at`,
+    [userId, username, displayName, role, email, phone, isActive, passwordHash],
+  );
+  if (!rows[0]) throw new Error('User not found');
+  if (!isActive) {
+    await db.query('delete from app_sessions where user_id = $1', [userId]);
+  }
+  return toManagedUserAccount(rows[0]);
+}
+
+export async function deleteManagedUser(db: Queryable, userId: number): Promise<void> {
+  await db.query('delete from app_users where id = $1', [userId]);
 }
 
 export async function updateAccountProfile(db: Queryable, userId: number, params: {

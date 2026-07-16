@@ -15,9 +15,9 @@ test('normalizeExternalNumber trims, folds width, collapses spaces and uppercase
   assert.equal(normalizeExternalNumber(''), '');
 });
 
-test('assembleShareworksName joins last first middle and skips empty segments', () => {
-  assert.equal(assembleShareworksName('Han', 'Lin', null), 'Han Lin');
-  assert.equal(assembleShareworksName('Smith', 'John', 'A'), 'Smith John A');
+test('assembleShareworksName joins first middle last and skips empty segments', () => {
+  assert.equal(assembleShareworksName('Han', 'Lin', null), 'Lin Han');
+  assert.equal(assembleShareworksName('Smith', 'John', 'A'), 'John A Smith');
   assert.equal(assembleShareworksName('  Han ', '', '  '), 'Han');
   assert.equal(assembleShareworksName(null, null, null), '');
 });

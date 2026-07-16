@@ -25,6 +25,10 @@ test('employee-import workflow wires extract → normalize → union → db.upse
   // union pulls from both normalize steps
   const shareworksNormalize = byId.get('normalize_shareworks_employees');
   assert.equal(shareworksNormalize?.inputs.input1.from, 'filter_shareworks_employee_rows');
+  assert.match(
+    String(shareworksNormalize?.params.sql ?? '').replace(/\s+/g, ' '),
+    /\[First Name\].*\[Middle Name\].*\[Last Name\]/,
+  );
 
   const union = byId.get('union_employees');
   assert.equal(union?.inputs.input1.from, 'normalize_futu_employees');

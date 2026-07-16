@@ -48,7 +48,9 @@ function productFileRecord(overrides: Partial<ProductFileRecord> = {}): ProductF
   return {
     id: 1,
     originalName: 'workflow-output.xlsx',
+    displayName: 'workflow-output.v19700101000000.xlsx',
     storedName: 'workflow-output.xlsx',
+    displayPath: 'output/workflow-output.xlsx',
     fileExt: '.xlsx',
     fileSizeBytes: 4,
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -776,14 +778,16 @@ test('scheduler releases expired step locks for the current run before executing
 
 test('persist excel preview does not write files but execution does', async () => {
   let saveCount = 0;
+  const savedOriginalNames: string[] = [];
   const runtimeWithSaveSpy = createRuntime({
-    saveGeneratedWorkbook: async () => {
+    saveGeneratedWorkbook: async (params) => {
       saveCount += 1;
+      savedOriginalNames.push(params.originalName);
       return productFileRecord({ id: saveCount });
     },
   });
   const source = sourceTask();
-  const output = persistTask({ params: { fileName: 'workflow-output.xlsx', sheetName: 'Output Sheet', uploadedBy: 'Workflow' } });
+  const output = persistTask({ params: { fileName: 'workflow-output.xlsx', folderPrefix: 'output/test-page', sheetName: 'Output Sheet', uploadedBy: 'Workflow' } });
   const taskMap = new Map([source, output].map((task) => [task.id, task]));
 
   const preview = await executeWorkflowTaskPreview(output, new Map([['source', testDataFrame]]), taskMap, runtimeWithSaveSpy);
@@ -801,6 +805,7 @@ test('persist excel preview does not write files but execution does', async () =
   assert.equal(execution.result.kind, 'file');
   assert.equal(execution.result.dataFrame.range.sheetName, 'Output Sheet');
   assert.equal(saveCount, 1);
+  assert.match(savedOriginalNames[0] ?? '', /^workflow-output\.v\d{14}\.xlsx$/);
 });
 
 test('sql compute uses current SQL text and isolated dataframe table bindings', async () => {

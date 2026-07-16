@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { CapitalizationRow, SummarySnapshot } from '../../shared/types.js';
+import type { CapitalizationRow, Reconciliation, SummarySnapshot } from '../../shared/types.js';
 
 type CapitalizationWorkbookRow = {
   Number: number | null;
@@ -23,6 +23,10 @@ function normalizeCapitalizationNumberForWorkbook(value: string | null | undefin
   if (!text) return null;
   const numericValue = Number(text);
   return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function isTotalFullyDilutedRow(description: string): boolean {
+  return description.trim().toLowerCase().startsWith('total fully diluted shares outstand');
 }
 
 export function summaryCapitalizationToWorkbookBuffer(summary: SummarySnapshot): Buffer {
@@ -56,13 +60,15 @@ export function summaryCapitalizationToWorkbookBuffer(summary: SummarySnapshot):
     };
   });
 
-  rows.push({
-    Number: null,
-    Description: 'Total Fully Diluted Shares Outstand',
-    'Common Shares Equivalent': summary.totalFullyDiluted,
-    '% of fully diluted': 1,
-    Formula: '',
-  });
+  if (!summary.capitalization.some((item) => isTotalFullyDilutedRow(item.description))) {
+    rows.push({
+      Number: null,
+      Description: 'Total Fully Diluted Shares Outstand',
+      'Common Shares Equivalent': summary.totalFullyDiluted,
+      '% of fully diluted': 1,
+      Formula: '',
+    });
+  }
 
   const worksheet = XLSX.utils.json_to_sheet(rows, {
     header: ['Number', 'Description', 'Common Shares Equivalent', '% of fully diluted', 'Formula'],
@@ -138,8 +144,17 @@ export function parseCapitalizationSummarySheet(
   preferredSheetName?: string | null,
 ): Pick<SummarySnapshot, 'capitalization' | 'totalFullyDiluted'> & { resolvedSheetName: string } {
   const workbook = readWorkbook(buffer);
+  return parseCapitalizationSummaryFromWorkbook(workbook, preferredSheetName);
+}
+
+function parseCapitalizationSummaryFromWorkbook(
+  workbook: XLSX.WorkBook,
+  preferredSheetName?: string | null,
+): Pick<SummarySnapshot, 'capitalization' | 'totalFullyDiluted'> & { resolvedSheetName: string } {
+  const normalizedPreferredSheetName = preferredSheetName?.trim().toLowerCase();
+  const isReconciliationSheet = normalizedPreferredSheetName === 'shares os reconciliation';
   const sheetName =
-    (preferredSheetName && workbook.SheetNames.find((name) => name === preferredSheetName)) ||
+    (!isReconciliationSheet && preferredSheetName && workbook.SheetNames.find((name) => name === preferredSheetName)) ||
     workbook.SheetNames.find((name) => name === 'Capitalization Summary') ||
     workbook.SheetNames[0];
 
@@ -187,9 +202,16 @@ export function parseCapitalizationSummarySheet(
       return;
     }
 
-    const normalizedDescription = description.toLowerCase();
-    if (normalizedDescription === 'total fully diluted shares outstand') {
+    if (isTotalFullyDilutedRow(description)) {
       totalFullyDiluted = shares ?? totalFullyDiluted;
+      capitalization.push({
+        type: 'data',
+        number: number || undefined,
+        description,
+        shares: shares ?? undefined,
+        percent,
+        formula: formula || undefined,
+      });
       return;
     }
 
@@ -234,5 +256,54 @@ export function parseCapitalizationSummarySheet(
     capitalization,
     totalFullyDiluted,
     resolvedSheetName: sheetName,
+  };
+}
+
+function parseSharesOsReconciliationFromWorkbook(workbook: XLSX.WorkBook): Reconciliation | null {
+  const sheetName = workbook.SheetNames.find((name) => name.trim().toLowerCase() === 'shares os reconciliation');
+  if (!sheetName) return null;
+
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], {
+    defval: null,
+    raw: true,
+  });
+  const row = rows.find((item) => Object.values(item).some((value) => asTrimmedText(value)));
+  if (!row) return null;
+
+  const itemKey = findColumnKey(row, ['item', 'description', 'label']);
+  const lastMonthKey = findColumnKey(row, ['last month', 'lastmonth']);
+  const newSharesKey = findColumnKey(row, ['new shares', 'newshares']);
+  const eomBalanceKey = findColumnKey(row, ['eom balance', 'eombalance']);
+
+  if (!lastMonthKey || !newSharesKey || !eomBalanceKey) return null;
+
+  const lastMonth = asOptionalNumber(row[lastMonthKey]);
+  const newShares = asOptionalNumber(row[newSharesKey]);
+  const eomBalance = asOptionalNumber(row[eomBalanceKey]);
+  if (lastMonth === null || newShares === null || eomBalance === null) return null;
+
+  return {
+    item: itemKey ? asTrimmedText(row[itemKey]) || 'Equity Outstanding as of' : 'Equity Outstanding as of',
+    lastMonth,
+    newShares,
+    eomBalance,
+  };
+}
+
+export function parseCapitalizationWorkbook(
+  buffer: Buffer,
+  preferredSheetName?: string | null,
+): Pick<SummarySnapshot, 'capitalization' | 'totalFullyDiluted'> & {
+  reconciliation: Reconciliation | null;
+  resolvedSheetName: string;
+  resolvedReconciliationSheetName: string | null;
+} {
+  const workbook = readWorkbook(buffer);
+  const summary = parseCapitalizationSummaryFromWorkbook(workbook, preferredSheetName);
+  const reconciliation = parseSharesOsReconciliationFromWorkbook(workbook);
+  return {
+    ...summary,
+    reconciliation,
+    resolvedReconciliationSheetName: reconciliation ? 'Shares OS Reconciliation' : null,
   };
 }

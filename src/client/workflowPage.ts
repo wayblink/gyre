@@ -116,6 +116,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   let workflowDefinitions: WorkflowDefinition[] = [];
   let workflowOperators: WorkflowOperator[] = [];
   let activeWorkflowId: number | null = null;
+  let workflowSearchQuery = '';
   let editingWorkflowDescriptionId: number | null = null;
   let editingWorkflowDescriptionDraft = '';
   let activeWorkflowTaskId: string | null = null;
@@ -228,12 +229,17 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     restoreWorkflowPanelState();
     el('btnCreateWorkflow').addEventListener('click', () => void createWorkflow());
     el('btnSaveWorkflow').addEventListener('click', () => void saveWorkflow());
+    el('btnExportWorkflow').addEventListener('click', () => void exportWorkflow());
     el('btnDeleteWorkflow').addEventListener('click', () => void deleteWorkflow());
     el('btnImportWorkflow').addEventListener('click', () => {
       el<HTMLInputElement>('workflowImportInput').click();
     });
     el('workflowImportInput').addEventListener('change', (event) => {
       void importWorkflow(event);
+    });
+    el('workflowSearchInput').addEventListener('input', () => {
+      workflowSearchQuery = el<HTMLInputElement>('workflowSearchInput').value.trim().toLowerCase();
+      renderWorkflowList();
     });
     el('btnToggleWorkflowSidebar').addEventListener('click', toggleWorkflowSidebar);
     el('workflowCollapsedRail').addEventListener('click', toggleWorkflowSidebar);
@@ -571,6 +577,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   }
 
   async function persistWorkflowDefinition(workflow: WorkflowDefinition, options: { reload?: boolean } = {}) {
+    sanitizeWorkflowFileReferences(workflow);
+
     const saved = await api<WorkflowDefinition>(`/api/workflows/${workflow.id}`, {
       method: 'PATCH',
       body: JSON.stringify({
@@ -649,12 +657,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   function renderWorkflowList() {
     const container = el('workflowList');
-    if (!workflowDefinitions.length) {
+    const workflows = getFilteredWorkflowDefinitions();
+    if (!workflows.length) {
       container.innerHTML = '<div class="workflow-empty">暂无工作流</div>';
       localizeWorkflowDom();
       return;
     }
-    container.innerHTML = workflowDefinitions
+    container.innerHTML = workflows
       .map(
         (workflow) => `
         <div class="workflow-list__item ${workflow.id === activeWorkflowId ? 'is-active' : ''}" data-id="${workflow.id}">
@@ -702,6 +711,22 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       });
     });
     localizeWorkflowDom();
+  }
+
+  function getFilteredWorkflowDefinitions() {
+    if (!workflowSearchQuery) return [...workflowDefinitions];
+    return workflowDefinitions.filter((workflow) => {
+      const searchableText = [
+        workflow.name,
+        workflow.code,
+        workflow.description ?? '',
+        ...workflow.tasks.map((task) => task.name),
+        ...workflow.tasks.map((task) => task.id),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return searchableText.includes(workflowSearchQuery);
+    });
   }
 
   function startWorkflowDescriptionEdit(workflowId: number) {
@@ -1005,6 +1030,66 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     if (record.provider !== 'product-files') return null;
     const fileId = Number(record.id);
     return Number.isInteger(fileId) && fileId > 0 ? fileId : null;
+  }
+
+  function sanitizeMissingProductFileReferences(value: unknown, validFileIds: Set<number>): unknown {
+    if (Array.isArray(value)) {
+      let changed = false;
+      const next = value.map((item) => {
+        const sanitized = sanitizeMissingProductFileReferences(item, validFileIds);
+        changed ||= sanitized !== item;
+        return sanitized;
+      });
+      return changed ? next : value;
+    }
+
+    if (!value || typeof value !== 'object') return value;
+
+    const record = value as Record<string, unknown>;
+    if (record.provider === 'product-files') {
+      const fileId = Number(record.id);
+      return Number.isInteger(fileId) && validFileIds.has(fileId) ? value : undefined;
+    }
+    if ('$fromRuntime' in record) return value;
+
+    let changed = false;
+    const next: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(record)) {
+      const sanitized = sanitizeMissingProductFileReferences(entry, validFileIds);
+      changed ||= sanitized !== entry;
+      if (sanitized !== undefined) next[key] = sanitized;
+    }
+    return changed ? next : value;
+  }
+
+  function sanitizeWorkflowFileReferences(workflow: WorkflowDefinition): boolean {
+    const productFiles = getProductFiles();
+    if (!productFiles.length) return false;
+
+    const validFileIds = new Set(productFiles.map((file) => file.id));
+    let changed = false;
+
+    const sanitizedDefaults = sanitizeMissingProductFileReferences(workflow.runtimeParamsDefaults, validFileIds) as WorkflowDefinition['runtimeParamsDefaults'];
+    if (sanitizedDefaults !== workflow.runtimeParamsDefaults) {
+      workflow.runtimeParamsDefaults = sanitizedDefaults;
+      changed = true;
+    }
+
+    for (const task of workflow.tasks) {
+      const sanitizedParams = sanitizeMissingProductFileReferences(task.params, validFileIds) as WorkflowTask['params'];
+      if (sanitizedParams !== task.params) {
+        task.params = sanitizedParams;
+        changed = true;
+      }
+
+      const fileId = Number(task.params.fileId);
+      if (Number.isInteger(fileId) && fileId > 0 && !validFileIds.has(fileId)) {
+        delete task.params.fileId;
+        changed = true;
+      }
+    }
+
+    return changed;
   }
 
   function workflowRuntimeDefaultFileId(workflow: WorkflowDefinition, runtimePath: string): number | null {
@@ -3171,6 +3256,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const workflow = getActiveWorkflow();
     if (!workflow) return;
 
+    sanitizeWorkflowFileReferences(workflow);
+
     const payload: WorkflowTaskPreviewRequest = {
       workflowId: workflow.id,
       taskId: task.id,
@@ -3320,6 +3407,9 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   async function executeWorkflow() {
     const workflow = getActiveWorkflow();
     if (!workflow) return;
+
+    sanitizeWorkflowFileReferences(workflow);
+
     if (!workflow.tasks.length) {
       notify('当前工作流没有任务', { type: 'warning' });
       return;
@@ -3436,6 +3526,9 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const workflow = getActiveWorkflow();
     const task = getActiveWorkflowTask();
     if (!workflow || !task) return;
+
+    sanitizeWorkflowFileReferences(workflow);
+
     if (!workflowRunState.runId || workflowRunState.workflowId !== workflow.id) {
       notify('请先执行工作流，创建当前 Run 后再单步执行节点', { type: 'warning' });
       return;
@@ -3485,6 +3578,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const task = getActiveWorkflowTask();
     const workflow = getActiveWorkflow();
     if (!task || !workflow || !isSqlComputeTask(task)) return;
+
+    sanitizeWorkflowFileReferences(workflow);
 
     const bindings = getSqlTableBindings(task);
     const binding = bindings[bindingIndex];

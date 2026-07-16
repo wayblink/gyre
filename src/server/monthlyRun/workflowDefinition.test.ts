@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { rowsToDataFrame } from '../excel.js';
-import { dataframePersistExcelOperator } from '../workflow/operators/dataframePersistExcel.js';
+import { evaluateSqlAssertion } from '../workflow/operators/dataframeSqlAssert.js';
 import { executeSqlDataFrameQuery } from '../workflow/operators/sqlUtils.js';
+import { workbookPersistExcelOperator } from '../workflow/operators/workbookPersistExcel.js';
 import {
   buildMonthlyCapitalizationSummarySql,
   buildMonthlyRuntimeParameters,
@@ -11,10 +12,24 @@ import {
   MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
   MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
   MONTHLY_RUN_SOURCE_DEFINITIONS,
+  MONTHLY_RECONCILIATION_COLUMNS,
   MONTHLY_SUMMARY_COLUMNS,
   MONTHLY_SUMMARY_TOTAL_FULLY_DILUTED,
 } from './workflowDefinition.js';
 import { resolveWorkflowRuntimeConfiguration } from '../workflow/runtimeParameters.js';
+
+function resolvedMonthlyTask(taskId: string, month = '2026-05') {
+  const workflow = buildMonthlyWorkflowSeedDefinition();
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: workflow.tasks,
+    runtimeParamsSchema: workflow.runtimeParamsSchema,
+    runtimeParamsDefaults: workflow.runtimeParamsDefaults,
+    runtimeParameters: { month },
+  });
+  const task = resolved.tasks.find((item) => item.id === taskId);
+  assert.ok(task, `Task ${taskId} should exist`);
+  return task;
+}
 
 const metricFrames = {
   control_metrics: rowsToDataFrame(
@@ -110,6 +125,7 @@ test('monthly workflow exposes source extraction and business input calculation 
   const tasks = buildMonthlyWorkflowTasks();
   const controlExtract = tasks.find((item) => item.id === 'extract_control_book');
   const summaryExtract = tasks.find((item) => item.id === 'extract_cap_table_summary');
+  const previousSummaryExtract = tasks.find((item) => item.id === 'extract_previous_capitalization_summary');
   const optionExtract = tasks.find((item) => item.id === 'extract_option_plans');
   const optionMetrics = tasks.find((item) => item.id === 'calc_option_metrics');
   const sourceMetrics = tasks.find((item) => item.id === 'calc_cap_table_summary_source_metrics');
@@ -126,6 +142,8 @@ test('monthly workflow exposes source extraction and business input calculation 
   assert.equal(summaryFileRef?.$fromRuntime, 'fileRefs.summary_source');
   assert.equal(summaryFileRef?.$type, 'object');
   assert.deepEqual(summaryFileRef?.$default, { provider: 'product-files', id: 56 });
+  assert.equal(previousSummaryExtract?.operatorCode, 'sheet.optional-range.extract');
+  assert.equal(previousSummaryExtract?.params.sheetName, 'Capitalization Summary');
   assert.equal(optionExtract?.operatorCode, 'sheet.sections.extract');
   assert.equal(optionExtract?.params.sheetName, 'Option Plans Summary');
   assert.equal(optionExtract?.params.splitByColumn, undefined);
@@ -184,8 +202,7 @@ test('monthly summary source metrics accepts bilingual labels from the merged wo
 });
 
 test('monthly control book metrics uses last non-empty issued outstanding row instead of max value', async () => {
-  const task = buildMonthlyWorkflowTasks().find((item) => item.id === 'calc_control_book_metrics');
-  assert.ok(task);
+  const task = resolvedMonthlyTask('calc_control_book_metrics', '2026-05');
 
   const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
     if (slot !== 'control_book') throw new Error(`Unexpected input slot ${slot}`);
@@ -208,7 +225,7 @@ test('monthly control book metrics uses last non-empty issued outstanding row in
           'Shares Issued': 30,
           Comment: 'Closing',
           'Trans. Type': 'Other',
-          'As of Date': 45_000,
+          'As of Date': '29-May-2026',
         },
         {
           'Issued & Outstanding': '已发行流通股',
@@ -223,6 +240,135 @@ test('monthly control book metrics uses last non-empty issued outstanding row in
   });
 
   assert.equal(result.dataFrame.rows[0].eom_eq_balance_os, 250);
+});
+
+test('monthly control book metrics derives shares OS reconciliation inputs from single control book', async () => {
+  const task = resolvedMonthlyTask('calc_control_book_metrics', '2026-05');
+
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot !== 'control_book') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame(
+      [
+        {
+          'As of Date': '24-Apr-2026',
+          'Issued & Outstanding': 97_028_322,
+          'Shares Issued': 0,
+          Comment: 'Opening',
+          'Trans. Type': 'Other',
+        },
+        {
+          'As of Date': '29-Apr-2026',
+          'Issued & Outstanding': 97_028_322,
+          'Shares Issued': 0,
+          Comment: 'Opening',
+          'Trans. Type': 'Other',
+        },
+        {
+          'As of Date': '29-May-2026',
+          'Issued & Outstanding': 111_488_849,
+          'Shares Issued': 14_450_527,
+          Comment: 'DIR # CA 84 Lin Han',
+          'Trans. Type': 'Agr. & Pl. of Merger',
+        },
+      ],
+      { sheetName: 'EQ Control Book', a1Range: 'A9:L11' },
+    );
+  });
+
+  assert.equal(result.dataFrame.rows[0].last_month_eq_balance_os, 97_028_322);
+  assert.equal(result.dataFrame.rows[0].eom_eq_balance_os, 111_488_849);
+  assert.equal(result.dataFrame.rows[0].last_control_book_month, '2026-05');
+});
+
+test('monthly workflow blocks EQ Control Book whose last row is outside workflow month', async () => {
+  const task = resolvedMonthlyTask('assert_control_book_workflow_month', '2026-06');
+
+  const { assertion } = await evaluateSqlAssertion(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot !== 'control_metrics') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame(
+      [
+        {
+          last_control_book_month: '2026-05',
+          last_month_eq_balance_os: 97_028_322,
+          eom_eq_balance_os: 111_488_849,
+        },
+      ],
+      { sheetName: 'control_metrics', a1Range: '' },
+    );
+  });
+
+  assert.equal(assertion.passed, false);
+  assert.equal(assertion.blockExecution, true);
+  assert.match(assertion.failureMessage, /EQ Control Book input file error/);
+});
+
+test('monthly workflow builds Shares OS Reconciliation from control book metrics', async () => {
+  const task = resolvedMonthlyTask('build_shares_os_reconciliation', '2026-05');
+
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot !== 'control_metrics') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame(
+      [
+        {
+          last_month_eq_balance_os: 97_028_322,
+          eom_eq_balance_os: 111_488_849,
+        },
+      ],
+      { sheetName: 'control_metrics', a1Range: '' },
+    );
+  });
+
+  assert.deepEqual(result.dataFrame.columns, MONTHLY_RECONCILIATION_COLUMNS);
+  assert.deepEqual(result.dataFrame.rows[0], {
+    Item: 'Equity Outstanding as of',
+    'As of': '2026/5/31',
+    'Last Month': 97_028_322,
+    'New Shares': 14_460_527,
+    'EOM Balance': 111_488_849,
+  });
+});
+
+test('monthly workflow optional previous summary validates Last Month only when file rows exist', async () => {
+  const metricsTask = buildMonthlyWorkflowTasks().find((item) => item.id === 'calc_previous_capitalization_summary_metrics');
+  assert.ok(metricsTask);
+
+  const emptyMetrics = await executeSqlDataFrameQuery(metricsTask, { rowsToDataFrame } as never, async (slot) => {
+    if (slot !== 'previous_summary') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame([], { sheetName: 'Capitalization Summary', a1Range: 'A1:E30' });
+  });
+  assert.equal(emptyMetrics.dataFrame.rows[0].previous_summary_row_count, 0);
+
+  const assertTask = buildMonthlyWorkflowTasks().find((item) => item.id === 'assert_previous_summary_last_month');
+  assert.ok(assertTask);
+
+  const pass = await evaluateSqlAssertion(assertTask, { rowsToDataFrame } as never, async (slot) => {
+    if (slot === 'control_metrics') {
+      return rowsToDataFrame([{ last_month_eq_balance_os: 97_028_322 }], { sheetName: 'control_metrics', a1Range: '' });
+    }
+    if (slot === 'previous_summary_metrics') {
+      return rowsToDataFrame([{ previous_summary_row_count: 1, previous_eom_eq_balance_os: 97_028_322 }], {
+        sheetName: 'previous_summary_metrics',
+        a1Range: '',
+      });
+    }
+    throw new Error(`Unexpected input slot ${slot}`);
+  });
+  assert.equal(pass.assertion.passed, true);
+
+  const fail = await evaluateSqlAssertion(assertTask, { rowsToDataFrame } as never, async (slot) => {
+    if (slot === 'control_metrics') {
+      return rowsToDataFrame([{ last_month_eq_balance_os: 97_028_322 }], { sheetName: 'control_metrics', a1Range: '' });
+    }
+    if (slot === 'previous_summary_metrics') {
+      return rowsToDataFrame([{ previous_summary_row_count: 1, previous_eom_eq_balance_os: 97_000_000 }], {
+        sheetName: 'previous_summary_metrics',
+        a1Range: '',
+      });
+    }
+    throw new Error(`Unexpected input slot ${slot}`);
+  });
+  assert.equal(fail.assertion.passed, false);
+  assert.match(fail.assertion.failureMessage, /Previous Capitalization Summary EOM/);
 });
 
 test('monthly workflow seed definition derives runtime parameters without business-required semantics', () => {
@@ -244,6 +390,7 @@ test('monthly workflow seed definition derives runtime parameters without busine
   assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.required, true);
   assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.properties?.control_book?.required, true);
   assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.summary_source?.type, 'object');
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.previous_capitalization_summary?.type, 'object');
   assert.equal(
     (workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsOutstandingCullgen,
     MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
@@ -275,20 +422,23 @@ test('monthly workflow defaults use independent source workbooks for required in
     futu_exercises: { provider: 'product-files', id: 54 },
     option_plans: { provider: 'product-files', id: 55 },
     summary_source: { provider: 'product-files', id: 56 },
+    previous_capitalization_summary: {},
   });
 });
 
-test('monthly business input configuration maps four source files one-to-one to extraction tasks', () => {
+test('monthly business input configuration maps source files one-to-one to extraction tasks', () => {
   assert.deepEqual(
     MONTHLY_RUN_SOURCE_DEFINITIONS.map(({ sourceKey, taskId }) => ({ sourceKey, taskId })),
     [
       { sourceKey: 'control_book', taskId: 'extract_control_book' },
       { sourceKey: 'summary_source', taskId: 'extract_cap_table_summary' },
+      { sourceKey: 'previous_capitalization_summary', taskId: 'extract_previous_capitalization_summary' },
       { sourceKey: 'futu_exercises', taskId: 'extract_futu_exercises' },
       { sourceKey: 'option_plans', taskId: 'extract_option_plans' },
     ],
   );
-  assert.equal(new Set(MONTHLY_RUN_SOURCE_DEFINITIONS.map((source) => source.taskId)).size, 4);
+  assert.equal(MONTHLY_RUN_SOURCE_DEFINITIONS.find((source) => source.sourceKey === 'previous_capitalization_summary')?.required, false);
+  assert.equal(new Set(MONTHLY_RUN_SOURCE_DEFINITIONS.map((source) => source.taskId)).size, 5);
 });
 
 test('monthly runtime parameter builder keeps defaults when optional override keys are undefined', () => {
@@ -365,15 +515,30 @@ test('persist excel operator prefixes output filename with resolved month consta
   assert.ok(task);
   task.params.fileNamePrefix = '2026-05';
 
-  const preview = await dataframePersistExcelOperator.preview?.({
+  const preview = await workbookPersistExcelOperator.preview?.({
     task,
     executed: new Map(),
     taskMap: new Map([[task.id, task]]),
     runtime: {} as never,
     executeTask: async () => metricFrames.business_inputs,
-    resolveInputDataFrame: async () => metricFrames.business_inputs,
+    resolveInputDataFrame: async (slot) =>
+      slot === 'reconciliation'
+        ? rowsToDataFrame(
+            [
+              {
+                Item: 'Equity Outstanding as of',
+                'As of': '2026/5/31',
+                'Last Month': 97_028_322,
+                'New Shares': 14_460_527,
+                'EOM Balance': 111_488_849,
+              },
+            ],
+            { sheetName: 'Shares OS Reconciliation', a1Range: '' },
+          )
+        : metricFrames.business_inputs,
   });
 
   assert.equal(preview?.kind, 'file-plan');
   assert.equal(preview?.fileName, '2026-05-Capitalization_Table_Summary_View.xlsx');
+  assert.equal(preview?.sheetName, 'Shares OS Reconciliation, Capitalization Summary');
 });

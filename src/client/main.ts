@@ -3,6 +3,7 @@ import type {
   AuthStatus,
   AuthenticatedUser,
   Employee,
+  EmployeeLabel,
   EmployeeMapping,
   ExerciseRecord,
   FixedValueRecord,
@@ -10,6 +11,7 @@ import type {
   Holding,
   LinkDetail,
   LatestMonthlyRunOutput,
+  ManagedUser,
   MergedGrant,
   MonthlyRunInstanceRecord,
   PaginatedResult,
@@ -22,8 +24,14 @@ import type {
   TrackedPlan,
   TransferPlanResponse,
   ShareholderTag,
+  WorkflowExecutionResult,
+  WorkflowPageConfig,
+  WorkflowResultFileBinding,
+  WorkflowPageSourceBinding,
+  WorkflowRunRecord,
   ShareworksGrant,
 } from '../shared/types.js';
+import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import { createFilesPage } from './filesPage.js';
 import { createMonthlyRunPage } from './monthlyRunPage.js';
 import {
@@ -50,6 +58,7 @@ let currentSummary: SummarySnapshot | null = null;
 let authStatus: AuthStatus | null = null;
 let updatePlans: MonthlyRunInstanceRecord[] = [];
 let employees: Employee[] = [];
+let employeeLabels: EmployeeLabel[] = [];
 let employeeMappings: EmployeeMapping[] = [];
 let planManagements: TrackedPlan[] = [];
 let shareholders: ShareholderTag[] = [];
@@ -85,9 +94,10 @@ const pageTitles: Record<string, string> = {
   'employee-management': '员工管理',
   'plan-summary': '计划汇总',
   'five-percent-holders': '5% 股东',
-  'fixed-value': '固定参数',
+  'fixed-value': 'Global Parameter',
   files: '文件中心',
   workflow: '工作流',
+  'user-management': '用户管理',
   docs: '使用手册',
   holdings: '持仓明细',
   employees: '员工列表',
@@ -98,6 +108,7 @@ type PageKey = keyof typeof pageTitles;
 const DEFAULT_PAGE: PageKey = 'captable';
 const FIXED_CAPITALIZATION_SUMMARY_SHEET = 'Capitalization Summary';
 const validPages = new Set<PageKey>(Object.keys(pageTitles) as PageKey[]);
+const adminOnlyPages = new Set<PageKey>(['files', 'workflow', 'user-management']);
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'captable.sidebar.collapsed';
 const MONTHLY_RUN_INPUT_COLLAPSED_STORAGE_KEY = 'captable.monthlyRun.inputCollapsed';
 let sidebarCollapsed = false;
@@ -106,9 +117,54 @@ let themeSelection: ThemeSelection = getStoredTheme();
 let currentLanguage: AppLanguage = readStoredLanguage();
 let appInitialized = false;
 let currentAccount: AccountProfile | null = null;
+let managedUsers: ManagedUser[] = [];
+let editingManagedUserId: number | null = null;
 
 let editingEmployeeId: number | null = null;
+let editingEmployeeLabelId: number | null = null;
+let editingEmployeeLabelIds: number[] = [];
 let mergeSourceEmployeeId: number | null = null;
+const DEFAULT_EMPLOYEE_LABEL_COLOR = '#2563eb';
+
+type WorkflowUpdatePageKey =
+  | 'grant-record'
+  | 'exercise-record'
+  | 'sold-shares'
+  | 'transfer-plan'
+  | 'plan-summary'
+  | 'five-percent-holders';
+
+type WorkflowUpdateKind = 'esop' | 'data-management';
+
+const workflowUpdatePageKinds: Record<WorkflowUpdatePageKey, WorkflowUpdateKind> = {
+  'grant-record': 'esop',
+  'exercise-record': 'esop',
+  'sold-shares': 'esop',
+  'transfer-plan': 'esop',
+  'plan-summary': 'data-management',
+  'five-percent-holders': 'data-management',
+};
+
+const workflowSourceBindingsByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowPageSourceBinding[]>> = {};
+const workflowResultFilesByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowResultFileBinding[]>> = {};
+let workflowUpdateConfigs: Partial<Record<WorkflowUpdatePageKey, WorkflowPageConfig>> = {};
+let activeWorkflowUpdatePage: WorkflowUpdatePageKey | null = null;
+let workflowUpdateSelectedFiles: Record<string, number | null> = {};
+const fivePercentHolderFixedValueKeys = {
+  gniCommonStock: 'fivePercentHoldersGniCommonStock',
+  gniTotalCses: 'fivePercentHoldersGniTotalCses',
+  songjiangMaCommonStock: 'fivePercentHoldersSongjiangMaCommonStock',
+  songjiangMaTotalCses: 'fivePercentHoldersSongjiangMaTotalCses',
+} as const;
+const fivePercentHolderFixedValueLabels: Record<string, string> = {
+  [fivePercentHolderFixedValueKeys.gniCommonStock]: '5% Holders - GNI Group Ltd. Common Stock',
+  [fivePercentHolderFixedValueKeys.gniTotalCses]: '5% Holders - GNI Group Ltd. Total CSEs',
+  [fivePercentHolderFixedValueKeys.songjiangMaCommonStock]: '5% Holders - Songjiang Ma Common Stock',
+  [fivePercentHolderFixedValueKeys.songjiangMaTotalCses]: '5% Holders - Songjiang Ma Total CSEs',
+};
+let fivePercentHoldersEditMode = false;
+let fivePercentHoldersSaving = false;
+let fivePercentHolderFixedValues: FixedValueRecord[] = [];
 
 const filesPage = createFilesPage({
   el,
@@ -133,7 +189,11 @@ const workflowPage = createWorkflowPage({
   getLanguage: () => currentLanguage,
 });
 
-const docsPage = createDocsPage({ el, getLanguage: () => currentLanguage });
+const docsPage = createDocsPage({
+  el,
+  getLanguage: () => currentLanguage,
+  isAdmin: () => isAdminUser(),
+});
 
 const monthlyRunPage = createMonthlyRunPage({
   el,
@@ -158,16 +218,32 @@ function el<T extends HTMLElement>(id: string): T {
   return node as T;
 }
 
-function setPageSourceFiles(page: PageKey, files: string | Array<string | null | undefined> | null | undefined) {
+function formatFileList(files: string | Array<string | null | undefined> | null | undefined): string {
   const list = (Array.isArray(files) ? files : [files])
     .map((file) => String(file ?? '').trim())
     .filter(Boolean);
+  return list.join(' / ');
+}
+
+function setPageFileMetric(page: PageKey, selector: string, files: string | Array<string | null | undefined> | null | undefined, label: string) {
   const section = document.getElementById(`page-${page}`);
-  const nameNode = section?.querySelector<HTMLElement>('[data-page-source-file-name]');
+  const nameNode = section?.querySelector<HTMLElement>(selector);
   if (!nameNode) return;
-  const label = list.join(' / ');
-  nameNode.textContent = label || '-';
-  nameNode.setAttribute('title', label ? `SourceFile: ${label}` : '');
+  const text = formatFileList(files);
+  nameNode.textContent = text || '-';
+  nameNode.setAttribute('title', text ? `${label}: ${text}` : '');
+}
+
+function setPageSourceFiles(page: PageKey, files: string | Array<string | null | undefined> | null | undefined) {
+  setPageFileMetric(page, '[data-page-source-file-name]', files, 'SourceFile');
+}
+
+function setPageResultFiles(page: PageKey, files: string | Array<string | null | undefined> | null | undefined) {
+  setPageFileMetric(page, '[data-page-result-file-name]', files, 'OutputFile');
+}
+
+function setPageInputSourceFiles(page: PageKey, files: string | Array<string | null | undefined> | null | undefined) {
+  setPageFileMetric(page, '[data-page-source-files-name]', files, 'SourceFiles');
 }
 
 function productFileDisplayName(file: ProductFileRecord) {
@@ -176,14 +252,289 @@ function productFileDisplayName(file: ProductFileRecord) {
 
 function resetActivePageSourceFile() {
   const activeSection = document.querySelector<HTMLElement>('.page-section.active');
-  const nameNode = activeSection?.querySelector<HTMLElement>('[data-page-source-file-name]');
-  if (!nameNode) return;
-  nameNode.textContent = '-';
-  nameNode.removeAttribute('title');
+  activeSection
+    ?.querySelectorAll<HTMLElement>('[data-page-source-file-name], [data-page-result-file-name], [data-page-source-files-name]')
+    .forEach((nameNode) => {
+      nameNode.textContent = '-';
+      nameNode.removeAttribute('title');
+    });
 }
 
-function responseSourceFiles(response: { sourceFiles?: string[]; sourceFileName?: string | null }) {
-  return response.sourceFiles?.length ? response.sourceFiles : response.sourceFileName;
+function responseResultFiles(response: { resultFiles?: string[]; resultFileName?: string | null }) {
+  if (response.resultFiles?.length) return response.resultFiles;
+  if (response.resultFileName) return response.resultFileName;
+  return [];
+}
+
+function setWorkflowPageFiles(
+  page: PageKey,
+  response: {
+    sourceFiles?: string[];
+    workflowSourceBindings?: WorkflowPageSourceBinding[];
+    workflowResultFiles?: WorkflowResultFileBinding[];
+    resultFiles?: string[];
+    resultFileName?: string | null;
+  },
+) {
+  setPageResultFiles(page, responseResultFiles(response));
+  setPageInputSourceFiles(page, response.sourceFiles ?? []);
+  if (isWorkflowUpdatePage(page)) {
+    if (response.workflowSourceBindings) workflowSourceBindingsByPage[page] = response.workflowSourceBindings;
+    if (response.workflowResultFiles) workflowResultFilesByPage[page] = response.workflowResultFiles;
+  }
+}
+
+function isWorkflowUpdatePage(page: string): page is WorkflowUpdatePageKey {
+  return Object.prototype.hasOwnProperty.call(workflowUpdatePageKinds, page);
+}
+
+function workflowUpdateConfigEndpoint(kind: WorkflowUpdateKind) {
+  return kind === 'esop' ? '/api/esop-workflows' : '/api/data-management-workflows';
+}
+
+function workflowUpdateRunEndpoint(page: WorkflowUpdatePageKey) {
+  const kind = workflowUpdatePageKinds[page];
+  return kind === 'esop'
+    ? `/api/esop-workflows/${page}/runs`
+    : `/api/data-management-workflows/${page}/runs`;
+}
+
+async function loadWorkflowUpdateConfigs() {
+  const [esop, dataManagement] = await Promise.all([
+    api<{ items: WorkflowPageConfig[] }>(workflowUpdateConfigEndpoint('esop')),
+    api<{ items: WorkflowPageConfig[] }>(workflowUpdateConfigEndpoint('data-management')),
+  ]);
+  workflowUpdateConfigs = Object.fromEntries(
+    [...esop.items, ...dataManagement.items]
+      .filter((config) => isWorkflowUpdatePage(config.pageKey))
+      .map((config) => [config.pageKey, config]),
+  ) as Partial<Record<WorkflowUpdatePageKey, WorkflowPageConfig>>;
+}
+
+function getWorkflowUpdateConfig(page: WorkflowUpdatePageKey): WorkflowPageConfig {
+  const config = workflowUpdateConfigs[page];
+  if (!config) throw new Error(`Missing workflow config for ${page}`);
+  return config;
+}
+
+function workflowUpdateBindingFor(page: WorkflowUpdatePageKey, sourceKey: string): WorkflowPageSourceBinding | null {
+  return workflowSourceBindingsByPage[page]?.find((binding) => binding.sourceKey === sourceKey) ?? null;
+}
+
+function workflowUpdateFileOptions(selectedFileId: number | null) {
+  return [
+    `<option value="">No file selected</option>`,
+    ...filesPage.getProductFiles().map((file) => {
+      const selected = file.id === selectedFileId ? ' selected' : '';
+      return `<option value="${file.id}"${selected}>${escapeHtml(productFileDisplayName(file))} (#${file.id})</option>`;
+    }),
+  ].join('');
+}
+
+function renderWorkflowUpdateModalSources() {
+  const page = activeWorkflowUpdatePage;
+  if (!page) return;
+  const config = getWorkflowUpdateConfig(page);
+  el('workflowUpdateSourceList').innerHTML = config.sources
+    .map((source) => {
+      const selectedFileId = workflowUpdateSelectedFiles[source.sourceKey] ?? null;
+      const previous = workflowUpdateBindingFor(page, source.sourceKey);
+      return `
+        <div class="workflow-update-source-card" data-workflow-update-source="${escapeHtml(source.sourceKey)}">
+          <div class="workflow-update-source-card__main">
+            <div class="workflow-update-source-card__title">${escapeHtml(source.label)}</div>
+            <div class="workflow-update-source-card__meta">Source key: ${escapeHtml(source.sourceKey)}</div>
+            <div class="workflow-update-source-card__meta">Previous: ${escapeHtml(previous?.fileName ?? 'Not set')}</div>
+          </div>
+          <div class="workflow-update-source-card__controls">
+            <select class="form-input" data-workflow-update-file-select="${escapeHtml(source.sourceKey)}">
+              ${workflowUpdateFileOptions(selectedFileId)}
+            </select>
+            <button class="btn btn-secondary btn-sm" type="button" data-workflow-update-upload="${escapeHtml(source.sourceKey)}">Upload</button>
+          </div>
+        </div>`;
+    })
+    .join('');
+
+  el('workflowUpdateSourceList')
+    .querySelectorAll<HTMLSelectElement>('[data-workflow-update-file-select]')
+    .forEach((select) => {
+      select.addEventListener('change', () => {
+        const sourceKey = select.dataset.workflowUpdateFileSelect;
+        if (!sourceKey) return;
+        const fileId = Number(select.value);
+        workflowUpdateSelectedFiles[sourceKey] = Number.isInteger(fileId) && fileId > 0 ? fileId : null;
+      });
+    });
+
+  el('workflowUpdateSourceList')
+    .querySelectorAll<HTMLButtonElement>('[data-workflow-update-upload]')
+    .forEach((button) => {
+      button.addEventListener('click', () => {
+        const sourceKey = button.dataset.workflowUpdateUpload;
+        if (!sourceKey) return;
+        void uploadWorkflowUpdateSourceFile(sourceKey);
+      });
+    });
+}
+
+async function openWorkflowUpdateModal(page: WorkflowUpdatePageKey) {
+  await loadWorkflowUpdateConfigs();
+  await filesPage.refreshProductFiles();
+  const config = getWorkflowUpdateConfig(page);
+  activeWorkflowUpdatePage = page;
+  workflowUpdateSelectedFiles = Object.fromEntries(
+    config.sources.map((source) => [
+      source.sourceKey,
+      workflowUpdateBindingFor(page, source.sourceKey)?.fileId ?? null,
+    ]),
+  );
+  el('workflowUpdateModalTitle').textContent = `Update ${config.workflowName}`;
+  el('workflowUpdateModalSubtitle').textContent = config.description;
+  el('workflowUpdateStatus').textContent = '默认使用上一次成功执行的输入文件；上传新文件后会自动替换当前输入项。';
+  renderWorkflowUpdateModalSources();
+  el('workflowUpdateModal').classList.remove('hidden');
+}
+
+function closeWorkflowUpdateModal() {
+  el('workflowUpdateModal').classList.add('hidden');
+  activeWorkflowUpdatePage = null;
+  workflowUpdateSelectedFiles = {};
+}
+
+async function uploadWorkflowUpdateSourceFile(sourceKey: string) {
+  const page = activeWorkflowUpdatePage;
+  if (!page) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.xlsx,.xls,.csv';
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    form.append('uploadedBy', `Workflow Update · ${page} · ${sourceKey}`);
+    try {
+      el('workflowUpdateStatus').textContent = 'Uploading file...';
+      const data = await api<{ file: ProductFileRecord }>('/api/files/upload', { method: 'POST', body: form });
+      await filesPage.refreshProductFiles(data.file.id);
+      workflowUpdateSelectedFiles[sourceKey] = data.file.id;
+      renderWorkflowUpdateModalSources();
+      el('workflowUpdateStatus').textContent = `Uploaded ${productFileDisplayName(data.file)}.`;
+    } catch (error) {
+      notify((error as Error).message, { type: 'error' });
+      el('workflowUpdateStatus').textContent = 'Upload failed.';
+    }
+  });
+  input.click();
+}
+
+async function pollWorkflowUpdateRunUntilFinished(runId: number): Promise<WorkflowRunRecord> {
+  const startedAt = Date.now();
+  const timeoutMs = 120_000;
+  for (;;) {
+    await new Promise((resolve) => window.setTimeout(resolve, 600));
+    const run = await api<WorkflowRunRecord>(`/api/workflow-runs/${runId}`);
+    if (isWorkflowRunTerminalStatus(run.status)) return run;
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error(`Workflow run #${runId} did not finish within ${Math.round(timeoutMs / 1000)}s`);
+    }
+  }
+}
+
+async function refreshWorkflowUpdatePage(page: WorkflowUpdatePageKey) {
+  if (page === 'grant-record') {
+    await renderHoldingsPage(currentMonth);
+  } else if (page === 'exercise-record') {
+    await renderExerciseRecords();
+  } else if (page === 'sold-shares') {
+    await renderSoldShares();
+  } else if (page === 'transfer-plan') {
+    await renderTransferPlan();
+  } else if (page === 'plan-summary') {
+    await renderPlanSummaryPage();
+  } else if (page === 'five-percent-holders') {
+    await renderFivePercentHoldersPage();
+  }
+}
+
+async function confirmWorkflowUpdate() {
+  const page = activeWorkflowUpdatePage;
+  if (!page) return;
+  const config = getWorkflowUpdateConfig(page);
+  const missing = config.sources.find((source) => !workflowUpdateSelectedFiles[source.sourceKey]);
+  if (missing) {
+    notify(`请选择或上传 ${missing.label}`, { type: 'warning' });
+    return;
+  }
+
+  const confirmButton = el<HTMLButtonElement>('btnConfirmWorkflowUpdate');
+  confirmButton.disabled = true;
+  el('workflowUpdateStatus').textContent = 'Starting workflow...';
+  try {
+    const sources = Object.fromEntries(
+      config.sources.map((source) => [source.sourceKey, { fileId: workflowUpdateSelectedFiles[source.sourceKey] }]),
+    );
+    const result = await api<WorkflowExecutionResult>(workflowUpdateRunEndpoint(page), {
+      method: 'POST',
+      body: JSON.stringify({ sources }),
+    });
+    const runId = result.run?.id;
+    if (!runId) throw new Error('Workflow run was not created');
+    el('workflowUpdateStatus').textContent = `Workflow running (#${runId})...`;
+    const run = await pollWorkflowUpdateRunUntilFinished(runId);
+    if (run.status !== 'completed' && run.status !== 'completed_with_warnings') {
+      throw new Error(run.errorMessage ?? `Workflow ended with status ${run.status}`);
+    }
+    await filesPage.refreshProductFiles();
+    await refreshWorkflowUpdatePage(page);
+    notify(run.status === 'completed_with_warnings' ? 'Workflow 完成（包含 Warning）' : 'Workflow 更新完成', {
+      type: run.status === 'completed_with_warnings' ? 'warning' : 'success',
+    });
+    closeWorkflowUpdateModal();
+  } catch (error) {
+    notify((error as Error).message, { type: 'error' });
+    el('workflowUpdateStatus').textContent = `Workflow failed: ${(error as Error).message}`;
+  } finally {
+    confirmButton.disabled = false;
+  }
+}
+
+function downloadWorkflowResultFiles(page: WorkflowUpdatePageKey) {
+  const files = workflowResultFilesByPage[page] ?? [];
+  if (files.length === 0) {
+    notify('当前页面没有可导出的文件', { type: 'warning' });
+    return;
+  }
+  files.forEach((file, index) => {
+    window.setTimeout(() => {
+      const link = document.createElement('a');
+      link.href = `/api/files/${file.fileId}/content`;
+      link.download = file.fileName || `result-file-${file.fileId}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }, index * 150);
+  });
+  notify(files.length === 1 ? '开始导出文件' : `开始导出 ${files.length} 个文件`, {
+    type: 'success',
+  });
+}
+
+function isAdminUser(): boolean {
+  return authStatus?.user?.role === 'admin';
+}
+
+function canAccessPage(page: PageKey): boolean {
+  return !adminOnlyPages.has(page) || isAdminUser();
+}
+
+function applyRoleVisibility() {
+  document.querySelectorAll<HTMLElement>('.nav-dev-tools').forEach((node) => {
+    node.classList.toggle('hidden', !isAdminUser());
+  });
+  // Re-render the manual so admin-only doc pages appear/disappear with the role.
+  docsPage.render();
 }
 
 const pageTitleTranslations: Record<PageKey, Record<AppLanguage, string>> = {
@@ -198,9 +549,10 @@ const pageTitleTranslations: Record<PageKey, Record<AppLanguage, string>> = {
   'employee-management': { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
   'plan-summary': { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
   'five-percent-holders': { 'zh-CN': '5% 股东', 'en-US': '5% Holders' },
-  'fixed-value': { 'zh-CN': '固定参数', 'en-US': 'Fixed Value' },
+  'fixed-value': { 'zh-CN': 'Global Parameter', 'en-US': 'Global Parameter' },
   files: { 'zh-CN': '文件中心', 'en-US': 'Files' },
   workflow: { 'zh-CN': '工作流', 'en-US': 'Workflow' },
+  'user-management': { 'zh-CN': '用户管理', 'en-US': 'User Management' },
   docs: { 'zh-CN': '使用手册', 'en-US': 'Docs' },
   holdings: { 'zh-CN': '持仓明细', 'en-US': 'Holdings' },
   employees: { 'zh-CN': '员工列表', 'en-US': 'Employees' },
@@ -217,7 +569,7 @@ const uiText: Record<string, Record<AppLanguage, string>> = {
   createAndLogin: { 'zh-CN': '创建并登录', 'en-US': 'Create and log in' },
   collapseSidebar: { 'zh-CN': '收起导航栏', 'en-US': 'Collapse sidebar' },
   expandSidebar: { 'zh-CN': '展开导航栏', 'en-US': 'Expand sidebar' },
-  devTools: { 'zh-CN': '开发工具', 'en-US': 'Developer Tools' },
+  devTools: { 'zh-CN': '仅管理员', 'en-US': 'Admin Only' },
   account: { 'zh-CN': '账号', 'en-US': 'Account' },
   logout: { 'zh-CN': '退出登录', 'en-US': 'Log out' },
   search: { 'zh-CN': '搜索', 'en-US': 'Search' },
@@ -265,9 +617,24 @@ const uiText: Record<string, Record<AppLanguage, string>> = {
   newPassword: { 'zh-CN': '新密码', 'en-US': 'New password' },
   confirmNewPassword: { 'zh-CN': '确认新密码', 'en-US': 'Confirm new password' },
   updatePassword: { 'zh-CN': '更新密码', 'en-US': 'Update Password' },
+  userManagementSubtitle: { 'zh-CN': '管理员创建、编辑、停用系统用户和角色', 'en-US': 'Admins create, edit, deactivate system users and roles' },
+  newUser: { 'zh-CN': '新增用户', 'en-US': 'New User' },
+  role: { 'zh-CN': '角色', 'en-US': 'Role' },
+  status: { 'zh-CN': '状态', 'en-US': 'Status' },
+  lastLogin: { 'zh-CN': '最后登录', 'en-US': 'Last Login' },
+  createdAt: { 'zh-CN': '创建时间', 'en-US': 'Created At' },
+  active: { 'zh-CN': '启用', 'en-US': 'Active' },
+  inactive: { 'zh-CN': '停用', 'en-US': 'Inactive' },
+  password: { 'zh-CN': '密码', 'en-US': 'Password' },
+  optionalPassword: { 'zh-CN': '密码（留空则不修改）', 'en-US': 'Password (leave blank to keep)' },
+  createUser: { 'zh-CN': '创建用户', 'en-US': 'Create User' },
+  editUser: { 'zh-CN': '编辑用户', 'en-US': 'Edit User' },
+  noUsers: { 'zh-CN': '暂无用户', 'en-US': 'No users' },
   sourceFile: { 'zh-CN': 'SourceFile', 'en-US': 'SourceFile' },
+  sourceFiles: { 'zh-CN': 'SourceFiles', 'en-US': 'SourceFiles' },
+  resultFile: { 'zh-CN': 'Output File', 'en-US': 'Output File' },
   captableHeroEyebrow: { 'zh-CN': '股本汇总', 'en-US': 'Equity Summary' },
-  captableHeroText: { 'zh-CN': '展示月度 Capitalization Table Summary View，数据来自当前选择的 SourceFile。', 'en-US': 'View the monthly Capitalization Table Summary using the selected SourceFile.' },
+  captableHeroText: { 'zh-CN': '展示月度 Capitalization Table Summary View，数据来自当前选择的输出文件。', 'en-US': 'View the monthly Capitalization Table Summary using the selected output file.' },
   grantHeroEyebrow: { 'zh-CN': '授予记录', 'en-US': 'Grant Records' },
   grantHeroText: { 'zh-CN': '展示 Futu、Shareworks 及合并后的授予明细，数据来自对应 workflow 输出文件。', 'en-US': 'View Futu, Shareworks, and merged grant details from workflow output files.' },
   exerciseHeroEyebrow: { 'zh-CN': '行权记录', 'en-US': 'Exercise Records' },
@@ -281,9 +648,9 @@ const uiText: Record<string, Record<AppLanguage, string>> = {
   planHeroEyebrow: { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
   planHeroText: { 'zh-CN': '按 Plan Name 聚合授予、行权、取消及 outstanding 数量。', 'en-US': 'Aggregate grants, exercises, cancellations, and outstanding quantities by Plan Name.' },
   holdersHeroEyebrow: { 'zh-CN': '持股5%以上股东', 'en-US': '5% Holders' },
-  holdersHeroText: { 'zh-CN': '来源：Gyre Cap Table「5% Holders」sheet（EDGAR SC13 申报口径）。', 'en-US': 'Source: Gyre Cap Table “5% Holders” sheet, aligned with EDGAR SC13 filings.' },
-  fixedHeroEyebrow: { 'zh-CN': '管理可以更改的固定值', 'en-US': 'Manage Editable Fixed Values' },
-  fixedHeroText: { 'zh-CN': 'Data Management 下的固定值维护页，用于管理月度流程中可由管理员调整的业务常量。', 'en-US': 'Maintain business constants that admins can adjust in the monthly process.' },
+  holdersHeroText: { 'zh-CN': '由 Global Parameter 手工维护的 5% holder 数字与 Capitalization Summary 分母计算生成。', 'en-US': 'Generated from manually maintained Global Parameter holder numbers and Capitalization Summary denominators.' },
+  fixedHeroEyebrow: { 'zh-CN': '管理可以更改的全局参数', 'en-US': 'Manage Editable Global Parameters' },
+  fixedHeroText: { 'zh-CN': 'Data Management 下的全局参数维护页，用于管理月度流程中可由管理员调整的业务常量。', 'en-US': 'Maintain business constants that admins can adjust in the monthly process.' },
   docsHeroEyebrow: { 'zh-CN': '使用手册', 'en-US': 'Docs' },
   docsHeroText: { 'zh-CN': '系统各页面与工作流的使用说明，按主题分多篇文档。', 'en-US': 'Usage guides for system pages and workflows, organized by topic.' },
   esopHeroEyebrow: { 'zh-CN': '股权明细', 'en-US': 'ESOP Detail' },
@@ -299,10 +666,13 @@ const placeholderTranslations: Array<[string, Record<AppLanguage, string>]> = [
   ['filterEmployeesPageTag', { 'zh-CN': '按标签筛选', 'en-US': 'Filter by tag' }],
   ['accountEmail', { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' }],
   ['accountPhone', { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' }],
+  ['managedUserUsername', { 'zh-CN': '输入登录账号', 'en-US': 'Enter login username' }],
+  ['managedUserDisplayName', { 'zh-CN': '输入显示名', 'en-US': 'Enter display name' }],
+  ['managedUserEmail', { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' }],
+  ['managedUserPhone', { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' }],
   ['employeesPageNumber', { 'zh-CN': '输入工号（新增后不可改）', 'en-US': 'Enter employee no. (cannot be changed after creation)' }],
   ['employeesPageName', { 'zh-CN': '输入员工姓名', 'en-US': 'Enter employee name' }],
   ['employeesPageUserId', { 'zh-CN': '输入用户 ID', 'en-US': 'Enter user id' }],
-  ['employeesPageTags', { 'zh-CN': '用英文逗号分隔标签', 'en-US': 'Comma separated tags' }],
   ['employeesMergeTargetNumber', { 'zh-CN': '输入目标员工的工号 / Emp. No.', 'en-US': 'Enter target employee no. / Emp. No.' }],
 ];
 
@@ -312,6 +682,14 @@ function t(key: keyof typeof uiText): string {
 
 function pageTitleFor(page: PageKey): string {
   return pageTitleTranslations[page]?.[currentLanguage] ?? pageTitles[page];
+}
+
+function otherLanguage(language: AppLanguage = currentLanguage): AppLanguage {
+  return language === 'zh-CN' ? 'en-US' : 'zh-CN';
+}
+
+function pageTitleForLanguage(page: PageKey, language: AppLanguage): string {
+  return pageTitleTranslations[page]?.[language] ?? pageTitles[page];
 }
 
 function setText(selector: string, text: string) {
@@ -377,15 +755,16 @@ function syncCurrentViewInfoText() {
   }
 }
 
-function setPageHero(page: PageKey, eyebrowKey: keyof typeof uiText, title: string, bodyKey: keyof typeof uiText) {
+function setPageHero(page: PageKey, bodyKey: keyof typeof uiText) {
   const section = document.getElementById(`page-${page}`);
   if (!section) return;
   const hero = section.querySelector<HTMLElement>('.product-page-hero');
+  if (hero) hero.dataset.noStaticTranslate = 'true';
   const eyebrow = hero?.querySelector<HTMLElement>('.product-page-hero__eyebrow');
   const heading = hero?.querySelector<HTMLElement>('h2');
   const paragraph = hero?.querySelector<HTMLElement>('p');
-  if (eyebrow) eyebrow.textContent = t(eyebrowKey);
-  if (heading) heading.textContent = title;
+  if (eyebrow) eyebrow.textContent = pageTitleForLanguage(page, otherLanguage());
+  if (heading) heading.textContent = pageTitleForLanguage(page, currentLanguage);
   if (paragraph) paragraph.textContent = t(bodyKey);
 }
 
@@ -400,6 +779,7 @@ function syncLanguageButtons() {
 function applyLanguage() {
   document.documentElement.lang = currentLanguage;
   document.body.dataset.language = currentLanguage;
+  applyRoleVisibility();
 
   document.querySelectorAll<HTMLElement>('.nav-item[data-page]').forEach((node) => {
     const page = normalizePage(node.dataset.page ?? '') as PageKey;
@@ -413,19 +793,21 @@ function applyLanguage() {
   setText('#btnAccountPage', t('account'));
   setText('#btnLogout', t('logout'));
 
-  setPageHero('esop-detail', 'esopHeroEyebrow', 'ESOP Detail', 'esopHeroText');
-  setPageHero('grant-record', 'grantHeroEyebrow', 'Grant Record', 'grantHeroText');
-  setPageHero('exercise-record', 'exerciseHeroEyebrow', 'Exercise to Date', 'exerciseHeroText');
-  setPageHero('sold-shares', 'soldHeroEyebrow', 'Sold Shares', 'soldHeroText');
-  setPageHero('transfer-plan', 'transferHeroEyebrow', '2025 Transfer to Futu', 'transferHeroText');
-  setPageHero('employee-management', 'employeeHeroEyebrow', 'Employee Management', 'employeeHeroText');
-  setPageHero('plan-summary', 'planHeroEyebrow', 'Plan Summary', 'planHeroText');
-  setPageHero('five-percent-holders', 'holdersHeroEyebrow', '5% Holders', 'holdersHeroText');
-  setPageHero('fixed-value', 'fixedHeroEyebrow', 'Fixed Value', 'fixedHeroText');
-  setPageHero('docs', 'docsHeroEyebrow', pageTitleFor('docs'), 'docsHeroText');
-  setPageHero('captable', 'captableHeroEyebrow', 'CapTable', 'captableHeroText');
+  setPageHero('esop-detail', 'esopHeroText');
+  setPageHero('grant-record', 'grantHeroText');
+  setPageHero('exercise-record', 'exerciseHeroText');
+  setPageHero('sold-shares', 'soldHeroText');
+  setPageHero('transfer-plan', 'transferHeroText');
+  setPageHero('employee-management', 'employeeHeroText');
+  setPageHero('plan-summary', 'planHeroText');
+  setPageHero('five-percent-holders', 'holdersHeroText');
+  setPageHero('fixed-value', 'fixedHeroText');
+  setPageHero('docs', 'docsHeroText');
+  setPageHero('captable', 'captableHeroText');
 
   setAllText('.product-page-hero__metric > span', t('sourceFile'));
+  setAllText('[data-page-file-label="source-files"]', t('sourceFiles'));
+  setAllText('[data-page-file-label="result-file"]', t('resultFile'));
   [
     'btnSearchHoldings',
     'btnSearchExercises',
@@ -433,12 +815,17 @@ function applyLanguage() {
     'btnSearchEmployeesPage',
   ].forEach((id) => setButtonLabel(id, t('search')));
   setButtonLabel('btnExport', t('export'));
-  setButtonLabel('btnExportTransferPlan', `${t('export')} detail`);
-  setButtonLabel('btnImportTransferPlan', currentLanguage === 'zh-CN' ? '导入明细' : 'Import detail');
   setButtonLabel('btnToggleTransferPlanTableView', transferPlanTableView === 'summaryRows'
     ? (currentLanguage === 'zh-CN' ? '转置表格' : 'Transpose table')
     : (currentLanguage === 'zh-CN' ? '恢复横向' : 'Restore horizontal'));
   setButtonLabel('btnAddEmployeesPage', currentLanguage === 'zh-CN' ? '新增员工' : 'New Employee');
+  setButtonLabel('btnManageEmployeeLabels', currentLanguage === 'zh-CN' ? '标签管理' : 'Manage Labels');
+  setButtonLabel('btnAddEmployeeLabel', currentLanguage === 'zh-CN' ? '新增标签' : 'New Tag');
+  setText('#employeeLabelManagementModal .modal-title', currentLanguage === 'zh-CN' ? '标签管理' : 'Label Management');
+  setText('#employeeLabelManagementModal .modal-subtitle', currentLanguage === 'zh-CN'
+    ? '先创建标签，再分配给员工；名称或颜色变更会自动影响所有员工。'
+    : 'Create labels first, then assign them to employees. Name or color changes apply to all employees.');
+  setAllText('[data-close="employeeLabelManagementModal"].btn', currentLanguage === 'zh-CN' ? '关闭' : 'Close');
   setAllText('#employeesPageModal [data-close="employeesPageModal"].btn', t('cancel'));
   setText('#btnSubmitEmployeesPage', t('save'));
   setAllText('#employeesMergeModal [data-close="employeesMergeModal"].btn', t('cancel'));
@@ -479,6 +866,19 @@ function applyLanguage() {
   setText('#btnChangeAccountPassword', t('updatePassword'));
   setAllText('[data-close="accountPasswordModal"].btn', t('cancel'));
 
+  setText('#page-user-management .card-title', pageTitleFor('user-management'));
+  setText('#page-user-management .card-subtitle', t('userManagementSubtitle'));
+  setText('#btnOpenManagedUserModal', t('newUser'));
+  setText('#managedUserModalTitle', editingManagedUserId ? t('editUser') : t('createUser'));
+  setText('#btnSubmitManagedUser', editingManagedUserId ? t('save') : t('createUser'));
+  setAllText('[data-close="managedUserModal"].btn', t('cancel'));
+  setOptionText('managedUserIsActive', 'true', t('active'));
+  setOptionText('managedUserIsActive', 'false', t('inactive'));
+  const userLabels = document.querySelectorAll<HTMLElement>('#managedUserModal .form-group label');
+  [t('username'), t('displayName'), t('role'), t('email'), t('contact'), editingManagedUserId ? t('optionalPassword') : t('password'), t('status')].forEach((copy, index) => {
+    if (userLabels[index]) userLabels[index].textContent = copy;
+  });
+
   setText('label.auth-field span', t('authUsername'));
   const authLabels = document.querySelectorAll<HTMLElement>('.auth-field span');
   [t('authUsername'), t('authPassword'), t('authDisplayName'), t('authBootstrapSecret')].forEach((copy, index) => {
@@ -489,13 +889,14 @@ function applyLanguage() {
   setText('#page-plan-summary .card-title', pageTitleFor('plan-summary'));
   setText('#page-plan-summary .card-subtitle', currentLanguage === 'zh-CN' ? '由股权授予明细聚合生成' : 'Aggregated from equity grant detail');
   setText('#page-five-percent-holders .card-title', pageTitleFor('five-percent-holders'));
-  setText('#page-fixed-value .card-title', currentLanguage === 'zh-CN' ? '固定值' : 'Fixed Values');
+  setText('#page-fixed-value .card-title', currentLanguage === 'zh-CN' ? 'Global Parameter' : 'Global Parameter');
   setText('#page-fixed-value .card-subtitle', currentLanguage === 'zh-CN' ? '管理员可维护' : 'Admin editable');
   setAllText('.pagination-size-label', t('rows'));
   setAllText('[id$="FirstPage"]', t('first'));
   setAllText('[id$="PrevPage"]', t('previous'));
   setAllText('[id$="NextPage"]', t('next'));
   setAllText('[id$="LastPage"]', t('last'));
+  renderUserManagementTable();
 
   const activePage = getPageFromLocation();
   el('pageTitle').textContent = activePage === 'monthlyrun'
@@ -595,15 +996,24 @@ function escapeHtml(text: unknown): string {
   return div.innerHTML;
 }
 
-function formatTags(tags: string[]): string {
-  return tags.length ? tags.join(', ') : '-';
+function normalizeEmployeeLabelColor(value: unknown): string {
+  const color = String(value ?? '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : DEFAULT_EMPLOYEE_LABEL_COLOR;
 }
 
-function parseTagInput(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
+function employeeLabelStyle(color: unknown): string {
+  return ` style="--employee-label-color:${normalizeEmployeeLabelColor(color)}"`;
+}
+
+function formatTagChips(labels: Array<{ name: string; color: string }>, fallbackTags: string[] = []): string {
+  const visibleLabels = labels.length
+    ? labels
+    : fallbackTags.map((name) => ({ name, color: DEFAULT_EMPLOYEE_LABEL_COLOR }));
+  return visibleLabels.length
+    ? `<div class="employee-table-tag-list">${visibleLabels
+        .map((label) => `<span class="employee-table-tag"${employeeLabelStyle(label.color)}>${escapeHtml(label.name)}</span>`)
+        .join('')}</div>`
+    : '-';
 }
 
 function statusClass(status: string): string {
@@ -714,6 +1124,7 @@ function setCurrentUser(user: AuthenticatedUser | null) {
   const userName = user?.displayName || user?.username || '访客';
   const avatar = userName.trim().charAt(0).toUpperCase() || 'U';
   el('currentUserAvatar').textContent = avatar;
+  applyRoleVisibility();
 }
 
 function closeUserMenu() {
@@ -839,7 +1250,9 @@ function normalizePage(page: string | null | undefined): PageKey {
   if (value === 'summary') return 'captable';
   if (value === 'holdings') return 'grant-record';
   if (value === 'employees') return 'employee-management';
-  return validPages.has(value as PageKey) ? (value as PageKey) : DEFAULT_PAGE;
+  if (!validPages.has(value as PageKey)) return DEFAULT_PAGE;
+  const pageKey = value as PageKey;
+  return canAccessPage(pageKey) ? pageKey : DEFAULT_PAGE;
 }
 
 function buildPagePath(page: PageKey): string {
@@ -903,6 +1316,10 @@ async function activatePage(page: PageKey) {
 
     if (page === 'workflow') {
       workflowPage.onActivate();
+    }
+
+    if (page === 'user-management') {
+      await loadUserManagementPage();
     }
 
     if (page === 'grant-record') {
@@ -1006,7 +1423,6 @@ async function openMonthlyRunMonthOnly(month: string) {
   }
   el('monthlyRunInputMonth').textContent = formatMonthCN(month);
   el('modalTitle').textContent = 'Input Configuration';
-  el('fixedValueBody').innerHTML = '<tr><td colspan="5" class="table-empty-cell">正在加载输入定义...</td></tr>';
   el('shareworksBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">正在加载输入定义...</td></tr>';
   el('futuBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">正在加载输入定义...</td></tr>';
   setActivePage('monthlyrun');
@@ -1051,7 +1467,6 @@ function applyInitialRouteBeforeReveal() {
 
 function initMonthPicker() {
   el<HTMLInputElement>('monthPicker').value = currentMonth;
-  el<HTMLInputElement>('monthPickerMonthly').value = '';
 
   el('monthPicker').addEventListener('change', () => {
     const month = el<HTMLInputElement>('monthPicker').value;
@@ -1064,7 +1479,9 @@ function initMonthPicker() {
     void renderHoldingsPage(month);
   });
   el('btnExport').addEventListener('click', () => exportData());
-  el('btnSearchMonthly').addEventListener('click', () => void renderMonthlyPage(el<HTMLInputElement>('monthPickerMonthly').value));
+  el('btnOpenMonthlyUpdateFromCapTable').addEventListener('click', () => {
+    void navigateToPage('monthly');
+  });
 }
 
 async function initSummaryPage() {
@@ -1381,6 +1798,33 @@ async function initHoldingsPage() {
   applyGrantView();
 }
 
+function initWorkflowUpdateModal() {
+  document.querySelectorAll<HTMLButtonElement>('[data-workflow-update-page]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const page = button.dataset.workflowUpdatePage ?? '';
+      if (!isWorkflowUpdatePage(page)) return;
+      if (page === 'five-percent-holders') {
+        void handleFivePercentHoldersUpdateClick();
+        return;
+      }
+      void openWorkflowUpdateModal(page);
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>('[data-workflow-export-page]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const page = button.dataset.workflowExportPage ?? '';
+      if (!isWorkflowUpdatePage(page)) return;
+      downloadWorkflowResultFiles(page);
+    });
+  });
+  el('btnCloseWorkflowUpdateModal').addEventListener('click', closeWorkflowUpdateModal);
+  el('btnCancelWorkflowUpdateModal').addEventListener('click', closeWorkflowUpdateModal);
+  el('btnConfirmWorkflowUpdate').addEventListener('click', () => void confirmWorkflowUpdate());
+  el('workflowUpdateModal').addEventListener('click', (event) => {
+    if (event.target === el('workflowUpdateModal')) closeWorkflowUpdateModal();
+  });
+}
+
 async function initExercisePage() {
   await renderExerciseRecords();
   el('btnSearchExercises').addEventListener('click', searchExercises);
@@ -1418,11 +1862,6 @@ async function initTransferPlanPage() {
     transferPlanTableView = transferPlanTableView === 'summaryRows' ? 'periodRows' : 'summaryRows';
     void renderTransferPlan();
   });
-  el('btnImportTransferPlan').addEventListener('click', () => {
-    el<HTMLInputElement>('transferPlanFileInput').click();
-  });
-  el('btnExportTransferPlan').addEventListener('click', exportTransferPlanWorkbook);
-  el('transferPlanFileInput').addEventListener('change', () => void importTransferPlanWorkbook());
   el('transferPlanSummaryBody').addEventListener('change', (event) => {
     const input = (event.target as HTMLElement).closest<HTMLInputElement>('[data-transfer-cancelled-id]');
     if (input) void updateTransferPlanCancellation(input);
@@ -1432,12 +1871,37 @@ async function initTransferPlanPage() {
 
 async function initEmployeesPage() {
   el('btnSearchEmployeesPage').addEventListener('click', searchEmployeesPage);
+  el<HTMLSelectElement>('filterEmployeesPageTag').addEventListener('change', searchEmployeesPage);
   el<HTMLSelectElement>('filterEmployeesPageSource').addEventListener('change', (event) => {
     employeesSourceFilter = (event.target as HTMLSelectElement).value as EmployeeSourceFilter;
     searchEmployeesPage();
   });
   el('btnAddEmployeesPage').addEventListener('click', () => openEmployeesPageModal());
+  el('btnManageEmployeeLabels').addEventListener('click', () => openEmployeeLabelManagementModal());
+  el('btnAddEmployeeLabel').addEventListener('click', () => openEmployeeLabelModal());
+  el<HTMLInputElement>('employeeLabelColor').addEventListener('input', renderEmployeeLabelColorPreview);
+  el('btnOpenEmployeeLabelPicker').addEventListener('click', () => {
+    el('employeeLabelPickerMenu').classList.toggle('hidden');
+    renderEmployeeAssignmentLabels();
+  });
+  el('employeesPageSelectedLabels').addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-remove-employee-label-id]');
+    if (!button) return;
+    editingEmployeeLabelIds = editingEmployeeLabelIds.filter((id) => id !== Number(button.dataset.removeEmployeeLabelId));
+    renderEmployeeAssignmentLabels();
+  });
+  el('employeeLabelPickerMenu').addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-add-employee-label-id]');
+    if (!button) return;
+    const labelId = Number(button.dataset.addEmployeeLabelId);
+    if (!editingEmployeeLabelIds.includes(labelId)) {
+      editingEmployeeLabelIds = [...editingEmployeeLabelIds, labelId];
+    }
+    el('employeeLabelPickerMenu').classList.add('hidden');
+    renderEmployeeAssignmentLabels();
+  });
   el('btnSubmitEmployeesPage').addEventListener('click', () => void submitEmployeesPage());
+  el('btnSubmitEmployeeLabel').addEventListener('click', () => void submitEmployeeLabel());
   el('btnSubmitEmployeesMerge').addEventListener('click', () => void submitEmployeesMerge());
   el('btnEmployeesFirstPage').addEventListener('click', () => goToEmployeesPage('first'));
   el('btnEmployeesPrevPage').addEventListener('click', () => changeEmployeesPage(-1));
@@ -1449,7 +1913,171 @@ async function initEmployeesPage() {
   document.querySelectorAll<HTMLElement>('#employeesPageTable [data-employees-sort]').forEach((header) =>
     header.addEventListener('click', () => toggleEmployeesSort(header.dataset.employeesSort as 'name' | 'empNo')),
   );
+  await loadEmployeeLabels();
   await loadEmployeesPage();
+}
+
+function managedUserStatusLabel(user: ManagedUser): string {
+  return user.isActive ? t('active') : t('inactive');
+}
+
+function renderUserManagementTable() {
+  const headerLabels: Record<string, string> = {
+    username: t('username'),
+    displayName: t('displayName'),
+    role: t('role'),
+    status: t('status'),
+    email: t('email'),
+    contact: t('contact'),
+    lastLogin: t('lastLogin'),
+    createdAt: t('createdAt'),
+    actions: t('actions'),
+  };
+  document.querySelectorAll<HTMLElement>('[data-user-management-label]').forEach((node) => {
+    const key = node.dataset.userManagementLabel ?? '';
+    node.textContent = headerLabels[key] ?? node.textContent ?? '';
+  });
+
+  const body = el<HTMLTableSectionElement>('userManagementBody');
+  if (!managedUsers.length) {
+    body.innerHTML = `<tr><td colspan="9" class="table-empty-cell">${escapeHtml(t('noUsers'))}</td></tr>`;
+    return;
+  }
+  body.innerHTML = managedUsers.map((user) => `
+    <tr data-managed-user-id="${user.id}">
+      <td>${escapeHtml(user.username)}</td>
+      <td>${escapeHtml(user.displayName)}</td>
+      <td>${escapeHtml(user.role)}</td>
+      <td>${escapeHtml(managedUserStatusLabel(user))}</td>
+      <td>${escapeHtml(user.email ?? '-')}</td>
+      <td>${escapeHtml(user.phone ?? '-')}</td>
+      <td>${escapeHtml(user.lastLoginAt ? formatDateTime(user.lastLoginAt) : '-')}</td>
+      <td>${escapeHtml(formatDateTime(user.createdAt))}</td>
+      <td>
+        <div class="action-buttons">
+          <button class="btn btn-secondary btn-sm" type="button" data-edit-managed-user="${user.id}">${escapeHtml(t('edit'))}</button>
+          <button class="btn btn-danger btn-sm" type="button" data-delete-managed-user="${user.id}">${escapeHtml(t('delete'))}</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  body.querySelectorAll<HTMLButtonElement>('[data-edit-managed-user]').forEach((button) => {
+    button.addEventListener('click', () => openManagedUserModal(Number(button.dataset.editManagedUser)));
+  });
+  body.querySelectorAll<HTMLButtonElement>('[data-delete-managed-user]').forEach((button) => {
+    button.addEventListener('click', () => void deleteUserManagementUser(Number(button.dataset.deleteManagedUser)));
+  });
+}
+
+async function loadUserManagementPage() {
+  if (!isAdminUser()) {
+    await navigateToPage(DEFAULT_PAGE);
+    return;
+  }
+  const data = await api<{ users: ManagedUser[] }>('/api/admin/users');
+  managedUsers = data.users;
+  renderUserManagementTable();
+}
+
+function closeManagedUserModal() {
+  el('managedUserModal').classList.add('hidden');
+  editingManagedUserId = null;
+}
+
+function openManagedUserModal(userId?: number) {
+  const user = managedUsers.find((item) => item.id === userId) ?? null;
+  editingManagedUserId = user?.id ?? null;
+  el<HTMLInputElement>('managedUserUsername').value = user?.username ?? '';
+  el<HTMLInputElement>('managedUserDisplayName').value = user?.displayName ?? '';
+  el<HTMLSelectElement>('managedUserRole').value = user?.role ?? 'user';
+  el<HTMLInputElement>('managedUserEmail').value = user?.email ?? '';
+  el<HTMLInputElement>('managedUserPhone').value = user?.phone ?? '';
+  el<HTMLInputElement>('managedUserPassword').value = '';
+  el<HTMLSelectElement>('managedUserIsActive').value = user?.isActive === false ? 'false' : 'true';
+  el('managedUserModalTitle').textContent = editingManagedUserId ? t('editUser') : t('createUser');
+  el('managedUserModalSubtitle').textContent = editingManagedUserId
+    ? (currentLanguage === 'zh-CN' ? '留空密码则不修改' : 'Leave password blank to keep it unchanged')
+    : (currentLanguage === 'zh-CN' ? '默认角色为 user' : 'Default role is user');
+  const passwordLabel = document.querySelectorAll<HTMLElement>('#managedUserModal .form-group label')[5];
+  if (passwordLabel) passwordLabel.textContent = editingManagedUserId ? t('optionalPassword') : t('password');
+  el('btnSubmitManagedUser').textContent = editingManagedUserId ? t('save') : t('createUser');
+  el('managedUserModal').classList.remove('hidden');
+}
+
+async function submitManagedUser() {
+  const password = el<HTMLInputElement>('managedUserPassword').value;
+  const payload: Record<string, unknown> = {
+    username: el<HTMLInputElement>('managedUserUsername').value.trim(),
+    displayName: el<HTMLInputElement>('managedUserDisplayName').value.trim(),
+    role: el<HTMLSelectElement>('managedUserRole').value,
+    email: el<HTMLInputElement>('managedUserEmail').value.trim() || null,
+    phone: el<HTMLInputElement>('managedUserPhone').value.trim() || null,
+    isActive: el<HTMLSelectElement>('managedUserIsActive').value === 'true',
+  };
+  if (!payload.username || !payload.displayName) {
+    notify(currentLanguage === 'zh-CN' ? '账号名和显示名不能为空' : 'Username and display name are required', { type: 'warning' });
+    return;
+  }
+  if (!editingManagedUserId) {
+    if (!password) {
+      notify(currentLanguage === 'zh-CN' ? '新用户必须设置密码' : 'Password is required for a new user', { type: 'warning' });
+      return;
+    }
+    payload.password = password;
+  } else if (password) {
+    payload.password = password;
+  }
+
+  try {
+    const response = editingManagedUserId
+      ? await api<{ user: ManagedUser }>(`/api/admin/users/${editingManagedUserId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        })
+      : await api<{ user: ManagedUser }>('/api/admin/users', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+    const index = managedUsers.findIndex((user) => user.id === response.user.id);
+    managedUsers = index >= 0
+      ? managedUsers.map((user) => (user.id === response.user.id ? response.user : user))
+      : [...managedUsers, response.user];
+    closeManagedUserModal();
+    renderUserManagementTable();
+    notify(currentLanguage === 'zh-CN' ? '用户已保存' : 'User saved', { type: 'success' });
+  } catch (error) {
+    notify((error as Error).message, { type: 'error' });
+  }
+}
+
+async function deleteUserManagementUser(userId: number) {
+  const user = managedUsers.find((item) => item.id === userId);
+  if (!user) return;
+  const confirmed = await confirmAction(
+    currentLanguage === 'zh-CN' ? `确定删除用户【${user.username}】吗？` : `Delete user ${user.username}?`,
+    { title: t('delete'), confirmText: t('delete'), tone: 'danger' },
+  );
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin/users/${userId}`, { method: 'DELETE' });
+    managedUsers = managedUsers.filter((item) => item.id !== userId);
+    renderUserManagementTable();
+    notify(currentLanguage === 'zh-CN' ? '用户已删除' : 'User deleted', { type: 'success' });
+  } catch (error) {
+    notify((error as Error).message, { type: 'error' });
+  }
+}
+
+async function initUserManagementPage() {
+  el('btnOpenManagedUserModal').addEventListener('click', () => openManagedUserModal());
+  el('btnSubmitManagedUser').addEventListener('click', () => void submitManagedUser());
+  document.querySelectorAll<HTMLElement>('[data-close="managedUserModal"]').forEach((button) => {
+    button.addEventListener('click', closeManagedUserModal);
+  });
+  el('managedUserModal').addEventListener('click', (event) => {
+    if (event.target === el('managedUserModal')) closeManagedUserModal();
+  });
 }
 
 async function initAccountPage() {
@@ -1732,7 +2360,7 @@ async function renderHoldingsPage(month: string) {
     const data = await api<PaginatedResult<ShareworksGrant>>(
       `/api/grants/shareworks?query=${encodeURIComponent(query)}&page=${holdingsPage}&pageSize=${holdingsPageSize}`,
     );
-    setPageSourceFiles('grant-record', responseSourceFiles(data));
+    setWorkflowPageFiles('grant-record', data);
     const items = data.items ?? [];
     holdingsPage = data.page;
     holdingsTotal = data.total;
@@ -1745,7 +2373,7 @@ async function renderHoldingsPage(month: string) {
     const data = await api<PaginatedResult<MergedGrant>>(
       `/api/grants/merge?query=${encodeURIComponent(query)}&tag=${encodeURIComponent(tag)}&page=${holdingsPage}&pageSize=${holdingsPageSize}`,
     );
-    setPageSourceFiles('grant-record', responseSourceFiles(data));
+    setWorkflowPageFiles('grant-record', data);
     const items = data.items ?? [];
     holdingsPage = data.page;
     holdingsTotal = data.total;
@@ -1757,7 +2385,7 @@ async function renderHoldingsPage(month: string) {
   const data = await api<PaginatedResult<Holding>>(
     `/api/holdings?month=${month}&query=${encodeURIComponent(query)}&grantType=${encodeURIComponent(grantType)}&tag=${encodeURIComponent(tag)}&page=${holdingsPage}&pageSize=${holdingsPageSize}`,
   );
-  setPageSourceFiles('grant-record', responseSourceFiles(data));
+  setWorkflowPageFiles('grant-record', data);
   const items = data.holdings ?? [];
   holdingsPage = data.page;
   holdingsTotal = data.total;
@@ -1815,7 +2443,7 @@ async function renderHoldingsPage(month: string) {
 function renderShareworksGrants(items: ShareworksGrant[], data: PaginatedResult<ShareworksGrant>) {
   const tbody = el('shareworksGrantBody');
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="31" class="table-empty-cell">暂无符合条件的 Shareworks 记录</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="29" class="table-empty-cell">暂无符合条件的 Shareworks 记录</td></tr>';
     localizeAppDom();
     return;
   }
@@ -1824,8 +2452,6 @@ function renderShareworksGrants(items: ShareworksGrant[], data: PaginatedResult<
       (item, index) => `
       <tr>
         <td>${(data.page - 1) * data.pageSize + index + 1}</td>
-        <td>${escapeHtml(item.costCenter)}</td>
-        <td>${escapeHtml(item.participantType)}</td>
         <td>${escapeHtml(item.employeeNumber)}</td>
         <td>${escapeHtml(item.lastName)}</td>
         <td>${escapeHtml(item.firstName)}</td>
@@ -1901,7 +2527,7 @@ async function renderExerciseRecords() {
   const data = await api<PaginatedResult<ExerciseRecord>>(
     `/api/exercises?query=${encodeURIComponent(query)}&grantYear=${encodeURIComponent(grantYear)}&page=${exercisePage}&pageSize=${exercisePageSize}`,
   );
-  setPageSourceFiles('exercise-record', responseSourceFiles(data));
+  setWorkflowPageFiles('exercise-record', data);
   const items = data.items ?? [];
   exercisePage = data.page;
   exerciseTotal = data.total;
@@ -1948,7 +2574,7 @@ async function renderSoldShares() {
   const data = await api<PaginatedResult<SoldShare>>(
     `/api/sold-shares?query=${encodeURIComponent(query)}&employmentStatus=${encodeURIComponent(employmentStatus)}&page=${soldSharesPage}&pageSize=${soldSharesPageSize}`,
   );
-  setPageSourceFiles('sold-shares', responseSourceFiles(data));
+  setWorkflowPageFiles('sold-shares', data);
   const items = data.items ?? [];
   soldSharesPage = data.page;
   soldSharesTotal = data.total;
@@ -1992,7 +2618,7 @@ async function renderSoldShares() {
 
 async function renderTransferPlan() {
   const data = await api<TransferPlanResponse>('/api/transfer-plan');
-  setPageSourceFiles('transfer-plan', responseSourceFiles(data));
+  setWorkflowPageFiles('transfer-plan', data);
   transferPlanSourceFileId = data.sourceFileId;
   el('transferPlanSourceName').textContent = data.sourceFileName;
   el('transferPlanInTotal').textContent = formatNumber(data.totals.inTotal);
@@ -2060,9 +2686,156 @@ function exportTransferPlanWorkbook() {
   window.location.href = `/api/files/${transferPlanSourceFileId}/content`;
 }
 
+async function loadEmployeeLabels() {
+  const data = await api<{ items: EmployeeLabel[] }>('/api/employee-labels');
+  employeeLabels = data.items;
+  renderEmployeeLabelControls();
+}
+
+function renderEmployeeLabelControls() {
+  const filter = el<HTMLSelectElement>('filterEmployeesPageTag');
+  const selectedFilter = filter.value;
+  filter.innerHTML = [
+    '<option value="">All Tags</option>',
+    ...employeeLabels.map((label) => `<option value="${label.id}">${escapeHtml(label.name)}</option>`),
+  ].join('');
+  filter.value = employeeLabels.some((label) => String(label.id) === selectedFilter) ? selectedFilter : '';
+
+  renderEmployeeAssignmentLabels();
+  renderEmployeeLabelsTable();
+}
+
+function renderEmployeeAssignmentLabels() {
+  const validLabelIds = new Set(employeeLabels.map((label) => label.id));
+  editingEmployeeLabelIds = editingEmployeeLabelIds.filter((id, index, ids) => validLabelIds.has(id) && ids.indexOf(id) === index);
+  const selectedLabelIds = new Set(editingEmployeeLabelIds);
+  const selectedLabels = editingEmployeeLabelIds
+    .map((id) => employeeLabels.find((label) => label.id === id))
+    .filter((label): label is EmployeeLabel => Boolean(label));
+  el('employeesPageSelectedLabels').innerHTML = selectedLabels.length
+    ? selectedLabels
+        .map(
+          (label) => `
+          <span class="employee-label-chip"${employeeLabelStyle(label.color)}>
+            <span>${escapeHtml(label.name)}</span>
+            <button class="employee-label-chip__remove" type="button" aria-label="Remove label" data-remove-employee-label-id="${label.id}">×</button>
+          </span>`,
+        )
+        .join('')
+    : '<span class="employee-label-picker__empty-inline">No labels selected</span>';
+
+  const availableLabels = employeeLabels.filter((label) => !selectedLabelIds.has(label.id));
+  el('employeeLabelPickerMenu').innerHTML = availableLabels.length
+    ? availableLabels
+        .map(
+          (label) => `
+          <button class="employee-label-picker__option" type="button" data-add-employee-label-id="${label.id}">
+            <span class="employee-label-picker__dot"${employeeLabelStyle(label.color)}></span>
+            ${escapeHtml(label.name)}
+          </button>`,
+        )
+        .join('')
+    : '<div class="employee-label-picker__empty">暂无可添加标签</div>';
+}
+
+function renderEmployeeLabelsTable() {
+  if (employeeLabels.length === 0) {
+    el('employeeLabelsBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">暂无标签</td></tr>';
+    return;
+  }
+  el('employeeLabelsBody').innerHTML = employeeLabels
+    .map(
+      (label) => `
+      <tr>
+        <td style="text-align:left; font-weight:600;"><span class="employee-table-tag"${employeeLabelStyle(label.color)}>${escapeHtml(label.name)}</span></td>
+        <td><span class="employee-label-color-swatch"${employeeLabelStyle(label.color)}></span></td>
+        <td class="col-number">${formatNumber(label.employeeCount)}</td>
+        <td>
+          <div class="action-buttons">
+            <button class="btn btn-secondary btn-sm" data-action="edit-employee-label" data-id="${label.id}">${currentLanguage === 'zh-CN' ? '编辑' : 'Edit'}</button>
+            <button class="btn btn-danger btn-sm" data-action="delete-employee-label" data-id="${label.id}">删除</button>
+          </div>
+        </td>
+      </tr>`,
+    )
+    .join('');
+  el('employeeLabelsBody')
+    .querySelectorAll<HTMLElement>('[data-action="edit-employee-label"]')
+    .forEach((button) => button.addEventListener('click', () => openEmployeeLabelModal(Number(button.dataset.id))));
+  el('employeeLabelsBody')
+    .querySelectorAll<HTMLElement>('[data-action="delete-employee-label"]')
+    .forEach((button) => button.addEventListener('click', () => void deleteEmployeeLabel(Number(button.dataset.id))));
+}
+
+function openEmployeeLabelManagementModal() {
+  renderEmployeeLabelsTable();
+  el('employeeLabelManagementModal').classList.remove('hidden');
+}
+
+function openEmployeeLabelModal(id?: number) {
+  editingEmployeeLabelId = id ?? null;
+  const label = employeeLabels.find((item) => item.id === id);
+  el('employeeLabelModalTitle').textContent = label
+    ? (currentLanguage === 'zh-CN' ? '编辑标签' : 'Edit Tag')
+    : (currentLanguage === 'zh-CN' ? '新增标签' : 'New Tag');
+  el<HTMLInputElement>('employeeLabelName').value = label?.name ?? '';
+  el<HTMLInputElement>('employeeLabelColor').value = normalizeEmployeeLabelColor(label?.color);
+  renderEmployeeLabelColorPreview();
+  el('employeeLabelModal').classList.remove('hidden');
+}
+
+function renderEmployeeLabelColorPreview() {
+  const color = normalizeEmployeeLabelColor(el<HTMLInputElement>('employeeLabelColor').value);
+  const preview = el('employeeLabelColorPreview');
+  preview.setAttribute('style', `--employee-label-color:${color}`);
+}
+
+async function submitEmployeeLabel() {
+  const name = el<HTMLInputElement>('employeeLabelName').value.trim();
+  const color = normalizeEmployeeLabelColor(el<HTMLInputElement>('employeeLabelColor').value);
+  if (!name) {
+    notify('请填写标签名称', { type: 'warning' });
+    return;
+  }
+  try {
+    if (editingEmployeeLabelId) {
+      await api(`/api/employee-labels/${editingEmployeeLabelId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name, color }),
+      });
+    } else {
+      await api('/api/employee-labels', {
+        method: 'POST',
+        body: JSON.stringify({ name, color }),
+      });
+    }
+  } catch (error) {
+    notify((error as Error).message, { type: 'warning' });
+    return;
+  }
+  el('employeeLabelModal').classList.add('hidden');
+  editingEmployeeLabelId = null;
+  await loadEmployeeLabels();
+  await loadEmployeesPage();
+}
+
+async function deleteEmployeeLabel(id: number) {
+  const label = employeeLabels.find((item) => item.id === id);
+  if (!label) return;
+  if (!confirmAction(`删除标签「${label.name}」？该标签会从所有员工上移除。`)) return;
+  await api(`/api/employee-labels/${id}`, { method: 'DELETE' });
+  await loadEmployeeLabels();
+  await loadEmployeesPage();
+}
+
+function selectedEmployeeLabelIds() {
+  const validLabelIds = new Set(employeeLabels.map((label) => label.id));
+  return editingEmployeeLabelIds.filter((id, index, ids) => validLabelIds.has(id) && ids.indexOf(id) === index);
+}
+
 async function loadEmployeesPage() {
   const query = el<HTMLInputElement>('searchEmployeesPage').value.trim();
-  const tag = el<HTMLInputElement>('filterEmployeesPageTag').value.trim();
+  const tag = el<HTMLSelectElement>('filterEmployeesPageTag').value;
   const data = await api<PaginatedResult<Employee>>(
     buildEmployeesApiUrl({
       query,
@@ -2073,7 +2846,7 @@ async function loadEmployeesPage() {
       sort: employeesSort,
     }),
   );
-  setPageSourceFiles('employee-management', responseSourceFiles(data));
+  setWorkflowPageFiles('employee-management', data);
   employees = data.items ?? [];
   employeesPage = data.page;
   employeesTotal = data.total;
@@ -2124,7 +2897,7 @@ function renderEmployeesPageTable() {
         <td>${escapeHtml(item.employeeNumber || '-')}</td>
         <td><span class="employee-origin-badge ${sourceClass}">${escapeHtml(sourceLabel)}</span></td>
         <td style="text-align:left;">${escapeHtml(linkedText)}</td>
-        <td style="text-align:left;">${escapeHtml(formatTags(item.tags))}</td>
+        <td style="text-align:left;">${formatTagChips(item.labels ?? [], item.tags)}</td>
         <td class="col-number">${formatNumber(item.grantCount)}</td>
         <td>
           <div class="action-buttons">
@@ -2160,7 +2933,9 @@ function openEmployeesPageModal(id?: number) {
   numberInput.readOnly = Boolean(item); // employee_id (工号) is the key: editable only when creating
   el<HTMLInputElement>('employeesPageName').value = item?.employeeName ?? '';
   el<HTMLInputElement>('employeesPageUserId').value = item?.userId ?? '';
-  el<HTMLInputElement>('employeesPageTags').value = item?.tags.join(', ') ?? '';
+  editingEmployeeLabelIds = [...(item?.labelIds ?? [])];
+  renderEmployeeLabelControls();
+  el('employeeLabelPickerMenu').classList.add('hidden');
   el('employeesPageModal').classList.remove('hidden');
 }
 
@@ -2168,7 +2943,7 @@ async function submitEmployeesPage() {
   const employeeId = el<HTMLInputElement>('employeesPageNumber').value.trim();
   const employeeName = el<HTMLInputElement>('employeesPageName').value.trim();
   const userId = el<HTMLInputElement>('employeesPageUserId').value.trim();
-  const tags = parseTagInput(el<HTMLInputElement>('employeesPageTags').value);
+  const labelIds = selectedEmployeeLabelIds();
   if (!employeeName) {
     notify('请填写员工姓名', { type: 'warning' });
     return;
@@ -2182,10 +2957,10 @@ async function submitEmployeesPage() {
     if (editingEmployeeId) {
       await api(`/api/employees/${editingEmployeeId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ employeeName, userId, tags }),
+        body: JSON.stringify({ employeeName, userId, labelIds }),
       });
     } else {
-      await api('/api/employees', { method: 'POST', body: JSON.stringify({ employeeId, employeeName, userId, tags }) });
+      await api('/api/employees', { method: 'POST', body: JSON.stringify({ employeeId, employeeName, userId, labelIds }) });
     }
   } catch (error) {
     notify((error as Error).message, { type: 'warning' });
@@ -2193,6 +2968,8 @@ async function submitEmployeesPage() {
   }
   el('employeesPageModal').classList.add('hidden');
   editingEmployeeId = null;
+  editingEmployeeLabelIds = [];
+  await loadEmployeeLabels();
   await loadEmployeesPage();
 }
 
@@ -2239,7 +3016,7 @@ async function submitEmployeesMerge() {
 
 async function renderPlanSummaryPage() {
   const data = await api<PlanSummaryResponse>('/api/plan-summary');
-  setPageSourceFiles('plan-summary', responseSourceFiles(data));
+  setWorkflowPageFiles('plan-summary', data);
   el('planSummaryPlanCount').textContent = formatNumber(data.totals.planCount);
   el('planSummaryGranted').textContent = formatNumber(data.totals.granted);
   el('planSummaryExercised').textContent = formatNumber(data.totals.exercised);
@@ -2272,9 +3049,59 @@ function formatHolderPercent(value: number | null): string {
   return `${(Number(value) * 100).toLocaleString('en-US', { maximumFractionDigits: 3 })}%`;
 }
 
+function fivePercentHoldersUpdateButton(): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>('[data-workflow-update-page="five-percent-holders"]');
+}
+
+function setFivePercentHoldersUpdateButtonState() {
+  const button = fivePercentHoldersUpdateButton();
+  if (!button) return;
+  const label = button.querySelector<HTMLElement>('[data-workflow-action-label]');
+  if (label) {
+    label.textContent = fivePercentHoldersEditMode ? 'Save' : 'Update';
+  } else {
+    button.textContent = fivePercentHoldersEditMode ? 'Save' : 'Update';
+  }
+  button.disabled = fivePercentHoldersSaving;
+}
+
+function fixedValueByKey(key: string): FixedValueRecord | null {
+  return fivePercentHolderFixedValues.find((item) => item.key === key) ?? null;
+}
+
+function fixedValueKeyForHolderCell(holderIndex: number, field: 'commonStock' | 'totalCses'): string | null {
+  if (holderIndex === 0) {
+    return field === 'commonStock' ? fivePercentHolderFixedValueKeys.gniCommonStock : fivePercentHolderFixedValueKeys.gniTotalCses;
+  }
+  if (holderIndex === 1) {
+    return field === 'commonStock' ? fivePercentHolderFixedValueKeys.songjiangMaCommonStock : fivePercentHolderFixedValueKeys.songjiangMaTotalCses;
+  }
+  return null;
+}
+
+function renderFivePercentHolderEditableNumber(item: FivePercentHoldersResponse['items'][number], field: 'commonStock' | 'totalCses', holderIndex: number) {
+  const key = fixedValueKeyForHolderCell(holderIndex, field);
+  const fixedValue = key ? fixedValueByKey(key) : null;
+  if (!fivePercentHoldersEditMode || item.rowType !== 'holder' || !key) {
+    if (item.rowType === 'holder' && key) return formatNumber(fixedValue?.value ?? null);
+    return formatNumber(field === 'commonStock' ? item.commonStock : item.totalCses);
+  }
+  const inputValue = fixedValue?.value ?? '';
+  const idAttribute = fixedValue?.id ? ` data-five-percent-fixed-value-id="${fixedValue.id}"` : '';
+  return `<input class="form-input fixed-value-inline-input" type="text" inputmode="decimal" value="${escapeHtml(String(inputValue))}"${idAttribute} data-five-percent-fixed-value-key="${escapeHtml(key)}">`;
+}
+
+async function loadFivePercentHolderFixedValues() {
+  const keys = new Set<string>(Object.values(fivePercentHolderFixedValueKeys));
+  const data = await api<{ items: FixedValueRecord[] }>('/api/five-percent-holders/fixed-values');
+  fivePercentHolderFixedValues = data.items.filter((item) => keys.has(item.key) && item.updatedBy !== 'system');
+}
+
 async function renderFivePercentHoldersPage() {
   const data = await api<FivePercentHoldersResponse>('/api/five-percent-holders');
-  setPageSourceFiles('five-percent-holders', responseSourceFiles(data));
+  await loadFivePercentHolderFixedValues();
+  setWorkflowPageFiles('five-percent-holders', data);
+  setFivePercentHoldersUpdateButtonState();
   const summary = data.summary;
   el('fivePercentHoldersSummary').innerHTML = `
     <div class="stat-chip"><span class="stat-chip__label">As of</span><span class="stat-chip__value">${escapeHtml(summary.asOfDate ?? '-')}</span></div>
@@ -2283,33 +3110,117 @@ async function renderFivePercentHoldersPage() {
 
   if (data.items.length === 0) {
     el('fivePercentHoldersBody').innerHTML =
-      '<tr><td colspan="6" class="table-empty-cell">暂无 5% 股东记录</td></tr>';
+      '<tr><td colspan="5" class="table-empty-cell">暂无 5% 股东记录</td></tr>';
     localizeAppDom();
     return;
   }
 
+  let holderIndex = 0;
   el('fivePercentHoldersBody').innerHTML = data.items
     .map((item) => {
       const rowClass = item.rowType === 'total' ? ' class="table-row--total"' : '';
-      const filing = [item.sc13Filing, item.note].filter(Boolean).map((text) => escapeHtml(String(text))).join('<br>');
+      const currentHolderIndex = item.rowType === 'holder' ? holderIndex++ : -1;
       return `
       <tr${rowClass}>
         <td style="text-align:left; font-weight:600;">${escapeHtml(item.name)}</td>
-        <td class="col-number">${formatNumber(item.commonStock)}</td>
-        <td class="col-number">${formatNumber(item.totalCses)}</td>
+        <td class="col-number">${renderFivePercentHolderEditableNumber(item, 'commonStock', currentHolderIndex)}</td>
+        <td class="col-number">${renderFivePercentHolderEditableNumber(item, 'totalCses', currentHolderIndex)}</td>
         <td class="col-number">${formatHolderPercent(item.pctOfClass)}</td>
         <td class="col-number">${formatHolderPercent(item.pctFullyDiluted)}</td>
-        <td style="text-align:left;">${filing || '-'}</td>
       </tr>`;
     })
     .join('');
   localizeAppDom();
 }
 
+function readFivePercentHolderFixedValueDrafts() {
+  const drafts = Array.from(document.querySelectorAll<HTMLInputElement>('[data-five-percent-fixed-value-key]')).map((input) => {
+    const rawId = input.dataset.fivePercentFixedValueId;
+    const id = rawId ? Number(rawId) : null;
+    const key = String(input.dataset.fivePercentFixedValueKey ?? '');
+    const value = Number(input.value.replace(/,/g, '').trim());
+    if ((id !== null && (!Number.isInteger(id) || id <= 0)) || !key || !Number.isFinite(value)) {
+      throw new Error('请输入有效的 5% Holders 数字');
+    }
+    return { id, key, value };
+  });
+  if (drafts.length !== 4) throw new Error('5% Holders 需要编辑四个全局参数');
+  return drafts;
+}
+
+async function runFivePercentHoldersWorkflowWithPreviousSource() {
+  const binding = workflowUpdateBindingFor('five-percent-holders', 'capitalization_summary');
+  const fileId = Number(binding?.fileId);
+  const sources = Number.isInteger(fileId) && fileId > 0
+    ? { capitalization_summary: { fileId } }
+    : {};
+  const result = await api<WorkflowExecutionResult>(workflowUpdateRunEndpoint('five-percent-holders'), {
+    method: 'POST',
+    body: JSON.stringify({ sources }),
+  });
+  const runId = result.run?.id;
+  if (!runId) throw new Error('Workflow run was not created');
+  const run = await pollWorkflowUpdateRunUntilFinished(runId);
+  if (run.status !== 'completed' && run.status !== 'completed_with_warnings') {
+    throw new Error(run.errorMessage ?? `Workflow ended with status ${run.status}`);
+  }
+  return run;
+}
+
+async function saveFivePercentHolderFixedValuesAndRunWorkflow() {
+  const drafts = readFivePercentHolderFixedValueDrafts();
+  fivePercentHoldersSaving = true;
+  setFivePercentHoldersUpdateButtonState();
+  try {
+    for (const draft of drafts) {
+      const payload = {
+        key: draft.key,
+        label: fivePercentHolderFixedValueLabels[draft.key] ?? draft.key,
+        value: draft.value,
+        updatedBy: authStatus?.user?.displayName ?? 'Administrator',
+      };
+      if (draft.id) {
+        await api(`/api/fixed-values/${draft.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ value: draft.value, updatedBy: payload.updatedBy }),
+        });
+      } else {
+        await api('/api/fixed-values', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
+    }
+    notify('Global Parameter 已保存，正在运行 5% Holders workflow...', { type: 'success' });
+    const run = await runFivePercentHoldersWorkflowWithPreviousSource();
+    await filesPage.refreshProductFiles();
+    fivePercentHoldersEditMode = false;
+    await renderFivePercentHoldersPage();
+    notify(run.status === 'completed_with_warnings' ? '5% Holders 更新完成（包含 Warning）' : '5% Holders 更新完成', {
+      type: run.status === 'completed_with_warnings' ? 'warning' : 'success',
+    });
+  } catch (error) {
+    notify((error as Error).message, { type: 'error' });
+  } finally {
+    fivePercentHoldersSaving = false;
+    setFivePercentHoldersUpdateButtonState();
+  }
+}
+
+async function handleFivePercentHoldersUpdateClick() {
+  if (fivePercentHoldersSaving) return;
+  if (!fivePercentHoldersEditMode) {
+    fivePercentHoldersEditMode = true;
+    await renderFivePercentHoldersPage();
+    return;
+  }
+  await saveFivePercentHolderFixedValuesAndRunWorkflow();
+}
+
 async function renderFixedValuePage() {
   const data = await api<{ items: FixedValueRecord[] }>('/api/fixed-values');
   if (data.items.length === 0) {
-    el('fixedValuePageBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无固定参数配置</td></tr>';
+    el('fixedValuePageBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无 Global Parameter 配置</td></tr>';
     localizeAppDom();
     return;
   }
@@ -2610,6 +3521,8 @@ async function initializeApp() {
   await initSoldSharesPage();
   await initTransferPlanPage();
   await initEmployeesPage();
+  initWorkflowUpdateModal();
+  await initUserManagementPage();
   await initAccountPage();
   await initSettingsPage();
   initLinkModal();

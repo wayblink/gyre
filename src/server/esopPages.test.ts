@@ -235,8 +235,6 @@ test('Shareworks rows preserve the Options OS Detail field contract', () => {
     }),
     {
       id: 12,
-      costCenter: 'G&A',
-      participantType: 'Employee - Exempt',
       employeeNumber: '10015',
       lastName: 'Han',
       firstName: 'Lin',
@@ -316,9 +314,9 @@ test('Merge normalizes Futu and Shareworks grants to the 0707 sixteen-column con
   assert.deepEqual(
     mergeShareworksGrant({
       id: 12,
-      lastName: 'Han',
-      firstName: 'Lin',
-      middleName: null,
+      lastName: 'Smith',
+      firstName: 'John',
+      middleName: 'A',
       employeeNumber: '10015',
       employeeGrantNumber: '3028',
       grantType: 'Options (NQ)',
@@ -338,7 +336,7 @@ test('Merge normalizes Futu and Shareworks grants to the 0707 sixteen-column con
     {
       id: 'shareworks-12',
       source: 'Shareworks',
-      employeeName: 'Han Lin',
+      employeeName: 'John A Smith',
       grantNumber: '3028',
       employeeNumber: '10015',
       incentiveType: 'Options (NQ)',

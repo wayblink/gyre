@@ -24,7 +24,8 @@ const STATIC_TEXT_TRANSLATIONS: Record<string, string> = {
   使用手册: 'Docs',
   文件中心: 'Files',
   文件列表: 'File list',
-  表格列表: 'Workbook list',
+  表格列表: 'Browser',
+  '搜索文件...': 'Search files...',
   上传目录: 'Upload folder',
   上传: 'Upload',
   '上传 Excel': 'Upload Excel',
@@ -37,6 +38,8 @@ const STATIC_TEXT_TRANSLATIONS: Record<string, string> = {
   展开导航栏: 'Expand sidebar',
   收起导航栏: 'Collapse sidebar',
   收起表格列表: 'Collapse workbook list',
+  '收起 Browser': 'Collapse Browser',
+  '展开 Browser': 'Expand Browser',
   '展开 文件列表': 'Expand file list',
   正在加载输入定义: 'Loading input definitions',
   '正在加载输入定义...': 'Loading input definitions...',
@@ -168,7 +171,7 @@ const STATIC_TEXT_TRANSLATIONS: Record<string, string> = {
   配置输入源: 'Configure sources',
   刷新文件: 'Refresh files',
   输入配置: 'Input configuration',
-  固定参数: 'Fixed parameters',
+  固定参数: 'Global Parameters',
   来自: 'From',
   '来自 Shareworks 的输入表': 'Input tables from Shareworks',
   '来自 Futu 的输入表': 'Input tables from Futu',
@@ -219,9 +222,9 @@ const STATIC_TEXT_TRANSLATIONS: Record<string, string> = {
   计划汇总: 'Plan Summary',
   '按 Plan Name 聚合授予、行权、取消及 outstanding 数量。': 'Aggregate grants, exercises, cancellations, and outstanding quantities by Plan Name.',
   '持股5%以上股东': '5% Holders',
-  '来源：Gyre Cap Table「5% Holders」sheet（EDGAR SC13 申报口径）。': 'Source: Gyre Cap Table “5% Holders” sheet, aligned with EDGAR SC13 filings.',
-  管理可以更改的固定值: 'Manage Editable Fixed Values',
-  'Data Management 下的固定值维护页，用于管理月度流程中可由管理员调整的业务常量。': 'Maintain business constants that admins can adjust in the monthly process.',
+  '由 Global Parameter 手工维护的 5% holder 数字与 Capitalization Summary 分母计算生成。': 'Generated from manually maintained Global Parameter holder numbers and Capitalization Summary denominators.',
+  管理可以更改的全局参数: 'Manage Editable Global Parameters',
+  'Data Management 下的全局参数维护页，用于管理月度流程中可由管理员调整的业务常量。': 'Maintain business constants that admins can adjust in the monthly process.',
   管理员可维护: 'Admin editable',
   系统各页面与工作流的使用说明: 'Usage guides for system pages and workflows, organized by topic.',
   '系统各页面与工作流的使用说明，按主题分多篇文档。': 'Usage guides for system pages and workflows, organized by topic.',
@@ -257,7 +260,7 @@ const STATIC_TEXT_TRANSLATIONS: Record<string, string> = {
   导入明细: 'Import detail',
   转置表格: 'Transpose table',
   恢复横向: 'Restore horizontal',
-  '固定值': 'Fixed Values',
+  '固定值': 'Global Parameter',
   '由股权授予明细聚合生成': 'Aggregated from equity grant detail',
   '输入工号（新增后不可改）': 'Enter employee no. (cannot be changed after creation)',
   输入员工姓名: 'Enter employee name',
@@ -304,6 +307,7 @@ export function translateStaticText(text: string, language = readStoredLanguage(
 export function applyStaticTranslations(root: ParentNode = document, language = readStoredLanguage()) {
   const elements = Array.from(root.querySelectorAll<HTMLElement>('*'));
   for (const element of elements) {
+    if (element.closest('[data-no-static-translate]')) continue;
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
       if (element.placeholder) element.placeholder = translateStaticText(element.placeholder, language);
     }
@@ -317,6 +321,7 @@ export function applyStaticTranslations(root: ParentNode = document, language = 
     acceptNode(node) {
       const parent = node.parentElement;
       if (!parent || ['SCRIPT', 'STYLE'].includes(parent.tagName)) return NodeFilter.FILTER_REJECT;
+      if (parent.closest('[data-no-static-translate]')) return NodeFilter.FILTER_REJECT;
       const value = node.nodeValue ?? '';
       return /[\p{Script=Han}]/u.test(value) || Object.prototype.hasOwnProperty.call(STATIC_TEXT_REVERSE, value.trim())
         ? NodeFilter.FILTER_ACCEPT

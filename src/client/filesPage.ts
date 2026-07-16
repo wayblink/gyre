@@ -3,6 +3,7 @@ import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { createWorkbookViewer } from './univer/createWorkbookViewer.js';
 import { bufferToUniverWorkbook } from './univer/xlsxToUniver.js';
 import type { AppLanguage } from './i18n.js';
+import * as XLSX from 'xlsx';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
@@ -47,13 +48,20 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   let editingProductFileId: number | null = null;
   let editingProductFileName = '';
   let renamingProductFileId: number | null = null;
-  let filesViewMode: FilesViewMode = 'list';
+  let filesViewMode: FilesViewMode = 'tree';
+  let filesSearchQuery = '';
   let filesViewControlsBound = false;
+  let filesSearchBound = false;
   const collapsedTreeDirectoryPaths = new Set<string>();
   const text = {
     count: { 'zh-CN': '个', 'en-US': 'items' },
     chooseFile: { 'zh-CN': '选择左侧文件后可在页面内查看完整 Excel 工作簿。', 'en-US': 'Select a file on the left to view the full Excel workbook here.' },
     noFiles: { 'zh-CN': '尚未上传任何文件', 'en-US': 'No files uploaded yet' },
+    noSearchResults: { 'zh-CN': '没有匹配的文件', 'en-US': 'No matching files' },
+    listView: { 'zh-CN': '列表视图', 'en-US': 'List view' },
+    treeView: { 'zh-CN': '树状视图', 'en-US': 'Tree view' },
+    switchToListView: { 'zh-CN': '切换到列表视图', 'en-US': 'Switch to list view' },
+    switchToTreeView: { 'zh-CN': '切换到树状视图', 'en-US': 'Switch to tree view' },
     editFileName: { 'zh-CN': '编辑文件名', 'en-US': 'Edit file name' },
     deleteFile: { 'zh-CN': '删除文件', 'en-US': 'Delete file' },
     fileName: { 'zh-CN': '文件名', 'en-US': 'File name' },
@@ -84,10 +92,11 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   bindFilesViewModeControls();
 
   async function init() {
+    el('btnCreateProductFile').addEventListener('click', () => void createProductFile());
     el('btnUploadProductFile').addEventListener('click', () => void uploadProductFile());
     el('btnRefreshFiles').addEventListener('click', () => void loadProductFiles());
-    el('btnSaveProductFile').addEventListener('click', () => void saveCurrentProductFile());
     bindFilesViewModeControls();
+    bindFilesSearchControl();
     el('btnCollapseFilesPane').addEventListener('click', () => setFilesPaneCollapsed(true));
     el('filesCollapsedRail').addEventListener('click', () => setFilesPaneCollapsed(false));
     initFilesWorkspaceResize();
@@ -99,6 +108,19 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
 
   function getProductFiles() {
     return productFiles;
+  }
+
+  async function uploadWorkbookBuffer(fileName: string, buffer: BlobPart) {
+    const form = new FormData();
+    form.append(
+      'file',
+      new File([buffer], fileName, {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    );
+    form.append('uploadedBy', 'Administrator');
+    const data = await api<{ file: ProductFileRecord }>('/api/files/upload', { method: 'POST', body: form });
+    await loadProductFiles(data.file.id);
   }
 
   async function loadProductFiles(selectedId?: number) {
@@ -129,22 +151,35 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     }
   }
 
+  async function createProductFile() {
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([[]]);
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Sheet1');
+    const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as BlobPart;
+    await uploadWorkbookBuffer('New Workbook.xlsx', buffer);
+  }
+
   function renderProductFilesList() {
     const container = el('productFilesList');
+    const filteredFiles = getFilteredProductFiles();
     container.classList.toggle('workbook-list__items--tree', filesViewMode === 'tree');
     updateFilesViewModeControls();
     if (productFiles.length === 0) {
       container.innerHTML = `<div class="workbook-list__empty">${escapeHtml(tt('noFiles'))}</div>`;
       return;
     }
+    if (filteredFiles.length === 0) {
+      container.innerHTML = `<div class="workbook-list__empty">${escapeHtml(tt('noSearchResults'))}</div>`;
+      return;
+    }
 
     if (filesViewMode === 'tree') {
-      renderProductFilesTree(container);
+      renderProductFilesTree(container, filteredFiles);
       bindProductFilesBrowserInteractions(container);
       return;
     }
 
-    container.innerHTML = productFiles
+    container.innerHTML = filteredFiles
       .map(
         (file) => {
           const displayPath = getProductFileDisplayPath(file);
@@ -312,15 +347,46 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   }
 
   function updateFilesViewModeControls() {
-    el('btnFilesViewList').classList.toggle('is-active', filesViewMode === 'list');
-    el('btnFilesViewTree').classList.toggle('is-active', filesViewMode === 'tree');
+    const toggle = el<HTMLButtonElement>('btnFilesViewToggle');
+    const showList = filesViewMode === 'tree';
+    toggle.setAttribute('aria-label', showList ? tt('switchToListView') : tt('switchToTreeView'));
+    toggle.setAttribute('title', showList ? tt('switchToListView') : tt('switchToTreeView'));
+    toggle.innerHTML = showList
+      ? `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 5h16"></path>
+          <path d="M4 12h16"></path>
+          <path d="M4 19h16"></path>
+          <path d="M4 5h.01"></path>
+          <path d="M4 12h.01"></path>
+          <path d="M4 19h.01"></path>
+        </svg>
+      `
+      : `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 7h6l2 2h8v9H4z"></path>
+          <path d="M10 9v9"></path>
+          <path d="M10 14h4"></path>
+        </svg>
+      `;
   }
 
   function bindFilesViewModeControls() {
     if (filesViewControlsBound) return;
-    el('btnFilesViewList').addEventListener('click', () => setFilesViewMode('list'));
-    el('btnFilesViewTree').addEventListener('click', () => setFilesViewMode('tree'));
+    el('btnFilesViewToggle').addEventListener('click', () => {
+      setFilesViewMode(filesViewMode === 'tree' ? 'list' : 'tree');
+    });
     filesViewControlsBound = true;
+  }
+
+  function bindFilesSearchControl() {
+    if (filesSearchBound) return;
+    const input = el<HTMLInputElement>('filesBrowserSearch');
+    input.addEventListener('input', () => {
+      filesSearchQuery = input.value.trim().toLowerCase();
+      renderProductFilesList();
+    });
+    filesSearchBound = true;
   }
 
   function toggleTreeDirectory(path: string) {
@@ -339,6 +405,22 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
 
   function getProductFileDisplayName(file: ProductFileRecord) {
     return file.displayName || file.originalName;
+  }
+
+  function getFilteredProductFiles() {
+    if (!filesSearchQuery) return [...productFiles];
+    return productFiles.filter((file) => {
+      const searchableText = [
+        getProductFileDisplayName(file),
+        getProductFileDisplayPath(file),
+        file.originalName,
+        file.storedName,
+        file.displayName,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return searchableText.includes(filesSearchQuery);
+    });
   }
 
   function getProductFileExtension(file: ProductFileRecord) {
@@ -368,10 +450,10 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     };
   }
 
-  function buildProductFilesTree() {
+  function buildProductFilesTree(files: ProductFileRecord[]) {
     const root = createFileTreeNode('', '');
 
-    productFiles.forEach((file) => {
+    files.forEach((file) => {
       const displayPath = getProductFileDisplayPath(file);
       const segments = displayPath.split('/').map((segment) => segment.trim()).filter(Boolean);
       const directorySegments = segments.length > 1 ? segments.slice(0, -1) : [];
@@ -393,8 +475,8 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     return root;
   }
 
-  function renderProductFilesTree(container: HTMLElement) {
-    const root = buildProductFilesTree();
+  function renderProductFilesTree(container: HTMLElement, files: ProductFileRecord[]) {
+    const root = buildProductFilesTree(files);
     const content = [
       ...Array.from(root.children.values())
         .sort(compareTreeNode)
@@ -451,6 +533,15 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
         style="--tree-depth: ${depth}"
       >
         <span class="workbook-file-icon workbook-tree__file-icon ${icon.className}" aria-hidden="true">${escapeHtml(icon.label)}</span>
+        <button class="workbook-tree__delete" data-delete-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('deleteFile'))}" title="${escapeHtml(tt('deleteFile'))}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 6h18"></path>
+            <path d="M8 6V4h8v2"></path>
+            <path d="M19 6l-1 14H6L5 6"></path>
+            <path d="M10 11v6"></path>
+            <path d="M14 11v6"></path>
+          </svg>
+        </button>
         <div class="workbook-tree__file-name">${escapeHtml(getProductFileDisplayName(file))}</div>
         <div class="workbook-tree__file-path">${escapeHtml(displayPath)}</div>
         <div class="workbook-tree__file-meta">${formatFileSize(file.fileSizeBytes)} · ${file.workbookSheetCount} sheets</div>
@@ -482,11 +573,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       if (!file) return;
-      const form = new FormData();
-      form.append('file', file);
-      form.append('uploadedBy', 'Administrator');
-      const data = await api<{ file: ProductFileRecord }>('/api/files/upload', { method: 'POST', body: form });
-      await loadProductFiles(data.file.id);
+      await uploadWorkbookBuffer(file.name, await file.arrayBuffer());
     });
     input.click();
   }
@@ -687,7 +774,8 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   }
 
   function updateFileActionState() {
-    const saveButton = el<HTMLButtonElement>('btnSaveProductFile');
+    const saveButton = document.getElementById('btnSaveProductFile') as HTMLButtonElement | null;
+    if (!saveButton) return;
     const disabled = !currentProductFileDetail || !workbookViewer || productFileLoading || productFileSaving;
     saveButton.disabled = disabled;
     saveButton.textContent = productFileSaving ? tt('saving') : tt('save');

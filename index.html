@@ -140,10 +140,10 @@
                     <span class="nav-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M3 12h18"/><path d="M5 5l14 14"/><path d="m19 5-14 14"/></svg>
                     </span>
-                    <span class="nav-text">Fixed Value</span>
+                    <span class="nav-text">Global Parameter</span>
                 </div>
-                <div class="nav-dev-tools">
-                    <div class="nav-section-label">开发工具</div>
+                <div class="nav-dev-tools hidden">
+                    <div class="nav-section-label">Admin Only</div>
                     <div class="nav-item" data-page="files">
                         <span class="nav-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M8 9h2"/></svg>
@@ -156,22 +156,14 @@
                         </span>
                         <span class="nav-text">Workflow</span>
                     </div>
+                    <div class="nav-item" data-page="user-management">
+                        <span class="nav-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </span>
+                        <span class="nav-text">User Management</span>
+                    </div>
                 </div>
             </nav>
-            <div class="sidebar-footer">
-                <div class="nav-item nav-item--footer" data-page="docs" title="使用手册">
-                    <span class="nav-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                    </span>
-                    <span class="nav-text">使用手册</span>
-                </div>
-                <div class="nav-item nav-item--footer" data-page="settings" title="Settings">
-                    <span class="nav-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.68 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.32 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    </span>
-                    <span class="nav-text">Settings</span>
-                </div>
-            </div>
         </aside>
 
         <!-- Main Content -->
@@ -179,6 +171,24 @@
             <!-- Top Bar -->
             <header class="top-bar">
                 <div class="page-title" id="pageTitle">Captable</div>
+                <div class="top-bar__actions">
+                    <button class="nav-item nav-item--topbar nav-item--topbar-icon-only" data-page="docs" type="button" title="使用手册" aria-label="使用手册">
+                        <span class="nav-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                            </svg>
+                        </span>
+                    </button>
+                    <button class="nav-item nav-item--topbar nav-item--topbar-icon-only" data-page="settings" type="button" title="Settings" aria-label="Settings">
+                        <span class="nav-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.68 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.32 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                            </svg>
+                        </span>
+                    </button>
+                </div>
                 <div class="user-info">
                     <button class="user-avatar" id="currentUserAvatar" type="button" aria-label="打开用户菜单" aria-expanded="false">A</button>
                     <div class="user-menu hidden" id="userMenu">
@@ -199,10 +209,18 @@
                         </div>
                     </div>
                     <div class="product-grid product-grid--four">
-                        <div class="product-card"><div class="product-card__label">Grant_record</div><h3>授予记录</h3><p>futu + shareworks 数据合并拼表。</p></div>
-                        <div class="product-card"><div class="product-card__label">Exercise to date</div><h3>行权记录</h3><p>展示 futu 的全部行权记录，覆盖 2023 年和 2025 年。</p></div>
-                        <div class="product-card"><div class="product-card__label">Sold shares</div><h3>卖出记录</h3><p>futu 卖出记录仅做管理。</p></div>
-                        <div class="product-card"><div class="product-card__label">2025 transfer</div><h3>2025 年计划</h3><p>导入提醒、月度归属汇总和每月取消数量编辑入口。</p></div>
+                        <a class="product-card product-card--link" href="/grant-record" aria-label="进入授予记录页面">
+                            <div class="product-card__label">Grant_record</div><h3>授予记录</h3><p>futu + shareworks 数据合并拼表。</p>
+                        </a>
+                        <a class="product-card product-card--link" href="/exercise-record" aria-label="进入行权记录页面">
+                            <div class="product-card__label">Exercise to date</div><h3>行权记录</h3><p>展示 futu 的全部行权记录，覆盖 2023 年和 2025 年。</p>
+                        </a>
+                        <a class="product-card product-card--link" href="/sold-shares" aria-label="进入卖出记录页面">
+                            <div class="product-card__label">Sold shares</div><h3>卖出记录</h3><p>futu 卖出记录仅做管理。</p>
+                        </a>
+                        <a class="product-card product-card--link" href="/transfer-plan" aria-label="进入 2025 年计划页面">
+                            <div class="product-card__label">2025 transfer</div><h3>2025 年计划</h3><p>导入提醒、月度归属汇总和每月取消数量编辑入口。</p>
+                        </a>
                     </div>
                 </section>
 
@@ -213,7 +231,9 @@
                             <h2>Grant Record</h2>
                             <p>展示 Futu、Shareworks 及合并后的授予明细，数据来自对应 workflow 输出文件。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="grantRecordSourceFileName">-</strong></div>
+                        <div class="product-page-hero__metrics">
+                            <div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="grantRecordSourceFilesName">-</strong></div>
+                        </div>
                     </div>
                     <div class="search-bar">
                         <div class="search-group">
@@ -244,6 +264,10 @@
                                 <span id="grantViewTitle">Futu Grant Record</span>
                             </h3>
                             <span class="card-subtitle" id="grantViewSubtitle">Futu 授予数据原始格式</span>
+                            <div class="card-header-actions product-table-actions">
+                                <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="grant-record"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
+                                <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="grant-record"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
+                            </div>
                         </div>
                         <div class="card-body card-body--with-pagination">
                             <div class="grant-panel" id="grantPanel-futu" role="tabpanel" aria-labelledby="grantTab-futu">
@@ -295,7 +319,7 @@
                                 <div class="table-scroll">
                                 <table class="data-table table-holdings" id="grantTable-shareworks">
                                     <thead><tr>
-                                        <th>No.</th><th>Cost Center</th><th>Participant Type @ Report Date</th><th>Employee Number</th>
+                                        <th>No.</th><th>Employee Number</th>
                                         <th>Last Name</th><th>First Name</th><th>Middle Name</th><th>Plan Name</th><th>Grant Name</th>
                                         <th>Grant Type</th><th>Employee Grant Number</th><th>Grant Date</th><th>Vesting Start Date</th>
                                         <th>Service Start Date</th><th>Original VCD (migrated grants)</th><th>Expire Date</th>
@@ -358,7 +382,9 @@
                             <h2>Exercise to Date</h2>
                             <p>展示 Futu 全部行权记录，数据来自 Files 中的独立工作簿。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="exerciseRecordSourceFileName">-</strong></div>
+                        <div class="product-page-hero__metrics">
+                            <div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="exerciseRecordSourceFilesName">-</strong></div>
+                        </div>
                     </div>
                     <div class="search-bar">
                         <div class="search-group">
@@ -383,6 +409,10 @@
                                 Futu Exercise Records
                             </h3>
                             <span class="card-subtitle">Futu BCI Exercises to Date.xlsx</span>
+                            <div class="card-header-actions product-table-actions">
+                                <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="exercise-record"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
+                                <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="exercise-record"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
+                            </div>
                         </div>
                         <div class="card-body card-body--with-pagination">
                             <div class="table-scroll">
@@ -434,7 +464,9 @@
                             <h2>Sold Shares</h2>
                             <p>展示 Futu 卖出汇总记录，数据来自 Files 中的独立工作簿。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="soldSharesSourceFileName">-</strong></div>
+                        <div class="product-page-hero__metrics">
+                            <div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="soldSharesSourceFilesName">-</strong></div>
+                        </div>
                     </div>
                     <div class="search-bar">
                         <div class="search-group">
@@ -459,6 +491,10 @@
                                 Futu Sold Shares
                             </h3>
                             <span class="card-subtitle">Futu sold shares.xlsx</span>
+                            <div class="card-header-actions product-table-actions">
+                                <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="sold-shares"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
+                                <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="sold-shares"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
+                            </div>
                         </div>
                         <div class="card-body card-body--with-pagination">
                             <div class="table-scroll">
@@ -516,7 +552,9 @@
                             <h2>2025 Transfer to Futu</h2>
                             <p>按月汇总归属记录，取消数量可直接编辑；数据来自 Files 中的独立工作簿。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="transferPlanHeroSourceName">-</strong></div>
+                        <div class="product-page-hero__metrics">
+                            <div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="transferPlanHeroSourceFilesName">-</strong></div>
+                        </div>
                     </div>
                     <div class="transfer-plan-metrics">
                         <div class="transfer-plan-metric"><span>In total</span><strong id="transferPlanInTotal">-</strong></div>
@@ -531,10 +569,15 @@
                                 <span class="card-subtitle" id="transferPlanSourceName">2025 BC Subplan Transfer.xlsx</span>
                             </div>
                             <div class="transfer-plan-actions">
-                                <input type="file" id="transferPlanFileInput" accept=".xlsx" hidden>
-                                <button class="btn btn-secondary btn-sm" id="btnToggleTransferPlanTableView" type="button" aria-pressed="false">转置表格</button>
-                                <button class="btn btn-secondary btn-sm" id="btnImportTransferPlan">Import detail</button>
-                                <button class="btn btn-primary btn-sm" id="btnExportTransferPlan">Export detail</button>
+                                <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="transfer-plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
+                                <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="transfer-plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
+                                <button class="btn btn-secondary btn-sm" id="btnToggleTransferPlanTableView" type="button" aria-pressed="false">
+                                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                                        <path d="M5 6h10M5 10h6M5 14h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                        <path d="M13 4.5 16 7.5 13 10.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    转置表格
+                                </button>
                             </div>
                         </div>
                         <div class="card-body transfer-plan-card-body">
@@ -558,23 +601,21 @@
                             <h2>Employee Management</h2>
                             <p>员工主数据由员工归集 workflow 从 ESOP 明细输入文件中生成，并支持手工补充。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="employeesSourceFileName">-</strong></div>
+                        <div class="product-page-hero__metrics">
+                            <div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="employeesSourceFilesName">-</strong></div>
+                        </div>
                     </div>
                     <div class="search-bar">
                         <div class="search-group">
                             <label class="search-label">Search</label>
                             <input type="text" id="searchEmployeesPage" class="search-input" placeholder="Search by name, employee no., user id...">
                             <label class="search-label">Tag</label>
-                            <input type="text" id="filterEmployeesPageTag" class="search-input" placeholder="Filter by tag">
+                            <select id="filterEmployeesPageTag" class="search-input">
+                                <option value="">All Tags</option>
+                            </select>
                             <button class="btn btn-primary" id="btnSearchEmployeesPage">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                                 Search
-                            </button>
-                        </div>
-                        <div class="search-actions">
-                            <button class="btn btn-success" id="btnAddEmployeesPage">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                New Employee
                             </button>
                         </div>
                     </div>
@@ -584,7 +625,13 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
                                 Employee Management
                             </h3>
-                            <span class="card-subtitle">Employee master records summarized from ESOP detail</span>
+                            <div class="card-header-actions">
+                                <button class="btn btn-warning" id="btnManageEmployeeLabels" type="button">标签管理</button>
+                                <button class="btn btn-success" id="btnAddEmployeesPage">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    New Employee
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body card-body--with-pagination">
                             <div class="table-scroll">
@@ -606,7 +653,7 @@
                                                 </div>
                                             </th>
                                             <th>Linked</th>
-                                            <th>Tags</th>
+                                            <th style="text-align:left;">Tags</th>
                                             <th style="width:96px;">Grant Count</th>
                                             <th style="width:220px;">Actions</th>
                                         </tr>
@@ -643,11 +690,75 @@
                                 <div class="form-group" id="employeesPageNumberRow" style="display:none;"><label>Emp. No.（工号）<span style="color:var(--danger-500);">*</span></label><input type="text" id="employeesPageNumber" class="form-input" placeholder="输入工号（新增后不可改）"></div>
                                 <div class="form-group"><label>Employee Name <span style="color:var(--danger-500);">*</span></label><input type="text" id="employeesPageName" class="form-input" placeholder="Enter employee name"></div>
                                 <div class="form-group"><label>User ID</label><input type="text" id="employeesPageUserId" class="form-input" placeholder="Enter user id"></div>
-                                <div class="form-group"><label>Tags</label><input type="text" id="employeesPageTags" class="form-input" placeholder="Comma separated tags"></div>
+                                <div class="form-group">
+                                    <label>Tags</label>
+                                    <div class="employee-label-picker">
+                                        <div class="employee-label-chip-list" id="employeesPageSelectedLabels"></div>
+                                        <button class="btn btn-secondary btn-sm" id="btnOpenEmployeeLabelPicker" type="button">Add</button>
+                                        <div class="employee-label-picker__menu hidden" id="employeeLabelPickerMenu"></div>
+                                    </div>
+                                    <p class="form-hint">点击 Add label 从已创建标签中选择；点击标签上的 × 可移除。</p>
+                                </div>
                             </div>
                             <div class="modal-footer">
                                 <button class="btn btn-secondary" data-close="employeesPageModal">Cancel</button>
                                 <button class="btn btn-primary" id="btnSubmitEmployeesPage">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-overlay hidden" id="employeeLabelManagementModal">
+                        <div class="modal-container modal-large employee-label-management-modal">
+                            <div class="modal-header">
+                                <div>
+                                    <h3 class="modal-title">标签管理</h3>
+                                    <p class="modal-subtitle">先创建标签，再分配给员工；名称或颜色变更会自动影响所有员工。</p>
+                                </div>
+                                <button class="modal-close" data-close="employeeLabelManagementModal">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="employee-label-management-toolbar">
+                                    <button class="btn btn-secondary" id="btnAddEmployeeLabel" type="button">New Tag</button>
+                                </div>
+                                <div class="table-scroll">
+                                    <table class="data-table" id="employeeLabelsTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Tag</th>
+                                                <th style="width:96px;">Color</th>
+                                                <th style="width:120px;">Employees</th>
+                                                <th style="width:160px;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="employeeLabelsBody">
+                                            <tr><td colspan="4" class="table-empty-cell">暂无标签</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" data-close="employeeLabelManagementModal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-overlay hidden" id="employeeLabelModal">
+                        <div class="modal-container modal-small">
+                            <div class="modal-header">
+                                <h3 class="modal-title" id="employeeLabelModalTitle">New Tag</h3>
+                                <button class="modal-close" data-close="employeeLabelModal">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-group"><label>Tag Name <span style="color:var(--danger-500);">*</span></label><input type="text" id="employeeLabelName" class="form-input" placeholder="Enter tag name"></div>
+                                <div class="form-group">
+                                    <label>Color</label>
+                                    <div class="employee-label-color-field">
+                                        <input type="color" id="employeeLabelColor" class="employee-label-color-input" value="#2563eb" aria-label="Choose tag color">
+                                        <span class="employee-label-color-preview" id="employeeLabelColorPreview">Tag</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" data-close="employeeLabelModal">Cancel</button>
+                                <button class="btn btn-primary" id="btnSubmitEmployeeLabel">Save</button>
                             </div>
                         </div>
                     </div>
@@ -676,7 +787,9 @@
                             <h2>Plan Summary</h2>
                             <p>按 Plan Name 聚合授予、行权、取消及 outstanding 数量。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="planSummarySourceFileName">-</strong></div>
+                        <div class="product-page-hero__metrics">
+                            <div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="planSummarySourceFilesName">-</strong></div>
+                        </div>
                     </div>
                     <div class="stats-row">
                         <div class="stat-card"><div class="stat-label">Plans</div><div class="stat-value" id="planSummaryPlanCount">-</div></div>
@@ -685,7 +798,14 @@
                         <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value" id="planSummaryOutstanding">-</div></div>
                     </div>
                     <div class="card">
-                        <div class="card-header"><h3 class="card-title">Plan Summary</h3><span class="card-subtitle">Aggregated from equity grant detail</span></div>
+                        <div class="card-header">
+                            <h3 class="card-title">Plan Summary</h3>
+                            <span class="card-subtitle">Aggregated from equity grant detail</span>
+                            <div class="card-header-actions product-table-actions">
+                                <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="plan-summary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
+                                <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="plan-summary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
+                            </div>
+                        </div>
                         <div class="card-body">
                             <table class="data-table">
                                 <thead><tr><th>Plan Name</th><th class="col-number">Grant Count</th><th class="col-number">Granted</th><th class="col-number">Exercised</th><th class="col-number">Cancelled</th><th class="col-number">Outstanding</th></tr></thead>
@@ -700,12 +820,18 @@
                         <div>
                             <div class="product-page-hero__eyebrow">持股5%以上股东</div>
                             <h2>5% Holders</h2>
-                            <p>来源：Gyre Cap Table「5% Holders」sheet（EDGAR SC13 申报口径）。</p>
+                            <p>由 Global Parameter 手工维护的 5% holder 数字与 Capitalization Summary 分母计算生成。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="fivePercentHoldersSourceFileName">-</strong></div>
                     </div>
                     <div class="card">
-                        <div class="card-header"><h3 class="card-title">5% Holders</h3><span class="card-subtitle">EDGAR SC13 Ownership</span></div>
+                        <div class="card-header">
+                            <h3 class="card-title">5% Holders</h3>
+                            <span class="card-subtitle">EDGAR SC13 Ownership</span>
+                            <div class="card-header-actions product-table-actions">
+                                <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="five-percent-holders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
+                                <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="five-percent-holders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
+                            </div>
+                        </div>
                         <div class="card-body">
                             <div class="stat-chip-row" id="fivePercentHoldersSummary"></div>
                             <table class="data-table">
@@ -715,7 +841,6 @@
                                     <th class="col-number">Total CSEs</th>
                                     <th class="col-number">% of Class</th>
                                     <th class="col-number">% Fully Diluted</th>
-                                    <th style="text-align:left;">SC13 Filing</th>
                                 </tr></thead>
                                 <tbody id="fivePercentHoldersBody"></tbody>
                             </table>
@@ -726,13 +851,13 @@
                 <section class="page-section" id="page-fixed-value">
                     <div class="product-page-hero">
                         <div>
-                            <div class="product-page-hero__eyebrow">管理可以更改的固定值</div>
-                            <h2>Fixed Value</h2>
-                            <p>Data Management 下的固定值维护页，用于管理月度流程中可由管理员调整的业务常量。</p>
+                            <div class="product-page-hero__eyebrow">管理可以更改的全局参数</div>
+                            <h2>Global Parameter</h2>
+                            <p>Data Management 下的全局参数维护页，用于管理月度流程中可由管理员调整的业务常量。</p>
                         </div>
                     </div>
                     <div class="card">
-                        <div class="card-header"><h3 class="card-title">固定值</h3><span class="card-subtitle">管理员可维护</span></div>
+                        <div class="card-header"><h3 class="card-title">Global Parameter</h3><span class="card-subtitle">管理员可维护</span></div>
                         <div class="card-body">
                             <table class="data-table product-spec-table">
                                 <thead><tr><th>Key</th><th>Item</th><th>Value</th><th>Effective From</th><th>Updated By</th><th>Actions</th></tr></thead>
@@ -743,13 +868,6 @@
                 </section>
 
                 <section class="page-section" id="page-docs">
-                    <div class="product-page-hero">
-                        <div>
-                            <div class="product-page-hero__eyebrow">使用手册</div>
-                            <h2>使用手册</h2>
-                            <p>系统各页面与工作流的使用说明，按主题分多篇文档。</p>
-                        </div>
-                    </div>
                     <div class="doc-layout">
                         <aside class="doc-nav" id="docNav"></aside>
                         <article class="doc-content" id="docContent"></article>
@@ -762,9 +880,8 @@
                         <div>
                             <div class="product-page-hero__eyebrow">股本汇总</div>
                             <h2>CapTable</h2>
-                            <p>展示月度 Capitalization Table Summary View，数据来自当前选择的 SourceFile。</p>
+                            <p>展示月度 Capitalization Table Summary View，数据来自当前选择的输出文件。</p>
                         </div>
-                        <div class="product-page-hero__metric"><span>SourceFile</span><strong data-page-source-file-name id="capitalizationSourceFileName">-</strong></div>
                     </div>
                     <div class="search-bar">
                         <div class="search-group">
@@ -817,8 +934,13 @@
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                                     股权结构汇总
                                 </h3>
+                                <span class="card-subtitle">Capitalization Table Summary View</span>
                             </div>
                             <div class="card-header-actions">
+                                <button class="btn btn-primary btn-sm" id="btnOpenMonthlyUpdateFromCapTable" type="button">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg>
+                                    Update
+                                </button>
                                 <button class="btn btn-secondary btn-sm" id="btnExport">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                     导出
@@ -867,23 +989,6 @@
 
                 <!-- Monthly Updates Page -->
                 <section class="page-section" id="page-monthly">
-                    <div class="search-bar">
-                        <div class="search-group">
-                            <label class="search-label">月份</label>
-                            <input type="month" id="monthPickerMonthly" class="search-input">
-                            <button class="btn btn-primary" id="btnSearchMonthly">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                查询
-                            </button>
-                        </div>
-                        <div class="search-actions">
-                            <button class="btn btn-success" id="btnAddUpdate">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                新建月度更新
-                            </button>
-                        </div>
-                    </div>
-
                     <div class="stats-row">
                         <div class="stat-card">
                             <div class="stat-label">计划总数</div>
@@ -910,6 +1015,12 @@
                                 月度更新计划
                             </h3>
                             <span class="card-subtitle">按月份管理数据更新计划</span>
+                            <div class="card-header-actions">
+                                <button class="btn btn-success" id="btnAddUpdate">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    新建月度更新
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="table-scroll">
@@ -983,21 +1094,6 @@
                         <div class="card-body monthly-run-input-body" id="monthlyRunInputBody">
                             <div id="sourceTablesContainer">
                                 <div class="source-table-section">
-                                    <div class="source-table-title">固定参数</div>
-                                    <table class="source-table" id="fixedValueTable">
-                                        <thead>
-                                            <tr>
-                                                <th>Item</th>
-                                                <th>Note</th>
-                                                <th>Value</th>
-                                                <th style="width:72px;">Used</th>
-                                                <th style="width:80px;">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="fixedValueBody"></tbody>
-                                    </table>
-                                </div>
-                                <div class="source-table-section">
                                     <div class="source-table-title">来自 Shareworks 的输入表</div>
                                     <table class="source-table source-table--inputs" id="shareworksTable">
                                         <colgroup>
@@ -1043,6 +1139,30 @@
                                             </tr>
                                         </thead>
                                         <tbody id="futuBody"></tbody>
+                                    </table>
+                                </div>
+                                <div class="source-table-section">
+                                    <div class="source-table-title">Previous Capitalization Summary</div>
+                                    <table class="source-table source-table--inputs" id="previousCapitalizationSummaryTable">
+                                        <colgroup>
+                                            <col class="source-table__col-file">
+                                            <col class="source-table__col-used">
+                                            <col class="source-table__col-required">
+                                            <col class="source-table__col-uploaded">
+                                            <col class="source-table__col-uploaded-time">
+                                            <col class="source-table__col-actions">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>File Name</th>
+                                                <th style="width:72px;">Used</th>
+                                                <th style="width:80px;">Is required</th>
+                                                <th>Uploaded file</th>
+                                                <th>Uploaded time</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="previousCapitalizationSummaryBody"></tbody>
                                     </table>
                                 </div>
                             </div>
@@ -1127,12 +1247,32 @@
                     </div>
                 </div>
 
+                <div class="modal-overlay hidden" id="workflowUpdateModal">
+                    <div class="modal-container modal-large workflow-update-modal">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title" id="workflowUpdateModalTitle">Update Workflow</h3>
+                                <p class="modal-subtitle" id="workflowUpdateModalSubtitle">选择或上传本次 workflow 输入文件。</p>
+                            </div>
+                            <button class="modal-close" id="btnCloseWorkflowUpdateModal" type="button">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="workflow-update-source-list" id="workflowUpdateSourceList"></div>
+                            <p class="form-hint" id="workflowUpdateStatus">默认使用上一次成功执行的输入文件；上传新文件后会自动替换当前输入项。</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" id="btnCancelWorkflowUpdateModal" type="button">Cancel</button>
+                            <button class="btn btn-primary" id="btnConfirmWorkflowUpdate" type="button">Confirm & Run</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Files Page -->
                 <section class="page-section" id="page-files">
                     <div class="workspace workspace--embedded" id="filesWorkspace">
-                        <button class="rail rail--left hidden" id="filesCollapsedRail" title="展开 文件列表" aria-label="展开 文件列表">
+                        <button class="rail rail--left hidden" id="filesCollapsedRail" data-no-static-translate title="展开 Browser" aria-label="展开 Browser">
                             <span class="rail__arrow">›</span>
-                            <span class="rail__label">文件列表</span>
+                            <span class="rail__label" data-no-static-translate>Browser</span>
                         </button>
 
                         <div class="pane pane--left" id="filesLeftPane">
@@ -1141,7 +1281,7 @@
                                     <button
                                         class="card-collapse__btn"
                                         id="btnCollapseFilesPane"
-                                        aria-label="收起表格列表"
+                                        aria-label="收起 Browser"
                                         title="收起"
                                         type="button"
                                     >
@@ -1149,25 +1289,29 @@
                                     </button>
                                 </div>
 
-                                <div class="workbook-list__upload">
-                                    <button type="button" class="workbook-list__new" id="btnUploadProductFile">
-                                        上传 Excel
-                                    </button>
-                                </div>
-
                                 <div class="workbook-list__header">
                                     <div>
-                                        <h2>表格列表</h2>
+                                        <h2 data-no-static-translate>Browser</h2>
                                         <p id="filesCountBadge">0 个</p>
                                     </div>
-                                    <div class="workbook-list__actions">
-                                        <div class="files-view-toggle" role="group" aria-label="文件显示方式">
-                                            <button type="button" class="files-view-toggle__btn is-active" id="btnFilesViewList">列表</button>
-                                            <button type="button" class="files-view-toggle__btn" id="btnFilesViewTree">树状</button>
-                                        </div>
-                                        <button type="button" class="btn btn-secondary btn-sm" id="btnSaveProductFile" disabled>保存</button>
-                                        <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshFiles">刷新</button>
+                                    <div class="workbook-list__view-switch">
+                                        <button type="button" class="btn btn-secondary btn-sm workbook-list__view-switch-btn" id="btnFilesViewToggle"></button>
                                     </div>
+                                    <div class="workbook-list__actions">
+                                        <button type="button" class="btn btn-primary btn-sm" id="btnCreateProductFile">New</button>
+                                        <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshFiles">Refresh</button>
+                                        <button type="button" class="btn btn-secondary btn-sm" id="btnUploadProductFile">Upload</button>
+                                    </div>
+                                </div>
+
+                                <div class="workbook-list__search">
+                                    <input
+                                        type="search"
+                                        id="filesBrowserSearch"
+                                        class="form-input"
+                                        placeholder="搜索文件..."
+                                        autocomplete="off"
+                                    />
                                 </div>
 
                                 <div class="workbook-list__items" id="productFilesList"></div>
@@ -1214,6 +1358,15 @@
                                     <button class="btn btn-primary btn-sm" id="btnCreateWorkflow">新建</button>
                                 </div>
                             </div>
+                            <div class="workflow-sidebar__search">
+                                <input
+                                    type="search"
+                                    id="workflowSearchInput"
+                                    class="form-input"
+                                    placeholder="搜索工作流..."
+                                    autocomplete="off"
+                                />
+                            </div>
                             <div class="workflow-list" id="workflowList"></div>
                         </aside>
 
@@ -1226,6 +1379,14 @@
                                 </div>
                                 <div class="workflow-toolbar__actions">
                                     <button class="btn btn-secondary" id="btnExecuteWorkflow">执行</button>
+                                    <button class="btn btn-secondary" id="btnExportWorkflow">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                            <path d="M12 3v12"></path>
+                                            <path d="m7 10 5 5 5-5"></path>
+                                            <path d="M5 21h14"></path>
+                                        </svg>
+                                        <span>Export</span>
+                                    </button>
                                     <button class="btn btn-primary" id="btnSaveWorkflow">保存</button>
                                     <button class="btn btn-danger" id="btnDeleteWorkflow">删除</button>
                                 </div>
@@ -1572,6 +1733,95 @@
                         <div class="modal-footer">
                             <button class="btn btn-secondary" id="btnCancelWorkflowOperatorPicker" type="button">Cancel</button>
                             <button class="btn btn-primary" id="btnConfirmWorkflowOperatorPicker" type="button">Create Task</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Management Page -->
+                <section class="page-section" id="page-user-management">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <h3 class="card-title">用户管理</h3>
+                                <span class="card-subtitle">管理员创建、编辑、停用系统用户和角色</span>
+                            </div>
+                            <button class="btn btn-primary" id="btnOpenManagedUserModal" type="button">新增用户</button>
+                        </div>
+                        <div class="card-body card-body--with-pagination">
+                            <div class="table-scroll">
+                                <table class="data-table" id="userManagementTable">
+                                    <thead>
+                                        <tr>
+                                            <th data-user-management-label="username">账号名</th>
+                                            <th data-user-management-label="displayName">显示名</th>
+                                            <th data-user-management-label="role">角色</th>
+                                            <th data-user-management-label="status">状态</th>
+                                            <th data-user-management-label="email">邮箱</th>
+                                            <th data-user-management-label="contact">联系方式</th>
+                                            <th data-user-management-label="lastLogin">最后登录</th>
+                                            <th data-user-management-label="createdAt">创建时间</th>
+                                            <th data-user-management-label="actions">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="userManagementBody">
+                                        <tr><td colspan="9" class="table-empty-cell">暂无用户</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="modal-overlay hidden" id="managedUserModal">
+                    <div class="modal-container modal-large">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title" id="managedUserModalTitle">创建用户</h3>
+                                <span class="card-subtitle" id="managedUserModalSubtitle">默认角色为 user</span>
+                            </div>
+                            <button class="modal-close" data-close="managedUserModal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>账号名</label>
+                                    <input type="text" id="managedUserUsername" class="form-input" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label>显示名</label>
+                                    <input type="text" id="managedUserDisplayName" class="form-input" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label>角色</label>
+                                    <select id="managedUserRole" class="form-input">
+                                        <option value="user">user</option>
+                                        <option value="admin">admin</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>邮箱</label>
+                                    <input type="email" id="managedUserEmail" class="form-input" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label>联系方式</label>
+                                    <input type="text" id="managedUserPhone" class="form-input" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label>密码</label>
+                                    <input type="password" id="managedUserPassword" class="form-input" autocomplete="new-password">
+                                </div>
+                                <div class="form-group">
+                                    <label>状态</label>
+                                    <select id="managedUserIsActive" class="form-input">
+                                        <option value="true">启用</option>
+                                        <option value="false">停用</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" data-close="managedUserModal">取消</button>
+                            <button class="btn btn-primary" id="btnSubmitManagedUser" type="button">创建用户</button>
                         </div>
                     </div>
                 </div>

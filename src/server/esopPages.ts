@@ -128,8 +128,6 @@ export type ShareworksGrantSourceRow = {
 
 export type ShareworksGrantResponseRow = {
   id: number;
-  costCenter: string | null;
-  participantType: string | null;
   employeeNumber: string | null;
   lastName: string | null;
   firstName: string | null;
@@ -373,8 +371,6 @@ export function toFivePercentHolder(row: FivePercentHolderRow): FivePercentHolde
 export function toShareworksGrant(row: ShareworksGrantSourceRow): ShareworksGrantResponseRow {
   return {
     id: Number(row.id),
-    costCenter: row.cost_center,
-    participantType: row.participant_type,
     employeeNumber: row.employee_number,
     lastName: row.last_name,
     firstName: row.first_name,

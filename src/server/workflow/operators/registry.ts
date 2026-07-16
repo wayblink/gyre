@@ -5,15 +5,15 @@ import { dataframeShapeAssertOperator } from './dataframeShapeAssert.js';
 import { dataframeSqlAssertOperator } from './dataframeSqlAssert.js';
 import { dataframeUnionOperator } from './dataframeUnion.js';
 import { dbUpsertOperator } from './dbUpsert.js';
-import { esopPagePersistOperator } from './esopPagePersist.js';
-import { fivePercentHoldersPersistOperator } from './fivePercentHoldersPersist.js';
-import { planSummaryPersistOperator } from './planSummaryPersist.js';
 import { sheetRangeExtractOperator } from './sheetRangeExtract.js';
+import { sheetOptionalRangeExtractOperator } from './sheetOptionalRangeExtract.js';
 import { sheetSectionsExtractOperator } from './sheetSectionsExtract.js';
 import { sqlComputeOperator } from './sqlCompute.js';
+import { workbookPersistExcelOperator } from './workbookPersistExcel.js';
 
 export const workflowOperatorDefinitions = [
   sheetRangeExtractOperator,
+  sheetOptionalRangeExtractOperator,
   sheetSectionsExtractOperator,
   sqlComputeOperator,
   dataframeUnionOperator,
@@ -22,10 +22,8 @@ export const workflowOperatorDefinitions = [
   dataframeSchemaAssertOperator,
   dataframeShapeAssertOperator,
   dataframePersistExcelOperator,
+  workbookPersistExcelOperator,
   dbUpsertOperator,
-  esopPagePersistOperator,
-  planSummaryPersistOperator,
-  fivePercentHoldersPersistOperator,
 ] as const;
 
 export const workflowOperatorDefinitionByCode = new Map(
