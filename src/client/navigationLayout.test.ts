@@ -136,6 +136,7 @@ test('workflow editor picks files through a tree picker that can upload and move
   assert.match(filePickerModalSource, /\/api\/files\/\$\{file\.id\}\/move/);
 
   assert.match(css, /\.workflow-file-picker__tree\s*\{/);
+  assert.match(css, /\.modal-container\.workflow-file-picker-modal\s*\{[\s\S]*height: min\(88vh, 940px\);/);
   assert.match(css, /\.workflow-runtime-summary__filepick-trigger\s*\{/);
   assert.match(css, /\.workflow-operator-picker-modal,\s*\n\s*\.workflow-file-picker-modal\s*\{/);
 });

@@ -71,6 +71,7 @@ const STATIC_TEXT_TRANSLATIONS: Record<string, string> = {
   未设置默认值: 'No default value',
   未设置默认文件: 'No default file',
   请选择文件: 'Select file',
+  点击选择文件: 'Click to select a file',
   运行时参数: 'Runtime parameters',
   项参数: 'parameters',
   应用: 'Apply',

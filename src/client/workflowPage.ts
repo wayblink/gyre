@@ -22,7 +22,7 @@ import type {
 } from '../shared/types.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
-import { applyStaticTranslations, type AppLanguage } from './i18n.js';
+import { applyStaticTranslations, translateStaticText, type AppLanguage } from './i18n.js';
 import { createFilePickerModal } from './filePickerModal.js';
 import { renderOperatorConfigForm, syncOperatorConfigForm } from './workflow/operatorConfigForm.js';
 import {
@@ -609,6 +609,7 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     });
     el('btnPreviewWorkflowTask').addEventListener('click', () => void previewWorkflowTask());
     el('workflowPreviewFileId').addEventListener('change', syncStructuredTaskParamsToState);
+    el('workflowPreviewFilePickTrigger').addEventListener('click', () => void openStructuredFilePicker());
     el('workflowPreviewSheetName').addEventListener('input', syncStructuredTaskParamsToState);
     el('workflowPreviewSheetSelect').addEventListener('change', syncStructuredTaskParamsToState);
     el('workflowPreviewRange').addEventListener('input', syncStructuredTaskParamsToState);
@@ -1717,6 +1718,7 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       trigger.addEventListener('click', () => void openRuntimeFilePicker(trigger));
     });
     container.querySelector<HTMLElement>('[data-workflow-runtime-json-apply]')?.addEventListener('click', applyRuntimeJsonFromTextareas);
+    localizeWorkflowDom();
   }
 
   /**
@@ -1728,7 +1730,7 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     if (!control) return;
     const currentFileId = control.value ? Number(control.value) : null;
     const result = await filePicker.open({
-      title: '选择默认文件',
+      titleKey: 'defaultFileTitle',
       currentFileId,
       allowClear: true,
       uploadFolderPrefix: 'input',
@@ -3511,6 +3513,45 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     }
 
     inputGuardsRow.classList.add('hidden');
+    syncStructuredFilePickTrigger();
+  }
+
+  /** The hidden select stays the source of truth; the trigger only mirrors it and opens the picker. */
+  function syncStructuredFilePickTrigger() {
+    const select = el<HTMLSelectElement>('workflowPreviewFileId');
+    const isRuntimeDefault = select.dataset.fileParamMode === 'runtime-default';
+    const fileId = select.value && !select.value.startsWith('__runtime__:') ? Number(select.value) : null;
+    const file = fileId ? getProductFiles().find((item) => item.id === fileId) : undefined;
+    el('workflowPreviewFilePickName').textContent = file
+      ? productFileDisplayName(file)
+      : translateStaticText(isRuntimeDefault ? '未设置默认文件' : '请选择文件', lang());
+    el('workflowPreviewFilePickPath').textContent = file
+      ? `${file.logicalPath ?? file.displayPath} · #${file.id}`
+      : translateStaticText('点击选择文件', lang());
+  }
+
+  async function openStructuredFilePicker() {
+    const select = el<HTMLSelectElement>('workflowPreviewFileId');
+    const isRuntimeDefault = select.dataset.fileParamMode === 'runtime-default';
+    const currentFileId = select.value && !select.value.startsWith('__runtime__:') ? Number(select.value) : null;
+    const result = await filePicker.open({
+      titleKey: isRuntimeDefault ? 'defaultFileTitle' : 'fileSourceTitle',
+      currentFileId,
+      allowClear: true,
+      uploadFolderPrefix: 'input',
+    });
+    if (!result) return;
+    if (result.action === 'pick' && !Array.from(select.options).some((option) => option.value === String(result.fileId))) {
+      // A file uploaded from inside the picker has no option yet, and <select>.value ignores unknown values.
+      const file = getProductFiles().find((item) => item.id === result.fileId);
+      const option = document.createElement('option');
+      option.value = String(result.fileId);
+      option.textContent = file ? productFileDisplayName(file) : `#${result.fileId}`;
+      select.appendChild(option);
+    }
+    select.value = result.action === 'pick' ? String(result.fileId) : '';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    syncStructuredFilePickTrigger();
   }
 
   function syncStructuredTaskParamsToState() {

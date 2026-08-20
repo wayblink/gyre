@@ -29,7 +29,7 @@ export type FilePickerModalDeps = {
 };
 
 export type FilePickerOpenOptions = {
-  title?: string;
+  titleKey?: 'title' | 'defaultFileTitle' | 'fileSourceTitle';
   currentFileId?: number | null;
   allowClear?: boolean;
   uploadFolderPrefix?: string;
@@ -54,6 +54,8 @@ export function createFilePickerModal({
 }: FilePickerModalDeps) {
   const text = {
     title: { 'zh-CN': '选择文件', 'en-US': 'Select file' },
+    defaultFileTitle: { 'zh-CN': '选择默认文件', 'en-US': 'Select default file' },
+    fileSourceTitle: { 'zh-CN': '选择文件来源', 'en-US': 'Select file source' },
     subtitle: {
       'zh-CN': '点击选择文件，也可以上传新文件或把文件移动到其他目录。',
       'en-US': 'Click a file to select it. You can also upload a new file or move a file to another folder.',
@@ -151,7 +153,7 @@ export function createFilePickerModal({
   }
 
   function applyStaticLabels() {
-    el('workflowFilePickerTitle').textContent = options.title ?? tt('title');
+    el('workflowFilePickerTitle').textContent = tt(options.titleKey ?? 'title');
     el('workflowFilePickerSubtitle').textContent = tt('subtitle');
     el<HTMLInputElement>('workflowFilePickerSearch').placeholder = tt('searchPlaceholder');
     el('btnWorkflowFilePickerUpload').textContent = tt('upload');

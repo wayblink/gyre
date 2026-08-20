@@ -1647,7 +1647,11 @@
                                     <div class="workflow-structured__title">Structured Params</div>
                                     <div class="workflow-structured__row" id="workflowStructuredFileRow">
                                         <label class="workflow-structured__label" for="workflowPreviewFileId">File Source</label>
-                                        <select id="workflowPreviewFileId" class="search-input workflow-select"></select>
+                                        <select id="workflowPreviewFileId" class="search-input workflow-select hidden"></select>
+                                        <button type="button" class="workflow-runtime-summary__filepick-trigger" id="workflowPreviewFilePickTrigger">
+                                            <span class="workflow-runtime-summary__filepick-name" id="workflowPreviewFilePickName"></span>
+                                            <span class="workflow-runtime-summary__filepick-path" id="workflowPreviewFilePickPath"></span>
+                                        </button>
                                     </div>
                                     <div class="workflow-structured__row" id="workflowStructuredSheetRow">
                                         <label class="workflow-structured__label" for="workflowPreviewSheetName">Sheet</label>

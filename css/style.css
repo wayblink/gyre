@@ -4851,11 +4851,20 @@ a.product-card:focus-visible {
 }
 
 /* ============ Workflow file picker (tree select + upload + move) ============ */
+/* Compound selector so the picker's own size wins over .modal-large's max-width. */
+.modal-container.workflow-file-picker-modal {
+  width: min(1120px, calc(100vw - 48px));
+  max-width: none;
+  height: min(88vh, 940px);
+  max-height: 88vh;
+}
+
 .workflow-file-picker-modal .modal-body {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  overflow: hidden;
 }
 
 .workflow-file-picker__toolbar {
@@ -4872,8 +4881,7 @@ a.product-card:focus-visible {
 
 .workflow-file-picker__tree {
   flex: 1 1 auto;
-  min-height: 220px;
-  max-height: min(52vh, 460px);
+  min-height: 260px;
   overflow: auto;
   padding: 6px;
   border: 1px solid var(--border-light);
@@ -4914,7 +4922,7 @@ a.product-card:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  max-height: 120px;
+  max-height: 148px;
   overflow: auto;
 }
 
