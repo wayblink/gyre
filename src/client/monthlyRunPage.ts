@@ -421,7 +421,16 @@ export function createMonthlyRunPage({
 
   function renderBusinessDefinedInputConfiguration() {
     el('shareworksBody').innerHTML = renderBusinessDefinedSourceRows('shareworks', (source) => source.sourceKey !== 'previous_capitalization_summary');
-    el('previousCapitalizationSummaryBody').innerHTML = renderBusinessDefinedSingleSourceRow('previous_capitalization_summary');
+    // Previous Capitalization Summary 由业务在触发时自动引入上月输出，其独立配置区域按 DB 源的 hidden 显隐。
+    const previousSource = sourceDefinitions.find((source) => source.sourceKey === 'previous_capitalization_summary');
+    const previousSection = el('previousCapitalizationSummaryTable').closest('.source-table-section') as HTMLElement | null;
+    if (previousSource && !previousSource.hidden) {
+      if (previousSection) previousSection.style.display = '';
+      el('previousCapitalizationSummaryBody').innerHTML = renderBusinessDefinedSingleSourceRow('previous_capitalization_summary');
+    } else {
+      if (previousSection) previousSection.style.display = 'none';
+      el('previousCapitalizationSummaryBody').innerHTML = '';
+    }
     el('futuBody').innerHTML = renderBusinessDefinedSourceRows('futu');
 
     document.querySelectorAll<HTMLButtonElement>('[data-business-source-upload]').forEach((button) => {
