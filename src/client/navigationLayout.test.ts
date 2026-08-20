@@ -138,7 +138,30 @@ test('workflow editor picks files through a tree picker that can upload and move
   assert.match(css, /\.workflow-file-picker__tree\s*\{/);
   assert.match(css, /\.modal-container\.workflow-file-picker-modal\s*\{[\s\S]*height: min\(88vh, 940px\);/);
   assert.match(css, /\.workflow-runtime-summary__filepick-trigger\s*\{/);
-  assert.match(css, /\.workflow-operator-picker-modal,\s*\n\s*\.workflow-file-picker-modal\s*\{/);
+  assert.match(css, /\.workflow-operator-picker-modal,\s*\n\s*\.workflow-file-picker-modal,\s*\n\s*\.file-move-modal\s*\{/);
+});
+
+test('files browser can move single files and selections to another folder', () => {
+  const filesPageSourceLocal = readFileSync(new URL('./filesPage.ts', import.meta.url), 'utf8');
+  const moveDialogSource = readFileSync(new URL('./fileMoveDialog.ts', import.meta.url), 'utf8');
+  const moveModal = html.match(/id="fileMoveModal"[\s\S]*?id="workflowFilePickerModal"/)?.[0] ?? '';
+
+  assert.match(moveModal, /id="fileMoveFolderList"/);
+  assert.match(moveModal, /id="fileMoveNewFolder"/);
+  assert.match(moveModal, /id="btnConfirmFileMoveModal"/);
+  assert.match(html, /id="btnMoveSelectedFiles"/);
+
+  assert.match(filesPageSourceLocal, /createFileMoveDialog\(/);
+  assert.match(filesPageSourceLocal, /data-move-file-id="\$\{file\.id\}"/);
+  assert.match(filesPageSourceLocal, /workbook-tree__move/);
+  assert.match(filesPageSourceLocal, /moveProductFiles\(\[\.\.\.selectedProductFileIds\]\)/);
+  assert.match(moveDialogSource, /\/api\/files\/\$\{file\.id\}\/move/);
+
+  // The three row icons sit side by side instead of stacking on top of each other.
+  assert.match(css, /\.workbook-item__delete\s*\{[\s\S]*?right: 8px;/);
+  assert.match(css, /\.workbook-item__edit\s*\{[\s\S]*?right: 34px;/);
+  assert.match(css, /\.workbook-item__move\s*\{[\s\S]*?right: 60px;/);
+  assert.match(css, /\.workbook-tree__move\s*\{[\s\S]*?right: 34px;/);
 });
 
 test('moving a product file repoints workflow references stored by logical path', () => {

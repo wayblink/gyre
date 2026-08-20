@@ -4407,7 +4407,7 @@ a.product-card:focus-visible {
   border: 1px solid transparent;
   background: #f8fafc;
   border-radius: 10px;
-  padding: 10px 12px 10px 74px;
+  padding: 10px 88px 10px 74px;
   cursor: pointer;
   font-weight: 500;
   position: relative;
@@ -4506,7 +4506,7 @@ a.product-card:focus-visible {
 .workbook-item__edit {
   position: absolute;
   top: 8px;
-  right: 8px;
+  right: 34px;
   width: 22px;
   height: 22px;
   display: inline-flex;
@@ -4519,6 +4519,34 @@ a.product-card:focus-visible {
   cursor: pointer;
   padding: 0;
   z-index: 1;
+}
+
+.workbook-item__move {
+  position: absolute;
+  top: 8px;
+  right: 60px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  z-index: 1;
+}
+
+.workbook-item__move:hover {
+  background: color-mix(in srgb, var(--primary-500) 10%, transparent);
+  color: var(--primary-600);
+}
+
+.workbook-item__move svg {
+  width: 14px;
+  height: 14px;
 }
 
 .workbook-item__edit:hover {
@@ -4759,7 +4787,7 @@ a.product-card:focus-visible {
   background: #f8fafc;
   cursor: pointer;
   margin: 2px 0;
-  padding: 8px 42px 8px calc(86px + var(--tree-indent));
+  padding: 8px 68px 8px calc(86px + var(--tree-indent));
   position: relative;
 }
 
@@ -4848,6 +4876,54 @@ a.product-card:focus-visible {
 .workbook-tree__delete svg {
   width: 14px;
   height: 14px;
+}
+
+.workbook-tree__move {
+  position: absolute;
+  top: 8px;
+  right: 34px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  z-index: 1;
+}
+
+.workbook-tree__move:hover {
+  background: color-mix(in srgb, var(--primary-500) 10%, transparent);
+  color: var(--primary-600);
+}
+
+.workbook-tree__move svg {
+  width: 14px;
+  height: 14px;
+}
+
+.file-move__files {
+  margin-bottom: 10px;
+}
+
+.file-move__file {
+  padding: 6px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--slate-50);
+  color: var(--text-secondary);
+  font-family: "Inter", "SF Mono", Monaco, Consolas, monospace;
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.file-move-modal .workflow-file-picker__folder-list {
+  max-height: 180px;
+  margin-bottom: 10px;
 }
 
 /* ============ Workflow file picker (tree select + upload + move) ============ */
@@ -7887,7 +7963,8 @@ textarea.form-input {
   .workflow-edge-guards-modal,
   .workflow-operator-details-modal,
   .workflow-operator-picker-modal,
-  .workflow-file-picker-modal {
+  .workflow-file-picker-modal,
+  .file-move-modal {
     width: 100%;
     max-width: none;
     max-height: calc(100dvh - 16px);

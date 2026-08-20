@@ -4,6 +4,7 @@ import { createWorkbookViewer } from './univer/createWorkbookViewer.js';
 import { bufferToUniverWorkbook } from './univer/xlsxToUniver.js';
 import type { AppLanguage } from './i18n.js';
 import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
+import { createFileMoveDialog } from './fileMoveDialog.js';
 import {
   buildProductFilesTree,
   compareProductFile,
@@ -37,6 +38,14 @@ const FILES_MOBILE_MEDIA = '(max-width: 768px)';
 type FilesViewMode = 'list' | 'tree';
 
 export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime, formatFileSize, notify, confirmAction, getLanguage }: FilesPageDeps) {
+  const fileMoveDialog = createFileMoveDialog({
+    el,
+    api,
+    escapeHtml,
+    getProductFiles: () => productFiles,
+    notify,
+    getLanguage,
+  });
   let productFiles: ProductFileRecord[] = [];
   let currentProductFileDetail: ProductFileDetail | null = null;
   let currentWorkbookBuffer: ArrayBuffer | null = null;
@@ -70,6 +79,8 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     editFileName: { 'zh-CN': '编辑文件名', 'en-US': 'Edit file name' },
     deleteFile: { 'zh-CN': '删除文件', 'en-US': 'Delete file' },
     deleteSelectedFiles: { 'zh-CN': '批量删除', 'en-US': 'Delete selected' },
+    moveFile: { 'zh-CN': '移动到其他目录', 'en-US': 'Move to another folder' },
+    moveSelectedFiles: { 'zh-CN': '批量移动', 'en-US': 'Move selected' },
     selectedFiles: { 'zh-CN': '已选择', 'en-US': 'selected' },
     selectAllFiles: { 'zh-CN': '全选文件', 'en-US': 'Select all files' },
     deleteSelectedConfirm: { 'zh-CN': '确定删除选中的文件吗？此操作不可撤销。', 'en-US': 'Delete the selected files? This action cannot be undone.' },
@@ -246,6 +257,13 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
               <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"></path>
             </svg>
           </button>
+          <button class="workbook-item__move" data-move-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('moveFile'))}" title="${escapeHtml(tt('moveFile'))}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 7h5l2 2h11v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"></path>
+              <path d="M12 12v6"></path>
+              <path d="m9.5 14.5 2.5-2.5 2.5 2.5"></path>
+            </svg>
+          </button>
           <button class="workbook-item__delete" data-delete-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('deleteFile'))}" title="${escapeHtml(tt('deleteFile'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M3 6h18"></path>
@@ -375,6 +393,14 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       });
     });
 
+    container.querySelectorAll<HTMLElement>('[data-move-file-id]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void moveProductFiles([Number(button.dataset.moveFileId)]);
+      });
+    });
+
     container.querySelectorAll<HTMLElement>('[data-tree-dir-path]').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.preventDefault();
@@ -438,6 +464,9 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     const count = selectedProductFileIds.size;
     button.disabled = count === 0;
     button.textContent = count > 0 ? `${tt('deleteSelectedFiles')} (${count})` : tt('deleteSelectedFiles');
+    const moveButton = el<HTMLButtonElement>('btnMoveSelectedFiles');
+    moveButton.disabled = count === 0;
+    moveButton.textContent = count > 0 ? `${tt('moveSelectedFiles')} (${count})` : tt('moveSelectedFiles');
     const selectAll = el<HTMLInputElement>('filesSelectAll');
     if (selectAll) selectAll.setAttribute('aria-label', tt('selectAllFiles'));
   }
@@ -450,6 +479,15 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       renderProductFilesList();
     });
     el('btnDeleteSelectedFiles').addEventListener('click', () => void deleteSelectedProductFiles());
+    el('btnMoveSelectedFiles').addEventListener('click', () => void moveProductFiles([...selectedProductFileIds]));
+  }
+
+  async function moveProductFiles(fileIds: number[]) {
+    const ids = fileIds.filter((id) => productFiles.some((file) => file.id === id));
+    if (!ids.length) return;
+    const outcome = await fileMoveDialog.open(ids);
+    if (!outcome?.moved) return;
+    await loadProductFiles(selectedProductFileId ?? undefined);
   }
 
   async function deleteSelectedProductFiles() {
@@ -593,6 +631,13 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       >
         <input class="workbook-tree__select" data-select-file-id="${file.id}" type="checkbox" aria-label="${escapeHtml(getProductFileDisplayName(file))}" ${selectedProductFileIds.has(file.id) ? 'checked' : ''} />
         <span class="workbook-file-icon workbook-tree__file-icon ${icon.className}" aria-hidden="true">${escapeHtml(icon.label)}</span>
+        <button class="workbook-tree__move" data-move-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('moveFile'))}" title="${escapeHtml(tt('moveFile'))}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 7h5l2 2h11v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"></path>
+              <path d="M12 12v6"></path>
+              <path d="m9.5 14.5 2.5-2.5 2.5 2.5"></path>
+            </svg>
+        </button>
         <button class="workbook-tree__delete" data-delete-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('deleteFile'))}" title="${escapeHtml(tt('deleteFile'))}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 6h18"></path>
