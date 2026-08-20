@@ -6,11 +6,9 @@ import {
   parseFivePercentHoldersGrid,
   type FivePercentHoldersWorkbook,
 } from './fivePercentHolders/persistence.js';
-import { buildMonthlyWorkflowSeedDefinition } from './monthlyRun/workflowDefinition.js';
-import { buildEsopPageWorkflowSeedDefinitions } from './esopWorkflow/workflowDefinitions.js';
-import { buildDataManagementWorkflowSeedDefinitions, FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS } from './dataManagementWorkflow/workflowDefinitions.js';
+import { FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS } from './dataManagementWorkflow/workflowDefinitions.js';
 import { workflowOperatorDefinitions } from './workflow/operators/registry.js';
-import { deriveWorkflowRuntimeConfigFromTasks } from './workflow/runtimeParameterRequirements.js';
+import { loadWorkflowSeedDefinitionsFromDisk } from './workflow/workflowSeedLoader.js';
 import type { WorkflowRuntimeParameters, WorkflowRuntimeParametersSchema, WorkflowTask } from '../shared/types.js';
 
 export type WorkflowSeedDefinition = {
@@ -413,19 +411,12 @@ async function seedWorkflowData(db: DbClient) {
     );
   }
 
-  for (const workflow of buildDataManagementWorkflowSeedDefinitions()) {
+  // Workflow definitions are DB-owned and seeded from database/workflows/*.json
+  // (exported via scripts/export-workflows.ts). insert-if-missing never overwrites
+  // an existing row, so the DB remains the source of truth after first boot.
+  for (const workflow of loadWorkflowSeedDefinitionsFromDisk()) {
     await insertWorkflowDefinitionIfMissing(db, workflow);
   }
-
-  for (const workflow of buildEsopPageWorkflowSeedDefinitions()) {
-    await insertWorkflowDefinitionIfMissing(db, workflow);
-  }
-
-  await parameterizeMonthlyWorkflow(db);
-}
-
-async function parameterizeMonthlyWorkflow(db: DbClient): Promise<void> {
-  await insertWorkflowDefinitionIfMissing(db, buildMonthlyWorkflowSeedDefinition());
 }
 
 export async function ensureWorkflowSeedData(db: AppDb) {

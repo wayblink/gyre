@@ -1,0 +1,137 @@
+{
+  "code": "option-plans-summary-values",
+  "name": "Option Plans Summary",
+  "description": "以 Gyre Option Plans Summary SL workbook 为标准输入，校验核心列后过滤空计划行，并计算每行 value。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_option_plans_summary",
+      "name": "Extract Option Plans Summary",
+      "inputs": {},
+      "params": {
+        "range": "A2:XFD",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Gyre Option Plans Summary SL workbook",
+          "$fromRuntime": "fileRefs.option_plans_summary"
+        },
+        "headerRow": 2,
+        "sheetName": {
+          "$type": "string",
+          "$label": "Sheet",
+          "$default": "!Option Plans Summary (Post-Gyr",
+          "$fromRuntime": "fileRefs.option_plans_summary.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从 Gyre Option Plans Summary SL workbook 读取汇总表，表头位于第 2 行，数据从 A3 开始，宽度读取到实际使用列。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 468,
+      "y": 48,
+      "id": "assert_option_plans_summary_schema",
+      "name": "Assert Option Plans Summary Schema",
+      "inputs": {
+        "input1": {
+          "from": "extract_option_plans_summary",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "mode": "contains",
+        "blockExecution": true,
+        "failureMessage": "Assert Option Plans Summary Schema failed",
+        "expectedColumns": "Plan Name, Outstanding Calc., Options Outstanding, Available Shares in Pool, Category for Grouping, Sorting",
+        "failureStrategy": "block"
+      },
+      "dependsOn": [],
+      "description": "校验 Option Plans Summary 输入是否包含计算 value 所需的核心列。",
+      "operatorCode": "dataframe.schema.assert",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 888,
+      "y": 48,
+      "id": "calculate_option_plans_summary_values",
+      "name": "Filter Option Plans Summary meaningless rows",
+      "inputs": {
+        "option_plans_summary": {
+          "from": "assert_option_plans_summary_schema",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  [Category for Grouping] as category_for_grouping,\n  [Sorting] as sorting,\n  [Plan Name] as [key],\n  case\n    when coalesce([Outstanding Calc.], 0) <> 0 then [Outstanding Calc.]\n    when coalesce([Options Outstanding], 0) <> 0 then [Options Outstanding]\n    when coalesce([Available Shares in Pool], 0) <> 0 then [Available Shares in Pool]\n    else 0\n  end as [value]\nfrom {option_plans_summary}\nwhere trim(concat('', coalesce([Plan Name], ''))) <> ''\n  and trim(concat('', coalesce([Category for Grouping], ''))) <> ''\n  and trim(concat('', coalesce([Category for Grouping], ''))) <> '0011PLAN_2018 ESPP (Manual Reserve)'",
+        "tableBindings": [
+          {
+            "inputSlot": "option_plans_summary",
+            "tableName": "option_plans_summary"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "过滤空 Plan Name 行，并按 Outstanding Calc.、Options Outstanding、Available Shares in Pool 的优先级取第一个非 0 非空数字为 value。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1308,
+      "y": 48,
+      "id": "enrich_option_plans_summary_plan_name",
+      "name": "Transform Option Plans Summary",
+      "inputs": {
+        "option_plans_summary_values": {
+          "from": "calculate_option_plans_summary_values",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  base.category_for_grouping,\n  (\n    select lookup.[key]\n    from {option_plans_summary_values} as lookup\n    where lookup.category_for_grouping = base.category_for_grouping\n    order by coalesce(lookup.sorting, 999999999), lookup.[key]\n    limit 1 offset 1\n  ) as plan_name,\n  base.[key],\n  base.[value]\nfrom {option_plans_summary_values} as base\nwhere [key] in (\n    'Granted',\n    'Exercised',\n    'Repurchased',\n    'Cancelled',\n    'Awards Outstanding',\n    'Shares Remaining For Issuance',\n    'Awards Outstanding + Shares Remaining for Issuance'\n  )\norder by category_for_grouping, sorting, [key]",
+        "tableBindings": [
+          {
+            "inputSlot": "option_plans_summary_values",
+            "tableName": "option_plans_summary_values"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "按 Category for Grouping 分组并按 sorting 排序，取每组第 2 行 key 作为 plan_name 写回组内所有行。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "fileRefs",
+      "properties": {
+        "option_plans_summary": {
+          "type": "object",
+          "label": "Gyre Option Plans Summary SL workbook",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Sheet"
+            }
+          }
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {
+    "fileRefs": {
+      "option_plans_summary": {
+        "sheet": "!Option Plans Summary (Post-Gyr"
+      }
+    }
+  }
+}

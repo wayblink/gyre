@@ -1,0 +1,1009 @@
+{
+  "code": "gyre-captable-summary-v2",
+  "name": "Gyre Cap Table Summary V2",
+  "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算 v2：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
+  "status": "active",
+  "version": 2,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "invoke_control_book_merge",
+      "name": "Invoke EQ Control Book Incremental Merge",
+      "inputs": {},
+      "params": {
+        "outputTaskId": "merge_control_book",
+        "workflowCode": "eq-control-book-incremental-merge",
+        "inputMappings": [],
+        "runtimeParameters": {
+          "fileRefs": {
+            "base_control_book": {
+              "$type": "object",
+              "$label": "Base Control Book workbook",
+              "$default": {
+                "sheet": "EQ Control Book"
+              },
+              "$fromRuntime": "fileRefs.base_control_book"
+            },
+            "incremental_control_book": {
+              "$type": "object",
+              "$label": "Incremental Control Book workbook",
+              "$default": {
+                "sheet": "27591"
+              },
+              "$fromRuntime": "fileRefs.incremental_control_book"
+            }
+          }
+        },
+        "inheritRuntimeParameters": true
+      },
+      "dependsOn": [],
+      "description": "调用 EQ Control Book Incremental Merge 子工作流：上月 base + 本月增量按交易自然键幂等合并出当月完整 EQ Control Book（12 列），供指标计算；子工作流同时落盘可作为下月 base 的 workbook。",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 452,
+      "id": "extract_previous_capitalization_summary",
+      "name": "Extract Previous Capitalization Summary",
+      "inputs": {},
+      "params": {
+        "range": "A1:E30",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Previous capitalization summary workbook",
+          "$default": {},
+          "$fromRuntime": "fileRefs.previous_capitalization_summary"
+        },
+        "headerRow": 1,
+        "sheetName": "Capitalization Summary",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "可选抽取上一个月的 Capitalization Summary；未配置文件时输出空 dataframe，不阻断 workflow。",
+      "operatorCode": "sheet.optional-range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 650,
+      "id": "extract_futu_exercises",
+      "name": "Extract Futu BCI Exercises",
+      "inputs": {},
+      "params": {
+        "range": "A1:M424",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Futu exercises workbook",
+          "$default": {},
+          "$fromRuntime": "fileRefs.futu_exercises"
+        },
+        "headerRow": 1,
+        "sheetName": "Futu BCI Exercises to Date"
+      },
+      "dependsOn": [],
+      "description": "提取 Futu BCI Exercises to Date 明细，用于汇总已行权数量。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 863,
+      "id": "invoke_option_plans_summary",
+      "name": "Invoke Option Plans Summary",
+      "inputs": {},
+      "params": {
+        "outputTaskId": "enrich_option_plans_summary_plan_name",
+        "workflowCode": "option-plans-summary-values",
+        "runtimeParameters": {
+          "fileRefs": {
+            "option_plans_summary": {
+              "$type": "object",
+              "$label": "Gyre Option Plans Summary SL workbook",
+              "$default": {
+                "sheet": "!Option Plans Summary (Post-Gyr"
+              },
+              "$fromRuntime": "fileRefs.option_plans_summary"
+            }
+          }
+        },
+        "inheritRuntimeParameters": true
+      },
+      "dependsOn": [],
+      "description": "调用可复用的 Option Plans Summary workflow，输出标准化的 category_for_grouping/plan_name/key/value dataframe。",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 1186,
+      "id": "extract_bc_subplan_transfer",
+      "name": "Extract 2025 BC Subplan Transfer",
+      "inputs": {},
+      "params": {
+        "range": "A2:AI",
+        "fileRef": {
+          "$type": "object",
+          "$label": "2025 BC Subplan Transfer 输入源",
+          "$default": {
+            "sheet": "Vesting Schedule"
+          },
+          "$fromRuntime": "fileRefs.bc_subplan_transfer"
+        },
+        "headerRow": 4,
+        "sheetName": {
+          "$type": "string",
+          "$label": "Sheet",
+          "$default": "Vesting Schedule",
+          "$fromRuntime": "fileRefs.bc_subplan_transfer.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从用户明确选择的 workbook 和 Sheet 提取 2025 BC Subplan transfer 数据；第 4 行为字段表头，不做隐式 fallback。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 1399,
+      "id": "extract_options_os_detail_by_plan",
+      "name": "Extract Options OS Detail by Plan",
+      "inputs": {},
+      "params": {
+        "range": "A2:BZ",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Options OS Detail by Plan workbook",
+          "$default": {},
+          "$fromRuntime": "fileRefs.options_os_detail_by_plan"
+        },
+        "headerRow": 2,
+        "sheetName": "Options OS Detail",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "可选抽取设计文档中的 Options_OS_Detail_by_Plan 明细；未配置文件时输出空 dataframe，不参与当前 Summary 公式。",
+      "operatorCode": "sheet.optional-range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 468,
+      "y": 48,
+      "id": "calc_control_book_metrics",
+      "name": "Calc Control Book Metrics",
+      "inputs": {
+        "control_book": {
+          "from": "invoke_control_book_merge",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_1",
+              "name": "Assert Control Book Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Assert Control Book Schema failed",
+                "expectedColumns": "As of Date, Shares Issued, Issued & Outstanding, Comment",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) < {constants.workflowMonth} order by __workflow_row_number desc limit 1) as last_month_eq_balance_os,\n  (select wf_month_key([As of Date]) from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null order by __workflow_row_number desc limit 1) as last_control_book_month,\n  sum(case when [Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.') then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}",
+        "constants": {
+          "workflowMonth": {
+            "$type": "string",
+            "$label": "Workflow Month",
+            "$fromRuntime": "month"
+          }
+        },
+        "tableBindings": [
+          {
+            "inputSlot": "control_book",
+            "tableName": "control_book"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "计算 EOM EQ Balance OS 和 Control Book 口径的 2025 BC Subplan transfer。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 468,
+      "y": 261,
+      "id": "calc_previous_capitalization_summary_metrics",
+      "name": "Calc Previous Capitalization Summary Metrics",
+      "inputs": {
+        "previous_summary": {
+          "from": "extract_previous_capitalization_summary",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  count(*) as previous_summary_row_count,\n  max(case when [Description] like 'Asset Class Summary:%' then [Common Shares Equivalent] else null end) as previous_eom_eq_balance_os\nfrom {previous_summary}",
+        "tableBindings": [
+          {
+            "inputSlot": "previous_summary",
+            "tableName": "previous_summary"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "从可选上月 Capitalization Summary 中读取上月 EOM EQ Balance OS；未传文件时 row_count=0。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 888,
+      "y": 261,
+      "id": "calc_futu_metrics",
+      "name": "Calc Futu Exercise Metrics",
+      "inputs": {
+        "futu": {
+          "from": "extract_futu_exercises",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_1",
+              "name": "Assert Futu Exercise Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Assert Futu Exercise Schema failed",
+                "expectedColumns": "Exercised Qty",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        "control_metrics": {
+          "from": "calc_control_book_metrics",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  sum(f.[Exercised Qty]) as futu_exercised_qty,\n  max(c.gyre_2023_china_subplan_total) - sum(f.[Exercised Qty]) as bci_shares_held_by_futu\nfrom {futu} f, {control_metrics} c",
+        "tableBindings": [
+          {
+            "inputSlot": "futu",
+            "tableName": "futu"
+          },
+          {
+            "inputSlot": "control_metrics",
+            "tableName": "control_metrics"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "计算 Futu 已行权总数以及 BCI Shares Held by Futu。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 468,
+      "y": 499,
+      "id": "calc_bc_subplan_cancelled",
+      "name": "Calc 2025 BC Subplan Cancelled",
+      "inputs": {
+        "transfer": {
+          "from": "extract_bc_subplan_transfer",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_1",
+              "name": "Assert BC Subplan Transfer Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "2025 BC Subplan Transfer input must contain 行标签 and 总计 columns",
+                "expectedColumns": "行标签, 总计",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  coalesce(\n    abs(min(case when [总计] < 0 then [总计] else null end)),\n    max(case when trim(coalesce(cast([行标签] as text), '')) like '总计%' then [总计] else null end)\n      - min(case when trim(coalesce(cast([行标签] as text), '')) like '总计%' then [总计] else null end)\n  ) as bc_subplan_cancelled,\n  coalesce(\n    min(case when trim(coalesce(cast([行标签] as text), '')) like '总计%' then [总计] else null end),\n    max(case when trim(coalesce(cast([行标签] as text), '')) like '总计%' then [总计] else null end)\n      + min(case when [总计] < 0 then [总计] else null end)\n  ) as bc_subplan_outstanding\nfrom {transfer}",
+        "tableBindings": [
+          {
+            "inputSlot": "transfer",
+            "tableName": "transfer"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "从用户指定的 2025 BC Subplan Transfer/Vesting Schedule Sheet 计算 cancelled/forfeited shares；优先读取负数取消总计，兼容两个总计行的差额格式。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 888,
+      "y": 529,
+      "id": "calc_option_metrics",
+      "name": "Calc Option Plan Metrics",
+      "inputs": {
+        "plans": {
+          "from": "invoke_option_plans_summary",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_1",
+              "name": "Assert Option Plan Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Assert Option Plan Schema failed",
+                "expectedColumns": "category_for_grouping, plan_name, key, value",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        "bc_subplan": {
+          "from": "calc_bc_subplan_cancelled",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "\nwith totals as (\n  select\n    p.key,\n    sum(p.[value]) as total_value\n  from {plans} p\n  where p.key in (\n    'Awards Outstanding',\n    'Shares Remaining For Issuance',\n    'Awards Outstanding + Shares Remaining for Issuance'\n  )\n  group by p.key\n),\nbc_plan as (\n  select\n    sum(case when p.key = 'Cancelled' then coalesce(p.[value], 0) else 0 end) as cancelled_value,\n    sum(case when p.key = 'Awards Outstanding' then 1 else 0 end) as awards_row_count\n  from {plans} p\n  where p.plan_name = 'GYRE 2025 BC Subplan'\n    or p.category_for_grouping like '%GYRE 2025 BC Subplan%'\n),\nbc_adjustment as (\n  select\n    case\n      when coalesce(max(bc_plan.awards_row_count), 0) > 0\n        and coalesce(abs(max(bc_plan.cancelled_value)), 0) = 0\n      then coalesce(max(bc_subplan.bc_subplan_cancelled), 0)\n      else 0\n    end as bc_cancelled_adjustment\n  from bc_plan, {bc_subplan} bc_subplan\n)\nselect\n  coalesce(max(case when totals.key = 'Awards Outstanding' then totals.total_value else null end), 0)\n    - max(bc_adjustment.bc_cancelled_adjustment) as total_options_outstanding,\n  coalesce(max(case when totals.key = 'Shares Remaining For Issuance' then totals.total_value else null end), 0)\n    + max(bc_adjustment.bc_cancelled_adjustment) as total_options_available,\n  coalesce(max(case when totals.key = 'Awards Outstanding + Shares Remaining for Issuance' then totals.total_value else null end), 0) as total_options_outstanding_plus_available,\n  max(bc_adjustment.bc_cancelled_adjustment) as bc_subplan_cancelled_adjustment\nfrom totals, bc_adjustment",
+        "tableBindings": [
+          {
+            "inputSlot": "plans",
+            "tableName": "plans"
+          },
+          {
+            "inputSlot": "bc_subplan",
+            "tableName": "bc_subplan"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "按 Option Plans Summary workflow 的标准化 key/value 输出汇总期权指标；仅当 GYRE 2025 BC Subplan 的 Cancelled 为空或 0 时，用 2025 BC Subplan Transfer 的 cancelled 进行修正。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1308,
+      "y": 48,
+      "id": "calc_business_inputs",
+      "name": "Calc Business Inputs",
+      "inputs": {
+        "option_metrics": {
+          "from": "calc_option_metrics",
+          "slot": "dataframe",
+          "guards": []
+        },
+        "control_metrics": {
+          "from": "calc_control_book_metrics",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_1",
+              "name": "Assert Cullgen Common Stock",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case when cullgen_common_stock = {constants.cullgenCommonStock} then 1 else 0 end as actual from {control_metrics}",
+                "operator": "=",
+                "constants": {
+                  "cullgenCommonStock": {
+                    "$type": "number",
+                    "$label": "Cullgen Common Stock",
+                    "$fromRuntime": "fixedValues.cullgenCommonStock"
+                  }
+                },
+                "expectedValue": 1,
+                "tableBindings": [
+                  {
+                    "inputSlot": "control_metrics",
+                    "tableName": "control_metrics"
+                  }
+                ],
+                "failureMessage": "Cullgen common stock does not match Global Parameter cullgen_common_stock",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            },
+            {
+              "id": "guard_2",
+              "name": "Assert Gyre 2023 China SubPlan Total",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case when gyre_2023_china_subplan_total = {constants.gyre2023ChinaSubplanTotal} then 1 else 0 end as actual from {control_metrics}",
+                "operator": "=",
+                "constants": {
+                  "gyre2023ChinaSubplanTotal": {
+                    "$type": "number",
+                    "$label": "Gyre 2023 China SubPlan Total",
+                    "$fromRuntime": "fixedValues.gyre2023ChinaSubplanTotal"
+                  }
+                },
+                "expectedValue": 1,
+                "tableBindings": [
+                  {
+                    "inputSlot": "control_metrics",
+                    "tableName": "control_metrics"
+                  }
+                ],
+                "failureMessage": "Gyre 2023 China SubPlan total does not match Global Parameter gyre_2023_china_subplan_total",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(c.bc_subplan_transfer_control_book) as bc_subplan_transfer_selected,\n  'control_book' as bc_subplan_transfer_selection_source,\n  {constants.warrantsConvertiblePreferred} as warrants_for_convertible_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  round(max(c.eom_eq_balance_os) + max(o.total_options_outstanding) + {constants.warrantsConvertiblePreferred} - max(c.bc_subplan_transfer_control_book) + max(o.total_options_available) + {constants.optionsOutstandingCullgen} + {constants.optionsAvailableCullgen}, 0) as total_fully_diluted\nfrom {control_metrics} c, {option_metrics} o",
+        "constants": {
+          "optionsAvailableCullgen": {
+            "$type": "number",
+            "$label": "Options Available - Cullgen",
+            "$default": 10994,
+            "$fromRuntime": "fixedValues.optionsAvailableCullgen"
+          },
+          "optionsOutstandingCullgen": {
+            "$type": "number",
+            "$label": "Options Outstanding - Cullgen",
+            "$default": 4156815,
+            "$fromRuntime": "fixedValues.optionsOutstandingCullgen"
+          },
+          "warrantsConvertiblePreferred": {
+            "$type": "number",
+            "$label": "Warrants for Convertible Preferred Stock",
+            "$default": 540666,
+            "$fromRuntime": "fixedValues.warrantsConvertiblePreferred"
+          }
+        },
+        "tableBindings": [
+          {
+            "inputSlot": "control_metrics",
+            "tableName": "control_metrics"
+          },
+          {
+            "inputSlot": "option_metrics",
+            "tableName": "option_metrics"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "汇总 Summary 计算所需业务输入；各类固定值来自 global parameters，Gyre option totals 由 raw option plans workbook 与 cancellation 调整计算。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 888,
+      "y": 48,
+      "id": "assert_control_book_workflow_month",
+      "name": "Assert EQ Control Book Workflow Month",
+      "inputs": {
+        "control_metrics": {
+          "from": "calc_control_book_metrics",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "select case when last_control_book_month = {constants.workflowMonth} then 1 else 0 end as actual from {control_metrics}",
+        "operator": "=",
+        "constants": {
+          "workflowMonth": {
+            "$type": "string",
+            "$label": "Workflow Month",
+            "$fromRuntime": "month"
+          }
+        },
+        "expectedValue": 1,
+        "tableBindings": [
+          {
+            "inputSlot": "control_metrics",
+            "tableName": "control_metrics"
+          }
+        ],
+        "blockExecution": true,
+        "failureMessage": "EQ Control Book input file error: last row month does not match workflow month",
+        "failureStrategy": "block"
+      },
+      "dependsOn": [],
+      "description": "阻断错月输入：EQ Control Book 最后一条有效 Issued & Outstanding 的 As of Date 必须属于 workflow 月份。",
+      "operatorCode": "dataframe.sql.assert",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1308,
+      "y": 300,
+      "id": "assert_previous_summary_last_month",
+      "name": "Assert Previous Summary Last Month",
+      "inputs": {
+        "control_metrics": {
+          "from": "calc_control_book_metrics",
+          "slot": "dataframe",
+          "guards": []
+        },
+        "previous_summary_metrics": {
+          "from": "calc_previous_capitalization_summary_metrics",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "select case when p.previous_summary_row_count = 0 then 1 when p.previous_eom_eq_balance_os = c.last_month_eq_balance_os then 1 else 0 end as actual from {control_metrics} c, {previous_summary_metrics} p",
+        "operator": "=",
+        "expectedValue": 1,
+        "tableBindings": [
+          {
+            "inputSlot": "control_metrics",
+            "tableName": "control_metrics"
+          },
+          {
+            "inputSlot": "previous_summary_metrics",
+            "tableName": "previous_summary_metrics"
+          }
+        ],
+        "blockExecution": true,
+        "failureMessage": "Previous Capitalization Summary EOM does not match EQ Control Book Last Month",
+        "failureStrategy": "block"
+      },
+      "dependsOn": [
+        "assert_control_book_workflow_month"
+      ],
+      "description": "若传入上月 Capitalization Summary，则校验其 EOM 等于当前 EQ Control Book 计算出的 Last Month；未传文件时通过。",
+      "operatorCode": "dataframe.sql.assert",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1728,
+      "y": 426,
+      "id": "build_shares_os_reconciliation",
+      "name": "Build Shares OS Reconciliation",
+      "inputs": {
+        "control_metrics": {
+          "from": "calc_control_book_metrics",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_1",
+              "name": "Assert Last Month Balance Available",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case when last_month_eq_balance_os is not null then 1 else 0 end as actual from {control_metrics}",
+                "operator": "=",
+                "expectedValue": 1,
+                "tableBindings": [
+                  {
+                    "inputSlot": "control_metrics",
+                    "tableName": "control_metrics"
+                  }
+                ],
+                "failureMessage": "EQ Control Book input file error: cannot derive Last Month from rows before workflow month",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  'Equity Outstanding as of' as Item,\n  wf_eom_label({constants.workflowMonth}) as [As of],\n  last_month_eq_balance_os as [Last Month],\n  eom_eq_balance_os - last_month_eq_balance_os as [New Shares],\n  eom_eq_balance_os as [EOM Balance]\nfrom {control_metrics}",
+        "constants": {
+          "workflowMonth": {
+            "$type": "string",
+            "$label": "Workflow Month",
+            "$fromRuntime": "month"
+          }
+        },
+        "tableBindings": [
+          {
+            "inputSlot": "control_metrics",
+            "tableName": "control_metrics"
+          }
+        ]
+      },
+      "dependsOn": [
+        "assert_control_book_workflow_month",
+        "assert_previous_summary_last_month"
+      ],
+      "description": "从 EQ Control Book 单表生成 Shares OS Reconciliation：Last Month 取 workflow 月份之前最后一条 I&O，EOM 取整表最后一条 I&O。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1728,
+      "y": 48,
+      "id": "build_capitalization_summary",
+      "name": "Build Capitalization Summary",
+      "inputs": {
+        "futu_metrics": {
+          "from": "calc_futu_metrics",
+          "slot": "dataframe",
+          "guards": []
+        },
+        "option_metrics": {
+          "from": "calc_option_metrics",
+          "slot": "dataframe",
+          "guards": []
+        },
+        "business_inputs": {
+          "from": "calc_business_inputs",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_1",
+              "name": "Assert Total Fully Diluted Business Input",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case when total_fully_diluted > 0 then 1 else 0 end as actual from {business_inputs}",
+                "operator": "=",
+                "expectedValue": 1,
+                "tableBindings": [
+                  {
+                    "inputSlot": "business_inputs",
+                    "tableName": "business_inputs"
+                  }
+                ],
+                "failureMessage": "Assert total fully diluted business input failed",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            },
+            {
+              "id": "guard_2",
+              "name": "Assert Cullgen Option Business Inputs",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case when options_outstanding_cullgen + options_available_cullgen = {constants.cullgenOutstanding} + {constants.cullgenAvailable} then 1 else 0 end as actual from {business_inputs}",
+                "operator": "=",
+                "constants": {
+                  "cullgenAvailable": {
+                    "$type": "number",
+                    "$label": "Options Available - Cullgen",
+                    "$fromRuntime": "fixedValues.optionsAvailableCullgen"
+                  },
+                  "cullgenOutstanding": {
+                    "$type": "number",
+                    "$label": "Options Outstanding - Cullgen",
+                    "$fromRuntime": "fixedValues.optionsOutstandingCullgen"
+                  }
+                },
+                "expectedValue": 1,
+                "tableBindings": [
+                  {
+                    "inputSlot": "business_inputs",
+                    "tableName": "business_inputs"
+                  }
+                ],
+                "failureMessage": "Cullgen option business inputs do not match global parameters",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        "control_metrics": {
+          "from": "calc_control_book_metrics",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_2",
+              "name": "Assert Control Book Transfer Source",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case when bc_subplan_transfer_control_book > 0 then 1 else 0 end as actual from {control_metrics}",
+                "operator": "=",
+                "expectedValue": 1,
+                "tableBindings": [
+                  {
+                    "inputSlot": "control_metrics",
+                    "tableName": "control_metrics"
+                  }
+                ],
+                "failureMessage": "Control Book transfer source must be positive",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sql": "\nselect '' as Number, 'Issued Shares -Equity Asset Class' as Description,\n  null as [Common Shares Equivalent],\n  null as [% of fully diluted]\nfrom {business_inputs}\nunion all select '' as Number, 'Asset Class Summary: EOM' as Description,\n  b.eom_eq_balance_os as [Common Shares Equivalent],\n  null as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '1' as Number, 'Common Shares OS' as Description,\n  b.eom_eq_balance_os - b.cullgen_common_stock - f.bci_shares_held_by_futu - b.bc_subplan_transfer_selected as [Common Shares Equivalent],\n  (b.eom_eq_balance_os - b.cullgen_common_stock - f.bci_shares_held_by_futu - b.bc_subplan_transfer_selected) / b.total_fully_diluted as [% of fully diluted]\nfrom {futu_metrics} f, {business_inputs} b\nunion all select '2' as Number, 'Cullgen common stock' as Description,\n  b.cullgen_common_stock as [Common Shares Equivalent],\n  b.cullgen_common_stock / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '3' as Number, 'BCI Shares Held by Futu' as Description,\n  f.bci_shares_held_by_futu as [Common Shares Equivalent],\n  f.bci_shares_held_by_futu / b.total_fully_diluted as [% of fully diluted]\nfrom {futu_metrics} f, {business_inputs} b\nunion all select '4' as Number, '2025 BC Subplan shares transferred to Futu' as Description,\n  b.bc_subplan_transfer_selected as [Common Shares Equivalent],\n  b.bc_subplan_transfer_selected / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '' as Number, 'Derivative Equity Incentives' as Description,\n  null as [Common Shares Equivalent],\n  null as [% of fully diluted]\nfrom {business_inputs}\nunion all select '5' as Number, 'Warrants for Convertible Preferred Stock' as Description,\n  b.warrants_for_convertible_preferred_stock as [Common Shares Equivalent],\n  b.warrants_for_convertible_preferred_stock / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '6' as Number, 'Options Outstanding- Gyre' as Description,\n  o.total_options_outstanding - b.bc_subplan_transfer_selected as [Common Shares Equivalent],\n  (o.total_options_outstanding - b.bc_subplan_transfer_selected) / b.total_fully_diluted as [% of fully diluted]\nfrom {option_metrics} o, {business_inputs} b\nunion all select '7' as Number, 'Options Available- Gyre' as Description,\n  o.total_options_available as [Common Shares Equivalent],\n  o.total_options_available / b.total_fully_diluted as [% of fully diluted]\nfrom {option_metrics} o, {business_inputs} b\nunion all select '8' as Number, 'Options Outstanding- Cullgen' as Description,\n  b.options_outstanding_cullgen as [Common Shares Equivalent],\n  b.options_outstanding_cullgen / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '9' as Number, 'Options Available- Cullgen' as Description,\n  b.options_available_cullgen as [Common Shares Equivalent],\n  b.options_available_cullgen / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '' as Number, 'Total Fully Diluted Shares Outstand' as Description,\n  b.total_fully_diluted as [Common Shares Equivalent],\n  1 as [% of fully diluted]\nfrom {business_inputs} b",
+        "tableBindings": [
+          {
+            "inputSlot": "control_metrics",
+            "tableName": "control_metrics"
+          },
+          {
+            "inputSlot": "futu_metrics",
+            "tableName": "futu_metrics"
+          },
+          {
+            "inputSlot": "option_metrics",
+            "tableName": "option_metrics"
+          },
+          {
+            "inputSlot": "business_inputs",
+            "tableName": "business_inputs"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "按需求文档生成 Capitalization Table (Summary View) 数据行；输出对齐 file15-before.xlsx 的 section/header/detail/total 结构。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 2148,
+      "y": 48,
+      "id": "persist_capitalization_summary",
+      "name": "Persist Capitalization Summary Excel",
+      "inputs": {
+        "capitalization": {
+          "from": "build_capitalization_summary",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_1",
+              "name": "Assert Common Shares OS",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case when [Common Shares Equivalent] > 0 then 1 else 0 end as actual from {summary} where [Description] = 'Common Shares OS'",
+                "operator": "=",
+                "expectedValue": 1,
+                "tableBindings": [
+                  {
+                    "inputSlot": "summary",
+                    "tableName": "summary"
+                  }
+                ],
+                "failureMessage": "Assert Common Shares OS failed",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            },
+            {
+              "id": "guard_2",
+              "name": "Assert Options Outstanding Gyre",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case when [Common Shares Equivalent] > 0 then 1 else 0 end as actual from {summary} where [Description] = 'Options Outstanding- Gyre'",
+                "operator": "=",
+                "expectedValue": 1,
+                "tableBindings": [
+                  {
+                    "inputSlot": "summary",
+                    "tableName": "summary"
+                  }
+                ],
+                "failureMessage": "Assert Options Outstanding Gyre failed",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            },
+            {
+              "id": "guard_3",
+              "name": "Assert Summary Total Calculation",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case when (select sum([Common Shares Equivalent]) from {summary} where [Number] <> '') = (select [Common Shares Equivalent] from {summary} where [Description] = 'Total Fully Diluted Shares Outstand') then 1 else 0 end as actual",
+                "operator": "=",
+                "expectedValue": 1,
+                "tableBindings": [
+                  {
+                    "inputSlot": "summary",
+                    "tableName": "summary"
+                  }
+                ],
+                "failureMessage": "Assert Summary Total Calculation failed",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            },
+            {
+              "id": "guard_4",
+              "name": "Assert Summary Row Count",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select count(*) as actual from {summary}",
+                "operator": "=",
+                "expectedValue": 13,
+                "tableBindings": [
+                  {
+                    "inputSlot": "summary",
+                    "tableName": "summary"
+                  }
+                ],
+                "failureMessage": "Assert Summary Row Count failed",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            },
+            {
+              "id": "guard_5",
+              "name": "Assert Summary Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Assert Summary Schema failed",
+                "expectedColumns": "Number, Description, Common Shares Equivalent, % of fully diluted",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        "reconciliation": {
+          "from": "build_shares_os_reconciliation",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_1",
+              "name": "Assert Reconciliation Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Assert Shares OS Reconciliation Schema failed",
+                "expectedColumns": "Item, As of, Last Month, New Shares, EOM Balance",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sheets": [
+          {
+            "inputSlot": "reconciliation",
+            "sheetName": "Shares OS Reconciliation"
+          },
+          {
+            "inputSlot": "capitalization",
+            "sheetName": "Capitalization Summary"
+          }
+        ],
+        "fileName": "Capitalization_Table_Summary_View.xlsx",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/captable",
+        "fileNamePrefix": {
+          "$fromRuntime": "month"
+        }
+      },
+      "dependsOn": [],
+      "description": "将通过校验后的 Summary View 持久化为 Excel 并写入 Files；百分比列导出为 Excel 百分号格式但保留真实小数值。",
+      "operatorCode": "workbook.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "month": {
+      "type": "string",
+      "label": "Month",
+      "description": "用于生成月度输出文件名前缀，例如 2026-05-Capitalization_Table_Summary_View.xlsx。"
+    },
+    "fileRefs": {
+      "type": "object",
+      "label": "fileRefs",
+      "properties": {
+        "futu_exercises": {
+          "type": "object",
+          "label": "Futu exercises workbook"
+        },
+        "base_control_book": {
+          "type": "object",
+          "label": "Base Control Book workbook",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Base sheet"
+            }
+          }
+        },
+        "bc_subplan_transfer": {
+          "type": "object",
+          "label": "2025 BC Subplan Transfer 输入源",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Sheet"
+            }
+          }
+        },
+        "option_plans_summary": {
+          "type": "object",
+          "label": "Gyre Option Plans Summary SL workbook",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Sheet"
+            }
+          }
+        },
+        "incremental_control_book": {
+          "type": "object",
+          "label": "Incremental Control Book workbook",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Increment sheet"
+            }
+          }
+        },
+        "options_os_detail_by_plan": {
+          "type": "object",
+          "label": "Options OS Detail by Plan workbook"
+        },
+        "previous_capitalization_summary": {
+          "type": "object",
+          "label": "Previous capitalization summary workbook"
+        }
+      }
+    },
+    "fixedValues": {
+      "type": "object",
+      "label": "fixedValues",
+      "properties": {
+        "cullgenCommonStock": {
+          "type": "number",
+          "label": "Cullgen Common Stock"
+        },
+        "optionsAvailableCullgen": {
+          "type": "number",
+          "label": "Options Available - Cullgen"
+        },
+        "gyre2023ChinaSubplanTotal": {
+          "type": "number",
+          "label": "Gyre 2023 China SubPlan Total"
+        },
+        "optionsOutstandingCullgen": {
+          "type": "number",
+          "label": "Options Outstanding - Cullgen"
+        },
+        "warrantsConvertiblePreferred": {
+          "type": "number",
+          "label": "Warrants for Convertible Preferred Stock"
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {
+    "month": "2026-05",
+    "fileRefs": {
+      "futu_exercises": {},
+      "base_control_book": {
+        "key": "input/2026-05/EQ Control Book.xlsx",
+        "sheet": "EQ Control Book",
+        "provider": "product-files"
+      },
+      "bc_subplan_transfer": {
+        "sheet": "Vesting Schedule"
+      },
+      "option_plans_summary": {},
+      "incremental_control_book": {
+        "key": "input/2026-05/Control_Books_Detail_Data_02.06.2026_16.42.xlsx",
+        "sheet": "27591",
+        "provider": "product-files"
+      },
+      "options_os_detail_by_plan": {},
+      "previous_capitalization_summary": {}
+    },
+    "fixedValues": {
+      "cullgenCommonStock": 14450527,
+      "optionsAvailableCullgen": 10994,
+      "gyre2023ChinaSubplanTotal": 7815396,
+      "optionsOutstandingCullgen": 4156815,
+      "warrantsConvertiblePreferred": 540666
+    }
+  }
+}

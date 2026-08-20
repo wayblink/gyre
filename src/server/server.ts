@@ -946,10 +946,59 @@ function productFileKeyAtRuntimePath(runtimeParameters: unknown, runtimePath: st
   return String(current.key ?? '').trim() || null;
 }
 
+function sourcesFromWorkflowSchemaJson(schemaJson: unknown): WorkflowPageSourceDescriptor[] {
+  const schema = parseJson<Record<string, unknown>>(schemaJson, {});
+  const fileRefs = isRecord(schema.fileRefs) ? schema.fileRefs : {};
+  const properties = isRecord(fileRefs.properties) ? (fileRefs.properties as Record<string, unknown>) : {};
+  return Object.entries(properties).map(([sourceKey, field]) => ({
+    sourceKey,
+    label:
+      isRecord(field) && typeof field.label === 'string' && field.label.trim() ? field.label.trim() : sourceKey,
+  }));
+}
+
+// Page input-source lists are derived from the DB workflow's runtime_params_schema.fileRefs
+// (workflow definitions are DB-owned; see CLAUDE.md), not from any hardcoded source list.
+async function workflowSourceDescriptors(workflowCode: string): Promise<WorkflowPageSourceDescriptor[]> {
+  const row = await db.queryOne<Record<string, unknown>>(
+    `select runtime_params_schema_json
+       from workflow_definitions
+      where code = $1
+      order by (status = 'active') desc, id desc
+      limit 1`,
+    [workflowCode],
+  );
+  return sourcesFromWorkflowSchemaJson(row?.runtime_params_schema_json);
+}
+
+async function pageWorkflowConfig(
+  pageKey: string,
+  workflowCode: string,
+): Promise<{
+  pageKey: string;
+  workflowCode: string;
+  workflowName: string;
+  description: string;
+  sources: WorkflowPageSourceDescriptor[];
+} | null> {
+  const row = await db.queryOne<Record<string, unknown>>(
+    "select name, description, runtime_params_schema_json from workflow_definitions where code = $1 and status = 'active' limit 1",
+    [workflowCode],
+  );
+  if (!row) return null;
+  return {
+    pageKey,
+    workflowCode,
+    workflowName: String(row.name ?? ''),
+    description: String(row.description ?? ''),
+    sources: sourcesFromWorkflowSchemaJson(row.runtime_params_schema_json),
+  };
+}
+
 async function latestWorkflowInputSourceBindings(
   workflowCode: string,
-  sources: WorkflowPageSourceDescriptor[],
 ): Promise<WorkflowPageSourceBindingResponse[]> {
+  const sources = await workflowSourceDescriptors(workflowCode);
   const row = await db.queryOne<Record<string, unknown>>(
     `select runtime_parameters_json
        from workflow_runs
@@ -989,10 +1038,7 @@ async function latestWorkflowInputSourceBindings(
 }
 
 async function latestFivePercentHolderInputSourceBindings(): Promise<WorkflowPageSourceBindingResponse[]> {
-  const bindings = await latestWorkflowInputSourceBindings(
-    'five-percent-holders-sync',
-    DATA_MANAGEMENT_WORKFLOW_CONFIGS['five-percent-holders'].sources,
-  );
+  const bindings = await latestWorkflowInputSourceBindings('five-percent-holders-sync');
   const existing = bindings.find((binding) => binding.sourceKey === 'capitalization_summary');
   if (existing?.fileId) return bindings;
 
@@ -2767,10 +2813,7 @@ async function registerRoutes() {
       taskId: 'persist_grant_record_futu_file',
       fallbackSheetName: 'Futu Grants',
     });
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(
-      'esop-grant-record-sync',
-      ESOP_PAGE_WORKFLOW_CONFIGS['grant-record'].sources,
-    );
+    const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-grant-record-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
     const rows = (artifact?.rows ?? [])
@@ -2831,10 +2874,7 @@ async function registerRoutes() {
       taskId: 'persist_grant_record_shareworks_file',
       fallbackSheetName: 'Shareworks Grants',
     });
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(
-      'esop-grant-record-sync',
-      ESOP_PAGE_WORKFLOW_CONFIGS['grant-record'].sources,
-    );
+    const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-grant-record-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
     const rows = (artifact?.rows ?? [])
@@ -2961,10 +3001,7 @@ async function registerRoutes() {
     );
     const total = sortedItems.length;
     const offset = (page - 1) * pageSize;
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(
-      'esop-grant-record-sync',
-      ESOP_PAGE_WORKFLOW_CONFIGS['grant-record'].sources,
-    );
+    const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-grant-record-sync');
     return {
       items: sortedItems.slice(offset, offset + pageSize),
       sourceFiles: inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[],
@@ -2996,10 +3033,7 @@ async function registerRoutes() {
       taskId: 'persist_exercise_record_file',
       fallbackSheetName: 'Futu BCI Exercises to Date',
     });
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(
-      'esop-exercise-record-sync',
-      ESOP_PAGE_WORKFLOW_CONFIGS['exercise-record'].sources,
-    );
+    const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-exercise-record-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
     const rows = (artifact?.rows ?? [])
@@ -3070,10 +3104,7 @@ async function registerRoutes() {
       taskId: 'persist_sold_shares_file',
       fallbackSheetName: 'Futu Sold Shares',
     });
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(
-      'esop-sold-shares-sync',
-      ESOP_PAGE_WORKFLOW_CONFIGS['sold-shares'].sources,
-    );
+    const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-sold-shares-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
     const rows = (artifact?.rows ?? [])
@@ -3125,10 +3156,7 @@ async function registerRoutes() {
       taskId: 'persist_transfer_plan_file',
       fallbackSheetName: '2025 BC Subplan Transfer',
     });
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(
-      'esop-transfer-to-futu-sync',
-      ESOP_PAGE_WORKFLOW_CONFIGS['transfer-plan'].sources,
-    );
+    const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-transfer-to-futu-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const baseItems = transferPlanFromWorkflowRows(artifact?.rows ?? [], artifact?.fileId ?? null);
     const detailCount = baseItems[0]?.detailCount ?? 0;
@@ -3474,10 +3502,7 @@ async function registerRoutes() {
        limit $5 offset $6`,
       [labelIdFilter, normalizedQuery, like, normalizedSource, pageSize, offset],
     );
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(
-      'employee-import',
-      DATA_MANAGEMENT_WORKFLOW_CONFIGS.employee.sources,
-    );
+    const inputSourceBindings = await latestWorkflowInputSourceBindings('employee-import');
     const sourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     return {
       items: rows.map(toEmployee),
@@ -3616,10 +3641,7 @@ async function registerRoutes() {
       taskId: 'persist_plan_summary_file',
       fallbackSheetName: 'Plan Summary',
     });
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(
-      'plan-summary-sync',
-      DATA_MANAGEMENT_WORKFLOW_CONFIGS['plan-summary'].sources,
-    );
+    const inputSourceBindings = await latestWorkflowInputSourceBindings('plan-summary-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     return {
       sourceFiles: inputSourceFiles,
@@ -3965,27 +3987,25 @@ async function registerRoutes() {
   });
 
   app.get('/api/esop-workflows', async () => ({
-    items: Object.values(ESOP_PAGE_WORKFLOW_CONFIGS).map((config) => ({
-      pageKey: config.pageKey,
-      workflowCode: config.workflowCode,
-      workflowName: config.workflowName,
-      description: config.description,
-      sources: config.sources.map((source) => ({
-        sourceKey: source.sourceKey,
-        label: source.label,
-      })),
-    })),
+    items: (
+      await Promise.all(
+        Object.values(ESOP_PAGE_WORKFLOW_CONFIGS).map((config) =>
+          pageWorkflowConfig(config.pageKey, config.workflowCode),
+        ),
+      )
+    ).filter((item): item is NonNullable<typeof item> => item !== null),
   }));
 
   app.post('/api/esop-workflows/:pageKey/runs', async (request, reply) => {
     const pageKey = esopPageKeySchema.parse((request.params as { pageKey: string }).pageKey) as EsopPageKey;
     const body = esopWorkflowRunBodySchema.parse(request.body ?? {});
     const config = ESOP_PAGE_WORKFLOW_CONFIGS[pageKey];
-    const expectedSourceKeys = new Set(config.sources.map((source) => source.sourceKey));
+    const sourceDescriptors = await workflowSourceDescriptors(config.workflowCode);
+    const expectedSourceKeys = new Set(sourceDescriptors.map((source) => source.sourceKey));
     const unknownSourceKey = Object.keys(body.sources).find((sourceKey) => !expectedSourceKeys.has(sourceKey));
     if (unknownSourceKey) throw new Error(`Unknown ESOP workflow source: ${unknownSourceKey}`);
 
-    for (const source of config.sources) {
+    for (const source of sourceDescriptors) {
       const fileId = body.sources[source.sourceKey]?.fileId;
       if (!fileId) throw new Error(`Missing ESOP workflow source: ${source.sourceKey}`);
       await getProductFileOrThrow(fileId);
@@ -3996,13 +4016,13 @@ async function registerRoutes() {
   });
 
   app.get('/api/data-management-workflows', async () => ({
-    items: Object.values(DATA_MANAGEMENT_WORKFLOW_CONFIGS).map((config) => ({
-      pageKey: config.pageKey,
-      workflowCode: config.workflowCode,
-      workflowName: config.workflowName,
-      description: config.description,
-      sources: config.sources.map((source) => ({ sourceKey: source.sourceKey, label: source.label })),
-    })),
+    items: (
+      await Promise.all(
+        Object.values(DATA_MANAGEMENT_WORKFLOW_CONFIGS).map((config) =>
+          pageWorkflowConfig(config.pageKey, config.workflowCode),
+        ),
+      )
+    ).filter((item): item is NonNullable<typeof item> => item !== null),
   }));
 
   app.post('/api/data-management-workflows/:pageKey/runs', async (request, reply) => {
@@ -4011,7 +4031,8 @@ async function registerRoutes() {
     ) as DataManagementPageKey;
     const body = dataManagementWorkflowRunBodySchema.parse(request.body ?? {});
     const config = DATA_MANAGEMENT_WORKFLOW_CONFIGS[pageKey];
-    const expectedSourceKeys = new Set(config.sources.map((source) => source.sourceKey));
+    const sourceDescriptors = await workflowSourceDescriptors(config.workflowCode);
+    const expectedSourceKeys = new Set(sourceDescriptors.map((source) => source.sourceKey));
     const unknownSourceKey = Object.keys(body.sources).find((sourceKey) => !expectedSourceKeys.has(sourceKey));
     if (unknownSourceKey) throw new Error(`Unknown data management workflow source: ${unknownSourceKey}`);
     const sources = { ...body.sources };
@@ -4021,7 +4042,7 @@ async function registerRoutes() {
         sources.capitalization_summary = { fileId: latestMonthlyOutput.fileId };
       }
     }
-    for (const source of config.sources) {
+    for (const source of sourceDescriptors) {
       const fileId = sources[source.sourceKey]?.fileId;
       if (!fileId) throw new Error(`Missing data management workflow source: ${source.sourceKey}`);
       await getProductFileOrThrow(fileId);

@@ -1,0 +1,92 @@
+{
+  "code": "esop-sold-shares-sync",
+  "name": "ESOP / Sold Shares Sync",
+  "description": "读取 Futu sold shares 明细并替换 Sold Shares 展示数据。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_sold_shares",
+      "name": "Extract Futu Sold Shares",
+      "inputs": {},
+      "params": {
+        "range": "A1:S",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Futu Sold Shares",
+          "$fromRuntime": "fileRefs.futu_sold_shares"
+        },
+        "headerRow": 1,
+        "sheetName": "Futu sold shares",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从独立业务输入 Futu Sold Shares 提取 Futu sold shares。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 284,
+      "y": 48,
+      "id": "filter_sold_shares_rows",
+      "name": "Filter Sold Shares Rows",
+      "inputs": {
+        "input1": {
+          "from": "extract_sold_shares",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "sql": "select *\nfrom {sold_shares}\nwhere trim(concat('', coalesce([工号], ''))) <> ''\n  and trim(concat('', coalesce([姓名], ''))) <> ''\n  and trim(concat('', coalesce([工号], ''))) <> '工号'\n  and lower(trim(concat('', coalesce([姓名], '')))) not like 'note:%'",
+        "tableBindings": [
+          {
+            "inputSlot": "input1",
+            "tableName": "sold_shares"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "过滤 Futu sold shares 顶部空行、说明行和表头噪音，只保留有员工工号和姓名的业务明细。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 520,
+      "y": 48,
+      "id": "persist_sold_shares_file",
+      "name": "Persist Futu Sold Shares File",
+      "inputs": {
+        "input1": {
+          "from": "filter_sold_shares_rows",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "fileName": "sold_shares.xlsx",
+        "sheetName": "Futu Sold Shares",
+        "sourceKey": "futu_sold_shares",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/sold-shares"
+      },
+      "dependsOn": [],
+      "description": "将 Futu Sold Shares dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "operatorCode": "dataframe.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "File References",
+      "properties": {
+        "futu_sold_shares": {
+          "type": "object",
+          "label": "Futu Sold Shares"
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {}
+}

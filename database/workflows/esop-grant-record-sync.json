@@ -1,0 +1,155 @@
+{
+  "code": "esop-grant-record-sync",
+  "name": "ESOP / Grant Record Sync",
+  "description": "分别读取 Futu 授予记录与 Shareworks Options OS Detail，并更新 Grant Record 三个展示视图。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_futu_grants",
+      "name": "Extract Futu 授予记录",
+      "inputs": {},
+      "params": {
+        "range": "A1:BZ",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Futu 授予记录",
+          "$fromRuntime": "fileRefs.futu_grants"
+        },
+        "headerRow": 1,
+        "sheetName": "授予记录",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从独立业务输入 Futu 授予记录 提取 授予记录。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 245,
+      "id": "extract_shareworks_grants",
+      "name": "Extract Shareworks Options OS Detail",
+      "inputs": {},
+      "params": {
+        "range": "A2:BZ",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Shareworks Options OS Detail",
+          "$fromRuntime": "fileRefs.shareworks_grants"
+        },
+        "headerRow": 2,
+        "sheetName": "Options OS Detail",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从独立业务输入 Shareworks Options OS Detail 提取 Options OS Detail。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 468,
+      "y": 245,
+      "id": "project_shareworks_grants_columns",
+      "name": "Project Shareworks Grant Columns",
+      "inputs": {
+        "input1": {
+          "from": "extract_shareworks_grants",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "select\n  [Employee Number],\n  [Last Name],\n  [First Name],\n  [Middle Name],\n  [Plan Name],\n  [Grant Name],\n  [Grant Type],\n  [Employee Grant Number],\n  [Grant Date],\n  [Vesting Start Date],\n  [Service Start Date],\n  [Original VCD (migrated grants)],\n  [Expire Date],\n  [Expire Date (participant view)],\n  [Earliest Expire Cancel Date],\n  [Latest Expire Cancel Date],\n  [No. of Shares Granted],\n  [Exercise Price per Share],\n  [Vesting Schedule],\n  [Early Exercise Allowed],\n  [No. of Shares Vested],\n  [No. of Shares Unvested],\n  [Shares Exercised / Released],\n  [Shares Subject To Repurchase],\n  [Shares Cancelled/Expired],\n  [Shares Outstanding],\n  [Outstanding Unvested],\n  [Outstanding Vested/Exercisable]\nfrom {shareworks_grants}",
+        "tableBindings": [
+          {
+            "inputSlot": "input1",
+            "tableName": "shareworks_grants"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "输出 Shareworks Grant Record 时移除两个不展示字段。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 468,
+      "y": 48,
+      "id": "persist_grant_record_futu_file",
+      "name": "Persist Futu 授予记录 File",
+      "inputs": {
+        "input1": {
+          "from": "extract_futu_grants",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "fileName": "Grant_Record_Futu.xlsx",
+        "sheetName": "Futu Grants",
+        "sourceKey": "futu_grants",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/grant-record"
+      },
+      "dependsOn": [],
+      "description": "将 Futu 授予记录 dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "operatorCode": "dataframe.persist.excel",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 888,
+      "y": 48,
+      "id": "persist_grant_record_shareworks_file",
+      "name": "Persist Shareworks Options OS Detail File",
+      "inputs": {
+        "input1": {
+          "from": "project_shareworks_grants_columns",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "fileName": "Grant_Record_Shareworks.xlsx",
+        "sheetName": "Shareworks Grants",
+        "sourceKey": "shareworks_grants",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/grant-record"
+      },
+      "dependsOn": [],
+      "description": "将 Shareworks Options OS Detail dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "operatorCode": "dataframe.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "fileRefs",
+      "properties": {
+        "futu_grants": {
+          "type": "object",
+          "label": "Futu 授予记录"
+        },
+        "shareworks_grants": {
+          "type": "object",
+          "label": "Shareworks Options OS Detail"
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {
+    "fileRefs": {
+      "futu_grants": {
+        "key": "input/2026-05/!!Gyre Cap Table 05.31.26【新】.xlsx",
+        "provider": "product-files"
+      },
+      "shareworks_grants": {
+        "key": "input/02-6-2026_14-55-05_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx",
+        "provider": "product-files"
+      }
+    }
+  }
+}

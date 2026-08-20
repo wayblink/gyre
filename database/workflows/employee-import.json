@@ -1,0 +1,200 @@
+{
+  "code": "employee-import",
+  "name": "Employee Import / 员工归集",
+  "description": "从 Futu 授予明细与 Shareworks 明细提取员工，各自规范成 (employee_id, source, employee_name) 后 union，再按 employee_id UPSERT 进 employees 表。换文件重跑即幂等重归集；跨来源同人由「关联」处理。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_futu_grants",
+      "name": "Extract Futu 授予记录",
+      "inputs": {},
+      "params": {
+        "range": "A1:BZ",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Futu 授予数据导出报表 workbook",
+          "$fromRuntime": "fileRefs.futu_grants"
+        },
+        "headerRow": 1,
+        "sheetName": "授予记录",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从 Futu 授予数据导出报表的「授予记录」sheet 提取明细（含 工号、姓名）。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 260,
+      "id": "extract_shareworks",
+      "name": "Extract Shareworks Options OS Detail",
+      "inputs": {},
+      "params": {
+        "range": "A2:BZ",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Shareworks Cap Table workbook",
+          "$fromRuntime": "fileRefs.shareworks_grants"
+        },
+        "headerRow": 2,
+        "sheetName": "Options OS Detail",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从 Shareworks Cap Table 的「Options OS Detail」sheet 提取明细（表头在第 2 行）。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 400,
+      "y": 48,
+      "id": "normalize_futu_employees",
+      "name": "Normalize Futu Employees",
+      "inputs": {
+        "input1": {
+          "from": "extract_futu_grants",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "sql": "\nselect distinct\n  upper(trim(concat('', coalesce([工号], '')))) as employee_id,\n  'futu' as source,\n  trim(concat('', coalesce([姓名], ''))) as employee_name,\n  true as has_file_evidence\nfrom {futu}\nwhere trim(concat('', coalesce([工号], ''))) <> ''",
+        "tableBindings": [
+          {
+            "inputSlot": "input1",
+            "tableName": "futu"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "把 Futu 明细去重规范成 (employee_id, source, employee_name)。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 400,
+      "y": 260,
+      "id": "filter_shareworks_employee_rows",
+      "name": "Filter Shareworks Employee Rows",
+      "inputs": {
+        "input1": {
+          "from": "extract_shareworks",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "sql": "\nselect *\nfrom {sw}\nwhere not (\n  lower(trim(concat('', coalesce([Last Name], '')))) = 'subplan'\n  and (\n    lower(trim(concat('', coalesce([Plan Name], '')))) like '%subplan%'\n    or lower(trim(concat('', coalesce([Grant Name], '')))) like '%subplan%'\n  )\n)",
+        "tableBindings": [
+          {
+            "inputSlot": "input1",
+            "tableName": "sw"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "过滤 Shareworks Options OS Detail 中计划级占位行，例如 BC Subplan 这类不是员工的记录。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 760,
+      "y": 260,
+      "id": "normalize_shareworks_employees",
+      "name": "Normalize Shareworks Employees",
+      "inputs": {
+        "input1": {
+          "from": "filter_shareworks_employee_rows",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "sql": "\nselect distinct\n  upper(trim(concat('', coalesce([Employee Number], '')))) as employee_id,\n  'shareworks' as source,\n  trim(concat(coalesce([First Name], ''), ' ', coalesce([Middle Name], ''), ' ', coalesce([Last Name], ''))) as employee_name,\n  true as has_file_evidence\nfrom {sw}\nwhere trim(concat('', coalesce([Employee Number], ''))) <> ''",
+        "tableBindings": [
+          {
+            "inputSlot": "input1",
+            "tableName": "sw"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "把 Shareworks 明细去重规范成 (employee_id, source, employee_name)，姓名由 last/first/middle 拼成。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1120,
+      "y": 154,
+      "id": "union_employees",
+      "name": "Union Employees",
+      "inputs": {
+        "input1": {
+          "from": "normalize_futu_employees",
+          "slot": "dataframe"
+        },
+        "input2": {
+          "from": "normalize_shareworks_employees",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "distinct": false
+      },
+      "dependsOn": [],
+      "description": "把 Futu 与 Shareworks 员工按列名对齐后合并成一张待写入表。",
+      "operatorCode": "dataframe.union",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1480,
+      "y": 154,
+      "id": "upsert_employees",
+      "name": "Upsert Employees",
+      "inputs": {
+        "input1": {
+          "from": "union_employees",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "table": "employees",
+        "columns": [
+          "employee_id",
+          "source",
+          "employee_name",
+          "has_file_evidence"
+        ],
+        "updateColumns": [
+          "employee_name",
+          "has_file_evidence"
+        ],
+        "conflictColumns": [
+          "employee_id"
+        ]
+      },
+      "dependsOn": [],
+      "description": "按 employee_id UPSERT 进 employees 表：已存在工号更新姓名/证据，新工号插入。",
+      "operatorCode": "db.upsert",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "fileRefs",
+      "properties": {
+        "futu_grants": {
+          "type": "object",
+          "label": "Futu 授予记录"
+        },
+        "shareworks_grants": {
+          "type": "object",
+          "label": "Shareworks Options OS Detail"
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {}
+}

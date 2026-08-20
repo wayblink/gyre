@@ -1,0 +1,67 @@
+{
+  "code": "esop-transfer-to-futu-sync",
+  "name": "ESOP / Transfer to Futu Sync",
+  "description": "读取 2025 BC Subplan Transfer 透视表并更新按月转仓汇总，保留人工调整值。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_transfer_plan",
+      "name": "Extract 2025 BC Subplan Transfer",
+      "inputs": {},
+      "params": {
+        "range": "A4:AH",
+        "fileRef": {
+          "$type": "object",
+          "$label": "2025 BC Subplan Transfer",
+          "$fromRuntime": "fileRefs.transfer_plan"
+        },
+        "headerRow": 4,
+        "sheetName": "2025 BC Subplan Transfer",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从独立业务输入 2025 BC Subplan Transfer 提取 2025 BC Subplan Transfer。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 520,
+      "y": 48,
+      "id": "persist_transfer_plan_file",
+      "name": "Persist 2025 BC Subplan Transfer File",
+      "inputs": {
+        "input1": {
+          "from": "extract_transfer_plan",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "fileName": "transfer_plan.xlsx",
+        "sheetName": "2025 BC Subplan Transfer",
+        "sourceKey": "transfer_plan",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/transfer-plan"
+      },
+      "dependsOn": [],
+      "description": "将 2025 BC Subplan Transfer dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "operatorCode": "dataframe.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "File References",
+      "properties": {
+        "transfer_plan": {
+          "type": "object",
+          "label": "2025 BC Subplan Transfer"
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {}
+}

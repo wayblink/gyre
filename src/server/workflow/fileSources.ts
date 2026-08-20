@@ -24,3 +24,20 @@ export class WorkflowFileSourceRegistry {
 export function productFileRef(key: string): WorkflowFileReference {
   return { provider: 'product-files', key };
 }
+
+/**
+ * Build the `fileRefs` runtime-parameter object from resolved per-source file bindings.
+ *
+ * Source keys come from whatever bindings the caller resolved (which mirror a DB workflow's
+ * runtime_params_schema.fileRefs); this does not depend on any hardcoded source list.
+ */
+export function buildFileRefsFromBindings(
+  sources: Record<string, { fileKey?: string } | undefined>,
+): { fileRefs: Record<string, WorkflowFileReference> } {
+  const fileRefs: Record<string, WorkflowFileReference> = {};
+  for (const [sourceKey, binding] of Object.entries(sources)) {
+    const fileKey = String(binding?.fileKey ?? '').trim();
+    if (fileKey) fileRefs[sourceKey] = productFileRef(fileKey);
+  }
+  return { fileRefs };
+}

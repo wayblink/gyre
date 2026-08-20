@@ -110,6 +110,44 @@ test('capitalization summary shows month-over-month change beside each value', (
   assert.match(css, /\.col-delta\s*\{/);
 });
 
+test('workflow editor picks files through a tree picker that can upload and move files', () => {
+  const workflowPageSource = readFileSync(new URL('./workflowPage.ts', import.meta.url), 'utf8');
+  const filePickerModalSource = readFileSync(new URL('./filePickerModal.ts', import.meta.url), 'utf8');
+  const pickerModal = html.match(/id="workflowFilePickerModal"[\s\S]*?<!-- User Management Page -->/)?.[0] ?? '';
+
+  assert.match(pickerModal, /class="modal-container modal-large workflow-file-picker-modal"/);
+  assert.match(pickerModal, /id="workflowFilePickerTree"/);
+  assert.match(pickerModal, /id="btnWorkflowFilePickerUpload"/);
+  assert.match(pickerModal, /id="btnWorkflowFilePickerMove"/);
+  assert.match(pickerModal, /id="workflowFilePickerFolderList"/);
+  assert.match(pickerModal, /id="workflowFilePickerNewFolder"/);
+  assert.match(pickerModal, /id="btnConfirmWorkflowFilePicker"/);
+
+  // The real select stays in the DOM (hidden) so the existing encode/decode + sync path keeps working.
+  const fileRow = html.match(/id="workflowStructuredFileRow"[\s\S]*?<\/div>\s*<div class="workflow-structured__row" id="workflowStructuredSheetRow"/)?.[0] ?? '';
+  assert.match(fileRow, /<select id="workflowPreviewFileId" class="search-input workflow-select hidden">/);
+  assert.match(fileRow, /id="workflowPreviewFilePickTrigger"/);
+
+  assert.match(workflowPageSource, /createFilePickerModal\(/);
+  assert.match(workflowPageSource, /data-file-pick-open/);
+  assert.match(workflowPageSource, /type="hidden" class="workflow-runtime-summary__control"[^`]*data-runtime-default-type="fileRef"/);
+  assert.match(workflowPageSource, /control\.dispatchEvent\(new Event\('change', \{ bubbles: true \}\)\)/);
+  assert.match(filePickerModalSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
+  assert.match(filePickerModalSource, /\/api\/files\/\$\{file\.id\}\/move/);
+
+  assert.match(css, /\.workflow-file-picker__tree\s*\{/);
+  assert.match(css, /\.workflow-runtime-summary__filepick-trigger\s*\{/);
+  assert.match(css, /\.workflow-operator-picker-modal,\s*\n\s*\.workflow-file-picker-modal\s*\{/);
+});
+
+test('moving a product file repoints workflow references stored by logical path', () => {
+  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+  assert.match(serverSource, /app\.post\('\/api\/files\/:id\/move'/);
+  assert.match(serverSource, /rewriteProductFileKeyInWorkflows\(tx, oldLogicalPath, logicalPath\)/);
+  assert.match(serverSource, /code: 'FILE_ALREADY_EXISTS'/);
+  assert.match(serverSource, /set tasks_json = \$2::jsonb,\s*\n\s*runtime_params_defaults_json = \$3::jsonb/);
+});
+
 test('new product pages expose real data containers instead of placeholder-only shells', () => {
   assert.match(html, /id="page-grant-record"[\s\S]*id="grantTable-futu"/);
   assert.match(html, /id="page-grant-record"[\s\S]*id="holdingsBody"/);
@@ -637,7 +675,7 @@ test('Employee Management update runs the employee data-management workflow and 
   assert.match(mainSource, /page === 'employee-management' \? 'employee' : page/);
   assert.match(mainSource, /else if \(page === 'employee-management'\) \{\s*await loadEmployeesPage\(\);/);
   assert.match(mainSource, /workflowUpdateStatusMessage\('failed', \(error as Error\)\.message\)/);
-  assert.match(serverSource, /latestWorkflowInputSourceBindings\(\s*'employee-import',\s*DATA_MANAGEMENT_WORKFLOW_CONFIGS\.employee\.sources/);
+  assert.match(serverSource, /latestWorkflowInputSourceBindings\('employee-import'\)/);
   assert.match(serverSource, /workflowSourceBindings: inputSourceBindings/);
 });
 

@@ -1,0 +1,221 @@
+{
+  "code": "eq-control-book-incremental-merge",
+  "name": "EQ Control Book Incremental Merge",
+  "description": "将上一次完整 EQ Control Book base 与本次增量按自然键幂等合并，仅输出新的 EQ Control Book base Sheet。",
+  "status": "active",
+  "version": 3,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 96,
+      "id": "extract_base_control_book",
+      "name": "Extract Base Control Book",
+      "inputs": {},
+      "params": {
+        "range": "A9:L",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Base Control Book workbook",
+          "$default": {
+            "sheet": "EQ Control Book"
+          },
+          "$fromRuntime": "fileRefs.base_control_book"
+        },
+        "headerRow": 9,
+        "sheetName": {
+          "$type": "string",
+          "$label": "Base sheet",
+          "$default": "EQ Control Book",
+          "$fromRuntime": "fileRefs.base_control_book.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "读取上月完整 base；输出文件保持相同的第 9 行表头契约，因此可以跨月链式使用。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 336,
+      "id": "extract_incremental_control_book",
+      "name": "Extract Incremental Control Book",
+      "inputs": {},
+      "params": {
+        "range": "A10:L",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Incremental Control Book workbook",
+          "$default": {
+            "sheet": "27591"
+          },
+          "$fromRuntime": "fileRefs.incremental_control_book"
+        },
+        "headerRow": 10,
+        "sheetName": {
+          "$type": "string",
+          "$label": "Increment sheet",
+          "$default": "27591",
+          "$fromRuntime": "fileRefs.incremental_control_book.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "读取本月下载的增量表；默认对应 Control_Books_Detail_Data_*.xlsx 的 27591 Sheet。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 520,
+      "y": 216,
+      "id": "merge_control_book",
+      "name": "Merge Base And Increment Idempotently",
+      "inputs": {
+        "base": {
+          "from": "extract_base_control_book",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_base_control_book_schema",
+              "name": "Assert Base Control Book Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Control Book input schema is missing a merge key column",
+                "expectedColumns": "Security ID, As of Date, Process Date, Trans. Type, Trans. No., Broker No., Shares Issued, Shares Retired",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        "increment": {
+          "from": "extract_incremental_control_book",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_incremental_control_book_schema",
+              "name": "Assert Incremental Control Book Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Control Book input schema is missing a merge key column",
+                "expectedColumns": "Security ID, As of Date, Process Date, Trans. Type, Trans. No., Broker No., Shares Issued, Shares Retired",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sql": "select\n  case when i.[Security ID] is not null and trim(cast(i.[Security ID] as string)) <> '' then i.[Security ID] else b.[Security ID] end as [Security ID],\n  case when i.[Security] is not null and trim(cast(i.[Security] as string)) <> '' then i.[Security] else b.[Security] end as [Security],\n  case when i.[As of Date] is not null and trim(cast(i.[As of Date] as string)) <> '' then i.[As of Date] else b.[As of Date] end as [As of Date],\n  case when i.[Process Date] is not null and trim(cast(i.[Process Date] as string)) <> '' then i.[Process Date] else b.[Process Date] end as [Process Date],\n  case when i.[Trans. Type] is not null and trim(cast(i.[Trans. Type] as string)) <> '' then i.[Trans. Type] else b.[Trans. Type] end as [Trans. Type],\n  case when i.[Trans. No.] is not null and trim(cast(i.[Trans. No.] as string)) <> '' then i.[Trans. No.] else b.[Trans. No.] end as [Trans. No.],\n  case when i.[Broker No.] is not null and trim(cast(i.[Broker No.] as string)) <> '' then i.[Broker No.] else b.[Broker No.] end as [Broker No.],\n  case when i.[Shares Issued] is not null and trim(cast(i.[Shares Issued] as string)) <> '' then i.[Shares Issued] else b.[Shares Issued] end as [Shares Issued],\n  case when i.[Shares Retired] is not null and trim(cast(i.[Shares Retired] as string)) <> '' then i.[Shares Retired] else b.[Shares Retired] end as [Shares Retired],\n  case when i.[Issued & Outstanding] is not null and trim(cast(i.[Issued & Outstanding] as string)) <> '' then i.[Issued & Outstanding] else b.[Issued & Outstanding] end as [Issued & Outstanding],\n  case when i.[Comment] is not null and trim(cast(i.[Comment] as string)) <> '' then i.[Comment] else b.[Comment] end as [Comment],\n  b.[Net Shares issued in Period] as [Net Shares issued in Period]\nfrom {base} b\nfull outer join {increment} i\n  on upper(trim(cast(coalesce(b.[Security ID],'') as string))) = upper(trim(cast(coalesce(i.[Security ID],'') as string)))\n  and b.[As of Date] = i.[As of Date]\n  and b.[Process Date] = i.[Process Date]\n  and upper(trim(cast(coalesce(b.[Trans. Type],'') as string))) = upper(trim(cast(coalesce(i.[Trans. Type],'') as string)))\n  and upper(trim(cast(coalesce(b.[Trans. No.],'') as string))) = upper(trim(cast(coalesce(i.[Trans. No.],'') as string)))\n  and upper(trim(cast(coalesce(b.[Broker No.],'') as string))) = upper(trim(cast(coalesce(i.[Broker No.],'') as string)))\n  and coalesce(b.[Shares Issued],0) = coalesce(i.[Shares Issued],0)\n  and coalesce(b.[Shares Retired],0) = coalesce(i.[Shares Retired],0)\norder by coalesce(b.[As of Date], i.[As of Date]), coalesce(b.[Process Date], i.[Process Date]), coalesce(b.[__workflow_row_number], 1000000 + i.[__workflow_row_number])",
+        "tableBindings": [
+          {
+            "inputSlot": "base",
+            "tableName": "base"
+          },
+          {
+            "inputSlot": "increment",
+            "tableName": "increment"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "按交易自然键（8 列）幂等合并 base 与增量：同键去重，增量非空覆盖 base（空值保留），按 As of Date / Process Date 升序输出固定 12 列。使用通用 sql.compute（full outer join）实现，等价于原 keyed.merge。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1000,
+      "y": 216,
+      "id": "persist_control_book_base",
+      "name": "Persist Merged Control Book Base",
+      "inputs": {
+        "control_book": {
+          "from": "merge_control_book",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_control_book_output_schema",
+              "name": "Assert Control Book Output Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "exact",
+                "failureMessage": "Control Book base output schema changed",
+                "expectedColumns": "Security ID, Security, As of Date, Process Date, Trans. Type, Trans. No., Broker No., Shares Issued, Shares Retired, Issued & Outstanding, Comment, Net Shares issued in Period",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sheets": [
+          {
+            "headerRow": 9,
+            "inputSlot": "control_book",
+            "sheetName": "EQ Control Book",
+            "columnFormats": {
+              "As of Date": "dd\\-mmm\\-yyyy",
+              "Process Date": "dd\\-mmm\\-yyyy"
+            }
+          }
+        ],
+        "fileName": "EQ_Control_Book_Base.xlsx",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/control-book",
+        "conflictPolicy": "overwrite",
+        "fileNamePrefix": "",
+        "versionedOutput": false
+      },
+      "dependsOn": [],
+      "description": "仅输出合并后的 EQ Control Book Sheet，作为下一次运行的 base。",
+      "operatorCode": "workbook.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "fileRefs",
+      "properties": {
+        "base_control_book": {
+          "type": "object",
+          "label": "Base Control Book workbook",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Base sheet"
+            }
+          }
+        },
+        "incremental_control_book": {
+          "type": "object",
+          "label": "Incremental Control Book workbook",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Increment sheet"
+            }
+          }
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {
+    "fileRefs": {
+      "base_control_book": {
+        "key": "input/2026-05/EQ Control Book.xlsx",
+        "sheet": "EQ Control Book",
+        "provider": "product-files"
+      },
+      "incremental_control_book": {
+        "key": "input/2026-05/Control_Books_Detail_Data_02.06.2026_16.42.xlsx",
+        "sheet": "27591",
+        "provider": "product-files"
+      }
+    }
+  }
+}

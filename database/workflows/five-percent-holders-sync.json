@@ -1,0 +1,175 @@
+{
+  "code": "five-percent-holders-sync",
+  "name": "5% Holders Sync",
+  "description": "读取 Capitalization Summary 分母，并结合 Global Parameter 中维护的 5% holder 数字生成 5% Holders 结果文件。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 80,
+      "id": "extract_capitalization_summary",
+      "name": "Extract Capitalization Summary",
+      "inputs": {},
+      "params": {
+        "range": "A1:E200",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Capitalization Summary",
+          "$fromRuntime": "fileRefs.capitalization_summary"
+        },
+        "headerRow": 1,
+        "sheetName": "Capitalization Summary",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "读取 Capitalization Summary 结果文件，用于取得 Common Stock OS 与 Fully Diluted 分母。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 420,
+      "y": 80,
+      "id": "assert_five_percent_denominators",
+      "name": "Assert 5% Holders Denominators",
+      "inputs": {
+        "capitalization": {
+          "from": "extract_capitalization_summary",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  sum(case when lower(trim([Description])) = 'common shares os' then 1 else 0 end)\n  + sum(case when lower(trim([Description])) = 'cullgen common stock' then 1 else 0 end)\n  + sum(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then 1 else 0 end) as actual\nfrom {capitalization}",
+        "operator": ">=",
+        "expectedValue": 3,
+        "tableBindings": [
+          {
+            "inputSlot": "capitalization",
+            "tableName": "capitalization"
+          }
+        ],
+        "failureMessage": "5% Holders denominators missing: Capitalization Summary must include Common Shares OS, Cullgen common stock, and Total Fully Diluted Shares Outstand.",
+        "failureStrategy": "block"
+      },
+      "dependsOn": [],
+      "description": "确认 Capitalization Summary 中存在 Common Shares OS、Cullgen common stock 和 Total Fully Diluted Shares Outstand 三个分母来源。",
+      "operatorCode": "dataframe.sql.assert",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 790,
+      "y": 80,
+      "id": "calculate_five_percent_holders",
+      "name": "Calculate 5% Holders",
+      "inputs": {
+        "capitalization": {
+          "from": "assert_five_percent_denominators",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  row_type as [Row Type],\n  name as [Name],\n  common_stock as [Common Stock],\n  total_cses as [Total CSEs],\n  case when common_stock_os is null or common_stock_os = 0 then null else common_stock / common_stock_os end as [% of Class],\n  case when fully_diluted is null or fully_diluted = 0 then null else total_cses / fully_diluted end as [% Fully Diluted],\n  '' as [SC13 Filing],\n  note as [Note],\n  as_of_date as [As Of Date],\n  fully_diluted as [Fully Diluted],\n  common_stock_os as [Common Stock OS]\nfrom (\n  select\n    'holder' as row_type,\n    'GNI Group Ltd.' as name,\n    {constants.gniCommonStock} as common_stock,\n    {constants.gniTotalCses} as total_cses,\n    common_stock_os,\n    fully_diluted,\n    as_of_date,\n    'Global Parameter maintained manually' as note\n  from (\n    select\n      sum(case when lower(trim([Description])) in ('common shares os', 'cullgen common stock') then [Common Shares Equivalent] else 0 end) as common_stock_os,\n      max(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then [Common Shares Equivalent] else null end) as fully_diluted,\n      wf_eom_label({constants.workflowMonth}) as as_of_date\n    from {capitalization}\n  )\n  union all\n  select\n    'holder' as row_type,\n    'Songjiang Ma' as name,\n    {constants.songjiangMaCommonStock} as common_stock,\n    {constants.songjiangMaTotalCses} as total_cses,\n    common_stock_os,\n    fully_diluted,\n    as_of_date,\n    'Global Parameter maintained manually' as note\n  from (\n    select\n      sum(case when lower(trim([Description])) in ('common shares os', 'cullgen common stock') then [Common Shares Equivalent] else 0 end) as common_stock_os,\n      max(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then [Common Shares Equivalent] else null end) as fully_diluted,\n      wf_eom_label({constants.workflowMonth}) as as_of_date\n    from {capitalization}\n  )\n  union all\n  select\n    'total' as row_type,\n    'Total >5%' as name,\n    {constants.gniCommonStock} + {constants.songjiangMaCommonStock} as common_stock,\n    {constants.gniTotalCses} + {constants.songjiangMaTotalCses} as total_cses,\n    common_stock_os,\n    fully_diluted,\n    as_of_date,\n    'Calculated from fixed values' as note\n  from (\n    select\n      sum(case when lower(trim([Description])) in ('common shares os', 'cullgen common stock') then [Common Shares Equivalent] else 0 end) as common_stock_os,\n      max(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then [Common Shares Equivalent] else null end) as fully_diluted,\n      wf_eom_label({constants.workflowMonth}) as as_of_date\n    from {capitalization}\n  )\n)",
+        "constants": {
+          "gniTotalCses": {
+            "$type": "number",
+            "$label": "GNI Group Total CSEs",
+            "$fromRuntime": "fixedValues.fivePercentHoldersGniTotalCses"
+          },
+          "workflowMonth": {
+            "$type": "string",
+            "$label": "Workflow Month",
+            "$fromRuntime": "month"
+          },
+          "gniCommonStock": {
+            "$type": "number",
+            "$label": "GNI Group Common Stock",
+            "$fromRuntime": "fixedValues.fivePercentHoldersGniCommonStock"
+          },
+          "songjiangMaTotalCses": {
+            "$type": "number",
+            "$label": "Songjiang Ma Total CSEs",
+            "$fromRuntime": "fixedValues.fivePercentHoldersSongjiangMaTotalCses"
+          },
+          "songjiangMaCommonStock": {
+            "$type": "number",
+            "$label": "Songjiang Ma Common Stock",
+            "$fromRuntime": "fixedValues.fivePercentHoldersSongjiangMaCommonStock"
+          }
+        },
+        "tableBindings": [
+          {
+            "inputSlot": "capitalization",
+            "tableName": "capitalization"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "用 Global Parameter 的四个手工数生成两行 holder 和 Total >5%，并用 Summary 分母计算百分比。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1160,
+      "y": 80,
+      "id": "persist_five_percent_holders_file",
+      "name": "Persist 5% Holders File",
+      "inputs": {
+        "input1": {
+          "from": "calculate_five_percent_holders",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "fileName": "Five_Percent_Holders.xlsx",
+        "sheetName": "5% Holders",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/five-percent-holders"
+      },
+      "dependsOn": [],
+      "description": "将 5% Holders dataframe 输出为 Excel 文件，业务页面读取最新成功执行的输出文件渲染。",
+      "operatorCode": "dataframe.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "month": {
+      "type": "string",
+      "label": "Workflow Month"
+    },
+    "fileRefs": {
+      "type": "object",
+      "label": "File References",
+      "properties": {
+        "capitalization_summary": {
+          "type": "object",
+          "label": "Capitalization Summary"
+        }
+      }
+    },
+    "fixedValues": {
+      "type": "object",
+      "label": "fixedValues",
+      "properties": {
+        "fivePercentHoldersGniTotalCses": {
+          "type": "number",
+          "label": "GNI Group Total CSEs"
+        },
+        "fivePercentHoldersGniCommonStock": {
+          "type": "number",
+          "label": "GNI Group Common Stock"
+        },
+        "fivePercentHoldersSongjiangMaTotalCses": {
+          "type": "number",
+          "label": "Songjiang Ma Total CSEs"
+        },
+        "fivePercentHoldersSongjiangMaCommonStock": {
+          "type": "number",
+          "label": "Songjiang Ma Common Stock"
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {
+    "month": "2026-05"
+  }
+}

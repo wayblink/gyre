@@ -3,10 +3,10 @@ import { resolveWorkflowRuntimeConfiguration } from '../workflow/runtimeParamete
 import type { WorkflowRunCreateInput } from '../workflow/runRepository.js';
 import {
   ESOP_PAGE_WORKFLOW_CONFIGS,
-  buildEsopWorkflowRuntimeParameters,
   type EsopPageKey,
   type EsopWorkflowSourceBindings,
 } from './workflowDefinitions.js';
+import { buildFileRefsFromBindings } from '../workflow/fileSources.js';
 
 type QueryDb = {
   queryOne(sql: string, params?: unknown[]): Promise<Record<string, unknown> | undefined>;
@@ -49,7 +49,7 @@ export async function startEsopPageWorkflow(
     const file = source?.fileId ? await db.queryOne('select logical_path from product_files where id = $1', [source.fileId]) : null;
     if (file?.logical_path) resolvedSources[sourceKey] = { fileKey: String(file.logical_path) };
   }
-  const runtimeParameters = buildEsopWorkflowRuntimeParameters(pageKey, resolvedSources);
+  const runtimeParameters = buildFileRefsFromBindings(resolvedSources);
   const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
     tasks: parseJson<WorkflowTask[]>(workflow.tasks_json, []),
     runtimeParamsSchema: parseJson(workflow.runtime_params_schema_json, {}),

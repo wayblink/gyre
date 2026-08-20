@@ -1,0 +1,92 @@
+{
+  "code": "esop-exercise-record-sync",
+  "name": "ESOP / Exercise to Date Sync",
+  "description": "读取 Futu BCI Exercises to Date 明细并替换 Exercise to Date 展示数据。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_exercises",
+      "name": "Extract Futu BCI Exercises to Date",
+      "inputs": {},
+      "params": {
+        "range": "A1:M",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Futu BCI Exercises to Date",
+          "$fromRuntime": "fileRefs.futu_exercises"
+        },
+        "headerRow": 1,
+        "sheetName": "Futu BCI Exercises to Date",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从独立业务输入 Futu BCI Exercises to Date 提取 Futu BCI Exercises to Date。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 284,
+      "y": 48,
+      "id": "filter_exercise_rows",
+      "name": "Filter Exercise Rows",
+      "inputs": {
+        "input1": {
+          "from": "extract_exercises",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "sql": "select *\nfrom {exercises}\nwhere trim(concat('', coalesce([Employee No.], ''))) <> ''\n  and trim(concat('', coalesce([Employee No.], ''))) <> '员工编号'",
+        "tableBindings": [
+          {
+            "inputSlot": "input1",
+            "tableName": "exercises"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "过滤 Futu BCI Exercises 顶部中文表头/说明行，只保留有员工编号的业务明细。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 520,
+      "y": 48,
+      "id": "persist_exercise_record_file",
+      "name": "Persist Futu BCI Exercises to Date File",
+      "inputs": {
+        "input1": {
+          "from": "filter_exercise_rows",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "fileName": "exercise_record.xlsx",
+        "sheetName": "Futu BCI Exercises to Date",
+        "sourceKey": "futu_exercises",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/exercise-record"
+      },
+      "dependsOn": [],
+      "description": "将 Futu BCI Exercises to Date dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "operatorCode": "dataframe.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "File References",
+      "properties": {
+        "futu_exercises": {
+          "type": "object",
+          "label": "Futu BCI Exercises to Date"
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {}
+}

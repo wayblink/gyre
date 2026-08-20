@@ -1,0 +1,91 @@
+{
+  "code": "plan-summary-sync",
+  "name": "Plan Summary Sync",
+  "description": "独立读取 Shareworks Options OS Detail，按计划聚合并更新 Plan Summary 展示数据。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 80,
+      "id": "extract_shareworks_grants",
+      "name": "Extract Shareworks Options OS Detail",
+      "inputs": {},
+      "params": {
+        "range": "A2:BZ",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Shareworks Options OS Detail",
+          "$fromRuntime": "fileRefs.shareworks_grants"
+        },
+        "headerRow": 2,
+        "sheetName": "Options OS Detail",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从独立业务输入读取 Options OS Detail，表头位于第 2 行。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 420,
+      "y": 80,
+      "id": "aggregate_plan_summary",
+      "name": "Aggregate Plan Summary",
+      "inputs": {
+        "input1": {
+          "from": "extract_shareworks_grants",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  trim(concat('', [Plan Name])) as plan_name,\n  count(*) as grant_count,\n  sum(coalesce([No. of Shares Granted], 0)) as granted,\n  sum(coalesce([Shares Exercised / Released], 0)) as exercised,\n  sum(coalesce([Shares Cancelled/Expired], 0)) as cancelled,\n  sum(coalesce([Shares Outstanding], 0)) as outstanding\nfrom {grants}\nwhere trim(concat('', coalesce([Plan Name], ''))) <> ''\ngroup by trim(concat('', [Plan Name]))",
+        "tableBindings": [
+          {
+            "inputSlot": "input1",
+            "tableName": "grants"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "按 Plan Name 聚合授予、行权、取消及 outstanding 数量。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 790,
+      "y": 80,
+      "id": "persist_plan_summary_file",
+      "name": "Persist Plan Summary File",
+      "inputs": {
+        "input1": {
+          "from": "aggregate_plan_summary",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "fileName": "Plan_Summary.xlsx",
+        "sheetName": "Plan Summary",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/plan-summary"
+      },
+      "dependsOn": [],
+      "description": "将 Plan Summary dataframe 输出为 Excel 文件，业务页面读取最新成功执行的输出文件渲染。",
+      "operatorCode": "dataframe.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "File References",
+      "properties": {
+        "shareworks_grants": {
+          "type": "object",
+          "label": "Shareworks Options OS Detail"
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {}
+}

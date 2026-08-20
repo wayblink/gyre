@@ -4,10 +4,10 @@ import type { WorkflowRunCreateInput } from '../workflow/runRepository.js';
 import {
   DATA_MANAGEMENT_WORKFLOW_CONFIGS,
   FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS,
-  buildDataManagementWorkflowRuntimeParameters,
   type DataManagementPageKey,
   type DataManagementSourceBindings,
 } from './workflowDefinitions.js';
+import { buildFileRefsFromBindings } from '../workflow/fileSources.js';
 
 type QueryDb = {
   queryOne(sql: string, params?: unknown[]): Promise<Record<string, unknown> | undefined>;
@@ -70,7 +70,7 @@ export async function startDataManagementWorkflow(
     tasks: parseJson<WorkflowTask[]>(workflow.tasks_json, []),
     runtimeParamsSchema: parseJson(workflow.runtime_params_schema_json, {}),
     runtimeParamsDefaults: parseJson(workflow.runtime_params_defaults_json, {}),
-    runtimeParameters: buildDataManagementWorkflowRuntimeParameters(pageKey, resolvedSources, runtimeOverrides),
+    runtimeParameters: { ...runtimeOverrides, ...buildFileRefsFromBindings(resolvedSources) },
   });
   const run = await runStore.createRun({
     workflow, tasks: runtimeConfiguration.tasks, runtimeParameters: runtimeConfiguration.runtimeParameters,
