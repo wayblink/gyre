@@ -9,12 +9,14 @@ import type {
 } from '../../shared/types.js';
 import type { QueryResultRow } from 'pg';
 
-export const MONTHLY_WORKFLOW_CODE = 'gyre-captable-summary';
+export const MONTHLY_WORKFLOW_CODE = 'gyre-captable-summary-v2';
 export const MONTHLY_PERSIST_TASK_ID = 'persist_capitalization_summary';
 const MONTHLY_RUN_INPUT_LABELS: Record<string, string> = {
   control_book: 'EQ Control Book',
+  options_os_detail_by_plan: 'Options OS Detail by Plan',
   futu_exercises: 'Futu BCI Exercises',
-  option_plans: 'Option Plans Summary',
+  option_plans_summary: 'Gyre Option Plans Summary SL',
+  bc_subplan_transfer: '2025 BC Subplan Transfer',
 };
 
 export type MonthlyRunDb = {
@@ -63,6 +65,13 @@ function fileIdFromRuntimeFileValue(value: unknown): number | null {
   return Number.isInteger(fileId) && fileId > 0 ? fileId : null;
 }
 
+function fileKeyFromRuntimeFileValue(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.provider !== 'product-files') return null;
+  return String(record.key ?? '').trim() || null;
+}
+
 function runtimeFileEntries(runtimeParameters: WorkflowRuntimeParameters): Array<[string, unknown]> {
   const runtimeFileRefs = runtimeParameters.fileRefs;
   if (runtimeFileRefs && typeof runtimeFileRefs === 'object' && !Array.isArray(runtimeFileRefs)) {
@@ -105,32 +114,41 @@ async function attachInputFiles(
 ): Promise<Array<Record<string, unknown>>> {
   if (!rows.length) return rows;
   const fileIds = new Set<number>();
+  const fileKeys = new Set<string>();
   rows.forEach((row) => {
     const runtimeParameters = parseJson<WorkflowRuntimeParameters>(row.runtime_parameters_json, {});
     runtimeFileEntries(runtimeParameters).forEach(([, value]) => {
       const fileId = fileIdFromRuntimeFileValue(value);
       if (fileId) fileIds.add(fileId);
+      const fileKey = fileKeyFromRuntimeFileValue(value);
+      if (fileKey) fileKeys.add(fileKey);
     });
   });
 
   const fileNameById = new Map<number, string>();
-  if (fileIds.size > 0) {
-    const files = await db.query<{ id: number; original_name: string }>(
-      'select id, original_name from product_files where id = any($1::int[])',
-      [Array.from(fileIds)],
+  const fileByKey = new Map<string, { id: number; original_name: string }>();
+  if (fileIds.size > 0 || fileKeys.size > 0) {
+    const files = await db.query<{ id: number; original_name: string; logical_path: string }>(
+      'select id, original_name, logical_path from product_files where id = any($1::int[]) or lower(logical_path) = any($2::text[])',
+      [Array.from(fileIds), Array.from(fileKeys).map((key) => key.toLowerCase())],
     );
-    files.forEach((file) => fileNameById.set(Number(file.id), String(file.original_name)));
+    files.forEach((file) => {
+      fileNameById.set(Number(file.id), String(file.original_name));
+      fileByKey.set(String(file.logical_path).toLowerCase(), file);
+    });
   }
 
   return rows.map((row) => {
     const runtimeParameters = parseJson<WorkflowRuntimeParameters>(row.runtime_parameters_json, {});
     const inputFiles = runtimeFileEntries(runtimeParameters).map(([sourceKey, value]) => {
       const fileId = fileIdFromRuntimeFileValue(value);
+      const fileKey = fileKeyFromRuntimeFileValue(value);
+      const keyedFile = fileKey ? fileByKey.get(fileKey.toLowerCase()) : undefined;
       return {
         sourceKey,
         label: MONTHLY_RUN_INPUT_LABELS[sourceKey] ?? sourceKey,
-        fileId,
-        fileName: fileId ? (fileNameById.get(fileId) ?? null) : null,
+        fileId: fileId ?? (keyedFile ? Number(keyedFile.id) : null),
+        fileName: fileId ? (fileNameById.get(fileId) ?? null) : keyedFile?.original_name ?? null,
       };
     });
     return { ...row, input_files_json: JSON.stringify(inputFiles) };

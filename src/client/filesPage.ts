@@ -3,7 +3,15 @@ import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { createWorkbookViewer } from './univer/createWorkbookViewer.js';
 import { bufferToUniverWorkbook } from './univer/xlsxToUniver.js';
 import type { AppLanguage } from './i18n.js';
-import { uploadFormDataWithProgress } from './uploadProgress.js';
+import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
+import {
+  buildProductFilesTree,
+  compareProductFile,
+  compareTreeNode,
+  countTreeFiles,
+  productFileTreePath,
+  type FileTreeNode,
+} from './fileTree.js';
 import * as XLSX from 'xlsx';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
@@ -28,21 +36,16 @@ const FILES_MOBILE_MEDIA = '(max-width: 768px)';
 
 type FilesViewMode = 'list' | 'tree';
 
-type FileTreeNode = {
-  name: string;
-  path: string;
-  children: Map<string, FileTreeNode>;
-  files: ProductFileRecord[];
-};
-
 export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime, formatFileSize, notify, confirmAction, getLanguage }: FilesPageDeps) {
   let productFiles: ProductFileRecord[] = [];
   let currentProductFileDetail: ProductFileDetail | null = null;
+  let currentWorkbookBuffer: ArrayBuffer | null = null;
   let workbookViewer: { dispose: () => void; exportXlsxBlob: () => Blob | null } | null = null;
   let selectedProductFileId: number | null = null;
   let productFileLoadError: string | null = null;
   let productFileLoading = false;
   let productFileSaving = false;
+  let productFileEditing = false;
   let openProductFileRequestId = 0;
   let filesLeftWidth = FILES_LEFT_DEFAULT;
   let filesLeftCollapsed = false;
@@ -51,6 +54,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   let renamingProductFileId: number | null = null;
   let filesViewMode: FilesViewMode = 'tree';
   let filesSearchQuery = '';
+  let selectedProductFileIds = new Set<number>();
   let filesViewControlsBound = false;
   let filesSearchBound = false;
   const collapsedTreeDirectoryPaths = new Set<string>();
@@ -65,10 +69,22 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     switchToTreeView: { 'zh-CN': '切换到树状视图', 'en-US': 'Switch to tree view' },
     editFileName: { 'zh-CN': '编辑文件名', 'en-US': 'Edit file name' },
     deleteFile: { 'zh-CN': '删除文件', 'en-US': 'Delete file' },
+    deleteSelectedFiles: { 'zh-CN': '批量删除', 'en-US': 'Delete selected' },
+    selectedFiles: { 'zh-CN': '已选择', 'en-US': 'selected' },
+    selectAllFiles: { 'zh-CN': '全选文件', 'en-US': 'Select all files' },
+    deleteSelectedConfirm: { 'zh-CN': '确定删除选中的文件吗？此操作不可撤销。', 'en-US': 'Delete the selected files? This action cannot be undone.' },
     fileName: { 'zh-CN': '文件名', 'en-US': 'File name' },
     saving: { 'zh-CN': '保存中...', 'en-US': 'Saving...' },
     save: { 'zh-CN': '保存', 'en-US': 'Save' },
+    edit: { 'zh-CN': '编辑', 'en-US': 'Edit' },
     cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
+    readOnlyMode: { 'zh-CN': '只读预览', 'en-US': 'Read-only preview' },
+    editingMode: { 'zh-CN': '编辑中', 'en-US': 'Editing' },
+    readOnlyHint: { 'zh-CN': '预览状态不可编辑，点击「编辑」后可修改', 'en-US': 'Preview is read-only; click Edit to make changes' },
+    discardEditTitle: { 'zh-CN': '放弃编辑', 'en-US': 'Discard changes' },
+    discardEditConfirm: { 'zh-CN': '确定放弃未保存的修改吗？', 'en-US': 'Discard unsaved changes?' },
+    discardEdit: { 'zh-CN': '放弃修改', 'en-US': 'Discard' },
+    saved: { 'zh-CN': '文件已保存', 'en-US': 'File saved' },
     loading: { 'zh-CN': '加载中...', 'en-US': 'Loading...' },
     loadingFile: { 'zh-CN': '正在加载文件...', 'en-US': 'Loading file...' },
     fileLoadFailed: { 'zh-CN': '文件加载失败', 'en-US': 'Failed to load file' },
@@ -96,6 +112,9 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     el('btnCreateProductFile').addEventListener('click', () => void createProductFile());
     el('btnUploadProductFile').addEventListener('click', () => void uploadProductFile());
     el('btnRefreshFiles').addEventListener('click', () => void loadProductFiles());
+    el('btnEditProductFile').addEventListener('click', () => enterProductFileEditing());
+    el('btnSaveProductFile').addEventListener('click', () => void saveCurrentProductFile());
+    el('btnCancelProductFileEdit').addEventListener('click', () => void cancelProductFileEditing());
     bindFilesViewModeControls();
     bindFilesSearchControl();
     el('btnCollapseFilesPane').addEventListener('click', () => setFilesPaneCollapsed(true));
@@ -103,7 +122,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     initFilesWorkspaceResize();
     applyFilesWorkspaceLayout();
     updateFilesViewModeControls();
-    updateFileActionState();
+    bindBulkDeleteControls();
     await loadProductFiles();
   }
 
@@ -112,13 +131,27 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   }
 
   async function uploadWorkbookFile(file: File) {
-    const form = new FormData();
-    form.append('file', file);
-    form.append('uploadedBy', 'Administrator');
-    const data = await uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
-      fileName: file.name,
-      title: { 'zh-CN': '正在上传文件', 'en-US': 'Uploading file' },
-    });
+    const upload = (overwrite = false) => {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('uploadedBy', 'Administrator');
+      if (overwrite) form.append('conflictPolicy', 'overwrite');
+      return uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
+        fileName: file.name,
+        title: { 'zh-CN': '正在上传文件', 'en-US': 'Uploading file' },
+      });
+    };
+    let data;
+    try {
+      data = await upload();
+    } catch (error) {
+      if (!(error instanceof UploadHttpError) || error.status !== 409) throw error;
+      const confirmed = await confirmAction(`同一文件夹中已存在“${file.name}”，是否覆盖？`, {
+        title: '文件已存在', confirmText: '覆盖', tone: 'danger',
+      });
+      if (!confirmed) return;
+      data = await upload(true);
+    }
     await loadProductFiles(data.file.id);
   }
 
@@ -131,14 +164,17 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   async function loadProductFiles(selectedId?: number) {
     const data = await api<{ files: ProductFileRecord[] }>('/api/files');
     productFiles = data.files;
+    selectedProductFileIds = new Set([...selectedProductFileIds].filter((id) => productFiles.some((file) => file.id === id)));
     el('filesCountBadge').textContent = `${productFiles.length} ${tt('count')}`;
 
     if (productFiles.length === 0) {
-      selectedProductFileId = null;
+      selectedProductFileIds.clear();
       currentProductFileDetail = null;
+      currentWorkbookBuffer = null;
       productFileLoadError = null;
       productFileLoading = false;
       productFileSaving = false;
+      productFileEditing = false;
       disposeWorkbookViewer();
       renderProductFilesList();
       updateFileActionState();
@@ -169,6 +205,12 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     const filteredFiles = getFilteredProductFiles();
     container.classList.toggle('workbook-list__items--tree', filesViewMode === 'tree');
     updateFilesViewModeControls();
+    const selectAll = el<HTMLInputElement>('filesSelectAll');
+    selectAll.checked = filteredFiles.length > 0 && filteredFiles.every((file) => selectedProductFileIds.has(file.id));
+    selectAll.indeterminate = filteredFiles.some((file) => selectedProductFileIds.has(file.id)) && !selectAll.checked;
+    selectAll.disabled = filteredFiles.length === 0;
+    updateBulkDeleteControls();
+
     if (productFiles.length === 0) {
       container.innerHTML = `<div class="workbook-list__empty">${escapeHtml(tt('noFiles'))}</div>`;
       return;
@@ -197,6 +239,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
           tabindex="0"
           title="${escapeHtml(displayPath)}"
         >
+          <input class="workbook-item__select" data-select-file-id="${file.id}" type="checkbox" aria-label="${escapeHtml(getProductFileDisplayName(file))}" ${selectedProductFileIds.has(file.id) ? 'checked' : ''} />
           <button class="workbook-item__edit" data-edit-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('editFileName'))}" title="${escapeHtml(tt('editFileName'))}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 20h9"></path>
@@ -212,7 +255,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
               <path d="M14 11v6"></path>
             </svg>
           </button>
-          <span class="workbook-file-icon workbook-item__file-icon ${icon.className}" aria-hidden="true">${escapeHtml(icon.label)}</span>
+        <span class="workbook-file-icon workbook-item__file-icon ${icon.className}" aria-hidden="true">${escapeHtml(icon.label)}</span>
           ${
             editingProductFileId === file.id
               ? `<div class="workbook-item__rename">
@@ -256,12 +299,26 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
 
   function bindProductFilesBrowserInteractions(container: HTMLElement) {
     container.querySelectorAll<HTMLElement>('[data-file-id]').forEach((button) => {
-      button.addEventListener('click', () => void openProductFile(Number(button.dataset.fileId)));
+      button.addEventListener('click', (event) => {
+        if ((event.target as HTMLElement).closest('[data-select-file-id]')) return;
+        void openProductFile(Number(button.dataset.fileId));
+      });
       button.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           void openProductFile(Number(button.dataset.fileId));
         }
+      });
+    });
+
+    container.querySelectorAll<HTMLInputElement>('[data-select-file-id]').forEach((checkbox) => {
+      checkbox.addEventListener('click', (event) => event.stopPropagation());
+      checkbox.addEventListener('change', () => {
+        const fileId = Number(checkbox.dataset.selectFileId);
+        if (checkbox.checked) selectedProductFileIds.add(fileId);
+        else selectedProductFileIds.delete(fileId);
+        updateBulkDeleteControls();
+        renderProductFilesList();
       });
     });
 
@@ -376,6 +433,41 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       `;
   }
 
+  function updateBulkDeleteControls() {
+    const button = el<HTMLButtonElement>('btnDeleteSelectedFiles');
+    const count = selectedProductFileIds.size;
+    button.disabled = count === 0;
+    button.textContent = count > 0 ? `${tt('deleteSelectedFiles')} (${count})` : tt('deleteSelectedFiles');
+    const selectAll = el<HTMLInputElement>('filesSelectAll');
+    if (selectAll) selectAll.setAttribute('aria-label', tt('selectAllFiles'));
+  }
+
+  function bindBulkDeleteControls() {
+    const selectAll = el<HTMLInputElement>('filesSelectAll');
+    selectAll.addEventListener('change', () => {
+      const visibleFiles = getFilteredProductFiles();
+      visibleFiles.forEach((file) => selectAll.checked ? selectedProductFileIds.add(file.id) : selectedProductFileIds.delete(file.id));
+      renderProductFilesList();
+    });
+    el('btnDeleteSelectedFiles').addEventListener('click', () => void deleteSelectedProductFiles());
+  }
+
+  async function deleteSelectedProductFiles() {
+    const ids = [...selectedProductFileIds].filter((id) => productFiles.some((file) => file.id === id));
+    if (!ids.length) return;
+    if (!(await confirmAction(tt('deleteSelectedConfirm'), { title: tt('deleteTitle'), confirmText: tt('deleteSelectedFiles'), tone: 'danger' }))) return;
+    await api('/api/files', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+    if (currentProductFileDetail && ids.includes(currentProductFileDetail.file.id)) {
+      currentProductFileDetail = null;
+      currentWorkbookBuffer = null;
+      productFileEditing = false;
+      selectedProductFileId = null;
+      disposeWorkbookViewer();
+    }
+    selectedProductFileIds.clear();
+    await loadProductFiles();
+  }
+
   function bindFilesViewModeControls() {
     if (filesViewControlsBound) return;
     el('btnFilesViewToggle').addEventListener('click', () => {
@@ -405,7 +497,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   }
 
   function getProductFileDisplayPath(file: ProductFileRecord) {
-    return (file.displayPath || file.storedName || file.originalName).replace(/\\/g, '/');
+    return productFileTreePath(file);
   }
 
   function getProductFileDisplayName(file: ProductFileRecord) {
@@ -444,40 +536,6 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       return { className: 'workbook-file-icon--csv', label: 'CSV' };
     }
     return { className: 'workbook-file-icon--generic', label: 'FILE' };
-  }
-
-  function createFileTreeNode(name: string, path: string): FileTreeNode {
-    return {
-      name,
-      path,
-      children: new Map(),
-      files: [],
-    };
-  }
-
-  function buildProductFilesTree(files: ProductFileRecord[]) {
-    const root = createFileTreeNode('', '');
-
-    files.forEach((file) => {
-      const displayPath = getProductFileDisplayPath(file);
-      const segments = displayPath.split('/').map((segment) => segment.trim()).filter(Boolean);
-      const directorySegments = segments.length > 1 ? segments.slice(0, -1) : [];
-      let current = root;
-
-      directorySegments.forEach((segment) => {
-        const childPath = current.path ? `${current.path}/${segment}` : segment;
-        let child = current.children.get(segment);
-        if (!child) {
-          child = createFileTreeNode(segment, childPath);
-          current.children.set(segment, child);
-        }
-        current = child;
-      });
-
-      current.files.push(file);
-    });
-
-    return root;
   }
 
   function renderProductFilesTree(container: HTMLElement, files: ProductFileRecord[]) {
@@ -521,10 +579,6 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     `;
   }
 
-  function countTreeFiles(node: FileTreeNode): number {
-    return node.files.length + Array.from(node.children.values()).reduce((total, child) => total + countTreeFiles(child), 0);
-  }
-
   function renderTreeFile(file: ProductFileRecord, depth: number): string {
     const displayPath = getProductFileDisplayPath(file);
     const icon = getProductFileIcon(file);
@@ -537,6 +591,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
         title="${escapeHtml(displayPath)}"
         style="--tree-depth: ${depth}"
       >
+        <input class="workbook-tree__select" data-select-file-id="${file.id}" type="checkbox" aria-label="${escapeHtml(getProductFileDisplayName(file))}" ${selectedProductFileIds.has(file.id) ? 'checked' : ''} />
         <span class="workbook-file-icon workbook-tree__file-icon ${icon.className}" aria-hidden="true">${escapeHtml(icon.label)}</span>
         <button class="workbook-tree__delete" data-delete-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('deleteFile'))}" title="${escapeHtml(tt('deleteFile'))}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -563,14 +618,6 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     `;
   }
 
-  function compareTreeNode(a: FileTreeNode, b: FileTreeNode) {
-    return a.name.localeCompare(b.name, 'zh-Hans-CN');
-  }
-
-  function compareProductFile(a: ProductFileRecord, b: ProductFileRecord) {
-    return getProductFileDisplayPath(a).localeCompare(getProductFileDisplayPath(b), 'zh-Hans-CN');
-  }
-
   async function uploadProductFile() {
     const input = document.createElement('input');
     input.type = 'file';
@@ -584,10 +631,12 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   }
 
   async function openProductFile(fileId: number) {
+    if (productFileEditing && !(await confirmDiscardEditing())) return;
     const requestId = ++openProductFileRequestId;
     selectedProductFileId = fileId;
     productFileLoading = true;
     productFileLoadError = null;
+    productFileEditing = false;
     renderProductFilesList();
     updateFileActionState();
     renderFileBrowserMessage(tt('loadingFile'));
@@ -598,6 +647,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       if (requestId !== openProductFileRequestId) return;
 
       currentProductFileDetail = detail;
+      currentWorkbookBuffer = workbookBuffer;
       productFileLoading = false;
       productFileLoadError = null;
       renderProductFilesList();
@@ -608,6 +658,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       if (requestId !== openProductFileRequestId) return;
 
       currentProductFileDetail = null;
+      currentWorkbookBuffer = null;
       productFileLoading = false;
       productFileLoadError = error instanceof Error ? error.message : tt('fileLoadFailed');
       disposeWorkbookViewer();
@@ -640,12 +691,39 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     workbookViewer = createWorkbookViewer({
       container: mount,
       workbookData,
+      readOnly: !productFileEditing,
     });
     updateFileActionState();
   }
 
+  function enterProductFileEditing() {
+    if (!currentProductFileDetail || !currentWorkbookBuffer || productFileEditing) return;
+    if (productFileLoading || productFileSaving) return;
+    productFileEditing = true;
+    renderWorkbookViewer(currentWorkbookBuffer, currentProductFileDetail);
+  }
+
+  function confirmDiscardEditing() {
+    return confirmAction(tt('discardEditConfirm'), {
+      title: tt('discardEditTitle'),
+      confirmText: tt('discardEdit'),
+      tone: 'danger',
+    });
+  }
+
+  async function cancelProductFileEditing() {
+    if (!productFileEditing || productFileSaving) return;
+    if (!(await confirmDiscardEditing())) return;
+    productFileEditing = false;
+    if (!currentProductFileDetail || !currentWorkbookBuffer) {
+      updateFileActionState();
+      return;
+    }
+    renderWorkbookViewer(currentWorkbookBuffer, currentProductFileDetail);
+  }
+
   async function saveCurrentProductFile() {
-    if (!currentProductFileDetail || !workbookViewer || productFileSaving) return;
+    if (!currentProductFileDetail || !workbookViewer || productFileSaving || !productFileEditing) return;
 
     const blob = workbookViewer.exportXlsxBlob();
     if (!blob) {
@@ -675,8 +753,10 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
         completedText: { 'zh-CN': '保存完成', 'en-US': 'Save completed' },
       });
       productFileSaving = false;
+      productFileEditing = false;
       renderProductFilesList();
       updateFileActionState();
+      notify(tt('saved'), { type: 'success' });
       await openProductFile(currentProductFileDetail.file.id);
     } catch (error) {
       productFileSaving = false;
@@ -696,6 +776,8 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
 
     if (currentProductFileDetail?.file.id === fileId) {
       currentProductFileDetail = null;
+      currentWorkbookBuffer = null;
+      productFileEditing = false;
       disposeWorkbookViewer();
     }
     if (selectedProductFileId === fileId) {
@@ -770,6 +852,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     empty.textContent = message;
     empty.classList.remove('hidden');
     viewer.classList.add('hidden');
+    document.getElementById('filesViewerToolbar')?.classList.add('hidden');
   }
 
   function disposeWorkbookViewer() {
@@ -781,11 +864,36 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   }
 
   function updateFileActionState() {
+    const toolbar = document.getElementById('filesViewerToolbar');
+    const nameLabel = document.getElementById('filesViewerFileName');
+    const badge = document.getElementById('filesViewerModeBadge');
+    const editButton = document.getElementById('btnEditProductFile') as HTMLButtonElement | null;
     const saveButton = document.getElementById('btnSaveProductFile') as HTMLButtonElement | null;
-    if (!saveButton) return;
-    const disabled = !currentProductFileDetail || !workbookViewer || productFileLoading || productFileSaving;
-    saveButton.disabled = disabled;
+    const cancelButton = document.getElementById('btnCancelProductFileEdit') as HTMLButtonElement | null;
+    if (!toolbar || !nameLabel || !badge || !editButton || !saveButton || !cancelButton) return;
+
+    const hasWorkbook = Boolean(currentProductFileDetail && workbookViewer);
+    toolbar.classList.toggle('hidden', !hasWorkbook);
+    if (!hasWorkbook) return;
+
+    const file = currentProductFileDetail!.file;
+    nameLabel.textContent = getProductFileDisplayName(file);
+    nameLabel.setAttribute('title', getProductFileDisplayPath(file));
+    badge.textContent = productFileEditing ? tt('editingMode') : tt('readOnlyMode');
+    badge.classList.toggle('files-viewer-toolbar__badge--editing', productFileEditing);
+    badge.setAttribute('title', productFileEditing ? tt('editingMode') : tt('readOnlyHint'));
+
+    editButton.textContent = tt('edit');
+    editButton.classList.toggle('hidden', productFileEditing);
+    editButton.disabled = productFileLoading || productFileSaving;
+
     saveButton.textContent = productFileSaving ? tt('saving') : tt('save');
+    saveButton.classList.toggle('hidden', !productFileEditing);
+    saveButton.disabled = productFileLoading || productFileSaving;
+
+    cancelButton.textContent = tt('cancel');
+    cancelButton.classList.toggle('hidden', !productFileEditing);
+    cancelButton.disabled = productFileSaving;
   }
 
   function applyFilesWorkspaceLayout() {

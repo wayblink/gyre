@@ -1,4 +1,5 @@
 import { dataframeAssertOperator } from './dataframeAssert.js';
+import { dataframeKeyedMergeOperator } from './dataframeKeyedMerge.js';
 import { dataframePersistExcelOperator } from './dataframePersistExcel.js';
 import { dataframeSchemaAssertOperator } from './dataframeSchemaAssert.js';
 import { dataframeShapeAssertOperator } from './dataframeShapeAssert.js';
@@ -9,6 +10,7 @@ import { sheetRangeExtractOperator } from './sheetRangeExtract.js';
 import { sheetOptionalRangeExtractOperator } from './sheetOptionalRangeExtract.js';
 import { sheetSectionsExtractOperator } from './sheetSectionsExtract.js';
 import { sqlComputeOperator } from './sqlCompute.js';
+import { workflowInvokeOperator } from './workflowInvoke.js';
 import { workbookPersistExcelOperator } from './workbookPersistExcel.js';
 
 export const workflowOperatorDefinitions = [
@@ -17,6 +19,7 @@ export const workflowOperatorDefinitions = [
   sheetSectionsExtractOperator,
   sqlComputeOperator,
   dataframeUnionOperator,
+  dataframeKeyedMergeOperator,
   dataframeAssertOperator,
   dataframeSqlAssertOperator,
   dataframeSchemaAssertOperator,
@@ -24,6 +27,7 @@ export const workflowOperatorDefinitions = [
   dataframePersistExcelOperator,
   workbookPersistExcelOperator,
   dbUpsertOperator,
+  workflowInvokeOperator,
 ] as const;
 
 export const workflowOperatorDefinitionByCode = new Map(

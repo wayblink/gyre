@@ -8,6 +8,7 @@ const filesPageSource = readFileSync(new URL('./filesPage.ts', import.meta.url),
 const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
 const monthlyRunPageSource = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
 const uploadProgressSource = readFileSync(new URL('./uploadProgress.ts', import.meta.url), 'utf8');
+const workbookViewerSource = readFileSync(new URL('./univer/createWorkbookViewer.ts', import.meta.url), 'utf8');
 const docsPageSource = readFileSync(new URL('./docsPage.ts', import.meta.url), 'utf8');
 
 function pageLabel(page: string): string {
@@ -89,6 +90,26 @@ test('captable is the renamed Summary page and new product pages have matching s
   assert.doesNotMatch(html, /id="page-summary"/);
 });
 
+test('capitalization summary shows month-over-month change beside each value', () => {
+  const capitalizationHead = html.match(/id="capitalizationTable"[\s\S]*?<\/thead>/)?.[0] ?? '';
+
+  // The change columns share the header of the value they follow, so the table reads as 4 columns.
+  assert.match(capitalizationHead, /<th class="col-number" colspan="2">Common Shares Equivalent<\/th>/);
+  assert.match(capitalizationHead, /<th class="col-percent" colspan="2">% of fully diluted<\/th>/);
+
+  assert.match(mainSource, /computeCapitalizationRowDeltas\(item, findComparableRow\(baselineIndex, item\)\)/);
+  assert.match(mainSource, /renderCapitalizationDeltaCell\(deltas\.shares\)/);
+  assert.match(mainSource, /renderCapitalizationDeltaCell\(deltas\.percent\)/);
+  assert.match(mainSource, /<td class="col-delta cap-delta--flat">–<\/td>/);
+  assert.match(mainSource, /colspan="5" style="text-align:left;"/);
+  assert.match(mainSource, /capitalizationBody'\)\.innerHTML = `<tr><td colspan="6"/);
+
+  assert.match(css, /\.cap-delta--up\s*\{\s*color: var\(--success-600\);/);
+  assert.match(css, /\.cap-delta--down\s*\{\s*color: var\(--danger-600\);/);
+  assert.match(css, /\.cap-delta--flat\s*\{/);
+  assert.match(css, /\.col-delta\s*\{/);
+});
+
 test('new product pages expose real data containers instead of placeholder-only shells', () => {
   assert.match(html, /id="page-grant-record"[\s\S]*id="grantTable-futu"/);
   assert.match(html, /id="page-grant-record"[\s\S]*id="holdingsBody"/);
@@ -116,6 +137,8 @@ test('new product pages expose real data containers instead of placeholder-only 
   assert.match(html, /id="page-five-percent-holders"[\s\S]*id="fivePercentHoldersBody"/);
   const monthlyRunPage = html.match(/id="page-monthlyrun"[\s\S]*?<div class="modal-overlay hidden" id="monthlyRunSourceModal"/)?.[0] ?? '';
   assert.match(monthlyRunPage, /来自 Shareworks 的输入表[\s\S]*id="shareworksBody"[\s\S]*来自 Futu 的输入表[\s\S]*id="futuBody"[\s\S]*Previous Capitalization Summary[\s\S]*id="previousCapitalizationSummaryBody"/);
+  assert.doesNotMatch(monthlyRunPage, /bcSubplanTransferOverride|transferDecision/);
+  assert.match(monthlyRunPage, /id="monthlyRunInputCard"[\s\S]*id="btnToggleMonthlyRunInput"/);
   const shareworksSection = monthlyRunPage.match(/<div class="source-table-title">来自 Shareworks 的输入表<\/div>[\s\S]*?<tbody id="shareworksBody"><\/tbody>/)?.[0] ?? '';
   assert.doesNotMatch(shareworksSection, /Previous Capitalization Summary/);
   assert.match(html, /id="page-fixed-value"[\s\S]*id="fixedValuePageBody"/);
@@ -123,6 +146,8 @@ test('new product pages expose real data containers instead of placeholder-only 
 });
 
 test('file uploads use a shared visible progress dialog', () => {
+  const sourceActionSection = css.match(/\/\* ============ 27\. File Action Buttons \(Source Tables\) ============ \*\/[\s\S]*?\/\* ============================================================\s+Link Detail Modal - Table Styles \*\//)?.[0] ?? '';
+
   assert.match(html, /id="uploadProgressModal"[\s\S]*role="dialog"[\s\S]*id="uploadProgressTitle"/);
   assert.match(html, /id="uploadProgressBar"[^>]*role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"/);
   assert.match(html, /id="uploadProgressFill"/);
@@ -130,6 +155,10 @@ test('file uploads use a shared visible progress dialog', () => {
   assert.match(html, /id="uploadProgressStatus"/);
   assert.match(css, /\.upload-progress__track\s*\{[\s\S]*overflow:\s*hidden;/);
   assert.match(css, /\.upload-progress__track--indeterminate \.upload-progress__fill/);
+  assert.match(css, /\.source-uploaded-cell\s*\{/);
+  assert.match(css, /\.source-file-link__text\s*\{/);
+  assert.match(css, /\.source-file-copy\s*\{/);
+  assert.doesNotMatch(sourceActionSection, /word-break:\s*break-all;/);
 
   assert.match(uploadProgressSource, /new XMLHttpRequest\(\)/);
   assert.match(uploadProgressSource, /xhr\.upload\.onprogress/);
@@ -138,6 +167,37 @@ test('file uploads use a shared visible progress dialog', () => {
   assert.match(mainSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
   assert.match(mainSource, /uploadFormDataWithProgress\('\/api\/transfer-plan\/import'/);
   assert.match(monthlyRunPageSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
+  assert.match(monthlyRunPageSource, /renderUploadedFileCell\(file\)/);
+  assert.match(monthlyRunPageSource, /\.source-file-link\[data-source-file-preview\]/);
+  assert.match(monthlyRunPageSource, /\.source-file-copy\[data-source-file-copy\]/);
+  assert.doesNotMatch(monthlyRunPageSource, /data-business-source-preview/);
+  assert.match(monthlyRunPageSource, /openProductFile\(fileId\)/);
+});
+
+test('files viewer opens read-only and exposes edit/save/cancel controls', () => {
+  const filesPageMarkup = html.match(/<section class="sheet-card">[\s\S]*?<\/section>/)?.[0] ?? '';
+
+  assert.match(filesPageMarkup, /id="filesViewerToolbar"/);
+  assert.match(filesPageMarkup, /id="filesViewerModeBadge"/);
+  assert.match(filesPageMarkup, /id="btnEditProductFile"/);
+  assert.match(filesPageMarkup, /id="btnSaveProductFile"/);
+  assert.match(filesPageMarkup, /id="btnCancelProductFileEdit"/);
+  assert.match(css, /\.files-viewer-toolbar\s*\{/);
+
+  assert.match(filesPageSource, /readOnly: !productFileEditing/);
+  assert.match(filesPageSource, /productFileEditing = false;/);
+  assert.match(filesPageSource, /!productFileEditing\) return;/);
+  assert.match(workbookViewerSource, /readOnly = false/);
+  assert.match(workbookViewerSource, /setReadOnly\(\)/);
+});
+
+test('monthly run uploaded time uses the yyyy-MM-dd HH:mm:ss format', () => {
+  assert.match(
+    monthlyRunPageSource,
+    /const day = `\$\{date\.getFullYear\(\)\}-\$\{pad\(date\.getMonth\(\) \+ 1\)\}-\$\{pad\(date\.getDate\(\)\)\}`/,
+  );
+  assert.match(monthlyRunPageSource, /\$\{day\} \$\{pad\(date\.getHours\(\)\)\}:\$\{pad\(date\.getMinutes\(\)\)\}:\$\{pad\(date\.getSeconds\(\)\)\}/);
+  assert.doesNotMatch(monthlyRunPageSource, /formatCompactTimestamp/);
 });
 
 test('Grant Record exposes Futu, Shareworks, and Merge tabs with source-specific tables', () => {
@@ -359,6 +419,31 @@ test('workflow editor toolbar exposes export alongside execute save and delete',
   assert.match(workflowPage, /id="btnDeleteWorkflow"/);
 });
 
+test('workflow task editor exposes a taller SQL editor with normalization controls', () => {
+  const workflowSource = readFileSync(new URL('./workflowPage.ts', import.meta.url), 'utf8');
+
+  assert.match(html, /id="btnNormalizeWorkflowSql"[\s\S]*规范化 SQL/);
+  assert.match(html, /id="workflowSqlInput" class="workflow-code-input workflow-code-input--sql"/);
+  assert.match(html, /id="btnNormalizeWorkflowSqlFullscreen"[\s\S]*规范化 SQL/);
+  assert.match(css, /\.workflow-code-input--sql\s*\{[\s\S]*min-height:\s*260px;/);
+  assert.match(workflowSource, /function formatSqlExpressionList/);
+  assert.match(workflowSource, /function splitSqlTopLevelList/);
+  assert.match(workflowSource, /function formatSqlCondition/);
+});
+
+test('workflow runtime parameter controls are synchronized before save and execute', () => {
+  const workflowSource = readFileSync(new URL('./workflowPage.ts', import.meta.url), 'utf8');
+
+  assert.match(workflowSource, /function syncVisibleRuntimeDefaultsToWorkflow\(workflow: WorkflowDefinition\)/);
+  assert.match(workflowSource, /async function executeWorkflow\(\)[\s\S]*?syncVisibleRuntimeDefaultsToWorkflow\(workflow\);[\s\S]*?persistWorkflowDefinition\(workflow/);
+  assert.match(workflowSource, /async function saveWorkflow\(\)[\s\S]*?workflow\.name = name;[\s\S]*?syncVisibleRuntimeDefaultsToWorkflow\(workflow\);/);
+  assert.match(workflowSource, /const sameFile = existing\.key === nextFileKey/);
+  assert.match(workflowSource, /\.\.\.\(sameFile \? existing : \{\}\)/);
+  assert.match(workflowSource, /expectedUpdatedAt: workflow\.updatedAt/);
+  assert.match(workflowSource, /if \(isWorkflowPersisting\) throw new Error\('工作流配置正在保存，请稍候'\)/);
+  assert.doesNotMatch(workflowSource, /sanitizeWorkflowFileReferences/);
+});
+
 test('workflow list cards do not shrink when the list overflows', () => {
   assert.match(css, /\.workflow-list__item\s*\{[\s\S]*flex:\s*0\s+0\s+auto;/);
 });
@@ -415,7 +500,7 @@ test('Global Parameter exposes administrator-only create and delete controls', (
 
   assert.match(fixedValuePage, /<h2>Global Parameter<\/h2>/);
   assert.match(fixedValuePage, /<h3 class="card-title">参数<\/h3>/);
-  assert.match(fixedValuePage, /<th>Updated At<\/th>/);
+  assert.match(fixedValuePage, /<th>参数解释<\/th>/);
   assert.doesNotMatch(fixedValuePage, /<th>Effective From<\/th>/);
   assert.doesNotMatch(fixedValuePage, /id="fixedValueEffectiveFrom"/);
   assert.doesNotMatch(fixedValuePage, /管理员可维护/);
@@ -439,13 +524,18 @@ test('Files page uses Browser tree view by default with file search control', ()
   assert.match(filesPage, /id="btnCreateProductFile">New<\/button>/);
   assert.match(filesPage, /id="btnRefreshFiles">Refresh<\/button>/);
   assert.match(filesPage, /id="btnUploadProductFile">Upload<\/button>/);
-  assert.doesNotMatch(filesPage, /id="btnSaveProductFile"/);
+  assert.match(filesPage, /id="filesSelectAll"/);
+  assert.match(filesPage, /id="btnDeleteSelectedFiles"/);
+  const filesBrowserActions = filesPage.match(/<div class="workbook-list__actions">[\s\S]*?<\/div>/)?.[0] ?? '';
+  assert.doesNotMatch(filesBrowserActions, /id="btnSaveProductFile"/);
+  assert.match(filesPage, /id="filesViewerToolbar"[\s\S]*id="btnSaveProductFile"/);
   assert.match(filesPage, /id="btnFilesViewToggle"[\s\S]*id="btnRefreshFiles"[\s\S]*id="btnUploadProductFile"/);
   assert.match(filesPage, /id="btnFilesViewToggle"/);
   assert.doesNotMatch(filesPage, /id="btnFilesViewList"/);
   assert.doesNotMatch(filesPage, /id="btnFilesViewTree"/);
   assert.match(filesPage, /workbook-list__view-switch[\s\S]*btnFilesViewToggle/);
   assert.match(filesPageSource, /workbook-tree__delete/);
+  assert.match(filesPageSource, /workbook-tree__select/);
 });
 
 test('Files Browser list shows a stable right-side scrollbar', () => {
@@ -468,6 +558,20 @@ test('Files and Workflow use flex-propagated viewport height instead of fixed vi
   assert.doesNotMatch(css, /--workflow-panel-height/);
   assert.match(css, /\.workflow-page\s*\{[\s\S]*height:\s*100%;/);
   assert.match(css, /\.workflow-sidebar,\s*\.workflow-canvas,\s*\.workflow-inspector\s*\{[\s\S]*height:\s*100%;/);
+});
+
+test('workflow middle column scrolls runtime params, execution, and canvas with one scrollbar', () => {
+  // The middle column owns a single vertical scrollbar instead of clipping its content.
+  assert.match(css, /\.workflow-canvas\s*\{[^}]*overflow-y:\s*auto;[^}]*\}/);
+  assert.match(css, /\.workflow-canvas\s*\{[^}]*overflow-x:\s*hidden;[^}]*\}/);
+  assert.doesNotMatch(css, /\.workflow-canvas\s*\{[^}]*overflow:\s*hidden;[^}]*\}/);
+  // Header and execution panel keep their natural height so they scroll instead of compressing.
+  assert.match(
+    css,
+    /\.workflow-canvas > \.workflow-toolbar,\s*\.workflow-canvas > \.workflow-run-panel\s*\{[^}]*flex:\s*0\s+0\s+auto;/,
+  );
+  // The canvas fills leftover space but never collapses, so it participates in the shared scroll.
+  assert.match(css, /\.workflow-dag-shell\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*min-height:\s*520px;/);
 });
 
 test('workflow sidebar includes a search input matching the Files search control', () => {

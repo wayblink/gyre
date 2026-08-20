@@ -894,7 +894,7 @@
                         </div>
                         <div class="card-body">
                             <table class="data-table product-spec-table">
-                                <thead><tr><th>Key</th><th>Item</th><th>Value</th><th>Updated At</th><th>Updated By</th><th>Actions</th></tr></thead>
+                                <thead><tr><th>Key</th><th>参数解释</th><th>Value</th><th>Updated At</th><th>Updated By</th><th>Actions</th></tr></thead>
                                 <tbody id="fixedValuePageBody"></tbody>
                             </table>
                         </div>
@@ -917,8 +917,8 @@
                                     <input type="text" id="fixedValueKey" class="form-input" autocomplete="off" placeholder="例如: options_available_gyre">
                                 </div>
                                 <div class="form-group">
-                                    <label for="fixedValueLabel">Item</label>
-                                    <input type="text" id="fixedValueLabel" class="form-input" autocomplete="off" placeholder="参数名称">
+                                    <label for="fixedValueLabel">参数解释</label>
+                                    <input type="text" id="fixedValueLabel" class="form-input" autocomplete="off" placeholder="参数解释">
                                 </div>
                                 <div class="form-group">
                                     <label for="fixedValueValue">Value</label>
@@ -949,8 +949,8 @@
                                     <input type="text" id="fixedValueEditKey" class="form-input" readonly>
                                 </div>
                                 <div class="form-group">
-                                    <label for="fixedValueEditLabel">Item</label>
-                                    <input type="text" id="fixedValueEditLabel" class="form-input" autocomplete="off" placeholder="参数名称">
+                                    <label for="fixedValueEditLabel">参数解释</label>
+                                    <input type="text" id="fixedValueEditLabel" class="form-input" autocomplete="off" placeholder="参数解释">
                                 </div>
                                 <div class="form-group">
                                     <label for="fixedValueEditValue">Value</label>
@@ -1051,8 +1051,8 @@
                                     <tr>
                                         <th style="width:50px;">Number</th>
                                         <th class="col-description">Description</th>
-                                        <th class="col-number">Common Shares Equivalent</th>
-                                        <th class="col-percent">% of fully diluted</th>
+                                        <th class="col-number" colspan="2">Common Shares Equivalent</th>
+                                        <th class="col-percent" colspan="2">% of fully diluted</th>
                                     </tr>
                                 </thead>
                                 <tbody id="capitalizationBody"></tbody>
@@ -1196,7 +1196,6 @@
                                     <table class="source-table source-table--inputs" id="shareworksTable">
                                         <colgroup>
                                             <col class="source-table__col-file">
-                                            <col class="source-table__col-used">
                                             <col class="source-table__col-required">
                                             <col class="source-table__col-uploaded">
                                             <col class="source-table__col-uploaded-time">
@@ -1205,7 +1204,6 @@
                                         <thead>
                                             <tr>
                                                 <th>File Name</th>
-                                                <th style="width:72px;">Used</th>
                                                 <th style="width:80px;">Is required</th>
                                                 <th>Uploaded file</th>
                                                 <th>Uploaded time</th>
@@ -1220,7 +1218,6 @@
                                     <table class="source-table source-table--inputs" id="futuTable">
                                         <colgroup>
                                             <col class="source-table__col-file">
-                                            <col class="source-table__col-used">
                                             <col class="source-table__col-required">
                                             <col class="source-table__col-uploaded">
                                             <col class="source-table__col-uploaded-time">
@@ -1229,7 +1226,6 @@
                                         <thead>
                                             <tr>
                                                 <th>File Name</th>
-                                                <th style="width:72px;">Used</th>
                                                 <th style="width:80px;">Is required</th>
                                                 <th>Uploaded file</th>
                                                 <th>Uploaded time</th>
@@ -1244,7 +1240,6 @@
                                     <table class="source-table source-table--inputs" id="previousCapitalizationSummaryTable">
                                         <colgroup>
                                             <col class="source-table__col-file">
-                                            <col class="source-table__col-used">
                                             <col class="source-table__col-required">
                                             <col class="source-table__col-uploaded">
                                             <col class="source-table__col-uploaded-time">
@@ -1253,7 +1248,6 @@
                                         <thead>
                                             <tr>
                                                 <th>File Name</th>
-                                                <th style="width:72px;">Used</th>
                                                 <th style="width:80px;">Is required</th>
                                                 <th>Uploaded file</th>
                                                 <th>Uploaded time</th>
@@ -1442,6 +1436,14 @@
                                     />
                                 </div>
 
+                                <div class="workbook-list__bulk-actions">
+                                    <label class="workbook-list__bulk-select" for="filesSelectAll">
+                                        <input id="filesSelectAll" type="checkbox" />
+                                        <span>全选</span>
+                                    </label>
+                                    <button type="button" class="btn btn-danger btn-sm" id="btnDeleteSelectedFiles" disabled>批量删除</button>
+                                </div>
+
                                 <div class="workbook-list__items" id="productFilesList"></div>
                             </aside>
                         </div>
@@ -1449,6 +1451,17 @@
                         <div class="divider" id="filesWorkspaceDivider" role="separator" aria-orientation="vertical"></div>
 
                         <section class="sheet-card">
+                            <div class="files-viewer-toolbar hidden" id="filesViewerToolbar">
+                                <div class="files-viewer-toolbar__info">
+                                    <span class="files-viewer-toolbar__name" id="filesViewerFileName"></span>
+                                    <span class="files-viewer-toolbar__badge" id="filesViewerModeBadge"></span>
+                                </div>
+                                <div class="files-viewer-toolbar__actions">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btnEditProductFile" data-no-static-translate></button>
+                                    <button type="button" class="btn btn-primary btn-sm hidden" id="btnSaveProductFile" data-no-static-translate></button>
+                                    <button type="button" class="btn btn-secondary btn-sm hidden" id="btnCancelProductFileEdit" data-no-static-translate></button>
+                                </div>
+                            </div>
                             <div class="files-empty-state" id="fileBrowserEmpty">
                                 选择左侧文件后可在页面内查看完整 Excel 工作簿。
                             </div>
@@ -1639,6 +1652,7 @@
                                     <div class="workflow-structured__row" id="workflowStructuredSheetRow">
                                         <label class="workflow-structured__label" for="workflowPreviewSheetName">Sheet</label>
                                         <input id="workflowPreviewSheetName" class="search-input workflow-input" placeholder="Detailed Cap Table">
+                                        <select id="workflowPreviewSheetSelect" class="search-input workflow-select hidden"></select>
                                     </div>
                                     <div class="workflow-structured__row" id="workflowStructuredRangeRow">
                                         <label class="workflow-structured__label" for="workflowPreviewRange">Range</label>
@@ -1655,9 +1669,12 @@
                                         <div id="workflowSqlTables"></div>
                                     </div>
                                     <div class="workflow-structured__row hidden" id="workflowStructuredSqlRow">
-                                        <label class="workflow-structured__label" for="workflowSqlInput">SQL</label>
+                                        <div class="workflow-sql-editor-head">
+                                            <label class="workflow-structured__label" for="workflowSqlInput">SQL</label>
+                                            <button class="btn btn-secondary btn-sm workflow-sql-normalize-button" id="btnNormalizeWorkflowSql" type="button">规范化 SQL</button>
+                                        </div>
                                         <div class="workflow-sql-editor-shell">
-                                            <textarea id="workflowSqlInput" class="workflow-code-input" spellcheck="false" placeholder="select count(*) as total from {source}"></textarea>
+                                            <textarea id="workflowSqlInput" class="workflow-code-input workflow-code-input--sql" spellcheck="false" placeholder="select count(*) as total from {source}"></textarea>
                                             <button class="workflow-sql-fullscreen-button" id="btnOpenWorkflowSqlFullscreen" type="button" title="Fullscreen SQL editor" aria-label="Fullscreen SQL editor">
                                                 <svg viewBox="0 0 24 24" aria-hidden="true">
                                                     <path d="M8 3H4a1 1 0 0 0-1 1v4h2V5h3V3Zm8 0v2h3v3h2V4a1 1 0 0 0-1-1h-4ZM5 16H3v4a1 1 0 0 0 1 1h4v-2H5v-3Zm14 3h-3v2h4a1 1 0 0 0 1-1v-4h-2v3Z"></path>
@@ -1791,6 +1808,7 @@
                         </div>
                         <div class="modal-footer">
                             <button class="btn btn-secondary" id="btnCancelWorkflowSqlFullscreen" type="button">Cancel</button>
+                            <button class="btn btn-secondary" id="btnNormalizeWorkflowSqlFullscreen" type="button">规范化 SQL</button>
                             <button class="btn btn-primary" id="btnApplyWorkflowSqlFullscreen" type="button">Apply</button>
                         </div>
                     </div>
@@ -1861,6 +1879,44 @@
                         <div class="modal-footer">
                             <button class="btn btn-secondary" id="btnCancelWorkflowOperatorPicker" type="button">Cancel</button>
                             <button class="btn btn-primary" id="btnConfirmWorkflowOperatorPicker" type="button">Create Task</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay hidden" id="workflowFilePickerModal">
+                    <div class="modal-container modal-large workflow-file-picker-modal">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title" id="workflowFilePickerTitle" data-no-static-translate>选择文件</h3>
+                                <p class="modal-subtitle" id="workflowFilePickerSubtitle" data-no-static-translate>点击选择文件，也可以上传新文件或把文件移动到其他目录。</p>
+                            </div>
+                            <button class="modal-close" id="btnCloseWorkflowFilePicker">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="workflow-file-picker__toolbar">
+                                <input type="search" id="workflowFilePickerSearch" class="search-input workflow-file-picker__search" autocomplete="off" data-no-static-translate>
+                                <button class="btn btn-secondary btn-sm" id="btnWorkflowFilePickerUpload" type="button" data-no-static-translate></button>
+                                <button class="btn btn-secondary btn-sm" id="btnWorkflowFilePickerMove" type="button" data-no-static-translate disabled></button>
+                                <button class="btn btn-secondary btn-sm hidden" id="btnWorkflowFilePickerClear" type="button" data-no-static-translate></button>
+                            </div>
+                            <div class="workflow-file-picker__tree workbook-list__items workbook-list__items--tree" id="workflowFilePickerTree"></div>
+                            <div class="workflow-file-picker__move hidden" id="workflowFilePickerMovePanel">
+                                <div class="workflow-file-picker__move-title" id="workflowFilePickerMoveTitle" data-no-static-translate></div>
+                                <div class="workflow-file-picker__folder-list" id="workflowFilePickerFolderList"></div>
+                                <label class="workflow-file-picker__new-folder">
+                                    <span id="workflowFilePickerNewFolderLabel" data-no-static-translate></span>
+                                    <input id="workflowFilePickerNewFolder" class="search-input" placeholder="input/2026-08" autocomplete="off">
+                                </label>
+                                <div class="workflow-file-picker__move-error hidden" id="workflowFilePickerMoveError"></div>
+                                <div class="workflow-file-picker__move-actions">
+                                    <button class="btn btn-secondary btn-sm" id="btnWorkflowFilePickerMoveCancel" type="button" data-no-static-translate></button>
+                                    <button class="btn btn-primary btn-sm" id="btnWorkflowFilePickerMoveConfirm" type="button" data-no-static-translate></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" id="btnCancelWorkflowFilePicker" type="button" data-no-static-translate></button>
+                            <button class="btn btn-primary" id="btnConfirmWorkflowFilePicker" type="button" data-no-static-translate disabled></button>
                         </div>
                     </div>
                 </div>

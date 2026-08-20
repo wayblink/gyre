@@ -1,6 +1,7 @@
 import type {
   WorkflowExecutionResult,
   WorkflowExecutionTaskState,
+  ProductFileDetail,
   ProductFileRecord,
   WorkflowAssertFailureStrategy,
   WorkflowAssertionResult,
@@ -22,6 +23,7 @@ import type {
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { applyStaticTranslations, type AppLanguage } from './i18n.js';
+import { createFilePickerModal } from './filePickerModal.js';
 import { renderOperatorConfigForm, syncOperatorConfigForm } from './workflow/operatorConfigForm.js';
 import {
   applyTaskOperatorDefaults,
@@ -46,6 +48,7 @@ import {
   isSqlAssertTask,
   isSqlComputeTask,
   isSqlTableBackedTask,
+  isWorkflowRuntimeParameterReference,
   nextSqlInputSlotName,
   normalizeAssertTask,
   normalizePersistExcelTask,
@@ -56,6 +59,14 @@ import {
   normalizeSqlTask,
   normalizeTaskDependencies,
 } from './workflow/taskOperators.js';
+import {
+  buildRuntimeInputFileItems,
+  isRuntimeFileParameter,
+  isRuntimeInputFileParameter,
+  shouldRerenderRuntimeDefaultControl,
+  type RuntimeInputFileItem,
+  type RuntimeParameterEntry,
+} from './workflow/runtimeParameterPresentation.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
@@ -63,6 +74,7 @@ type WorkflowPageDeps = {
   el: DomGetter;
   api: <T>(url: string, options?: RequestInit) => Promise<T>;
   escapeHtml: (text: unknown) => string;
+  formatFileSize: (bytes: number) => string;
   getProductFiles: () => ProductFileRecord[];
   refreshProductFiles: () => Promise<unknown>;
   notify: NotifyFn;
@@ -70,7 +82,237 @@ type WorkflowPageDeps = {
   getLanguage?: () => AppLanguage;
 };
 
-export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refreshProductFiles, notify, confirmAction, getLanguage }: WorkflowPageDeps) {
+export function normalizeWorkflowSqlText(sql: string): string {
+  const protectedSql = protectSqlLiterals(sql.trim());
+  if (!protectedSql.text) return '';
+
+  let formatted = canonicalizeSqlKeywords(protectedSql.text)
+    .replace(/\s+/g, ' ')
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/\s*([()])\s*/g, ' $1 ')
+    .replace(/\s*([=<>!]+)\s*/g, ' $1 ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  formatted = formatted
+    .replace(/\s+(WITH|SELECT|FROM|WHERE|GROUP BY|HAVING|ORDER BY|LIMIT|OFFSET|UNION ALL|UNION)\b/g, '\n$1')
+    .replace(/\s+((?:LEFT|RIGHT|INNER|FULL|CROSS)\s+JOIN|JOIN)\b/g, '\n$1')
+    .replace(/\s+(ON)\b/g, '\n$1');
+
+  formatted = formatSqlClauseLines(formatted);
+  formatted = indentSqlLines(formatted);
+  return restoreSqlLiterals(formatted, protectedSql.parts);
+}
+
+function protectSqlLiterals(sql: string): { text: string; parts: string[] } {
+  const parts: string[] = [];
+  const placeholderPrefix = '__GYRE_SQL_PART_';
+  let text = '';
+  for (let index = 0; index < sql.length; index += 1) {
+    const char = sql[index];
+    if (char === "'" || char === '"' || char === '`') {
+      const quote = char;
+      let part = quote;
+      index += 1;
+      while (index < sql.length) {
+        const next = sql[index];
+        part += next;
+        if (next === quote) {
+          if (sql[index + 1] === quote) {
+            part += sql[index + 1];
+            index += 2;
+            continue;
+          }
+          break;
+        }
+        index += 1;
+      }
+      text += `${placeholderPrefix}${parts.length}__`;
+      parts.push(part);
+      continue;
+    }
+    if (char === '[') {
+      let part = char;
+      index += 1;
+      while (index < sql.length) {
+        const next = sql[index];
+        part += next;
+        if (next === ']') break;
+        index += 1;
+      }
+      text += `${placeholderPrefix}${parts.length}__`;
+      parts.push(part);
+      continue;
+    }
+    text += char;
+  }
+  return { text, parts };
+}
+
+function restoreSqlLiterals(sql: string, parts: string[]): string {
+  let restored = sql;
+  parts.forEach((part, index) => {
+    restored = restored.replace(new RegExp(`__GYRE_SQL_PART_${index}__`, 'g'), part);
+  });
+  return restored;
+}
+
+function canonicalizeSqlKeywords(sql: string): string {
+  const replacements: Array<[RegExp, string]> = [
+    [/\bunion\s+all\b/gi, 'UNION ALL'],
+    [/\bgroup\s+by\b/gi, 'GROUP BY'],
+    [/\border\s+by\b/gi, 'ORDER BY'],
+    [/\bleft\s+join\b/gi, 'LEFT JOIN'],
+    [/\bright\s+join\b/gi, 'RIGHT JOIN'],
+    [/\binner\s+join\b/gi, 'INNER JOIN'],
+    [/\bfull\s+join\b/gi, 'FULL JOIN'],
+    [/\bcross\s+join\b/gi, 'CROSS JOIN'],
+    [/\bselect\b/gi, 'SELECT'],
+    [/\bdistinct\b/gi, 'DISTINCT'],
+    [/\bfrom\b/gi, 'FROM'],
+    [/\bwhere\b/gi, 'WHERE'],
+    [/\bhaving\b/gi, 'HAVING'],
+    [/\blimit\b/gi, 'LIMIT'],
+    [/\boffset\b/gi, 'OFFSET'],
+    [/\bunion\b/gi, 'UNION'],
+    [/\bjoin\b/gi, 'JOIN'],
+    [/\bon\b/gi, 'ON'],
+    [/\bas\b/gi, 'AS'],
+    [/\band\b/gi, 'AND'],
+    [/\bor\b/gi, 'OR'],
+    [/\bcase\b/gi, 'CASE'],
+    [/\bwhen\b/gi, 'WHEN'],
+    [/\bthen\b/gi, 'THEN'],
+    [/\belse\b/gi, 'ELSE'],
+    [/\bend\b/gi, 'END'],
+    [/\bnull\b/gi, 'NULL'],
+    [/\bis\b/gi, 'IS'],
+    [/\bnot\b/gi, 'NOT'],
+    [/\bin\b/gi, 'IN'],
+  ];
+  return replacements.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), sql);
+}
+
+function splitSqlTopLevelList(text: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let depth = 0;
+  for (const char of text) {
+    if (char === '(') depth += 1;
+    if (char === ')') depth = Math.max(0, depth - 1);
+    if (char === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+function splitSqlTopLevelConditions(text: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let depth = 0;
+  const words = text.split(' ');
+  for (const word of words) {
+    for (const char of word) {
+      if (char === '(') depth += 1;
+      if (char === ')') depth = Math.max(0, depth - 1);
+    }
+    if ((word === 'AND' || word === 'OR') && depth === 0 && current.trim()) {
+      parts.push(current.trim());
+      current = word;
+      continue;
+    }
+    current = current ? `${current} ${word}` : word;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+function formatSqlExpressionList(prefix: string, body: string): string[] {
+  const items = splitSqlTopLevelList(body);
+  if (items.length <= 1) return [prefix, `  ${body}`];
+  return [
+    prefix,
+    ...items.map((item, index) => `  ${item}${index < items.length - 1 ? ',' : ''}`),
+  ];
+}
+
+function formatSqlCondition(prefix: string, body: string): string[] {
+  const parts = splitSqlTopLevelConditions(body);
+  if (parts.length <= 1) return [`${prefix} ${body}`.trim()];
+  return [
+    prefix,
+    ...parts.map((part) => `  ${part}`),
+  ];
+}
+
+function formatSqlClauseLines(sql: string): string {
+  const lines: string[] = [];
+  for (const rawLine of sql.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const selectMatch = line.match(/^SELECT\s+(.+)$/);
+    if (selectMatch) {
+      lines.push(...formatSqlExpressionList('SELECT', selectMatch[1]));
+      continue;
+    }
+
+    const listMatch = line.match(/^(GROUP BY|ORDER BY)\s+(.+)$/);
+    if (listMatch) {
+      lines.push(...formatSqlExpressionList(listMatch[1], listMatch[2]));
+      continue;
+    }
+
+    const conditionMatch = line.match(/^(WHERE|HAVING|ON)\s+(.+)$/);
+    if (conditionMatch) {
+      lines.push(...formatSqlCondition(conditionMatch[1], conditionMatch[2]));
+      continue;
+    }
+
+    lines.push(line);
+  }
+  return lines.join('\n');
+}
+
+function indentSqlLines(sql: string): string {
+  let depth = 0;
+  return sql
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .map((line) => {
+      const trimmed = line.trimStart();
+      const leadingCloseParens = trimmed.match(/^\)+/)?.[0].length ?? 0;
+      const extraIndent = line.startsWith('  ') ? 1 : 0;
+      const indentDepth = Math.max(0, depth - leadingCloseParens) + extraIndent;
+      const formatted = `${'  '.repeat(indentDepth)}${trimmed}`;
+      const opens = (trimmed.match(/\(/g) ?? []).length;
+      const closes = (trimmed.match(/\)/g) ?? []).length;
+      depth = Math.max(0, depth + opens - closes);
+      return formatted;
+    })
+    .join('\n')
+    .trim();
+}
+
+export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getProductFiles, refreshProductFiles, notify, confirmAction, getLanguage }: WorkflowPageDeps) {
+  const filePicker = createFilePickerModal({
+    el,
+    api,
+    escapeHtml,
+    formatFileSize,
+    getProductFiles,
+    refreshProductFiles,
+    notify,
+    confirmAction,
+    getLanguage,
+  });
+
   function productFileDisplayName(file: ProductFileRecord) {
     return file.displayName || file.originalName;
   }
@@ -139,6 +381,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   let isWorkflowRuntimeParamsCollapsed = true;
   let activeWorkflowOperatorKey: string | null = null;
   let workflowCanvasZoom = 1;
+  let isWorkflowPersisting = false;
   let workflowInputGuardAddSlot: string | null = null;
   let activeWorkflowEdgeGuards:
     | {
@@ -308,6 +551,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el('btnOpenWorkflowSqlFullscreen').addEventListener('click', openWorkflowSqlFullscreenModal);
     el('btnCloseWorkflowSqlFullscreen').addEventListener('click', closeWorkflowSqlFullscreenModal);
     el('btnCancelWorkflowSqlFullscreen').addEventListener('click', closeWorkflowSqlFullscreenModal);
+    el('btnNormalizeWorkflowSql').addEventListener('click', normalizeWorkflowSqlInput);
+    el('btnNormalizeWorkflowSqlFullscreen').addEventListener('click', normalizeWorkflowSqlFullscreenInput);
     el('btnApplyWorkflowSqlFullscreen').addEventListener('click', applyWorkflowSqlFullscreenModal);
     el('workflowSqlFullscreenModal').addEventListener('click', (event) => {
       if (event.target === el('workflowSqlFullscreenModal')) closeWorkflowSqlFullscreenModal();
@@ -365,6 +610,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     el('btnPreviewWorkflowTask').addEventListener('click', () => void previewWorkflowTask());
     el('workflowPreviewFileId').addEventListener('change', syncStructuredTaskParamsToState);
     el('workflowPreviewSheetName').addEventListener('input', syncStructuredTaskParamsToState);
+    el('workflowPreviewSheetSelect').addEventListener('change', syncStructuredTaskParamsToState);
     el('workflowPreviewRange').addEventListener('input', syncStructuredTaskParamsToState);
     el('workflowPreviewHeaderRow').addEventListener('input', syncStructuredTaskParamsToState);
     el('workflowSqlInput').addEventListener('input', syncStructuredTaskParamsToState);
@@ -577,31 +823,40 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   }
 
   async function persistWorkflowDefinition(workflow: WorkflowDefinition, options: { reload?: boolean } = {}) {
-    sanitizeWorkflowFileReferences(workflow);
+    if (isWorkflowPersisting) throw new Error('工作流配置正在保存，请稍候');
+    isWorkflowPersisting = true;
+    el<HTMLButtonElement>('btnSaveWorkflow').disabled = true;
+    el<HTMLButtonElement>('btnExecuteWorkflow').disabled = true;
+    try {
+      const saved = await api<WorkflowDefinition>(`/api/workflows/${workflow.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          code: workflow.code,
+          name: workflow.name,
+          description: workflow.description,
+          status: workflow.status,
+          version: workflow.version,
+          tasks: workflow.tasks,
+          runtimeParamsSchema: workflow.runtimeParamsSchema,
+          runtimeParamsDefaults: workflow.runtimeParamsDefaults,
+          expectedUpdatedAt: workflow.updatedAt,
+        }),
+      });
 
-    const saved = await api<WorkflowDefinition>(`/api/workflows/${workflow.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        code: workflow.code,
-        name: workflow.name,
-        description: workflow.description,
-        status: workflow.status,
-        version: workflow.version,
-        tasks: workflow.tasks,
-        runtimeParamsSchema: workflow.runtimeParamsSchema,
-        runtimeParamsDefaults: workflow.runtimeParamsDefaults,
-      }),
-    });
+      if (options.reload) {
+        await loadWorkflows(saved.id);
+        return workflowDefinitions.find((item) => item.id === saved.id) ?? normalizeWorkflowDefinitionForClient(saved);
+      }
 
-    if (options.reload) {
-      await loadWorkflows(saved.id);
-      return workflowDefinitions.find((item) => item.id === saved.id) ?? normalizeWorkflowDefinitionForClient(saved);
+      upsertWorkflowDefinition(saved);
+      renderWorkflowList();
+      renderWorkflowEditor();
+      return normalizeWorkflowDefinitionForClient(saved);
+    } finally {
+      isWorkflowPersisting = false;
+      el<HTMLButtonElement>('btnSaveWorkflow').disabled = false;
+      el<HTMLButtonElement>('btnExecuteWorkflow').disabled = false;
     }
-
-    upsertWorkflowDefinition(saved);
-    renderWorkflowList();
-    renderWorkflowEditor();
-    return normalizeWorkflowDefinitionForClient(saved);
   }
 
   function downloadJsonFile(fileName: string, payload: unknown) {
@@ -783,6 +1038,20 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   function closeWorkflowSqlFullscreenModal() {
     el('workflowSqlFullscreenModal').classList.add('hidden');
+  }
+
+  function normalizeWorkflowSqlInput() {
+    const sqlInput = el<HTMLTextAreaElement>('workflowSqlInput');
+    const normalized = normalizeWorkflowSqlText(sqlInput.value);
+    if (normalized === sqlInput.value) return;
+    sqlInput.value = normalized;
+    syncStructuredTaskParamsToState();
+  }
+
+  function normalizeWorkflowSqlFullscreenInput() {
+    const fullscreenInput = el<HTMLTextAreaElement>('workflowSqlFullscreenInput');
+    fullscreenInput.value = normalizeWorkflowSqlText(fullscreenInput.value);
+    fullscreenInput.focus();
   }
 
   function applyWorkflowSqlFullscreenModal() {
@@ -987,11 +1256,21 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
   function flattenWorkflowRuntimeSchema(
     schema: WorkflowDefinition['runtimeParamsSchema'],
     parentPath = '',
-  ): Array<{ path: string; required: boolean; type: string; label: string }> {
+  ): RuntimeParameterEntry[] {
     return Object.entries(schema ?? {}).flatMap(([key, field]) => {
       const nextPath = parentPath ? `${parentPath}.${key}` : key;
       if (field.type === 'object' && field.properties) {
-        return flattenWorkflowRuntimeSchema(field.properties, nextPath);
+        const nested = flattenWorkflowRuntimeSchema(field.properties, nextPath);
+        if (!nextPath.startsWith('fileRefs.')) return nested;
+        return [
+          {
+            path: nextPath,
+            required: field.required === true,
+            type: field.type,
+            label: field.label ?? nextPath,
+          },
+          ...nested,
+        ];
       }
       return [
         {
@@ -1020,76 +1299,14 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     return JSON.stringify(value ?? {}, null, 2);
   }
 
-  function isRuntimeFileParameter(entry: { path: string; type: string }) {
-    return entry.type === 'object' && entry.path.startsWith('fileRefs.');
-  }
-
   function runtimeProductFileId(value: unknown): number | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const record = value as Record<string, unknown>;
     if (record.provider !== 'product-files') return null;
+    const fileKey = String(record.key ?? '').trim();
+    if (fileKey) return getProductFiles().find((file) => (file.logicalPath ?? file.displayPath) === fileKey)?.id ?? null;
     const fileId = Number(record.id);
     return Number.isInteger(fileId) && fileId > 0 ? fileId : null;
-  }
-
-  function sanitizeMissingProductFileReferences(value: unknown, validFileIds: Set<number>): unknown {
-    if (Array.isArray(value)) {
-      let changed = false;
-      const next = value.map((item) => {
-        const sanitized = sanitizeMissingProductFileReferences(item, validFileIds);
-        changed ||= sanitized !== item;
-        return sanitized;
-      });
-      return changed ? next : value;
-    }
-
-    if (!value || typeof value !== 'object') return value;
-
-    const record = value as Record<string, unknown>;
-    if (record.provider === 'product-files') {
-      const fileId = Number(record.id);
-      return Number.isInteger(fileId) && validFileIds.has(fileId) ? value : undefined;
-    }
-    if ('$fromRuntime' in record) return value;
-
-    let changed = false;
-    const next: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(record)) {
-      const sanitized = sanitizeMissingProductFileReferences(entry, validFileIds);
-      changed ||= sanitized !== entry;
-      if (sanitized !== undefined) next[key] = sanitized;
-    }
-    return changed ? next : value;
-  }
-
-  function sanitizeWorkflowFileReferences(workflow: WorkflowDefinition): boolean {
-    const productFiles = getProductFiles();
-    if (!productFiles.length) return false;
-
-    const validFileIds = new Set(productFiles.map((file) => file.id));
-    let changed = false;
-
-    const sanitizedDefaults = sanitizeMissingProductFileReferences(workflow.runtimeParamsDefaults, validFileIds) as WorkflowDefinition['runtimeParamsDefaults'];
-    if (sanitizedDefaults !== workflow.runtimeParamsDefaults) {
-      workflow.runtimeParamsDefaults = sanitizedDefaults;
-      changed = true;
-    }
-
-    for (const task of workflow.tasks) {
-      const sanitizedParams = sanitizeMissingProductFileReferences(task.params, validFileIds) as WorkflowTask['params'];
-      if (sanitizedParams !== task.params) {
-        task.params = sanitizedParams;
-        changed = true;
-      }
-
-      const fileId = Number(task.params.fileId);
-      if (Number.isInteger(fileId) && fileId > 0 && !validFileIds.has(fileId)) {
-        delete task.params.fileId;
-        changed = true;
-      }
-    }
-
-    return changed;
   }
 
   function workflowRuntimeDefaultFileId(workflow: WorkflowDefinition, runtimePath: string): number | null {
@@ -1098,8 +1315,80 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   function setWorkflowRuntimeDefaultFileId(workflow: WorkflowDefinition, runtimePath: string, fileId: number | null) {
     const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
-    setNestedValueAtPath(defaults, runtimePath, fileId ? { provider: 'product-files', id: fileId } : undefined);
+    const existing = getNestedValueAtPath(defaults, runtimePath);
+    const existingRecord = existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? existing as Record<string, unknown>
+      : {};
+    const file = fileId ? getProductFiles().find((item) => item.id === fileId) : null;
+    setNestedValueAtPath(defaults, runtimePath, file ? {
+      ...existingRecord,
+      provider: 'product-files',
+      key: file.logicalPath ?? file.displayPath,
+      id: undefined,
+    } : undefined);
     workflow.runtimeParamsDefaults = defaults;
+  }
+
+  function workflowRuntimeDefaultString(workflow: WorkflowDefinition, runtimePath: string): string {
+    const value = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, runtimePath);
+    return typeof value === 'string' ? value : '';
+  }
+
+  function setWorkflowRuntimeDefaultString(workflow: WorkflowDefinition, runtimePath: string, value: string) {
+    const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
+    setNestedValueAtPath(defaults, runtimePath, value || undefined);
+    workflow.runtimeParamsDefaults = defaults;
+  }
+
+  function readRuntimeDefaultControlValue(
+    control: HTMLInputElement | HTMLSelectElement,
+    currentValue: unknown,
+  ): unknown {
+    const type = control.dataset.runtimeDefaultType ?? '';
+    const rawValue = control.value.trim();
+    if (rawValue === '') return undefined;
+    if (type === 'number') return Number(rawValue);
+    if (type === 'boolean') return rawValue === 'true';
+    if (type === 'fileRef') {
+      const existing = currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue)
+        ? currentValue as Record<string, unknown>
+        : {};
+      const nextFileId = Number(rawValue);
+      const file = getProductFiles().find((item) => item.id === nextFileId);
+      const nextFileKey = file?.logicalPath ?? file?.displayPath;
+      const sameFile = existing.key === nextFileKey && existing.provider === 'product-files';
+      return {
+        ...(sameFile ? existing : {}),
+        provider: 'product-files',
+        key: nextFileKey,
+      };
+    }
+    return rawValue;
+  }
+
+  function syncRuntimeDefaultControlToWorkflow(
+    workflow: WorkflowDefinition,
+    control: HTMLInputElement | HTMLSelectElement,
+  ): boolean {
+    const path = control.dataset.runtimeDefaultPath ?? '';
+    if (!path) return false;
+
+    const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
+    const currentValue = getNestedValueAtPath(defaults, path);
+    const value = readRuntimeDefaultControlValue(control, currentValue);
+    setNestedValueAtPath(defaults, path, value);
+    workflow.runtimeParamsDefaults = defaults;
+    return true;
+  }
+
+  function syncVisibleRuntimeDefaultsToWorkflow(workflow: WorkflowDefinition): boolean {
+    const container = el('workflowRuntimeParamsSummary');
+    let changed = false;
+    container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]').forEach((control) => {
+      changed = syncRuntimeDefaultControlToWorkflow(workflow, control) || changed;
+    });
+    if (changed) resetWorkflowRunState(workflow.id);
+    return changed;
   }
 
   function formatRuntimeDefaultDisplay(entry: { path: string; type: string }, value: unknown): string {
@@ -1127,14 +1416,17 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const pathAttr = escapeHtml(entry.path);
     if (isRuntimeFileParameter(entry)) {
       const currentValue = runtimeProductFileId(value);
-      const options = [
-        `<option value="">No default</option>`,
-        ...getProductFiles().map(
-          (file) =>
-            `<option value="${file.id}"${file.id === currentValue ? ' selected' : ''}>${escapeHtml(productFileDisplayName(file))} (#${file.id})</option>`,
-        ),
-      ];
-      return `<select class="workflow-runtime-summary__control" data-runtime-default-path="${pathAttr}" data-runtime-default-type="fileRef">${options.join('')}</select>`;
+      const file = currentValue ? getProductFiles().find((item) => item.id === currentValue) : undefined;
+      const label = file ? productFileDisplayName(file) : '未设置默认文件';
+      const detail = file ? `${file.logicalPath ?? file.displayPath} · #${file.id}` : '点击选择文件';
+      return `
+        <div class="workflow-runtime-summary__filepick" data-file-pick>
+          <input type="hidden" class="workflow-runtime-summary__control" value="${currentValue ?? ''}" data-runtime-default-path="${pathAttr}" data-runtime-default-type="fileRef">
+          <button type="button" class="workflow-runtime-summary__filepick-trigger" data-file-pick-open title="${escapeHtml(detail)}">
+            <span class="workflow-runtime-summary__filepick-name">${escapeHtml(label)}</span>
+            <span class="workflow-runtime-summary__filepick-path">${escapeHtml(detail)}</span>
+          </button>
+        </div>`;
     }
     if (entry.type === 'number') {
       return `<input class="workflow-runtime-summary__control" type="number" value="${escapeHtml(value ?? '')}" data-runtime-default-path="${pathAttr}" data-runtime-default-type="number">`;
@@ -1152,7 +1444,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
 
   function renderWorkflowRuntimeParameterItem(
     workflow: WorkflowDefinition,
-    entry: { path: string; required: boolean; type: string; label: string },
+    entry: RuntimeParameterEntry,
   ) {
     const rawDefaultValue = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, entry.path);
     const defaultValue = formatRuntimeDefaultDisplay(entry, rawDefaultValue);
@@ -1165,6 +1457,50 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         </div>
         <div class="workflow-runtime-summary__default">default: ${escapeHtml(defaultValue)}</div>
         ${renderRuntimeDefaultEditor(entry, rawDefaultValue)}
+      </div>`;
+  }
+
+  function renderRuntimeSheetEditor(
+    workflow: WorkflowDefinition,
+    fileEntry: RuntimeParameterEntry,
+    sheetEntry: RuntimeParameterEntry,
+  ) {
+    const fileId = workflowRuntimeDefaultFileId(workflow, fileEntry.path);
+    const currentSheet = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, sheetEntry.path);
+    const currentSheetName = typeof currentSheet === 'string' ? currentSheet : '';
+    const options = fileId
+      ? `<option value="${escapeHtml(currentSheetName)}">Loading sheets...</option>`
+      : '<option value="">Select a file first</option>';
+    return `
+      <label class="workflow-runtime-summary__linked-field">
+        <span>${escapeHtml(sheetEntry.label)}</span>
+        <select
+          class="workflow-runtime-summary__control"
+          data-runtime-default-path="${escapeHtml(sheetEntry.path)}"
+          data-runtime-default-type="string"
+          data-runtime-sheet-file-path="${escapeHtml(fileEntry.path)}"
+          ${fileId ? '' : 'disabled'}
+        >${options}</select>
+      </label>`;
+  }
+
+  function renderWorkflowRuntimeInputFileItem(workflow: WorkflowDefinition, item: RuntimeInputFileItem) {
+    const fileDefault = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, item.file.path);
+    return `
+      <div class="workflow-runtime-summary__item workflow-runtime-summary__item--input-source">
+        <div class="workflow-runtime-summary__item-top">
+          <span class="workflow-runtime-summary__path">${escapeHtml(item.file.label)}</span>
+          <span class="workflow-runtime-summary__type">${item.sheet ? 'file + sheet' : 'file'}</span>
+          ${item.file.required || item.sheet?.required ? '<span class="workflow-runtime-summary__required">required</span>' : ''}
+        </div>
+        <div class="workflow-runtime-summary__technical-path">
+          ${escapeHtml(item.file.path)}${item.sheet ? ` · ${escapeHtml(item.sheet.path)}` : ''}
+        </div>
+        <label class="workflow-runtime-summary__linked-field">
+          <span>Workbook</span>
+          ${renderRuntimeDefaultEditor(item.file, fileDefault)}
+        </label>
+        ${item.sheet ? renderRuntimeSheetEditor(workflow, item.file, item.sheet) : ''}
       </div>`;
   }
 
@@ -1190,29 +1526,93 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       </section>`;
   }
 
-  function syncRuntimeDefaultFromControl(control: HTMLInputElement | HTMLSelectElement) {
-    const workflow = getActiveWorkflow();
-    const path = control.dataset.runtimeDefaultPath ?? '';
-    const type = control.dataset.runtimeDefaultType ?? '';
-    if (!workflow || !path) return;
+  function renderWorkflowRuntimeInputFilesGroup(items: RuntimeInputFileItem[], workflow: WorkflowDefinition) {
+    if (!items.length) return '';
+    return `
+      <section class="workflow-runtime-summary__group">
+        <div class="workflow-runtime-summary__group-header">
+          <div>
+            <div class="workflow-runtime-summary__group-title">Input Sources 输入源</div>
+            <div class="workflow-runtime-summary__group-description">Each workbook is configured together with its related Sheet when required.</div>
+          </div>
+          <span class="workflow-runtime-summary__group-count">${items.length}</span>
+        </div>
+        <div class="workflow-runtime-summary__list">
+          ${items.map((item) => renderWorkflowRuntimeInputFileItem(workflow, item)).join('')}
+        </div>
+      </section>`;
+  }
 
-    const rawValue = control.value.trim();
-    let value: unknown = rawValue;
-    if (rawValue === '') {
-      value = undefined;
-    } else if (type === 'number') {
-      value = Number(rawValue);
-    } else if (type === 'fileRef') {
-      value = { provider: 'product-files', id: Number(rawValue) };
-    } else if (type === 'boolean') {
-      value = rawValue === 'true';
+  async function hydrateRuntimeSheetControl(control: HTMLSelectElement, workflow: WorkflowDefinition) {
+    const filePath = control.dataset.runtimeSheetFilePath ?? '';
+    const sheetPath = control.dataset.runtimeDefaultPath ?? '';
+    const fileId = workflowRuntimeDefaultFileId(workflow, filePath);
+    if (!fileId || !sheetPath) return;
+    try {
+      const detail = await api<ProductFileDetail>(`/api/files/${fileId}`);
+      if (!control.isConnected) return;
+      const current = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, sheetPath);
+      const currentName = typeof current === 'string' ? current : '';
+      control.innerHTML = [
+        '<option value="">Select sheet</option>',
+        ...detail.sheets.map((sheet) => `<option value="${escapeHtml(sheet.sheetName)}">${escapeHtml(sheet.sheetName)}</option>`),
+      ].join('');
+      control.value = detail.sheets.some((sheet) => sheet.sheetName === currentName) ? currentName : '';
+      control.disabled = false;
+    } catch {
+      if (!control.isConnected) return;
+      control.innerHTML = '<option value="">Unable to load sheets</option>';
+      control.disabled = true;
+    }
+  }
+
+  async function hydrateStructuredRuntimeSheetControl(task: WorkflowTask) {
+    const workflow = getActiveWorkflow();
+    if (!workflow || !isWorkflowRuntimeParameterReference(task.params.sheetName)) return;
+    const sheetPath = task.params.sheetName.$fromRuntime;
+    const filePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
+    const sheetSelect = el<HTMLSelectElement>('workflowPreviewSheetSelect');
+    if (!filePath) {
+      sheetSelect.innerHTML = '<option value="">Select a runtime file first</option>';
+      sheetSelect.disabled = true;
+      return;
     }
 
-    const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
-    setNestedValueAtPath(defaults, path, value);
-    workflow.runtimeParamsDefaults = defaults;
+    const fileId = workflowRuntimeDefaultFileId(workflow, filePath);
+    if (!fileId) {
+      sheetSelect.innerHTML = '<option value="">Select a file first</option>';
+      sheetSelect.disabled = true;
+      return;
+    }
+
+    const currentSheet = workflowRuntimeDefaultString(workflow, sheetPath)
+      || (typeof task.params.sheetName.$default === 'string' ? task.params.sheetName.$default : '');
+    sheetSelect.innerHTML = `<option value="${escapeHtml(currentSheet)}">Loading sheets...</option>`;
+    sheetSelect.disabled = true;
+    try {
+      const detail = await api<ProductFileDetail>(`/api/files/${fileId}`);
+      if (!sheetSelect.isConnected || getActiveWorkflowTask()?.id !== task.id) return;
+      sheetSelect.innerHTML = [
+        '<option value="">Select sheet</option>',
+        ...detail.sheets.map((sheet) => `<option value="${escapeHtml(sheet.sheetName)}">${escapeHtml(sheet.sheetName)}</option>`),
+      ].join('');
+      sheetSelect.value = detail.sheets.some((sheet) => sheet.sheetName === currentSheet) ? currentSheet : '';
+      sheetSelect.disabled = false;
+    } catch {
+      if (!sheetSelect.isConnected) return;
+      sheetSelect.innerHTML = '<option value="">Unable to load sheets</option>';
+      sheetSelect.disabled = true;
+    }
+  }
+
+  function syncRuntimeDefaultFromControl(control: HTMLInputElement | HTMLSelectElement) {
+    const workflow = getActiveWorkflow();
+    if (!workflow) return;
+    if (!syncRuntimeDefaultControlToWorkflow(workflow, control)) return;
     resetWorkflowRunState(workflow.id);
-    renderWorkflowRuntimeParamsSummary(workflow);
+    if (shouldRerenderRuntimeDefaultControl(control.dataset.runtimeDefaultType ?? '')) {
+      renderWorkflowRuntimeParamsSummary(workflow);
+    }
   }
 
   function applyRuntimeJsonFromTextareas() {
@@ -1244,8 +1644,9 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
 
     const entries = flattenWorkflowRuntimeSchema(workflow.runtimeParamsSchema);
-    const fileEntries = entries.filter((entry) => isRuntimeFileParameter(entry));
-    const constantEntries = entries.filter((entry) => !isRuntimeFileParameter(entry));
+    const fileEntries = entries.filter((entry) => isRuntimeInputFileParameter(entry));
+    const constantEntries = entries.filter((entry) => !isRuntimeInputFileParameter(entry));
+    const inputFileItems = buildRuntimeInputFileItems(fileEntries);
     const groupedEntriesHtml = [
       renderWorkflowRuntimeParameterGroup(
         'Constants 常量',
@@ -1253,12 +1654,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         constantEntries,
         workflow,
       ),
-      renderWorkflowRuntimeParameterGroup(
-        'Input Files 输入文件',
-        'File references resolved by the configured file source provider.',
-        fileEntries,
-        workflow,
-      ),
+      renderWorkflowRuntimeInputFilesGroup(inputFileItems, workflow),
     ].join('');
 
     container.classList.remove('hidden');
@@ -1314,7 +1710,32 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         if (control instanceof HTMLInputElement) syncRuntimeDefaultFromControl(control);
       });
     });
+    container.querySelectorAll<HTMLSelectElement>('[data-runtime-sheet-file-path]').forEach((control) => {
+      void hydrateRuntimeSheetControl(control, workflow);
+    });
+    container.querySelectorAll<HTMLElement>('[data-file-pick-open]').forEach((trigger) => {
+      trigger.addEventListener('click', () => void openRuntimeFilePicker(trigger));
+    });
     container.querySelector<HTMLElement>('[data-workflow-runtime-json-apply]')?.addEventListener('click', applyRuntimeJsonFromTextareas);
+  }
+
+  /**
+   * The picker only writes the file id into the hidden control and fires `change`, so the existing
+   * sync → re-render → sheet hydration path stays the single source of truth.
+   */
+  async function openRuntimeFilePicker(trigger: HTMLElement) {
+    const control = trigger.closest('[data-file-pick]')?.querySelector<HTMLInputElement>('input[data-runtime-default-type="fileRef"]');
+    if (!control) return;
+    const currentFileId = control.value ? Number(control.value) : null;
+    const result = await filePicker.open({
+      title: '选择默认文件',
+      currentFileId,
+      allowClear: true,
+      uploadFolderPrefix: 'input',
+    });
+    if (!result) return;
+    control.value = result.action === 'pick' ? String(result.fileId) : '';
+    control.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
 
@@ -1648,7 +2069,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
                   ? 'Skipped'
                 : 'Pending';
         const detailMessage = workflowRunState.taskMessages[task.id] ?? '';
-        const meta = state === 'warning' ? (workflowRunState.warningMessages[task.id] ?? task.operatorCode) : task.operatorCode;
+        const meta = state === 'warning' ? (workflowRunState.warningMessages[task.id] ?? task.operatorCode) : (task.description || task.operatorCode);
         return `
           <div class="workflow-run-task workflow-run-task--${state}">
             <span class="workflow-run-task__indicator">${escapeHtml(indicator)}</span>
@@ -2939,6 +3360,8 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const assertStrategyRow = el('workflowStructuredAssertStrategyRow');
     const assertMessageRow = el('workflowStructuredAssertMessageRow');
     const inputGuardsRow = el('workflowStructuredInputGuardsRow');
+    const sheetNameInput = el<HTMLInputElement>('workflowPreviewSheetName');
+    const sheetNameSelect = el<HTMLSelectElement>('workflowPreviewSheetSelect');
 
     fileRow.classList.add('hidden');
     sheetRow.classList.add('hidden');
@@ -2961,6 +3384,13 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     assertStrategyRow.classList.add('hidden');
     assertMessageRow.classList.add('hidden');
     inputGuardsRow.classList.add('hidden');
+    sheetNameInput.disabled = false;
+    sheetNameInput.title = '';
+    sheetNameInput.classList.remove('hidden');
+    sheetNameSelect.classList.add('hidden');
+    sheetNameSelect.disabled = true;
+    sheetNameSelect.title = '';
+    sheetNameSelect.innerHTML = '';
 
     if (isSheetRangeExtractTask(task)) {
       normalizeSheetRangeExtractTask(task);
@@ -2970,7 +3400,16 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       headerRow.classList.remove('hidden');
 
       fileSelect.value = runtimeFilePath ? String(runtimeDefaultFileId ?? '') : encodeWorkflowFileParamSelection(task.params.fileRef ?? task.params.fileId);
-      el<HTMLInputElement>('workflowPreviewSheetName').value = String(task.params.sheetName ?? '');
+      if (isWorkflowRuntimeParameterReference(task.params.sheetName)) {
+        sheetNameInput.value = '';
+        sheetNameInput.classList.add('hidden');
+        sheetNameSelect.classList.remove('hidden');
+        sheetNameSelect.title = formatRuntimeFileSelectionLabel(task.params.sheetName.$fromRuntime);
+        sheetNameSelect.innerHTML = '<option value="">Loading sheets...</option>';
+        void hydrateStructuredRuntimeSheetControl(task);
+      } else {
+        sheetNameInput.value = String(task.params.sheetName ?? '');
+      }
       el<HTMLInputElement>('workflowPreviewRange').value = String(task.params.range ?? '');
       el<HTMLInputElement>('workflowPreviewHeaderRow').value =
         task.params.headerRow === null || task.params.headerRow === undefined ? '' : String(task.params.headerRow);
@@ -2983,7 +3422,16 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
       sectionsRow.classList.remove('hidden');
 
       fileSelect.value = runtimeFilePath ? String(runtimeDefaultFileId ?? '') : encodeWorkflowFileParamSelection(task.params.fileRef ?? task.params.fileId);
-      el<HTMLInputElement>('workflowPreviewSheetName').value = String(task.params.sheetName ?? '');
+      if (isWorkflowRuntimeParameterReference(task.params.sheetName)) {
+        sheetNameInput.value = '';
+        sheetNameInput.classList.add('hidden');
+        sheetNameSelect.classList.remove('hidden');
+        sheetNameSelect.title = formatRuntimeFileSelectionLabel(task.params.sheetName.$fromRuntime);
+        sheetNameSelect.innerHTML = '<option value="">Loading sheets...</option>';
+        void hydrateStructuredRuntimeSheetControl(task);
+      } else {
+        sheetNameInput.value = String(task.params.sheetName ?? '');
+      }
       renderSheetSections(task);
     }
 
@@ -3093,7 +3541,15 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         task.params.fileRef = decodeWorkflowFileParamSelection(selected);
         delete task.params.fileId;
       }
-      task.params.sheetName = el<HTMLInputElement>('workflowPreviewSheetName').value.trim();
+      if (!isWorkflowRuntimeParameterReference(task.params.sheetName)) {
+        task.params.sheetName = el<HTMLInputElement>('workflowPreviewSheetName').value.trim();
+      } else if (workflow) {
+        const sheetSelect = el<HTMLSelectElement>('workflowPreviewSheetSelect');
+        if (!sheetSelect.disabled) {
+          setWorkflowRuntimeDefaultString(workflow, task.params.sheetName.$fromRuntime, sheetSelect.value.trim());
+        }
+        void hydrateStructuredRuntimeSheetControl(task);
+      }
       task.params.range = el<HTMLInputElement>('workflowPreviewRange').value.trim();
       const headerRowValue = el<HTMLInputElement>('workflowPreviewHeaderRow').value.trim();
       task.params.headerRow = headerRowValue ? Number(headerRowValue) : null;
@@ -3111,7 +3567,15 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
         task.params.fileRef = decodeWorkflowFileParamSelection(selected);
         delete task.params.fileId;
       }
-      task.params.sheetName = el<HTMLInputElement>('workflowPreviewSheetName').value.trim();
+      if (!isWorkflowRuntimeParameterReference(task.params.sheetName)) {
+        task.params.sheetName = el<HTMLInputElement>('workflowPreviewSheetName').value.trim();
+      } else if (workflow) {
+        const sheetSelect = el<HTMLSelectElement>('workflowPreviewSheetSelect');
+        if (!sheetSelect.disabled) {
+          setWorkflowRuntimeDefaultString(workflow, task.params.sheetName.$fromRuntime, sheetSelect.value.trim());
+        }
+        void hydrateStructuredRuntimeSheetControl(task);
+      }
       task.params.sectionMode = el<HTMLSelectElement>('workflowSectionMode')?.value ?? 'manual';
       task.params.splitByColumn = el<HTMLInputElement>('workflowSectionSplitByColumn')?.value.trim() ?? '';
       task.params.sections = Array.from(document.querySelectorAll<HTMLElement>('[data-sheet-section-row]'))
@@ -3256,7 +3720,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const workflow = getActiveWorkflow();
     if (!workflow) return;
 
-    sanitizeWorkflowFileReferences(workflow);
+    syncVisibleRuntimeDefaultsToWorkflow(workflow);
 
     const payload: WorkflowTaskPreviewRequest = {
       workflowId: workflow.id,
@@ -3408,7 +3872,7 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const workflow = getActiveWorkflow();
     if (!workflow) return;
 
-    sanitizeWorkflowFileReferences(workflow);
+    syncVisibleRuntimeDefaultsToWorkflow(workflow);
 
     if (!workflow.tasks.length) {
       notify('当前工作流没有任务', { type: 'warning' });
@@ -3527,8 +3991,6 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const task = getActiveWorkflowTask();
     if (!workflow || !task) return;
 
-    sanitizeWorkflowFileReferences(workflow);
-
     if (!workflowRunState.runId || workflowRunState.workflowId !== workflow.id) {
       notify('请先执行工作流，创建当前 Run 后再单步执行节点', { type: 'warning' });
       return;
@@ -3578,8 +4040,6 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     const task = getActiveWorkflowTask();
     const workflow = getActiveWorkflow();
     if (!task || !workflow || !isSqlComputeTask(task)) return;
-
-    sanitizeWorkflowFileReferences(workflow);
 
     const bindings = getSqlTableBindings(task);
     const binding = bindings[bindingIndex];
@@ -4103,9 +4563,15 @@ export function createWorkflowPage({ el, api, escapeHtml, getProductFiles, refre
     }
 
     workflow.name = name;
+    syncVisibleRuntimeDefaultsToWorkflow(workflow);
 
-    await persistWorkflowDefinition(workflow, { reload: true });
-    resetWorkflowRunState(workflow.id);
+    try {
+      await persistWorkflowDefinition(workflow, { reload: true });
+      resetWorkflowRunState(workflow.id);
+      notify('工作流配置已保存', { type: 'success' });
+    } catch (error) {
+      notify(`保存失败：${error instanceof Error ? error.message : '未知错误'}`, { type: 'error' });
+    }
   }
 
   async function deleteWorkflow() {

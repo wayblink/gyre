@@ -13,7 +13,7 @@ import { workflowOperatorDefinitions } from './workflow/operators/registry.js';
 import { deriveWorkflowRuntimeConfigFromTasks } from './workflow/runtimeParameterRequirements.js';
 import type { WorkflowRuntimeParameters, WorkflowRuntimeParametersSchema, WorkflowTask } from '../shared/types.js';
 
-type WorkflowSeedDefinition = {
+export type WorkflowSeedDefinition = {
   code: string;
   name: string;
   description: string;
@@ -303,11 +303,11 @@ export async function seedTransferPlanData(
 }
 
 const GLOBAL_PARAMETER_SEEDS: Array<[string, string, number]> = [
-  ['cullgen_common_stock', 'Cullgen common stock', 14_450_527],
-  ['gyre_2023_china_subplan_total', 'Gyre 2023 China SubPlan Total', 7_815_396],
-  ['warrants_convertible_preferred', 'Warrants for Convertible Preferred Stock', 540_666],
-  ['options_outstanding_cullgen', 'Options Outstanding- Cullgen', 4_156_815],
-  ['options_available_cullgen', 'Options Available- Cullgen', 10_994],
+  ['cullgen_common_stock', 'Cullgen common stock（母公司普通股，固定值可修改）', 14_450_527],
+  ['gyre_2023_china_subplan_total', 'Gyre 2023 China SubPlan Total（Futu 侧已归属总数，固定值可修改）', 7_815_396],
+  ['warrants_convertible_preferred', 'Warrants for Convertible Preferred Stock（固定值，可修改）', 540_666],
+  ['options_outstanding_cullgen', 'Options Outstanding - Cullgen（母公司口径固定值）', 4_156_815],
+  ['options_available_cullgen', 'Options Available - Cullgen（母公司口径固定值）', 10_994],
   // 5% Holders holder counts default to 0; admins maintain them from the 5% Holders page.
   [FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniCommonStock, '5% Holders - GNI Group Ltd. Common Stock', 0],
   [FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniTotalCses, '5% Holders - GNI Group Ltd. Total CSEs', 0],
@@ -331,22 +331,18 @@ export async function seedGlobalParameters(db: DbClient) {
   }
 }
 
-async function upsertWorkflowDefinition(db: DbClient, workflow: WorkflowSeedDefinition): Promise<void> {
+// Workflow definitions are database-owned. Code only bootstraps missing built-ins
+// for a fresh database and must never overwrite an existing row.
+export async function insertWorkflowDefinitionIfMissing(
+  db: Pick<DbClient, 'execute'>,
+  workflow: WorkflowSeedDefinition,
+): Promise<void> {
   await db.execute(
     `insert into workflow_definitions (
         code, name, description, status, version, tasks_json,
         runtime_params_schema_json, runtime_params_defaults_json
       ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb)
-      on conflict (code) do update set
-            name = excluded.name,
-            description = excluded.description,
-            status = excluded.status,
-            version = excluded.version,
-            tasks_json = excluded.tasks_json,
-            runtime_params_schema_json = excluded.runtime_params_schema_json,
-            runtime_params_defaults_json = excluded.runtime_params_defaults_json,
-            updated_at = current_timestamp
-      where workflow_definitions.code = $1`,
+      on conflict (code) do nothing`,
     [
       workflow.code,
       workflow.name,
@@ -373,20 +369,20 @@ async function seedWorkflowData(db: DbClient) {
         set code = $2
       where code = $1
         and not exists (select 1 from workflow_definitions where code = $2)`,
-    ['gyre-captable-summary-draft', 'gyre-captable-summary'],
+    ['gyre-captable-summary-draft', 'gyre-captable-summary-v2'],
   );
   await db.execute(
     `update workflow_definitions
         set code = code || '-duplicate-' || id
       where code = $2
         and exists (select 1 from workflow_definitions where code = $1)`,
-    ['gyre-captable-summary-draft', 'gyre-captable-summary'],
+    ['gyre-captable-summary-draft', 'gyre-captable-summary-v2'],
   );
   await db.execute(
     `update workflow_definitions
         set code = $2
       where code = $1`,
-    ['gyre-captable-summary-draft', 'gyre-captable-summary'],
+    ['gyre-captable-summary-draft', 'gyre-captable-summary-v2'],
   );
 
   for (const operator of workflowOperatorDefinitions) {
@@ -418,18 +414,18 @@ async function seedWorkflowData(db: DbClient) {
   }
 
   for (const workflow of buildDataManagementWorkflowSeedDefinitions()) {
-    await upsertWorkflowDefinition(db, workflow);
+    await insertWorkflowDefinitionIfMissing(db, workflow);
   }
 
   for (const workflow of buildEsopPageWorkflowSeedDefinitions()) {
-    await upsertWorkflowDefinition(db, workflow);
+    await insertWorkflowDefinitionIfMissing(db, workflow);
   }
 
   await parameterizeMonthlyWorkflow(db);
 }
 
 async function parameterizeMonthlyWorkflow(db: DbClient): Promise<void> {
-  await upsertWorkflowDefinition(db, buildMonthlyWorkflowSeedDefinition());
+  await insertWorkflowDefinitionIfMissing(db, buildMonthlyWorkflowSeedDefinition());
 }
 
 export async function ensureWorkflowSeedData(db: AppDb) {

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { normalizeWorkflowRuntimeParametersSchema, resolveWorkflowRuntimeConfiguration } from './runtimeParameters.js';
+import {
+  filterWorkflowRuntimeParametersBySchema,
+  normalizeWorkflowRuntimeParametersSchema,
+  resolveWorkflowRuntimeConfiguration,
+} from './runtimeParameters.js';
 import { deriveWorkflowRuntimeConfigFromTasks } from './runtimeParameterRequirements.js';
 import type { WorkflowTask, WorkflowRuntimeParametersSchema } from '../../shared/types.js';
 
@@ -74,6 +78,122 @@ test('resolveWorkflowRuntimeConfiguration injects fileRef from nested runtime re
       control_book: { provider: 'product-files', id: 42 },
       futu_exercises: { provider: 'product-files', id: 43 },
       option_plans: { provider: 'product-files', id: 44 },
+    },
+  });
+});
+
+test('resolveWorkflowRuntimeConfiguration preserves product file path keys', () => {
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [baseTask({
+      id: 'extract',
+      name: 'Extract',
+      operatorCode: 'sheet.range.extract',
+      params: { fileRef: { $fromRuntime: 'fileRefs.control_book' } },
+    })],
+    runtimeParamsSchema: {
+      fileRefs: {
+        type: 'object',
+        label: 'Files',
+        properties: { control_book: { type: 'object', label: 'Control Book' } },
+      },
+    },
+    runtimeParamsDefaults: {},
+    runtimeParameters: {
+      fileRefs: {
+        control_book: { provider: 'product-files', key: 'input/2026-05/Control Book.xlsx' },
+      },
+    },
+  });
+
+  assert.deepEqual(resolved.tasks[0]?.params.fileRef, {
+    provider: 'product-files',
+    key: 'input/2026-05/Control Book.xlsx',
+  });
+});
+
+test('resolveWorkflowRuntimeConfiguration accepts file reference metadata beside a nested sheet parameter', () => {
+  const task = baseTask({
+    operatorCode: 'sheet.range.extract',
+    params: {
+      fileRef: { $fromRuntime: 'fileRefs.option_plans_summary' },
+      sheetName: { $fromRuntime: 'fileRefs.option_plans_summary.sheet' },
+    },
+  });
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [task],
+    runtimeParamsSchema: {
+      fileRefs: {
+        type: 'object',
+        label: 'Files',
+        properties: {
+          option_plans_summary: {
+            type: 'object',
+            label: 'Option Plans Summary',
+            properties: { sheet: { type: 'string', label: 'Sheet' } },
+          },
+        },
+      },
+    },
+    runtimeParamsDefaults: {},
+    runtimeParameters: {
+      fileRefs: {
+        option_plans_summary: {
+          provider: 'product-files',
+          id: 43,
+          sheet: 'Option Plans Summary',
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(resolved.tasks[0]?.params.fileRef, {
+    provider: 'product-files',
+    id: 43,
+    sheet: 'Option Plans Summary',
+  });
+  assert.equal(resolved.tasks[0]?.params.sheetName, 'Option Plans Summary');
+});
+
+test('filterWorkflowRuntimeParametersBySchema keeps child workflow params and drops inherited extras', () => {
+  const filtered = filterWorkflowRuntimeParametersBySchema(
+    {
+      month: '2026-08',
+      fixedValues: { optionsOutstandingCullgen: 4_156_815 },
+      fileRefs: {
+        option_plans_summary: {
+          provider: 'product-files',
+          id: 43,
+          sheet: '!Option Plans Summary (Post-Gyr',
+        },
+        bc_subplan_transfer: {
+          provider: 'product-files',
+          id: 53,
+          sheet: '2025 BC Subplan Transfer',
+        },
+      },
+    },
+    {
+      fileRefs: {
+        type: 'object',
+        label: 'Files',
+        properties: {
+          option_plans_summary: {
+            type: 'object',
+            label: 'Option Plans Summary',
+            properties: { sheet: { type: 'string', label: 'Sheet' } },
+          },
+        },
+      },
+    },
+  );
+
+  assert.deepEqual(filtered, {
+    fileRefs: {
+      option_plans_summary: {
+        provider: 'product-files',
+        id: 43,
+        sheet: '!Option Plans Summary (Post-Gyr',
+      },
     },
   });
 });
@@ -311,6 +431,78 @@ test('deriveWorkflowRuntimeConfigFromTasks derives typed schema and defaults fro
       optionsOutstandingCullgen: 4156815,
     },
   });
+});
+
+test('deriveWorkflowRuntimeConfigFromTasks keeps saved defaults ahead of task reference defaults', () => {
+  const extractTask = baseTask({
+    id: 'extract_bc_subplan_transfer',
+    name: 'Extract 2025 BC Subplan Transfer',
+    operatorCode: 'sheet.range.extract',
+    params: {
+      fileRef: {
+        $fromRuntime: 'fileRefs.bc_subplan_transfer',
+        $type: 'object',
+        $label: '2025 BC Subplan Transfer input source',
+        $default: { sheet: 'Vesting Schedule' },
+      },
+      sheetName: {
+        $fromRuntime: 'fileRefs.bc_subplan_transfer.sheet',
+        $type: 'string',
+        $label: 'Sheet',
+        $default: 'Vesting Schedule',
+      },
+      range: 'A2:AI',
+    },
+  });
+
+  const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
+    tasks: [extractTask],
+    runtimeParamsSchema: {},
+    runtimeParamsDefaults: {
+      fileRefs: {
+        bc_subplan_transfer: {
+          provider: 'product-files',
+          id: 65,
+          sheet: '2025 BC Subplan Transfer',
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(runtimeConfig.runtimeParamsDefaults, {
+    fileRefs: {
+      bc_subplan_transfer: {
+        provider: 'product-files',
+        id: 65,
+        sheet: '2025 BC Subplan Transfer',
+      },
+    },
+  });
+});
+
+test('deriveWorkflowRuntimeConfigFromTasks keeps saved defaults ahead of operator defaults', () => {
+  const persistTask = baseTask({
+    id: 'persist_capitalization_summary',
+    name: 'Persist Capitalization Summary',
+    operatorCode: 'dataframe.persist.excel',
+    params: {
+      fileName: 'Capitalization_Table_Summary_View.xlsx',
+      fileNamePrefix: { $fromRuntime: 'month' },
+      sheetName: 'Capitalization Summary',
+    },
+  });
+
+  const runtimeConfig = deriveWorkflowRuntimeConfigFromTasks({
+    tasks: [persistTask],
+    runtimeParamsSchema: {
+      month: { type: 'string', label: 'Month' },
+    },
+    runtimeParamsDefaults: {
+      month: '2026-05',
+    },
+  });
+
+  assert.equal(runtimeConfig.runtimeParamsDefaults.month, '2026-05');
 });
 
 test('deriveWorkflowRuntimeConfigFromTasks drops schema and defaults that are not referenced by workflow tasks', () => {

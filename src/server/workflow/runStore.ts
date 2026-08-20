@@ -55,11 +55,13 @@ function taskStateForEvent(status: WorkflowExecutionTaskState) {
 }
 
 function toWorkflowRunStepRecord(row: Record<string, unknown>): WorkflowRunStepRecord {
+  const snapshot = parseJson<{ description?: unknown } | null>(row.task_snapshot_json, null);
   return {
     id: Number(row.id),
     runId: Number(row.run_id),
     taskId: String(row.task_id),
     taskName: String(row.task_name),
+    description: snapshot && typeof snapshot.description === 'string' ? snapshot.description : '',
     operatorCode: String(row.operator_code),
     status: String(row.status) as WorkflowRunStepRecord['status'],
     lockToken: row.lock_token ? String(row.lock_token) : null,
@@ -126,6 +128,7 @@ function toWorkflowRunRecord(
   return {
     id: Number(row.id),
     workflowId: Number(row.workflow_id),
+    versionId: row.version_id === null || row.version_id === undefined ? null : Number(row.version_id),
     workflowCode: String(row.workflow_code ?? ''),
     workflowName: String(row.workflow_name ?? ''),
     status: String(row.status) as WorkflowRunStatus,
@@ -198,11 +201,12 @@ export class WorkflowRunStore implements WorkflowRunRepository {
   async createRun(params: WorkflowRunCreateInput): Promise<WorkflowRunRecord> {
     const runRow = await this.db.queryOne<Record<string, unknown>>(
       `insert into workflow_runs (
-        workflow_id, workflow_code, workflow_name, status, tasks_snapshot_json, runtime_parameters_json, approved_warning_task_ids_json
-      ) values ($1, $2, $3, 'running', $4::jsonb, $5::jsonb, '[]'::jsonb)
+        workflow_id, version_id, workflow_code, workflow_name, status, tasks_snapshot_json, runtime_parameters_json, approved_warning_task_ids_json
+      ) values ($1, $2, $3, $4, 'running', $5::jsonb, $6::jsonb, '[]'::jsonb)
       returning *`,
       [
         Number(params.workflow.id),
+        params.workflowVersionId ?? null,
         String(params.workflow.code),
         String(params.workflow.name),
         JSON.stringify(params.tasks),

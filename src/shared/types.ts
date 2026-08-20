@@ -421,6 +421,7 @@ export type ProductFileRecord = {
   displayName: string;
   storedName: string;
   displayPath: string;
+  logicalPath?: string;
   fileExt: string;
   fileSizeBytes: number;
   mimeType: string;
@@ -643,7 +644,8 @@ export type WorkflowRuntimeParameterReference = {
 export type WorkflowFileReference =
   | {
       provider: 'product-files';
-      id: number;
+      id?: number;
+      key?: string;
     }
   | {
       provider: string;
@@ -830,6 +832,7 @@ export type WorkflowRunStepRecord = {
   runId: number;
   taskId: string;
   taskName: string;
+  description?: string;
   operatorCode: string;
   status: WorkflowExecutionTaskState;
   lockToken: string | null;
@@ -857,6 +860,7 @@ export type WorkflowRunArtifactRecord = {
 export type WorkflowRunRecord = {
   id: number;
   workflowId: number;
+  versionId: number | null;
   workflowCode: string;
   workflowName: string;
   status: WorkflowRunStatus;
@@ -907,7 +911,9 @@ export type MonthlyRunSourceDefinition = {
   label: string;
   description: string;
   defaultSheetName?: string | null;
+  allowSheetNameOverride?: boolean;
   required: boolean;
+  hidden?: boolean;
 };
 
 export type MonthlyRunFixedValueDefinition = {
@@ -920,11 +926,16 @@ export type MonthlyRunFixedValueDefinition = {
 
 export type MonthlyRunSourceBinding = {
   fileId: number;
+  logicalPath?: string | null;
+  fileKey?: string | null;
+  sheetName?: string | null;
 };
 
 export type MonthlyRunInstanceSourceValue = {
   fileId: number | null;
   fileName: string | null;
+  logicalPath?: string | null;
+  sheetName: string | null;
 };
 
 export type MonthlyRunInstanceRecord = {

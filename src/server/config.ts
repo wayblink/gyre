@@ -25,7 +25,8 @@ export const config = {
   // Login is temporarily disabled during development. Set AUTH_DISABLED=false to re-enable
   // authentication once the product is mature.
   authDisabled: (process.env.AUTH_DISABLED ?? 'true') === 'true',
-  // Workflow operators, built-in workflow definitions, and global parameters are product
-  // metadata seeded on boot.
+  // Workflow operators and global parameters are product metadata seeded on boot.
+  // Built-in workflow definitions are inserted only when missing; existing DB rows
+  // remain the source of truth.
   workflowSeedOnInit: (process.env.WORKFLOW_SEED_ON_INIT ?? 'true') === 'true',
 };

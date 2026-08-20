@@ -12,17 +12,24 @@ import {
   MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
   MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
 } from './workflowDefinition.js';
-import type { MonthlyRunDb } from './store.js';
+import { MONTHLY_WORKFLOW_CODE, type MonthlyRunDb } from './store.js';
 import { productFileRef } from '../workflow/fileSources.js';
 
 type MonthlyRunInstanceRow = Record<string, unknown>;
 
 const SOURCE_COLUMN_BY_KEY: Record<string, string> = {
-  control_book: 'control_book_file_id',
-  summary_source: 'summary_source_file_id',
+  base_control_book: 'control_book_file_id',
+  incremental_control_book: 'incremental_control_book_file_id',
+  options_os_detail_by_plan: 'summary_source_file_id',
   previous_capitalization_summary: 'previous_capitalization_summary_file_id',
   futu_exercises: 'futu_exercises_file_id',
-  option_plans: 'option_plans_file_id',
+  option_plans_summary: 'option_plans_file_id',
+  bc_subplan_transfer: 'bc_subplan_transfer_file_id',
+};
+
+const SOURCE_SHEET_COLUMN_BY_KEY: Record<string, string> = {
+  option_plans_summary: 'option_plans_sheet_name',
+  bc_subplan_transfer: 'bc_subplan_transfer_sheet_name',
 };
 
 const FIXED_VALUE_COLUMN_BY_KEY: Record<string, string> = {
@@ -50,21 +57,57 @@ function toNumber(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function fileKeyFromBinding(binding: MonthlyRunSourceBinding | null | undefined): string {
+  return String(binding?.logicalPath ?? binding?.fileKey ?? '').trim();
+}
+
+async function resolveMonthlyRunSourceFileId(
+  db: MonthlyRunDb,
+  binding: MonthlyRunSourceBinding | null | undefined,
+): Promise<number | null> {
+  if (!binding) return null;
+  const fileKey = fileKeyFromBinding(binding);
+  if (fileKey) {
+    const byKey = await db.queryOne<{ id: number }>(
+      `select id
+         from product_files
+        where logical_path = $1
+           or original_name = $1
+        order by id desc
+        limit 1`,
+      [fileKey],
+    );
+    if (byKey?.id) return Number(byKey.id);
+  }
+  return binding.fileId ?? null;
+}
+
 export function monthlyRunInstanceToRecord(row: MonthlyRunInstanceRow): MonthlyRunInstanceRecord {
   const sourceFileNameByKey = {
-    control_book: row.control_book_file_name ? String(row.control_book_file_name) : null,
-    summary_source: row.summary_source_file_name ? String(row.summary_source_file_name) : null,
+    base_control_book: row.base_control_book_file_name ? String(row.base_control_book_file_name) : null,
+    incremental_control_book: row.incremental_control_book_file_name ? String(row.incremental_control_book_file_name) : null,
+    options_os_detail_by_plan: row.options_os_detail_by_plan_file_name ? String(row.options_os_detail_by_plan_file_name) : null,
     previous_capitalization_summary: row.previous_capitalization_summary_file_name
       ? String(row.previous_capitalization_summary_file_name)
       : null,
     futu_exercises: row.futu_exercises_file_name ? String(row.futu_exercises_file_name) : null,
-    option_plans: row.option_plans_file_name ? String(row.option_plans_file_name) : null,
+    option_plans_summary: row.option_plans_file_name ? String(row.option_plans_file_name) : null,
+    bc_subplan_transfer: row.bc_subplan_transfer_file_name ? String(row.bc_subplan_transfer_file_name) : null,
+  };
+  const sourceLogicalPathByKey = {
+    base_control_book: row.base_control_book_logical_path ? String(row.base_control_book_logical_path) : null,
+    incremental_control_book: row.incremental_control_book_logical_path ? String(row.incremental_control_book_logical_path) : null,
+    options_os_detail_by_plan: row.options_os_detail_by_plan_logical_path ? String(row.options_os_detail_by_plan_logical_path) : null,
+    previous_capitalization_summary: row.previous_capitalization_summary_logical_path ? String(row.previous_capitalization_summary_logical_path) : null,
+    futu_exercises: row.futu_exercises_logical_path ? String(row.futu_exercises_logical_path) : null,
+    option_plans_summary: row.option_plans_logical_path ? String(row.option_plans_logical_path) : null,
+    bc_subplan_transfer: row.bc_subplan_transfer_logical_path ? String(row.bc_subplan_transfer_logical_path) : null,
   };
   return {
     id: Number(row.id),
     monthId: Number(row.month_id),
     monthKey: String(row.month_key),
-    workflowCode: String(row.workflow_code ?? 'gyre-captable-summary'),
+    workflowCode: String(row.workflow_code ?? MONTHLY_WORKFLOW_CODE),
     operator: String(row.operator ?? 'Administrator'),
     status: String(row.status ?? 'draft'),
     sources: Object.fromEntries(
@@ -73,6 +116,10 @@ export function monthlyRunInstanceToRecord(row: MonthlyRunInstanceRow): MonthlyR
         {
           fileId: toNullableNumber(row[SOURCE_COLUMN_BY_KEY[source.sourceKey]]),
           fileName: sourceFileNameByKey[source.sourceKey as keyof typeof sourceFileNameByKey],
+          logicalPath: sourceLogicalPathByKey[source.sourceKey as keyof typeof sourceLogicalPathByKey],
+          sheetName: SOURCE_SHEET_COLUMN_BY_KEY[source.sourceKey]
+            ? String(row[SOURCE_SHEET_COLUMN_BY_KEY[source.sourceKey]] ?? source.defaultSheetName ?? '').trim() || null
+            : source.defaultSheetName ?? null,
         },
       ]),
     ),
@@ -99,18 +146,29 @@ async function getMonthRow(db: MonthlyRunDb, monthKey: string): Promise<{ id: nu
 export async function getMonthlyRunInstance(db: MonthlyRunDb, monthKey: string): Promise<MonthlyRunInstanceRecord | null> {
   const row = await db.queryOne<MonthlyRunInstanceRow>(
     `select i.*,
-            control_book.original_name as control_book_file_name,
-            summary_source.original_name as summary_source_file_name,
+            base_control_book.original_name as base_control_book_file_name,
+            base_control_book.logical_path as base_control_book_logical_path,
+            incremental_control_book.original_name as incremental_control_book_file_name,
+            incremental_control_book.logical_path as incremental_control_book_logical_path,
+            options_os_detail_by_plan.original_name as options_os_detail_by_plan_file_name,
+            options_os_detail_by_plan.logical_path as options_os_detail_by_plan_logical_path,
             previous_capitalization_summary.original_name as previous_capitalization_summary_file_name,
+            previous_capitalization_summary.logical_path as previous_capitalization_summary_logical_path,
             futu_exercises.original_name as futu_exercises_file_name,
+            futu_exercises.logical_path as futu_exercises_logical_path,
             option_plans.original_name as option_plans_file_name,
+            option_plans.logical_path as option_plans_logical_path,
+            bc_subplan_transfer.original_name as bc_subplan_transfer_file_name,
+            bc_subplan_transfer.logical_path as bc_subplan_transfer_logical_path,
             output_file.original_name as latest_output_file_name
        from monthly_run_instances i
-       left join product_files control_book on control_book.id = i.control_book_file_id
-       left join product_files summary_source on summary_source.id = i.summary_source_file_id
+       left join product_files base_control_book on base_control_book.id = i.control_book_file_id
+       left join product_files incremental_control_book on incremental_control_book.id = i.incremental_control_book_file_id
+       left join product_files options_os_detail_by_plan on options_os_detail_by_plan.id = i.summary_source_file_id
        left join product_files previous_capitalization_summary on previous_capitalization_summary.id = i.previous_capitalization_summary_file_id
        left join product_files futu_exercises on futu_exercises.id = i.futu_exercises_file_id
        left join product_files option_plans on option_plans.id = i.option_plans_file_id
+       left join product_files bc_subplan_transfer on bc_subplan_transfer.id = i.bc_subplan_transfer_file_id
        left join product_files output_file on output_file.id = i.latest_output_file_id
       where i.month_key = $1`,
     [monthKey],
@@ -124,18 +182,29 @@ export async function listMonthlyRunInstances(
 ): Promise<MonthlyRunInstanceRecord[]> {
   const rows = await db.query<MonthlyRunInstanceRow>(
     `select i.*,
-            control_book.original_name as control_book_file_name,
-            summary_source.original_name as summary_source_file_name,
+            base_control_book.original_name as base_control_book_file_name,
+            base_control_book.logical_path as base_control_book_logical_path,
+            incremental_control_book.original_name as incremental_control_book_file_name,
+            incremental_control_book.logical_path as incremental_control_book_logical_path,
+            options_os_detail_by_plan.original_name as options_os_detail_by_plan_file_name,
+            options_os_detail_by_plan.logical_path as options_os_detail_by_plan_logical_path,
             previous_capitalization_summary.original_name as previous_capitalization_summary_file_name,
+            previous_capitalization_summary.logical_path as previous_capitalization_summary_logical_path,
             futu_exercises.original_name as futu_exercises_file_name,
+            futu_exercises.logical_path as futu_exercises_logical_path,
             option_plans.original_name as option_plans_file_name,
+            option_plans.logical_path as option_plans_logical_path,
+            bc_subplan_transfer.original_name as bc_subplan_transfer_file_name,
+            bc_subplan_transfer.logical_path as bc_subplan_transfer_logical_path,
             output_file.original_name as latest_output_file_name
        from monthly_run_instances i
-       left join product_files control_book on control_book.id = i.control_book_file_id
-       left join product_files summary_source on summary_source.id = i.summary_source_file_id
+       left join product_files base_control_book on base_control_book.id = i.control_book_file_id
+       left join product_files incremental_control_book on incremental_control_book.id = i.incremental_control_book_file_id
+       left join product_files options_os_detail_by_plan on options_os_detail_by_plan.id = i.summary_source_file_id
        left join product_files previous_capitalization_summary on previous_capitalization_summary.id = i.previous_capitalization_summary_file_id
        left join product_files futu_exercises on futu_exercises.id = i.futu_exercises_file_id
        left join product_files option_plans on option_plans.id = i.option_plans_file_id
+       left join product_files bc_subplan_transfer on bc_subplan_transfer.id = i.bc_subplan_transfer_file_id
        left join product_files output_file on output_file.id = i.latest_output_file_id
       ${params.month ? 'where i.month_key = $1' : ''}
       order by i.month_key desc, i.id desc`,
@@ -182,12 +251,13 @@ export async function ensureMonthlyRunInstance(db: MonthlyRunDb, monthKey: strin
        month_id, month_key, workflow_code, operator, status,
        options_outstanding_cullgen, options_available_cullgen
      )
-     values ($1, $2, 'gyre-captable-summary', 'Administrator', 'draft', $3, $4)
+     values ($1, $2, $3, 'Administrator', 'draft', $4, $5)
      on conflict (month_key) do update set updated_at = current_timestamp
      returning *`,
     [
       month.id,
       month.month_key,
+      MONTHLY_WORKFLOW_CODE,
       MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
       MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
     ],
@@ -207,14 +277,24 @@ export async function upsertMonthlyRunInstance(
 ): Promise<MonthlyRunInstanceRecord> {
   const existing = await ensureMonthlyRunInstance(db, monthKey);
 
-  const nextSourceFileIds = Object.fromEntries(
-    MONTHLY_RUN_SOURCE_DEFINITIONS.map((source) => [
-      source.sourceKey,
-      params.sources?.[source.sourceKey] === undefined
-        ? existing.sources[source.sourceKey]?.fileId ?? null
-        : (params.sources[source.sourceKey]?.fileId ?? null),
-    ]),
-  );
+  const nextSourceBindings = Object.fromEntries(
+    await Promise.all(MONTHLY_RUN_SOURCE_DEFINITIONS.map(async (source) => {
+      const provided = params.sources?.[source.sourceKey];
+      const existingBinding = existing.sources[source.sourceKey];
+      return [
+        source.sourceKey,
+        provided === undefined
+          ? {
+              fileId: existingBinding?.fileId ?? null,
+              sheetName: existingBinding?.sheetName ?? source.defaultSheetName ?? null,
+            }
+          : {
+              fileId: await resolveMonthlyRunSourceFileId(db, provided),
+              sheetName: provided?.sheetName?.trim() || source.defaultSheetName || null,
+            },
+      ];
+    })),
+  ) as Record<string, { fileId: number | null; sheetName: string | null }>;
   const nextFixedValues = {
     optionsOutstandingCullgen:
       params.fixedValues?.optionsOutstandingCullgen ??
@@ -225,30 +305,37 @@ export async function upsertMonthlyRunInstance(
       existing.fixedValues.optionsAvailableCullgen ??
       MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
   };
-
   const row = await db.queryOne<MonthlyRunInstanceRow>(
     `update monthly_run_instances
         set operator = $2,
             control_book_file_id = $3,
+            incremental_control_book_file_id = $13,
             summary_source_file_id = $4,
             previous_capitalization_summary_file_id = $5,
             futu_exercises_file_id = $6,
             option_plans_file_id = $7,
-            options_outstanding_cullgen = $8,
-            options_available_cullgen = $9,
+            option_plans_sheet_name = $8,
+            bc_subplan_transfer_file_id = $9,
+            bc_subplan_transfer_sheet_name = $10,
+            options_outstanding_cullgen = $11,
+            options_available_cullgen = $12,
             updated_at = current_timestamp
       where month_key = $1
       returning *`,
     [
       monthKey,
       params.operator ?? existing.operator,
-      nextSourceFileIds.control_book,
-      nextSourceFileIds.summary_source,
-      nextSourceFileIds.previous_capitalization_summary,
-      nextSourceFileIds.futu_exercises,
-      nextSourceFileIds.option_plans,
+      nextSourceBindings.base_control_book.fileId,
+      nextSourceBindings.options_os_detail_by_plan.fileId,
+      nextSourceBindings.previous_capitalization_summary.fileId,
+      nextSourceBindings.futu_exercises.fileId,
+      nextSourceBindings.option_plans_summary.fileId,
+      nextSourceBindings.option_plans_summary.sheetName,
+      nextSourceBindings.bc_subplan_transfer.fileId,
+      nextSourceBindings.bc_subplan_transfer.sheetName,
       nextFixedValues.optionsOutstandingCullgen,
       nextFixedValues.optionsAvailableCullgen,
+      nextSourceBindings.incremental_control_book.fileId,
     ],
   );
   if (!row) throw new Error(`Failed to update monthly run instance for ${monthKey}`);
@@ -260,8 +347,13 @@ export function monthlyRunInstanceToRuntimeParameters(instance: MonthlyRunInstan
     month: instance.monthKey,
     fileRefs: Object.fromEntries(
       MONTHLY_RUN_SOURCE_DEFINITIONS.flatMap((source) => {
-        const fileId = instance.sources[source.sourceKey]?.fileId ?? null;
-        return fileId ? [[source.sourceKey, productFileRef(fileId)] as const] : [];
+        const fileKey = instance.sources[source.sourceKey]?.logicalPath?.trim() ?? '';
+        if (!fileKey) return [];
+        const fileRef = productFileRef(fileKey) as Record<string, unknown>;
+        if (source.allowSheetNameOverride) {
+          fileRef.sheet = instance.sources[source.sourceKey]?.sheetName ?? source.defaultSheetName ?? '';
+        }
+        return [[source.sourceKey, fileRef] as const];
       }),
     ),
     fixedValues: instance.fixedValues,
@@ -271,6 +363,9 @@ export function monthlyRunInstanceToRuntimeParameters(instance: MonthlyRunInstan
 const MONTHLY_RUNTIME_FIXED_VALUE_KEYS = {
   optionsOutstandingCullgen: 'options_outstanding_cullgen',
   optionsAvailableCullgen: 'options_available_cullgen',
+  warrantsConvertiblePreferred: 'warrants_convertible_preferred',
+  cullgenCommonStock: 'cullgen_common_stock',
+  gyre2023ChinaSubplanTotal: 'gyre_2023_china_subplan_total',
 } as const;
 
 export async function loadMonthlyRunRuntimeFixedValues(db: MonthlyRunDb): Promise<Record<string, number>> {
@@ -279,7 +374,7 @@ export async function loadMonthlyRunRuntimeFixedValues(db: MonthlyRunDb): Promis
       from global_parameters
      where key = any($1::text[])
       order by key, updated_at desc, id desc`,
-    [[MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsOutstandingCullgen, MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsAvailableCullgen]],
+    [Object.values(MONTHLY_RUNTIME_FIXED_VALUE_KEYS)],
   );
   const byKey = new Map(rows.map((row) => [String(row.key), Number(row.value)]));
   const missingKeys = Object.values(MONTHLY_RUNTIME_FIXED_VALUE_KEYS).filter((key) => !Number.isFinite(byKey.get(key)));
@@ -289,6 +384,9 @@ export async function loadMonthlyRunRuntimeFixedValues(db: MonthlyRunDb): Promis
   return {
     optionsOutstandingCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsOutstandingCullgen)),
     optionsAvailableCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsAvailableCullgen)),
+    warrantsConvertiblePreferred: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.warrantsConvertiblePreferred)),
+    cullgenCommonStock: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.cullgenCommonStock)),
+    gyre2023ChinaSubplanTotal: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.gyre2023ChinaSubplanTotal)),
   };
 }
 

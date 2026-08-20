@@ -40,6 +40,7 @@ test('business service resolves workflow by stable code and starts a run', async
   const result = await startEsopPageWorkflow(
     {
       async queryOne(_sql, params) {
+        if (_sql.includes('logical_path')) return { logical_path: 'input/2026-05/exercises.xlsx' };
         assert.deepEqual(params, ['esop-exercise-record-sync']);
         return workflow;
       },
@@ -59,8 +60,7 @@ test('business service resolves workflow by stable code and starts a run', async
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.workflow.code, 'esop-exercise-record-sync');
   assert.deepEqual(calls[0]?.runtimeParameters, {
-    fileRefs: { futu_exercises: { provider: 'product-files', id: 17 } },
+    fileRefs: { futu_exercises: { provider: 'product-files', key: 'input/2026-05/exercises.xlsx' } },
   });
-  assert.deepEqual(calls[0]?.tasks[0]?.params.fileRef, { provider: 'product-files', id: 17 });
+  assert.deepEqual(calls[0]?.tasks[0]?.params.fileRef, { provider: 'product-files', key: 'input/2026-05/exercises.xlsx' });
 });
-

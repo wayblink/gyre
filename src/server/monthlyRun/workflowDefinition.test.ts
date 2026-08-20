@@ -65,7 +65,7 @@ const metricFrames = {
         eom_eq_balance_os: 111_488_849,
         cullgen_common_stock: 14_450_527,
         gyre_2023_china_subplan_total: 7_815_396,
-        bc_subplan_transfer_summary: 695_164,
+        bc_subplan_transfer_selected: 695_164,
         warrants_for_convertible_preferred_stock: 540_666,
         options_outstanding_cullgen: 4_156_815,
         options_available_cullgen: 10_994,
@@ -123,39 +123,60 @@ test('monthly capitalization summary workflow SQL matches expected workbook stru
 
 test('monthly workflow exposes source extraction and business input calculation before summary build', () => {
   const tasks = buildMonthlyWorkflowTasks();
-  const controlExtract = tasks.find((item) => item.id === 'extract_control_book');
-  const summaryExtract = tasks.find((item) => item.id === 'extract_cap_table_summary');
+  const controlInvoke = tasks.find((item) => item.id === 'invoke_control_book_merge');
   const previousSummaryExtract = tasks.find((item) => item.id === 'extract_previous_capitalization_summary');
-  const optionExtract = tasks.find((item) => item.id === 'extract_option_plans');
+  const optionInvoke = tasks.find((item) => item.id === 'invoke_option_plans_summary');
+  const optionsOsDetailExtract = tasks.find((item) => item.id === 'extract_options_os_detail_by_plan');
+  const bcSubplanExtract = tasks.find((item) => item.id === 'extract_bc_subplan_transfer');
+  const bcSubplanMetrics = tasks.find((item) => item.id === 'calc_bc_subplan_cancelled');
   const optionMetrics = tasks.find((item) => item.id === 'calc_option_metrics');
-  const sourceMetrics = tasks.find((item) => item.id === 'calc_cap_table_summary_source_metrics');
   const businessInputs = tasks.find((item) => item.id === 'calc_business_inputs');
   const summaryBuild = tasks.find((item) => item.id === 'build_capitalization_summary');
-  const summaryFileRef = summaryExtract?.params.fileRef as Record<string, unknown> | undefined;
 
-  assert.equal(controlExtract?.operatorCode, 'sheet.range.extract');
-  assert.equal(controlExtract?.params.sheetName, 'EQ Control Book');
-  assert.equal(controlExtract?.params.range, 'A9:L');
-  assert.equal(controlExtract?.params.dropTrailingEmptyRows, true);
-  assert.equal(summaryExtract?.operatorCode, 'sheet.range.extract');
-  assert.equal(summaryExtract?.params.sheetName, 'Detailed Cap Table');
-  assert.equal(summaryFileRef?.$fromRuntime, 'fileRefs.summary_source');
-  assert.equal(summaryFileRef?.$type, 'object');
-  assert.deepEqual(summaryFileRef?.$default, { provider: 'product-files', id: 56 });
+  assert.equal(controlInvoke?.operatorCode, 'workflow.invoke');
+  assert.equal(controlInvoke?.params.workflowCode, 'eq-control-book-incremental-merge');
+  assert.equal(controlInvoke?.params.outputTaskId, 'merge_control_book');
   assert.equal(previousSummaryExtract?.operatorCode, 'sheet.optional-range.extract');
   assert.equal(previousSummaryExtract?.params.sheetName, 'Capitalization Summary');
-  assert.equal(optionExtract?.operatorCode, 'sheet.sections.extract');
-  assert.equal(optionExtract?.params.sheetName, 'Option Plans Summary');
-  assert.equal(optionExtract?.params.splitByColumn, undefined);
-  assert.equal(Array.isArray(optionExtract?.params.sections) ? optionExtract.params.sections.length : 0, 6);
-  assert.equal(String(optionMetrics?.params.sql ?? '').includes('- 28170'), false);
-  assert.equal(sourceMetrics?.inputs.summary_source?.from, 'extract_cap_table_summary');
-  assert.equal(businessInputs?.inputs.summary_source?.from, 'calc_cap_table_summary_source_metrics');
+  assert.equal(optionInvoke?.operatorCode, 'workflow.invoke');
+  assert.equal(optionInvoke?.params.workflowCode, 'option-plans-summary-values');
+  assert.equal(optionInvoke?.params.outputTaskId, 'enrich_option_plans_summary_plan_name');
+  assert.deepEqual(optionInvoke?.params.runtimeParameters, {
+    fileRefs: {
+      option_plans_summary: {
+        $fromRuntime: 'fileRefs.option_plans_summary',
+        $type: 'object',
+        $label: 'Gyre Option Plans Summary SL workbook',
+        $default: {
+          sheet: '!Option Plans Summary (Post-Gyr',
+        },
+      },
+    },
+  });
+  assert.equal(optionsOsDetailExtract?.operatorCode, 'sheet.optional-range.extract');
+  assert.equal(optionsOsDetailExtract?.params.sheetName, 'Options OS Detail');
+  assert.equal(optionsOsDetailExtract?.params.range, 'A2:BZ');
+  assert.equal(bcSubplanExtract?.operatorCode, 'sheet.range.extract');
+  assert.deepEqual(bcSubplanExtract?.params.sheetName, {
+    $fromRuntime: 'fileRefs.bc_subplan_transfer.sheet',
+    $type: 'string',
+    $label: 'Sheet',
+    $default: 'Vesting Schedule',
+  });
+  assert.equal(bcSubplanExtract?.params.range, 'A2:AI');
+  assert.equal(bcSubplanExtract?.params.headerRow, 4);
+  assert.equal(bcSubplanMetrics?.inputs.transfer?.from, 'extract_bc_subplan_transfer');
+  assert.equal(String(optionMetrics?.params.sql ?? '').includes('group by p.key'), true);
+  assert.equal(String(optionMetrics?.params.sql ?? '').includes('bc_subplan_cancelled'), true);
+  assert.equal(optionMetrics?.inputs.plans?.from, 'invoke_option_plans_summary');
+  assert.equal(optionMetrics?.inputs.bc_subplan?.from, 'calc_bc_subplan_cancelled');
+  assert.equal(businessInputs?.inputs.option_metrics?.from, 'calc_option_metrics');
+  assert.deepEqual(businessInputs?.inputs.option_metrics?.guards, []);
+  assert.deepEqual(summaryBuild?.inputs.option_metrics?.guards, []);
+  assert.equal(businessInputs?.inputs.control_metrics?.from, 'calc_control_book_metrics');
   assert.equal(summaryBuild?.inputs.business_inputs?.from, 'calc_business_inputs');
-  assert.ok(!buildMonthlyCapitalizationSummarySql.includes('14450527'));
-  assert.ok(!buildMonthlyCapitalizationSummarySql.includes('4156815'));
-  assert.ok(!buildMonthlyCapitalizationSummarySql.includes('10994'));
-  assert.ok(!buildMonthlyCapitalizationSummarySql.includes(' as Formula'));
+  assert.equal(String(businessInputs?.params.sql ?? '').includes('bc_subplan_transfer_selected'), true);
+  assert.equal(String(businessInputs?.params.sql ?? '').includes('warrants_for_convertible_preferred_stock'), true);
 });
 
 test('monthly control book metrics extract Futu SubPlan total from source rows instead of hardcoding it', () => {
@@ -166,39 +187,235 @@ test('monthly control book metrics extract Futu SubPlan total from source rows i
   assert.ok(!sql.includes('7815396 as gyre_2023_china_subplan_total'));
 });
 
-test('monthly summary source metrics accepts bilingual labels from the merged workbook', async () => {
-  const task = buildMonthlyWorkflowTasks().find((item) => item.id === 'calc_cap_table_summary_source_metrics');
-  assert.ok(task);
-
+test('monthly BC Subplan metrics derive cancelled shares from the explicitly selected transfer sheet', async () => {
+  const task = resolvedMonthlyTask('calc_bc_subplan_cancelled', '2026-05');
   const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
-    if (slot !== 'summary_source') throw new Error(`Unexpected input slot ${slot}`);
+    if (slot !== 'transfer') throw new Error(`Unexpected input slot ${slot}`);
     return rowsToDataFrame(
       [
-        {
-          'Capitalization Table (Summary View)': 'BCI Shares Held by Futu Futu 持有的 BCI 股份',
-          column_3: 4_876_873,
-        },
-        {
-          'Capitalization Table (Summary View)': '2025 BC Subplan shares transferred to Futu\n2025 BC子计划转入Futu的股份',
-          column_3: 695_164,
-        },
-        {
-          'Capitalization Table (Summary View)': 'Warrants for Convertible Preferred Stock\n可转换优先股认股权证',
-          column_3: 540_666,
-        },
-        {
-          'Capitalization Table (Summary View)': 'Total Fully Diluted Shares Outstanding\n完全摊薄已发行股份合计',
-          column_3: 133_527_448.2141,
-        },
+        { 行标签: '总计', 总计: 2_063_380, Column35: null },
+        { 行标签: null, 总计: 2_100_000, Column35: null },
+        { 行标签: null, 总计: -36_620, Column35: 'Options cancelled/forfeited' },
       ],
-      { sheetName: 'Detailed Cap Table', a1Range: 'B24:F35' },
+      { sheetName: 'Vesting Schedule', a1Range: 'A2:AI459' },
     );
   });
 
-  assert.equal(result.dataFrame.rows[0].bci_shares_held_by_futu, 4_876_873);
-  assert.equal(result.dataFrame.rows[0].bc_subplan_transfer_summary, 695_164);
-  assert.equal(result.dataFrame.rows[0].warrants_for_convertible_preferred_stock, 540_666);
-  assert.equal(result.dataFrame.rows[0].source_total_fully_diluted, 133_527_448.2141);
+  assert.equal(result.dataFrame.rows[0].bc_subplan_cancelled, 36_620);
+});
+
+test('monthly BC Subplan metrics supports the 2025 transfer sheet two-total-row layout', async () => {
+  const task = resolvedMonthlyTask('calc_bc_subplan_cancelled', '2026-05');
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot !== 'transfer') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame(
+      [
+        { 行标签: '总计', 总计: 2_100_000 },
+        { 行标签: '总计', 总计: 2_071_829 },
+      ],
+      { sheetName: '2025 BC Subplan Transfer', a1Range: 'A2:AI485' },
+    );
+  });
+
+  assert.equal(result.dataFrame.rows[0].bc_subplan_cancelled, 28_171);
+  assert.equal(result.dataFrame.rows[0].bc_subplan_outstanding, 2_071_829);
+});
+
+test('monthly option metrics aggregates copy-style key totals without BC adjustment when no BC Subplan row exists', async () => {
+  const task = resolvedMonthlyTask('calc_option_metrics', '2026-05');
+  assert.ok(task);
+
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot === 'bc_subplan') {
+      return rowsToDataFrame([{ bc_subplan_cancelled: 28_170 }], { sheetName: 'bc_subplan', a1Range: '' });
+    }
+    if (slot !== 'plans') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame(
+      [
+        {
+          category_for_grouping: '0100PLAN_Other Plan',
+          plan_name: 'Other Plan',
+          key: 'Awards Outstanding',
+          value: 2_071_830,
+        },
+        {
+          category_for_grouping: '0101PLAN_GYRE 2023 Omnibus Incentive Plan',
+          plan_name: 'GYRE 2023 Omnibus Incentive Plan',
+          key: 'Awards Outstanding',
+          value: 50_000,
+        },
+        {
+          category_for_grouping: '0101PLAN_GYRE 2023 Omnibus Incentive Plan',
+          plan_name: 'GYRE 2023 Omnibus Incentive Plan',
+          key: 'Awards Outstanding + Shares Remaining for Issuance',
+          value: 52_000,
+        },
+        {
+          category_for_grouping: '0101PLAN_GYRE 2023 Omnibus Incentive Plan',
+          plan_name: 'GYRE 2023 Omnibus Incentive Plan',
+          key: 'Shares Remaining For Issuance',
+          value: 2_000,
+        },
+      ],
+      { sheetName: 'Option Plans Summary Values', a1Range: '' },
+    );
+  });
+
+  assert.equal(result.dataFrame.rows[0].total_options_outstanding, 2_121_830);
+  assert.equal(result.dataFrame.rows[0].total_options_available, 2_000);
+  assert.equal(result.dataFrame.rows[0].total_options_outstanding_plus_available, 52_000);
+});
+
+test('monthly option metrics adjusts BC Subplan only when Cancelled is zero', async () => {
+  const task = resolvedMonthlyTask('calc_option_metrics', '2026-05');
+  assert.ok(task);
+
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot === 'bc_subplan') {
+      return rowsToDataFrame([{ bc_subplan_cancelled: 28_170 }], { sheetName: 'bc_subplan', a1Range: '' });
+    }
+    if (slot !== 'plans') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame(
+      [
+        {
+          category_for_grouping: '0100PLAN_GYRE 2025 BC Subplan',
+          plan_name: 'GYRE 2025 BC Subplan',
+          key: 'Awards Outstanding',
+          value: 2_100_000,
+        },
+        {
+          category_for_grouping: '0100PLAN_GYRE 2025 BC Subplan',
+          plan_name: 'GYRE 2025 BC Subplan',
+          key: 'Cancelled',
+          value: 0,
+        },
+        {
+          category_for_grouping: '0100PLAN_GYRE 2025 BC Subplan',
+          plan_name: 'GYRE 2025 BC Subplan',
+          key: 'Awards Outstanding + Shares Remaining for Issuance',
+          value: 2_100_000,
+        },
+        {
+          category_for_grouping: '0101PLAN_GYRE 2023 Omnibus Incentive Plan',
+          plan_name: 'GYRE 2023 Omnibus Incentive Plan',
+          key: 'Awards Outstanding',
+          value: 2_983_369,
+        },
+        {
+          category_for_grouping: '0101PLAN_GYRE 2023 Omnibus Incentive Plan',
+          plan_name: 'GYRE 2023 Omnibus Incentive Plan',
+          key: 'Shares Remaining For Issuance',
+          value: 3_639_230,
+        },
+        {
+          category_for_grouping: '0101PLAN_GYRE 2023 Omnibus Incentive Plan',
+          plan_name: 'GYRE 2023 Omnibus Incentive Plan',
+          key: 'Awards Outstanding + Shares Remaining for Issuance',
+          value: 6_622_599,
+        },
+        {
+          category_for_grouping: '0102PLAN_GYRE 2023 Non-China BCI grants',
+          plan_name: 'GYRE 2023 Non-China BCI grants',
+          key: 'Awards Outstanding',
+          value: 8_992_192,
+        },
+        {
+          category_for_grouping: '0102PLAN_GYRE 2023 Non-China BCI grants',
+          plan_name: 'GYRE 2023 Non-China BCI grants',
+          key: 'Awards Outstanding + Shares Remaining for Issuance',
+          value: 8_992_192,
+        },
+        {
+          category_for_grouping: '0103PLAN_2018 Omnibus Incentive Plan',
+          plan_name: '2018 Omnibus Incentive Plan',
+          key: 'Awards Outstanding',
+          value: 185_935,
+        },
+        {
+          category_for_grouping: '0103PLAN_2018 Omnibus Incentive Plan',
+          plan_name: '2018 Omnibus Incentive Plan',
+          key: 'Awards Outstanding + Shares Remaining for Issuance',
+          value: 185_935,
+        },
+        {
+          category_for_grouping: '0104PLAN_CBIO 2015 Stock Incentive Plan',
+          plan_name: 'CBIO 2015 Stock Incentive Plan',
+          key: 'Awards Outstanding',
+          value: 152_732,
+        },
+        {
+          category_for_grouping: '0104PLAN_CBIO 2015 Stock Incentive Plan',
+          plan_name: 'CBIO 2015 Stock Incentive Plan',
+          key: 'Awards Outstanding + Shares Remaining for Issuance',
+          value: 152_732,
+        },
+      ],
+      { sheetName: 'Option Plans Summary Values', a1Range: '' },
+    );
+  });
+
+  assert.equal(result.dataFrame.rows[0].total_options_outstanding, 14_386_058);
+  assert.equal(result.dataFrame.rows[0].total_options_available, 3_667_400);
+  assert.equal(result.dataFrame.rows[0].total_options_outstanding_plus_available, 18_053_458);
+  assert.equal(result.dataFrame.rows[0].bc_subplan_cancelled_adjustment, 28_170);
+});
+
+test('monthly option metrics keeps workbook values when BC Subplan Cancelled is non-zero', async () => {
+  const task = resolvedMonthlyTask('calc_option_metrics', '2026-05');
+  assert.ok(task);
+
+  const result = await executeSqlDataFrameQuery(task, { rowsToDataFrame } as never, async (slot) => {
+    if (slot === 'bc_subplan') {
+      return rowsToDataFrame([{ bc_subplan_cancelled: 28_170 }], { sheetName: 'bc_subplan', a1Range: '' });
+    }
+    if (slot !== 'plans') throw new Error(`Unexpected input slot ${slot}`);
+    return rowsToDataFrame(
+      [
+        {
+          category_for_grouping: '0100PLAN_GYRE 2025 BC Subplan',
+          plan_name: 'GYRE 2025 BC Subplan',
+          key: 'Awards Outstanding',
+          value: 2_071_830,
+        },
+        {
+          category_for_grouping: '0100PLAN_GYRE 2025 BC Subplan',
+          plan_name: 'GYRE 2025 BC Subplan',
+          key: 'Cancelled',
+          value: 28_170,
+        },
+        {
+          category_for_grouping: '0100PLAN_GYRE 2025 BC Subplan',
+          plan_name: 'GYRE 2025 BC Subplan',
+          key: 'Awards Outstanding + Shares Remaining for Issuance',
+          value: 2_100_000,
+        },
+        {
+          category_for_grouping: '0101PLAN_GYRE 2023 Omnibus Incentive Plan',
+          plan_name: 'GYRE 2023 Omnibus Incentive Plan',
+          key: 'Awards Outstanding',
+          value: 12_314_228,
+        },
+        {
+          category_for_grouping: '0101PLAN_GYRE 2023 Omnibus Incentive Plan',
+          plan_name: 'GYRE 2023 Omnibus Incentive Plan',
+          key: 'Shares Remaining For Issuance',
+          value: 3_667_400,
+        },
+        {
+          category_for_grouping: '0101PLAN_GYRE 2023 Omnibus Incentive Plan',
+          plan_name: 'GYRE 2023 Omnibus Incentive Plan',
+          key: 'Awards Outstanding + Shares Remaining for Issuance',
+          value: 15_953_458,
+        },
+      ],
+      { sheetName: 'Option Plans Summary Values', a1Range: '' },
+    );
+  });
+
+  assert.equal(result.dataFrame.rows[0].total_options_outstanding, 14_386_058);
+  assert.equal(result.dataFrame.rows[0].total_options_available, 3_667_400);
+  assert.equal(result.dataFrame.rows[0].total_options_outstanding_plus_available, 18_053_458);
+  assert.equal(result.dataFrame.rows[0].bc_subplan_cancelled_adjustment, 0);
 });
 
 test('monthly control book metrics uses last non-empty issued outstanding row instead of max value', async () => {
@@ -371,7 +588,7 @@ test('monthly workflow optional previous summary validates Last Month only when 
   assert.match(fail.assertion.failureMessage, /Previous Capitalization Summary EOM/);
 });
 
-test('monthly workflow seed definition derives runtime parameters without business-required semantics', () => {
+test('monthly workflow seed definition derives runtime parameters and fixed values', () => {
   const workflow = buildMonthlyWorkflowSeedDefinition();
   const persistTask = workflow.tasks.find((item) => item.id === 'persist_capitalization_summary');
   const businessInputsTask = workflow.tasks.find((item) => item.id === 'calc_business_inputs');
@@ -380,48 +597,47 @@ test('monthly workflow seed definition derives runtime parameters without busine
   assert.deepEqual(persistTask?.params.fileNamePrefix, { $fromRuntime: 'month' });
   assert.equal(persistTask?.params.fileName, 'Capitalization_Table_Summary_View.xlsx');
   assert.equal(workflow.runtimeParamsSchema.month?.label, 'Month');
-  assert.notEqual(workflow.runtimeParamsSchema.month?.required, true);
   assert.equal(workflow.runtimeParamsSchema.fixedValues?.type, 'object');
+  assert.equal(workflow.runtimeParamsSchema.fixedValues?.properties?.bcSubplanCancelled, undefined);
+  assert.equal(workflow.runtimeParamsSchema.transferDecision, undefined);
+  assert.equal(workflow.runtimeParamsSchema.fixedValues?.properties?.warrantsConvertiblePreferred?.type, 'number');
   assert.equal(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsOutstandingCullgen?.type, 'number');
   assert.equal(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsAvailableCullgen?.type, 'number');
-  assert.notEqual(workflow.runtimeParamsSchema.fixedValues?.required, true);
-  assert.notEqual(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsOutstandingCullgen?.required, true);
-  assert.notEqual(workflow.runtimeParamsSchema.fixedValues?.properties?.optionsAvailableCullgen?.required, true);
-  assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.required, true);
-  assert.notEqual(workflow.runtimeParamsSchema.fileRefs?.properties?.control_book?.required, true);
-  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.summary_source?.type, 'object');
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.base_control_book?.type, 'object');
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.incremental_control_book?.type, 'object');
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.futu_exercises?.type, 'object');
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.option_plans_summary?.type, 'object');
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.option_plans_summary?.properties?.sheet?.type, 'string');
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.options_os_detail_by_plan?.type, 'object');
   assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.previous_capitalization_summary?.type, 'object');
-  assert.equal(
-    (workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsOutstandingCullgen,
-    MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
-  );
-  assert.equal(
-    (workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsAvailableCullgen,
-    MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
-  );
-  assert.equal(
-    businessInputConstants?.optionsOutstandingCullgen?.$fromRuntime,
-    'fixedValues.optionsOutstandingCullgen',
-  );
-  assert.equal(businessInputConstants?.optionsOutstandingCullgen?.$type, 'number');
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.bc_subplan_transfer?.type, 'object');
+  assert.equal(workflow.runtimeParamsSchema.fileRefs?.properties?.bc_subplan_transfer?.properties?.sheet?.type, 'string');
+  assert.equal(workflow.runtimeParamsSchema.sheetNames, undefined);
+  assert.equal((workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).bcSubplanCancelled, undefined);
+  assert.equal(workflow.runtimeParamsDefaults.transferDecision, undefined);
+  assert.equal((workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).warrantsConvertiblePreferred, 540_666);
+  assert.equal((workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsOutstandingCullgen, MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN);
+  assert.equal((workflow.runtimeParamsDefaults.fixedValues as Record<string, unknown>).optionsAvailableCullgen, MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN);
+  assert.equal(businessInputConstants?.bcSubplanTransferOverride, undefined);
+  assert.match(String(businessInputsTask?.params.sql ?? ''), /bc_subplan_transfer_control_book/);
+  assert.equal(businessInputConstants?.warrantsConvertiblePreferred?.$default, 540_666);
   assert.equal(businessInputConstants?.optionsOutstandingCullgen?.$default, MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN);
-  assert.equal(
-    businessInputConstants?.optionsAvailableCullgen?.$fromRuntime,
-    'fixedValues.optionsAvailableCullgen',
-  );
-  assert.equal(businessInputConstants?.optionsAvailableCullgen?.$type, 'number');
   assert.equal(businessInputConstants?.optionsAvailableCullgen?.$default, MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN);
   assert.match(String(workflow.runtimeParamsDefaults.month ?? ''), /^\d{4}-\d{2}$/);
 });
 
-test('monthly workflow defaults use independent source workbooks for required inputs', () => {
+test('monthly workflow defaults leave source workbooks unbound and preserve sheet defaults', () => {
   const workflow = buildMonthlyWorkflowSeedDefinition();
 
   assert.deepEqual(workflow.runtimeParamsDefaults.fileRefs, {
-    control_book: { provider: 'product-files', id: 53 },
-    futu_exercises: { provider: 'product-files', id: 54 },
-    option_plans: { provider: 'product-files', id: 55 },
-    summary_source: { provider: 'product-files', id: 56 },
+    base_control_book: { sheet: 'EQ Control Book' },
+    incremental_control_book: { sheet: '27591' },
+    futu_exercises: {},
+    option_plans_summary: {
+      sheet: '!Option Plans Summary (Post-Gyr',
+    },
+    bc_subplan_transfer: { sheet: 'Vesting Schedule' },
+    options_os_detail_by_plan: {},
     previous_capitalization_summary: {},
   });
 });
@@ -430,15 +646,21 @@ test('monthly business input configuration maps source files one-to-one to extra
   assert.deepEqual(
     MONTHLY_RUN_SOURCE_DEFINITIONS.map(({ sourceKey, taskId }) => ({ sourceKey, taskId })),
     [
-      { sourceKey: 'control_book', taskId: 'extract_control_book' },
-      { sourceKey: 'summary_source', taskId: 'extract_cap_table_summary' },
+      { sourceKey: 'base_control_book', taskId: 'invoke_control_book_merge' },
+      { sourceKey: 'incremental_control_book', taskId: 'invoke_control_book_merge' },
       { sourceKey: 'previous_capitalization_summary', taskId: 'extract_previous_capitalization_summary' },
       { sourceKey: 'futu_exercises', taskId: 'extract_futu_exercises' },
-      { sourceKey: 'option_plans', taskId: 'extract_option_plans' },
+      { sourceKey: 'option_plans_summary', taskId: 'invoke_option_plans_summary' },
+      { sourceKey: 'bc_subplan_transfer', taskId: 'extract_bc_subplan_transfer' },
+      { sourceKey: 'options_os_detail_by_plan', taskId: 'extract_options_os_detail_by_plan' },
     ],
   );
   assert.equal(MONTHLY_RUN_SOURCE_DEFINITIONS.find((source) => source.sourceKey === 'previous_capitalization_summary')?.required, false);
-  assert.equal(new Set(MONTHLY_RUN_SOURCE_DEFINITIONS.map((source) => source.taskId)).size, 5);
+  assert.equal(MONTHLY_RUN_SOURCE_DEFINITIONS.find((source) => source.sourceKey === 'bc_subplan_transfer')?.required, true);
+  assert.equal(MONTHLY_RUN_SOURCE_DEFINITIONS.find((source) => source.sourceKey === 'bc_subplan_transfer')?.allowSheetNameOverride, true);
+  assert.equal(MONTHLY_RUN_SOURCE_DEFINITIONS.find((source) => source.sourceKey === 'option_plans_summary')?.allowSheetNameOverride, true);
+  assert.equal(MONTHLY_RUN_SOURCE_DEFINITIONS.find((source) => source.sourceKey === 'options_os_detail_by_plan')?.required, false);
+  assert.equal(new Set(MONTHLY_RUN_SOURCE_DEFINITIONS.map((source) => source.taskId)).size, 6);
 });
 
 test('monthly runtime parameter builder keeps defaults when optional override keys are undefined', () => {
@@ -449,6 +671,7 @@ test('monthly runtime parameter builder keeps defaults when optional override ke
 
   assert.equal(runtimeParameters.month, '2026-06');
   assert.deepEqual(runtimeParameters.fixedValues, {
+    warrantsConvertiblePreferred: 540_666,
     optionsOutstandingCullgen: MONTHLY_RUNTIME_OPTIONS_OUTSTANDING_CULLGEN,
     optionsAvailableCullgen: MONTHLY_RUNTIME_OPTIONS_AVAILABLE_CULLGEN,
   });
@@ -470,9 +693,9 @@ test('monthly business inputs resolves configurable Cullgen option constants fro
   const task = resolved.tasks.find((item) => item.id === 'calc_business_inputs');
   assert.ok(task);
 
-  assert.equal(String(task.params.sql).includes('4156815'), false);
-  assert.equal(String(task.params.sql).includes('10994'), false);
+  assert.equal(String(task.params.sql).includes('options_os_detail_by_plan'), false);
   assert.deepEqual(task.params.constants, {
+    warrantsConvertiblePreferred: 540_666,
     optionsOutstandingCullgen: 10,
     optionsAvailableCullgen: 5,
   });
@@ -482,24 +705,24 @@ test('monthly business inputs resolves configurable Cullgen option constants fro
       return rowsToDataFrame(
         [
           {
-            eom_eq_balance_os: 100,
-            cullgen_common_stock: 20,
-            gyre_2023_china_subplan_total: 30,
+            eom_eq_balance_os: 111_488_849,
+            cullgen_common_stock: 14_450_527,
+            gyre_2023_china_subplan_total: 7_815_396,
+            bc_subplan_transfer_control_book: 695_165,
           },
         ],
         { sheetName: 'control_metrics', a1Range: '' },
       );
     }
-    if (slot === 'summary_source') {
+    if (slot === 'option_metrics') {
       return rowsToDataFrame(
         [
           {
-            bc_subplan_transfer_summary: 3,
-            warrants_for_convertible_preferred_stock: 2,
-            source_total_fully_diluted: 1000.4,
+            total_options_outstanding: 14_386_058,
+            total_options_available: 3_667_400,
           },
         ],
-        { sheetName: 'summary_source', a1Range: '' },
+        { sheetName: 'option_metrics', a1Range: '' },
       );
     }
     throw new Error(`Unexpected input slot ${slot}`);
@@ -507,7 +730,42 @@ test('monthly business inputs resolves configurable Cullgen option constants fro
 
   assert.equal(result.dataFrame.rows[0].options_outstanding_cullgen, 10);
   assert.equal(result.dataFrame.rows[0].options_available_cullgen, 5);
-  assert.equal(result.dataFrame.rows[0].total_fully_diluted, 1000);
+  assert.equal(result.dataFrame.rows[0].bc_subplan_transfer_selected, 695_165);
+  assert.equal(result.dataFrame.rows[0].bc_subplan_transfer_selection_source, 'control_book');
+  assert.equal(result.dataFrame.rows[0].total_fully_diluted, 129_387_823);
+});
+
+test('monthly transfer guards accept any positive Control Book value and avoid snapshot totals', () => {
+  const workflow = buildMonthlyWorkflowSeedDefinition();
+  const calcTask = workflow.tasks.find((item) => item.id === 'calc_business_inputs');
+  const summaryTask = workflow.tasks.find((item) => item.id === 'build_capitalization_summary');
+  const persistTask = workflow.tasks.find((item) => item.id === 'persist_capitalization_summary');
+  assert.ok(calcTask);
+  assert.ok(summaryTask);
+  assert.ok(persistTask);
+
+  const controlGuards = summaryTask.inputs.control_metrics.guards;
+  const businessInputGuards = summaryTask.inputs.business_inputs.guards;
+  const capitalizationGuards = persistTask.inputs.capitalization.guards;
+  assert.ok(controlGuards);
+  assert.ok(businessInputGuards);
+  assert.ok(capitalizationGuards);
+
+  const controlGuard = controlGuards.find(
+    (guard) => guard.id === 'guard_assert_control_book_transfer_source',
+  );
+  const businessTotalGuard = businessInputGuards.find(
+    (guard) => guard.id === 'guard_assert_total_fully_diluted_business_input',
+  );
+  const summaryTotalGuard = capitalizationGuards.find(
+    (guard) => guard.id === 'guard_assert_summary_total_calculation',
+  );
+
+  assert.equal(controlGuard?.params.expectedValue, 1);
+  assert.match(String(controlGuard?.params.sql), /> 0/);
+  assert.equal(businessTotalGuard?.params.expectedValue, 1);
+  assert.equal(summaryTotalGuard?.params.expectedValue, 1);
+  assert.match(String(summaryTotalGuard?.params.sql), /Total Fully Diluted Shares Outstand/);
 });
 
 test('persist excel operator prefixes output filename with resolved month constant', async () => {
@@ -520,6 +778,8 @@ test('persist excel operator prefixes output filename with resolved month consta
     executed: new Map(),
     taskMap: new Map([[task.id, task]]),
     runtime: {} as never,
+    runtimeParameters: {},
+    invocationStack: [],
     executeTask: async () => metricFrames.business_inputs,
     resolveInputDataFrame: async (slot) =>
       slot === 'reconciliation'

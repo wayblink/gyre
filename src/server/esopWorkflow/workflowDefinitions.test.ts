@@ -178,19 +178,19 @@ test('Sold Shares workflow filters note and blank rows before persisting output'
 
 test('business runtime builder validates required files and emits product file references', () => {
   assert.throws(
-    () => buildEsopWorkflowRuntimeParameters('grant-record', { futu_grants: { fileId: 11 } }),
+    () => buildEsopWorkflowRuntimeParameters('grant-record', { futu_grants: { fileKey: 'input/futu.xlsx' } }),
     /Missing ESOP workflow source: shareworks_grants/,
   );
 
   assert.deepEqual(
     buildEsopWorkflowRuntimeParameters('grant-record', {
-      futu_grants: { fileId: 11 },
-      shareworks_grants: { fileId: 12 },
+      futu_grants: { fileKey: 'input/futu.xlsx' },
+      shareworks_grants: { fileKey: 'input/shareworks.xlsx' },
     }),
     {
       fileRefs: {
-        futu_grants: { provider: 'product-files', id: 11 },
-        shareworks_grants: { provider: 'product-files', id: 12 },
+        futu_grants: { provider: 'product-files', key: 'input/futu.xlsx' },
+        shareworks_grants: { provider: 'product-files', key: 'input/shareworks.xlsx' },
       },
     },
   );

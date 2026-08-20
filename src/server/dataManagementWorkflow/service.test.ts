@@ -23,6 +23,7 @@ test('business service resolves Plan Summary by stable code and starts a run', a
   const result = await startDataManagementWorkflow(
     {
       async queryOne(_sql, params) {
+        if (_sql.includes('logical_path')) return { logical_path: 'input/2026-05/shareworks.xlsx' };
         assert.deepEqual(params, ['plan-summary-sync']);
         return workflow;
       },
@@ -39,7 +40,7 @@ test('business service resolves Plan Summary by stable code and starts a run', a
   );
   assert.equal(result, fakeRun);
   assert.deepEqual(calls[0]?.runtimeParameters, {
-    fileRefs: { shareworks_grants: { provider: 'product-files', id: 4 } },
+    fileRefs: { shareworks_grants: { provider: 'product-files', key: 'input/2026-05/shareworks.xlsx' } },
   });
 });
 
@@ -148,6 +149,7 @@ test('5% Holders workflow passes all global fixed values as runtime parameters',
   const result = await startDataManagementWorkflow(
     {
       async queryOne(_sql, params) {
+        if (_sql.includes('logical_path')) return { logical_path: 'output/captable/summary.xlsx' };
         assert.deepEqual(params, ['five-percent-holders-sync']);
         return workflow;
       },
@@ -181,6 +183,6 @@ test('5% Holders workflow passes all global fixed values as runtime parameters',
       fivePercentHoldersSongjiangMaCommonStock: 13,
       fivePercentHoldersSongjiangMaTotalCses: 14,
     },
-    fileRefs: { capitalization_summary: { provider: 'product-files', id: 7 } },
+    fileRefs: { capitalization_summary: { provider: 'product-files', key: 'output/captable/summary.xlsx' } },
   });
 });

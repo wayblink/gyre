@@ -6,9 +6,10 @@ import * as XLSX from 'xlsx';
 type CreateWorkbookViewerOptions = {
   container: HTMLElement;
   workbookData: object;
+  readOnly?: boolean;
 };
 
-export function createWorkbookViewer({ container, workbookData }: CreateWorkbookViewerOptions) {
+export function createWorkbookViewer({ container, workbookData, readOnly = false }: CreateWorkbookViewerOptions) {
   const { univer, univerAPI } = createUniver({
     locale: LocaleType.ZH_CN,
     locales: {
@@ -18,7 +19,7 @@ export function createWorkbookViewer({ container, workbookData }: CreateWorkbook
       UniverSheetsCorePreset({
         container,
         header: true,
-        toolbar: true,
+        toolbar: !readOnly,
         formulaBar: true,
         footer: {
           sheetBar: true,
@@ -30,6 +31,7 @@ export function createWorkbookViewer({ container, workbookData }: CreateWorkbook
   });
 
   univerAPI.createWorkbook(workbookData);
+  if (readOnly) void applyReadOnlyPermission(univerAPI);
 
   return {
     exportXlsxBlob() {
@@ -39,6 +41,16 @@ export function createWorkbookViewer({ container, workbookData }: CreateWorkbook
       univer.dispose();
     },
   };
+}
+
+async function applyReadOnlyPermission(univerAPI: any) {
+  try {
+    const permission = univerAPI.getActiveWorkbook?.()?.getWorkbookPermission?.();
+    if (!permission?.setReadOnly) return;
+    await permission.setReadOnly();
+  } catch (error) {
+    console.error('Failed to switch workbook into read-only mode', error);
+  }
 }
 
 function snapshotToXlsxBlob(univerAPI: any): Blob | null {

@@ -46,7 +46,8 @@ function workflowRun(overrides: Partial<WorkflowRunRecord> = {}): WorkflowRunRec
   return {
     id: 200,
     workflowId: 159,
-    workflowCode: 'gyre-captable-summary',
+    versionId: null,
+    workflowCode: 'gyre-captable-summary-v2',
     workflowName: 'Gyre Cap Table Summary Draft',
     status: 'completed',
     runtimeParameters: { month: '2026-06', fileIds: { control_book: 7, futu_exercises: 8, option_plans: 9 } },

@@ -194,6 +194,7 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
     this.run = {
       id: 100,
       workflowId: 1,
+      versionId: null,
       workflowCode: 'test-workflow',
       workflowName: 'Test Workflow',
       status: 'pending',
@@ -927,4 +928,56 @@ test('unclaimed step finish uses only the SQL parameters referenced by its updat
   assert.ok(update);
   assert.equal(update.params.length, 8);
   assert.doesNotMatch(update.sql, /\$9|\$10/);
+});
+
+test('workflow run store pins a workflow definition version when creating a run', async () => {
+  const source = sourceTask();
+  const captured: Array<{ sql: string; params: unknown[] }> = [];
+  const runRow = {
+    id: 100,
+    workflow_id: 1,
+    version_id: 7,
+    workflow_code: 'test-workflow',
+    workflow_name: 'Test Workflow',
+    status: 'running',
+    tasks_snapshot_json: [source],
+    runtime_parameters_json: { month: '2026-05' },
+    approved_warning_task_ids_json: [],
+    started_at: new Date(0).toISOString(),
+    finished_at: null,
+    duration_ms: null,
+    error_message: null,
+  };
+  const fakeDb = {
+    async queryOne(sql: string, params: unknown[]) {
+      captured.push({ sql, params });
+      if (/insert into workflow_runs/i.test(sql)) return runRow;
+      if (/select \* from workflow_runs/i.test(sql)) return runRow;
+      throw new Error(`Unexpected queryOne: ${sql}`);
+    },
+    async query(sql: string) {
+      if (/workflow_run_steps/i.test(sql)) return [];
+      if (/workflow_run_artifacts/i.test(sql)) return [];
+      if (/workflow_run_events/i.test(sql)) return [];
+      if (/workflow_run_approvals/i.test(sql)) return [];
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    async execute(sql: string, params: unknown[]) {
+      captured.push({ sql, params });
+    },
+  };
+  const store = new WorkflowRunStore(fakeDb as never);
+
+  const run = await store.createRun({
+    workflow: { id: 1, code: 'test-workflow', name: 'Test Workflow' },
+    workflowVersionId: 7,
+    tasks: [source],
+    runtimeParameters: { month: '2026-05' },
+  });
+
+  const insert = captured.find((item) => /insert into workflow_runs/i.test(item.sql));
+  assert.ok(insert);
+  assert.match(insert.sql, /version_id/);
+  assert.equal(insert.params[1], 7);
+  assert.equal(run.versionId, 7);
 });

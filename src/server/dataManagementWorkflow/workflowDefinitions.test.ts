@@ -78,25 +78,25 @@ test('5% Holders workflow calculates from capitalization summary and fixed value
 
 test('business runtime parameters require a one-to-one file binding for every source', () => {
   assert.deepEqual(buildDataManagementWorkflowRuntimeParameters('plan-summary', {
-    shareworks_grants: { fileId: 4 },
+    shareworks_grants: { fileKey: 'input/shareworks.xlsx' },
   }), {
-    fileRefs: { shareworks_grants: { provider: 'product-files', id: 4 } },
+    fileRefs: { shareworks_grants: { provider: 'product-files', key: 'input/shareworks.xlsx' } },
   });
   assert.deepEqual(buildDataManagementWorkflowRuntimeParameters('five-percent-holders', {
-    capitalization_summary: { fileId: 5 },
+    capitalization_summary: { fileKey: 'output/captable/summary.xlsx' },
   }), {
-    fileRefs: { capitalization_summary: { provider: 'product-files', id: 5 } },
+    fileRefs: { capitalization_summary: { provider: 'product-files', key: 'output/captable/summary.xlsx' } },
   });
   assert.deepEqual(buildDataManagementWorkflowRuntimeParameters('five-percent-holders', {
-    capitalization_summary: { fileId: 5 },
+    capitalization_summary: { fileKey: 'output/captable/summary.xlsx' },
   }, {
     fixedValues: { fivePercentHoldersGniCommonStock: 10 },
   }), {
     fixedValues: { fivePercentHoldersGniCommonStock: 10 },
-    fileRefs: { capitalization_summary: { provider: 'product-files', id: 5 } },
+    fileRefs: { capitalization_summary: { provider: 'product-files', key: 'output/captable/summary.xlsx' } },
   });
   assert.throws(
-    () => buildDataManagementWorkflowRuntimeParameters('employee', { futu_grants: { fileId: 9 } }),
+    () => buildDataManagementWorkflowRuntimeParameters('employee', { futu_grants: { fileKey: 'input/futu.xlsx' } }),
     /shareworks_grants/,
   );
 });

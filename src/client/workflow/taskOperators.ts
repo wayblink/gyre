@@ -11,10 +11,12 @@ const SHEET_RANGE_EXTRACT_CODE = 'sheet.range.extract';
 const SHEET_SECTIONS_EXTRACT_CODE = 'sheet.sections.extract';
 const SQL_COMPUTE_CODE = 'sql.compute';
 const DATAFRAME_PERSIST_EXCEL_CODE = 'dataframe.persist.excel';
+const WORKBOOK_PERSIST_EXCEL_CODE = 'workbook.persist.excel';
 const DATAFRAME_ASSERT_CODE = 'dataframe.assert';
 const DATAFRAME_SQL_ASSERT_CODE = 'dataframe.sql.assert';
 const DATAFRAME_SCHEMA_ASSERT_CODE = 'dataframe.schema.assert';
 const DATAFRAME_SHAPE_ASSERT_CODE = 'dataframe.shape.assert';
+const WORKFLOW_INVOKE_CODE = 'workflow.invoke';
 const WORKFLOW_RUNTIME_FILE_SELECT_PREFIX = '__runtime__:';
 
 export function isWorkflowRuntimeParameterReference(value: unknown): value is WorkflowRuntimeParameterReference {
@@ -28,6 +30,15 @@ export function isWorkflowRuntimeParameterReference(value: unknown): value is Wo
 
 function cloneRuntimeParameterReference(value: WorkflowRuntimeParameterReference): WorkflowRuntimeParameterReference {
   return JSON.parse(JSON.stringify(value)) as WorkflowRuntimeParameterReference;
+}
+
+function normalizeWorkflowStringParamValue(
+  value: unknown,
+  fallback: string,
+): string | WorkflowRuntimeParameterReference {
+  if (typeof value === 'string') return value;
+  if (isWorkflowRuntimeParameterReference(value)) return cloneRuntimeParameterReference(value);
+  return fallback;
 }
 
 export function normalizeWorkflowFileParamValue(value: unknown): number | WorkflowRuntimeParameterReference | null {
@@ -106,6 +117,14 @@ export function collectWorkflowRuntimeReferences(
 }
 
 export function collectWorkflowTaskParamInputUsages(task: WorkflowTask): WorkflowTaskParamInputUsage[] {
+  if (task.operatorCode === WORKFLOW_INVOKE_CODE) {
+    return collectWorkflowRuntimeReferences(task.params.runtimeParameters).flatMap((reference) =>
+      reference.runtimePath.startsWith('fileRefs.')
+        ? [{ paramPath: `runtimeParameters.${reference.paramPath}`, kind: 'runtime' as const, runtimePath: reference.runtimePath }]
+        : [],
+    );
+  }
+
   if (!isSheetRangeExtractTask(task) && !isSheetSectionsExtractTask(task)) {
     return [];
   }
@@ -135,6 +154,24 @@ export function isSqlComputeTask(task: WorkflowTask | null): boolean {
 
 export function isPersistExcelTask(task: WorkflowTask | null): boolean {
   return task?.operatorCode === DATAFRAME_PERSIST_EXCEL_CODE;
+}
+
+export function isWorkbookPersistExcelTask(task: WorkflowTask | null): boolean {
+  return task?.operatorCode === WORKBOOK_PERSIST_EXCEL_CODE;
+}
+
+// workbook.persist.excel binds inputs via params.sheets[].inputSlot (custom/multiple slot
+// names), unlike the single input1 that dataframe.persist.excel declares.
+export function getWorkbookPersistInputSlots(task: WorkflowTask): string[] {
+  const slots = Array.isArray(task.params?.sheets)
+    ? (task.params.sheets as Array<Record<string, unknown>>)
+        .map((sheet) => String(sheet?.inputSlot ?? '').trim())
+        .filter(Boolean)
+    : [];
+  const unique = Array.from(new Set(slots));
+  if (unique.length) return unique;
+  const fromInputs = Object.keys(task.inputs ?? {});
+  return fromInputs.length ? fromInputs : ['input1'];
 }
 
 export function isAssertTask(task: WorkflowTask | null): boolean {
@@ -289,7 +326,7 @@ export function getSheetSections(task: WorkflowTask): WorkflowSheetSectionConfig
 export function normalizeSheetSectionsExtractTask(task: WorkflowTask) {
   if (!isSheetSectionsExtractTask(task)) return;
   task.inputs = {};
-  task.params.sheetName = typeof task.params.sheetName === 'string' ? task.params.sheetName : '';
+  task.params.sheetName = normalizeWorkflowStringParamValue(task.params.sheetName, '');
   task.params.fileRef = normalizeWorkflowFileParamValue(task.params.fileRef ?? task.params.fileId);
   delete task.params.fileId;
   const sections = getSheetSections(task);
@@ -410,7 +447,7 @@ export function normalizePersistExcelTask(task: WorkflowTask) {
 export function normalizeSheetRangeExtractTask(task: WorkflowTask) {
   if (!isSheetRangeExtractTask(task)) return;
   task.inputs = {};
-  task.params.sheetName = typeof task.params.sheetName === 'string' ? task.params.sheetName : '';
+  task.params.sheetName = normalizeWorkflowStringParamValue(task.params.sheetName, '');
   task.params.range = typeof task.params.range === 'string' ? task.params.range : '';
   task.params.fileRef = normalizeWorkflowFileParamValue(task.params.fileRef ?? task.params.fileId);
   delete task.params.fileId;
@@ -501,6 +538,11 @@ export function getTaskInputSlots(task: WorkflowTask, operator?: WorkflowOperato
   if (isSqlTableBackedTask(task)) {
     normalizeSqlTask(task);
     return Object.keys(task.inputs ?? {});
+  }
+  if (isWorkbookPersistExcelTask(task)) {
+    // Slots come from params.sheets[].inputSlot, not the operator's declared input1, so edges
+    // to custom/multiple persist slots (e.g. control_book) render instead of disappearing.
+    return getWorkbookPersistInputSlots(task);
   }
   const declared = operator?.inputSlots?.map((slot) => slot.slot).filter(Boolean) ?? [];
   if (declared.length) return declared;

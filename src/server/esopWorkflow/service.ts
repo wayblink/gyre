@@ -44,7 +44,12 @@ export async function startEsopPageWorkflow(
   );
   if (!workflow) throw new Error(`ESOP workflow is not available: ${config.workflowCode}`);
 
-  const runtimeParameters = buildEsopWorkflowRuntimeParameters(pageKey, sources);
+  const resolvedSources: EsopWorkflowSourceBindings = {};
+  for (const [sourceKey, source] of Object.entries(sources)) {
+    const file = source?.fileId ? await db.queryOne('select logical_path from product_files where id = $1', [source.fileId]) : null;
+    if (file?.logical_path) resolvedSources[sourceKey] = { fileKey: String(file.logical_path) };
+  }
+  const runtimeParameters = buildEsopWorkflowRuntimeParameters(pageKey, resolvedSources);
   const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
     tasks: parseJson<WorkflowTask[]>(workflow.tasks_json, []),
     runtimeParamsSchema: parseJson(workflow.runtime_params_schema_json, {}),

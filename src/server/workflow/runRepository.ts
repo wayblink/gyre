@@ -11,6 +11,7 @@ import type {
 
 export type WorkflowRunCreateInput = {
   workflow: Record<string, unknown>;
+  workflowVersionId?: number | null;
   tasks: WorkflowTask[];
   runtimeParameters: WorkflowRuntimeParameters;
 };

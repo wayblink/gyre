@@ -50,7 +50,10 @@ export class WorkflowStepWorker {
         return { state: guardResult === 'paused' ? 'warning' : 'failed', paused: guardResult === 'paused' };
       }
 
-      const taskOutput = await executeWorkflowTaskOutputStrict(task, executed, taskResults, taskMap, this.runtime);
+      const taskOutput = await executeWorkflowTaskOutputStrict(task, executed, taskResults, taskMap, this.runtime, {
+        runtimeParameters: run.runtimeParameters,
+        invocationStack: [run.workflowCode, `id:${run.workflowId}`],
+      });
       let nextState: WorkflowExecutionTaskState = 'completed';
       let errorMessage: string | null = null;
 

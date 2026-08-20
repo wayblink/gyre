@@ -45,11 +45,18 @@ import {
 import { confirmAction, notify } from './uiFeedback.js';
 import { createWorkflowPage } from './workflowPage.js';
 import { createDocsPage } from './docsPage.js';
-import { resolveDefaultSummaryMonth } from './summaryPage.js';
+import {
+  computeCapitalizationRowDeltas,
+  findComparableRow,
+  indexCapitalizationRows,
+  resolveBaselineMonth,
+  resolveDefaultSummaryMonth,
+  type CapitalizationDelta,
+} from './summaryPage.js';
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
 import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './transferPlanPage.js';
 import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
-import { uploadFormDataWithProgress } from './uploadProgress.js';
+import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
 import '../../css/style.css';
 import '@univerjs/design/lib/index.css';
 import '@univerjs/ui/lib/index.css';
@@ -57,6 +64,7 @@ import '@univerjs/sheets-ui/lib/index.css';
 
 let currentMonth = '';
 let currentSummary: SummarySnapshot | null = null;
+let baselineSummaryCache: { month: string; data: SummarySnapshot | null } | null = null;
 let authStatus: AuthStatus | null = null;
 let updatePlans: MonthlyRunInstanceRecord[] = [];
 let employees: Employee[] = [];
@@ -200,6 +208,7 @@ const workflowPage = createWorkflowPage({
   el,
   api,
   escapeHtml,
+  formatFileSize,
   getProductFiles: () => filesPage.getProductFiles(),
   refreshProductFiles: () => filesPage.refreshProductFiles(),
   notify,
@@ -219,7 +228,11 @@ const monthlyRunPage = createMonthlyRunPage({
   escapeHtml,
   formatDateTime,
   refreshProductFiles: () => filesPage.refreshProductFiles(),
-  refreshSummary: (month) => renderSummaryPage(month),
+  refreshSummary: (month) => {
+    baselineSummaryCache = null;
+    return renderSummaryPage(month);
+  },
+  openProductFile: (fileId) => navigateToProductFile(fileId),
   notify,
   confirmAction,
   getLanguage: () => currentLanguage,
@@ -547,15 +560,29 @@ async function uploadWorkflowUpdateSourceFile(sourceKey: string) {
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
     if (!file) return;
-    const form = new FormData();
-    form.append('file', file);
-    form.append('uploadedBy', `Workflow Update · ${page} · ${sourceKey}`);
     try {
       el('workflowUpdateStatus').textContent = 'Uploading file...';
-      const data = await uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
-        fileName: file.name,
-        title: { 'zh-CN': '正在上传 Workflow 输入文件', 'en-US': 'Uploading workflow input' },
-      });
+      const upload = (overwrite = false) => {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('uploadedBy', `Workflow Update · ${page} · ${sourceKey}`);
+        if (overwrite) form.append('conflictPolicy', 'overwrite');
+        return uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
+          fileName: file.name,
+          title: { 'zh-CN': '正在上传 Workflow 输入文件', 'en-US': 'Uploading workflow input' },
+        });
+      };
+      let data;
+      try {
+        data = await upload();
+      } catch (error) {
+        if (!(error instanceof UploadHttpError) || error.status !== 409) throw error;
+        const confirmed = await confirmAction(`当前文件夹中已存在“${file.name}”，是否覆盖？`, {
+          title: '文件已存在', confirmText: '覆盖', tone: 'danger',
+        });
+        if (!confirmed) return;
+        data = await upload(true);
+      }
       await filesPage.refreshProductFiles(data.file.id);
       workflowUpdateSelectedFiles[sourceKey] = data.file.id;
       renderWorkflowUpdateModalSources();
@@ -1715,7 +1742,7 @@ function renderEmptySummaryPage(message: string) {
   getCurrentMonthTextNode().textContent = t('noSummaryData');
   el('eomDate').textContent = '-';
   el('reconciliationBody').innerHTML = `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
-  el('capitalizationBody').innerHTML = `<tr><td colspan="4" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
+  el('capitalizationBody').innerHTML = `<tr><td colspan="6" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
   applyCapitalizationSourceState(null);
   renderNotes([]);
   localizeAppDom();
@@ -1731,11 +1758,39 @@ function isTotalFullyDilutedRow(description: string): boolean {
   return description.trim().toLowerCase().startsWith('total fully diluted shares outstand');
 }
 
+const CAPITALIZATION_DELTA_ICONS = {
+  up: '<svg class="cap-delta__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>',
+  down: '<svg class="cap-delta__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>',
+} as const;
+
+function renderCapitalizationDeltaCell(delta: CapitalizationDelta): string {
+  if (delta.direction === 'none') return '<td class="col-delta"></td>';
+  if (delta.direction === 'flat') return '<td class="col-delta cap-delta--flat">–</td>';
+  return `<td class="col-delta cap-delta--${delta.direction}">${CAPITALIZATION_DELTA_ICONS[delta.direction]}<span class="cap-delta__text">${escapeHtml(delta.text)}</span></td>`;
+}
+
+/** Loads the baseline month used for month-over-month deltas. Never rejects: no baseline just means no deltas. */
+async function loadBaselineSummary(baselineMonth: string | null): Promise<SummarySnapshot | null> {
+  if (!baselineMonth) return null;
+  if (baselineSummaryCache?.month === baselineMonth) return baselineSummaryCache.data;
+  try {
+    const data = await api<SummarySnapshot>(`/api/months/${baselineMonth}/summary`);
+    baselineSummaryCache = { month: baselineMonth, data };
+  } catch {
+    baselineSummaryCache = { month: baselineMonth, data: null };
+  }
+  return baselineSummaryCache.data;
+}
+
 async function renderSummaryPage(month: string) {
   try {
     currentMonth = month;
     el<HTMLInputElement>('monthPicker').value = month;
-    const data = await api<SummarySnapshot>(`/api/months/${month}/summary`);
+    const availableMonths = await fetchAvailableMonths();
+    const [data, baselineSummary] = await Promise.all([
+      api<SummarySnapshot>(`/api/months/${month}/summary`),
+      loadBaselineSummary(resolveBaselineMonth(availableMonths, month)),
+    ]);
     currentSummary = data;
     setPageSourceFiles('captable', data.capitalizationSource?.fileName ?? t('defaultSnapshot'));
     getCurrentMonthTextNode().textContent = formatMonthCN(month);
@@ -1749,17 +1804,20 @@ async function renderSummaryPage(month: string) {
         <td class="highlight-number">${formatNumber(data.reconciliation.eomBalance)}</td>
       </tr>`;
 
+    const baselineIndex = indexCapitalizationRows(baselineSummary?.capitalization ?? []);
     const capBody = el('capitalizationBody');
     capBody.innerHTML = data.capitalization
       .map((item) => {
         if (item.type === 'cat-header-blue' || item.type === 'cat-header-gray') {
-          return `<tr class="cat-header-blue"><td></td><td colspan="3" style="text-align:left;">${escapeHtml(item.description)}</td></tr>`;
+          return `<tr class="cat-header-blue"><td></td><td colspan="5" style="text-align:left;">${escapeHtml(item.description)}</td></tr>`;
         }
+        const deltas = computeCapitalizationRowDeltas(item, findComparableRow(baselineIndex, item));
         if (item.type === 'cat-sub-label') {
           const sharesHtml = item.shares === undefined ? '' : item.highlightShares ? `<span class="highlight-yellow">${formatNumber(item.shares)}</span>` : formatNumber(item.shares);
           return `<tr class="cat-sub-label">
             <td></td><td style="text-align:left;">${escapeHtml(item.description)}</td>
-            <td class="col-number">${sharesHtml}</td><td></td>
+            <td class="col-number">${sharesHtml}</td>${renderCapitalizationDeltaCell(deltas.shares)}
+            <td></td>${renderCapitalizationDeltaCell(deltas.percent)}
           </tr>`;
         }
         const percent = formatCapitalizationPercent(item.percent);
@@ -1767,8 +1825,8 @@ async function renderSummaryPage(month: string) {
         return `<tr class="${isTotalRow ? 'total-row-blue' : 'cap-data-row'}">
           <td>${escapeHtml(item.number ?? '')}</td>
           <td style="text-align:left;${isTotalRow ? ' font-weight:var(--font-bold);' : ''}">${escapeHtml(item.description)}</td>
-          <td class="col-number"${isTotalRow ? ' style="font-weight:var(--font-bold);"' : ''}>${formatNumber(item.shares)}</td>
-          <td class="col-percent"${isTotalRow ? ' style="font-weight:var(--font-bold);"' : ''}>${percent}</td>
+          <td class="col-number"${isTotalRow ? ' style="font-weight:var(--font-bold);"' : ''}>${formatNumber(item.shares)}</td>${renderCapitalizationDeltaCell(deltas.shares)}
+          <td class="col-percent"${isTotalRow ? ' style="font-weight:var(--font-bold);"' : ''}>${percent}</td>${renderCapitalizationDeltaCell(deltas.percent)}
         </tr>`;
       })
       .join('');
@@ -1830,9 +1888,11 @@ async function saveCapitalizationSource() {
         sheetName: select.value ? FIXED_CAPITALIZATION_SUMMARY_SHEET : null,
       }),
     });
+    baselineSummaryCache = null;
     await renderSummaryPage(targetMonth);
   } catch (error) {
     notify((error as Error).message, { type: 'error' });
+    baselineSummaryCache = null;
     await renderSummaryPage(targetMonth);
   } finally {
     select.disabled = false;
@@ -3628,7 +3688,7 @@ async function saveFixedValueEdit() {
   const rawValue = el<HTMLInputElement>('fixedValueEditValue').value.replace(/,/g, '').trim();
   const value = Number(rawValue);
   if (!label || !Number.isFinite(value)) {
-    notify('请填写 Item 并输入有效数字', { type: 'warning' });
+    notify('请填写参数解释并输入有效数字', { type: 'warning' });
     return;
   }
   const submitButton = el<HTMLButtonElement>('btnSubmitFixedValueEdit');
@@ -3665,7 +3725,7 @@ async function createFixedValue() {
   const rawValue = el<HTMLInputElement>('fixedValueValue').value.replace(/,/g, '').trim();
   const value = Number(rawValue);
   if (!key || !label || !rawValue || !Number.isFinite(value)) {
-    notify('请完整填写 Key、Item 和 Value', { type: 'warning' });
+    notify('请完整填写 Key、参数解释和 Value', { type: 'warning' });
     return;
   }
 

@@ -55,6 +55,48 @@ function mergeRuntimeParameters(base: WorkflowRuntimeParameters, override: Workf
   return merged;
 }
 
+function filterRuntimeValueBySchema(
+  keyPath: string,
+  value: unknown,
+  field: WorkflowRuntimeParameterField,
+): unknown {
+  if (value === undefined) return undefined;
+
+  if (field.type !== 'object' || !isRecord(value) || !field.properties) {
+    return cloneJson(value);
+  }
+
+  const filtered: Record<string, unknown> = {};
+  const isFileReferenceObject = /^fileRefs\.[^.]+$/.test(keyPath);
+  if (isFileReferenceObject) {
+    for (const key of ['provider', 'id', 'key']) {
+      if (key in value) filtered[key] = cloneJson(value[key]);
+    }
+  }
+
+  for (const [key, nestedField] of Object.entries(field.properties)) {
+    const nestedValue = filterRuntimeValueBySchema(`${keyPath}.${key}`, value[key], nestedField);
+    if (nestedValue !== undefined) filtered[key] = nestedValue;
+  }
+
+  return filtered;
+}
+
+export function filterWorkflowRuntimeParametersBySchema(
+  runtimeParameters: WorkflowRuntimeParameters,
+  schema: WorkflowRuntimeParametersSchema,
+): WorkflowRuntimeParameters {
+  const normalizedSchema = normalizeWorkflowRuntimeParametersSchema(schema);
+  const filtered: WorkflowRuntimeParameters = {};
+
+  for (const [key, field] of Object.entries(normalizedSchema)) {
+    const value = filterRuntimeValueBySchema(key, runtimeParameters[key], field);
+    if (value !== undefined) filtered[key] = value;
+  }
+
+  return filtered;
+}
+
 function getRuntimePathValue(runtimeParameters: WorkflowRuntimeParameters, runtimePath: string): unknown {
   const segments = runtimePath
     .split('.')
@@ -111,7 +153,17 @@ function validateRuntimeValue(
   }
 
   if (!field.properties) return;
-  validateRuntimeParameters(value, field.properties ?? {}, keyPath);
+  const isFileReferenceObject = /^fileRefs\.[^.]+$/.test(keyPath);
+  if (!isFileReferenceObject) {
+    validateRuntimeParameters(value, field.properties, keyPath);
+    return;
+  }
+
+  const fileReferenceKeys = new Set(['provider', 'id', 'key']);
+  const configurableValue = Object.fromEntries(
+    Object.entries(value).filter(([key]) => !fileReferenceKeys.has(key)),
+  );
+  validateRuntimeParameters(configurableValue, field.properties, keyPath);
 }
 
 export function validateRuntimeParameters(

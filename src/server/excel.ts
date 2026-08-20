@@ -49,21 +49,36 @@ function decodeSheetRangeRef(sheet: XLSX.WorkSheet, sheetName: string): XLSX.Ran
   return XLSX.utils.decode_range(ref);
 }
 
+function findActualCellBounds(sheet: XLSX.WorkSheet, startRow: number, startCol: number, endRow: number, endCol: number): XLSX.Range {
+  let actualEndRow = startRow;
+  let actualEndCol = startCol;
+  for (const key of Object.keys(sheet)) {
+    if (key.startsWith('!')) continue;
+    let cellAddress: XLSX.CellAddress;
+    try {
+      cellAddress = XLSX.utils.decode_cell(key);
+    } catch {
+      continue;
+    }
+    if (cellAddress.r < startRow || cellAddress.r > endRow || cellAddress.c < startCol || cellAddress.c > endCol) continue;
+    actualEndRow = Math.max(actualEndRow, cellAddress.r);
+    actualEndCol = Math.max(actualEndCol, cellAddress.c);
+  }
+  return {
+    s: { r: startRow, c: startCol },
+    e: { r: actualEndRow, c: actualEndCol },
+  };
+}
+
 function decodeExtractRange(range: string, sheet: XLSX.WorkSheet, sheetName: string): XLSX.Range {
   const openEndedRowRange = range.match(/^([A-Z]+)(\d+):([A-Z]+)$/i);
   if (openEndedRowRange) {
     const [, startColumn, startRowText, endColumn] = openEndedRowRange;
     const sheetRange = decodeSheetRangeRef(sheet, sheetName);
-    return {
-      s: {
-        c: XLSX.utils.decode_col(startColumn),
-        r: Number(startRowText) - 1,
-      },
-      e: {
-        c: XLSX.utils.decode_col(endColumn),
-        r: sheetRange.e.r,
-      },
-    };
+    const startRow = Number(startRowText) - 1;
+    const startCol = XLSX.utils.decode_col(startColumn);
+    const requestedEndCol = XLSX.utils.decode_col(endColumn);
+    return findActualCellBounds(sheet, startRow, startCol, sheetRange.e.r, requestedEndCol);
   }
   return XLSX.utils.decode_range(range);
 }

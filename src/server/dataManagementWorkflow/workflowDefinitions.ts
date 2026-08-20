@@ -10,7 +10,7 @@ import {
 import { deriveWorkflowRuntimeConfigFromTasks } from '../workflow/runtimeParameterRequirements.js';
 
 export type DataManagementPageKey = 'employee' | 'plan-summary' | 'five-percent-holders';
-export type DataManagementSourceBindings = Record<string, { fileId: number } | undefined>;
+export type DataManagementSourceBindings = Record<string, { fileId?: number; fileKey?: string } | undefined>;
 
 type SourceDefinition = { sourceKey: string; label: string };
 type DataManagementWorkflowConfig = {
@@ -339,11 +339,11 @@ export function buildDataManagementWorkflowRuntimeParameters(
   sources: DataManagementSourceBindings,
   overrides: WorkflowRuntimeParameters = {},
 ): WorkflowRuntimeParameters {
-  const fileRefs: Record<string, { provider: 'product-files'; id: number }> = {};
+  const fileRefs: Record<string, { provider: 'product-files'; key: string }> = {};
   for (const source of DATA_MANAGEMENT_WORKFLOW_CONFIGS[pageKey].sources) {
-    const fileId = Number(sources[source.sourceKey]?.fileId);
-    if (!Number.isInteger(fileId) || fileId <= 0) throw new Error(`Missing data management workflow source: ${source.sourceKey}`);
-    fileRefs[source.sourceKey] = { provider: 'product-files', id: fileId };
+    const fileKey = String(sources[source.sourceKey]?.fileKey ?? '').trim();
+    if (!fileKey) throw new Error(`Missing data management workflow source: ${source.sourceKey}`);
+    fileRefs[source.sourceKey] = { provider: 'product-files', key: fileKey };
   }
   return { ...overrides, fileRefs };
 }

@@ -61,11 +61,16 @@ export async function startDataManagementWorkflow(
   const runtimeOverrides = pageKey === 'five-percent-holders'
     ? await loadFivePercentHolderRuntimeOverrides(db)
     : {};
+  const resolvedSources: DataManagementSourceBindings = {};
+  for (const [sourceKey, source] of Object.entries(sources)) {
+    const file = source?.fileId ? await db.queryOne('select logical_path from product_files where id = $1', [source.fileId]) : null;
+    if (file?.logical_path) resolvedSources[sourceKey] = { fileKey: String(file.logical_path) };
+  }
   const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
     tasks: parseJson<WorkflowTask[]>(workflow.tasks_json, []),
     runtimeParamsSchema: parseJson(workflow.runtime_params_schema_json, {}),
     runtimeParamsDefaults: parseJson(workflow.runtime_params_defaults_json, {}),
-    runtimeParameters: buildDataManagementWorkflowRuntimeParameters(pageKey, sources, runtimeOverrides),
+    runtimeParameters: buildDataManagementWorkflowRuntimeParameters(pageKey, resolvedSources, runtimeOverrides),
   });
   const run = await runStore.createRun({
     workflow, tasks: runtimeConfiguration.tasks, runtimeParameters: runtimeConfiguration.runtimeParameters,

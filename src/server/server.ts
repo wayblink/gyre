@@ -9,6 +9,7 @@ import { z } from 'zod';
 import * as XLSX from 'xlsx';
 import { config } from './config.js';
 import { createDb } from './db.js';
+import type { DbClient } from './db.js';
 import {
   calculateSessionExpiry,
   countActiveAdmins,
@@ -50,6 +51,7 @@ import {
   summaryCapitalizationToWorkbookBuffer,
 } from './summary/capitalizationWorkbook.js';
 import { fileStorage } from './storage.js';
+import { canonicalProductFilePath, normalizeProductFileName, normalizeProductFolder, productFileCollisionKey } from './fileIdentity.js';
 import {
   applyMonthlyRunPostProcessing,
   attachWorkflowRunToMonthlyHistory,
@@ -101,10 +103,13 @@ import {
 } from './dataManagementWorkflow/workflowDefinitions.js';
 import { upsertTableRows } from './workflow/tableUpsert.js';
 import { normalizeEmployeeSourceFilter, normalizeExternalNumber } from './employees.js';
-import { executeWorkflowTaskPreview } from './workflow/engine.js';
+import { executeWorkflowDefinition, executeWorkflowTaskPreview } from './workflow/engine.js';
+import { selectWorkflowPreviewTasks } from './workflow/previewTask.js';
 import { WorkflowFileSourceRegistry, productFileRef } from './workflow/fileSources.js';
+import { rewriteProductFileKey } from './workflow/productFileKeyRewrite.js';
 import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
 import {
+  filterWorkflowRuntimeParametersBySchema,
   normalizeWorkflowRuntimeParameters,
   normalizeWorkflowRuntimeParametersSchema,
   validateRuntimeParameters,
@@ -196,6 +201,14 @@ const productFilePatchSchema = z.object({
   originalName: z.string().trim().min(1).max(255),
 });
 
+const productFileMoveSchema = z.object({
+  folder: z.string().trim().max(512),
+});
+
+const productFileBulkDeleteSchema = z.object({
+  ids: z.array(z.coerce.number().int().positive()).min(1).max(500),
+});
+
 const workflowTaskPreviewBodySchema = z.object({
   workflowId: z.number().int().positive(),
   taskId: z.string().trim().min(1),
@@ -246,7 +259,12 @@ const monthlyRunInstanceQuerySchema = z.object({
 
 const monthlyRunInstanceUpsertSchema = z.object({
   operator: z.string().trim().min(1).optional(),
-  sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() }).nullable()).optional(),
+  sources: z.record(z.string(), z.object({
+    fileId: z.number().int().positive(),
+    logicalPath: z.string().trim().min(1).max(1024).nullable().optional(),
+    fileKey: z.string().trim().min(1).max(1024).nullable().optional(),
+    sheetName: z.string().trim().min(1).max(255).nullable().optional(),
+  }).nullable()).optional(),
   fixedValues: z.record(z.string(), z.number()).optional(),
 });
 
@@ -392,10 +410,14 @@ function eomForMonth(monthKey: string): string {
 
 async function assertMonthlyRunInstanceReady(instance: MonthlyRunInstanceRecord): Promise<void> {
   for (const source of MONTHLY_RUN_SOURCE_DEFINITIONS) {
-    const fileId = instance.sources[source.sourceKey]?.fileId ?? null;
+    const binding = instance.sources[source.sourceKey];
+    const fileId = binding?.fileId ?? null;
     if (!fileId) {
       if (source.required) throw new Error(`Missing source binding: ${source.sourceKey}`);
       continue;
+    }
+    if (source.allowSheetNameOverride && !binding?.sheetName?.trim()) {
+      throw new Error(`Missing source sheet name: ${source.sourceKey}`);
     }
     await getProductFileOrThrow(fileId);
   }
@@ -524,6 +546,34 @@ function asBoolean(value: unknown): boolean {
   return value === true || value === 'true' || Number(value) === 1;
 }
 
+/**
+ * Moving a file changes its logical path, and workflow definitions reference product files by that
+ * path, so the stored references are repointed in the same transaction as the move.
+ * Deliberately untouched: monthly run instances and every other reference keyed by file id (they
+ * survive a move), and workflow run history, which must keep the path used at execution time.
+ */
+async function rewriteProductFileKeyInWorkflows(tx: DbClient, oldKey: string, newKey: string): Promise<number> {
+  const rows = await tx.query<{ id: number; tasks_json: unknown; runtime_params_defaults_json: unknown }>(
+    'select id, tasks_json, runtime_params_defaults_json from workflow_definitions',
+  );
+  let rewrittenWorkflows = 0;
+  for (const row of rows) {
+    const tasks = rewriteProductFileKey(parseJson<unknown>(row.tasks_json, []), oldKey, newKey);
+    const defaults = rewriteProductFileKey(parseJson<unknown>(row.runtime_params_defaults_json, {}), oldKey, newKey);
+    if (tasks.changed + defaults.changed === 0) continue;
+    rewrittenWorkflows += 1;
+    await tx.execute(
+      `update workflow_definitions
+          set tasks_json = $2::jsonb,
+              runtime_params_defaults_json = $3::jsonb,
+              updated_at = current_timestamp
+        where id = $1`,
+      [row.id, JSON.stringify(tasks.value), JSON.stringify(defaults.value)],
+    );
+  }
+  return rewrittenWorkflows;
+}
+
 function parseTags(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
   if (typeof value === 'string') {
@@ -565,16 +615,18 @@ function badRequest(message: string) {
   return error;
 }
 
+function conflict(message: string) {
+  const error = new Error(message) as Error & { statusCode?: number };
+  error.statusCode = 409;
+  return error;
+}
+
 function normalizeProductFileStoragePrefix(prefix?: string): string {
   const normalized = normalizeStorageFolderPrefix(prefix);
   if (!normalized) return 'input';
   if (normalized === 'output' || normalized.startsWith('output/')) return normalized;
-  if (normalized === 'input') return 'input';
-
-  const monthMatch = normalized.match(/(?:^|\/)(\d{4}-\d{2})(?:\/|$)/);
-  if (monthMatch?.[1]) return `input/${monthMatch[1]}`;
-
-  return 'input';
+  if (normalized === 'input' || normalized.startsWith('input/')) return normalized;
+  return `input/${normalized}`;
 }
 
 function productFileRelativeStoragePath(row: Record<string, unknown>) {
@@ -632,6 +684,7 @@ function withFileVersion(fileName: string, versionSource?: unknown): string {
 }
 
 function productFileDisplayPath(row: Record<string, unknown>) {
+  if (row.logical_path) return String(row.logical_path);
   const relativePath = productFileRelativeStoragePath(row);
   const directory = relativePath.includes('/') ? relativePath.split('/').slice(0, -1).join('/') : '';
   const normalizedDirectory = normalizeProductFileStoragePrefix(directory);
@@ -655,6 +708,7 @@ function toProductFile(row: Record<string, unknown>) {
     displayName: productFileDisplayName(row),
     storedName: String(row.stored_name),
     displayPath: productFileDisplayPath(row),
+    logicalPath: String(row.logical_path ?? productFileDisplayPath(row)),
     fileExt: String(row.file_ext ?? ''),
     fileSizeBytes: Number(row.file_size_bytes ?? 0),
     mimeType: String(row.mime_type ?? 'application/octet-stream'),
@@ -881,6 +935,17 @@ function productFileIdAtRuntimePath(runtimeParameters: unknown, runtimePath: str
   return Number.isInteger(fileId) && fileId > 0 ? fileId : null;
 }
 
+function productFileKeyAtRuntimePath(runtimeParameters: unknown, runtimePath: string): string | null {
+  const segments = runtimePath.split('.').map((segment) => segment.trim()).filter(Boolean);
+  let current: unknown = runtimeParameters;
+  for (const segment of segments) {
+    if (!isRecord(current)) return null;
+    current = current[segment];
+  }
+  if (!isRecord(current) || current.provider !== 'product-files') return null;
+  return String(current.key ?? '').trim() || null;
+}
+
 async function latestWorkflowInputSourceBindings(
   workflowCode: string,
   sources: WorkflowPageSourceDescriptor[],
@@ -898,12 +963,22 @@ async function latestWorkflowInputSourceBindings(
   const ids = sources
     .map((source) => productFileIdAtRuntimePath(runtimeParameters, `fileRefs.${source.sourceKey}`))
     .filter((fileId): fileId is number => fileId !== null);
-  const files = ids.length
-    ? await db.query<Record<string, unknown>>('select * from product_files where id = any($1::int[])', [ids])
+  const keys = sources
+    .map((source) => productFileKeyAtRuntimePath(runtimeParameters, `fileRefs.${source.sourceKey}`))
+    .filter((fileKey): fileKey is string => fileKey !== null);
+  const files = ids.length || keys.length
+    ? await db.query<Record<string, unknown>>(
+      'select * from product_files where id = any($1::int[]) or lower(logical_path) = any($2::text[])',
+      [ids, keys.map((key) => key.toLowerCase())],
+    )
     : [];
   const nameById = new Map(files.map((file) => [Number(file.id), productFileDisplayPath(file)]));
+  const fileByKey = new Map(files.map((file) => [String(file.logical_path ?? '').toLowerCase(), file]));
   return sources.map((source) => {
-    const fileId = productFileIdAtRuntimePath(runtimeParameters, `fileRefs.${source.sourceKey}`);
+    const runtimePath = `fileRefs.${source.sourceKey}`;
+    const fileKey = productFileKeyAtRuntimePath(runtimeParameters, runtimePath);
+    const keyedFile = fileKey ? fileByKey.get(fileKey.toLowerCase()) : undefined;
+    const fileId = productFileIdAtRuntimePath(runtimeParameters, runtimePath) ?? (keyedFile ? Number(keyedFile.id) : null);
     return {
       sourceKey: source.sourceKey,
       label: source.label,
@@ -945,14 +1020,22 @@ async function latestWorkflowInputSourceFiles(workflowCode: string): Promise<str
     [workflowCode],
   );
   if (!row) return [];
-  const ids = productFileIdsFromRuntimeParameters(parseJson(row.runtime_parameters_json, {}));
-  if (ids.length === 0) return [];
+  const runtimeParameters = parseJson(row.runtime_parameters_json, {});
+  const ids = productFileIdsFromRuntimeParameters(runtimeParameters);
+  const keys: string[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) return value.forEach(visit);
+    if (!isRecord(value)) return;
+    if (value.provider === 'product-files' && String(value.key ?? '').trim()) keys.push(String(value.key).trim());
+    Object.values(value).forEach(visit);
+  };
+  visit(runtimeParameters);
+  if (ids.length === 0 && keys.length === 0) return [];
   const files = await db.query<Record<string, unknown>>(
-    'select * from product_files where id = any($1::int[])',
-    [ids],
+    'select * from product_files where id = any($1::int[]) or lower(logical_path) = any($2::text[])',
+    [ids, keys.map((key) => key.toLowerCase())],
   );
-  const nameById = new Map(files.map((file) => [Number(file.id), productFileDisplayPath(file)]));
-  return ids.map((id) => nameById.get(id)?.trim()).filter(Boolean) as string[];
+  return [...new Set(files.map((file) => productFileDisplayPath(file).trim()).filter(Boolean))];
 }
 
 function textValue(value: unknown): string | null {
@@ -1373,8 +1456,8 @@ function toWorkflowOperator(row: Record<string, unknown>) {
     outputSlots: parseJson(row.output_slots_json, []),
     paramsSchema: parseJson(row.params_schema_json, {}),
     documentation: parseJson(row.documentation_json, undefined),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    createdAt: toIsoTimestamp(row.created_at),
+    updatedAt: toIsoTimestamp(row.updated_at),
   };
 }
 
@@ -1389,8 +1472,8 @@ function toWorkflowDefinition(row: Record<string, unknown>) {
     tasks: normalizeWorkflowTasks(parseJson(row.tasks_json, [])),
     runtimeParamsSchema: normalizeWorkflowRuntimeParametersSchema(parseJson(row.runtime_params_schema_json, {})),
     runtimeParamsDefaults: normalizeWorkflowRuntimeParameters(parseJson(row.runtime_params_defaults_json, {})),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    createdAt: toIsoTimestamp(row.created_at),
+    updatedAt: toIsoTimestamp(row.updated_at),
   };
 }
 
@@ -1442,6 +1525,18 @@ function normalizeWorkflowTasks(value: unknown): WorkflowTask[] {
   return value.map(normalizeWorkflowTask).filter((task): task is WorkflowTask => Boolean(task));
 }
 
+function normalizeWorkflowTasksForPersistence(value: unknown, context: string): WorkflowTask[] {
+  if (!Array.isArray(value)) return [];
+  const normalized = normalizeWorkflowTasks(value);
+  if (value.length !== normalized.length) {
+    const invalidIndexes = value
+      .map((item, index) => (normalizeWorkflowTask(item) ? null : index + 1))
+      .filter((index): index is number => index !== null);
+    throw badRequest(`${context} contains invalid workflow tasks at index: ${invalidIndexes.join(', ')}`);
+  }
+  return normalized;
+}
+
 function toWorkflowPortableDefinition(workflow: unknown): WorkflowPortableDefinition {
   const source = workflow as Partial<WorkflowPortableDefinition>;
   return {
@@ -1450,7 +1545,7 @@ function toWorkflowPortableDefinition(workflow: unknown): WorkflowPortableDefini
     description: String(source.description ?? ''),
     status: source.status === 'active' ? 'active' : 'draft',
     version: Number(source.version ?? 1),
-    tasks: normalizeWorkflowTasks(source.tasks ?? []),
+    tasks: normalizeWorkflowTasksForPersistence(source.tasks ?? [], 'Imported workflow'),
     runtimeParamsSchema: normalizeWorkflowRuntimeParametersSchema(source.runtimeParamsSchema),
     runtimeParamsDefaults: normalizeWorkflowRuntimeParameters(source.runtimeParamsDefaults),
   };
@@ -1499,13 +1594,11 @@ async function ensureUniqueWorkflowCode(baseCode: string): Promise<string> {
 }
 
 function normalizeStorageFolderPrefix(prefix?: string): string | undefined {
-  const normalized = String(prefix ?? '')
-    .replace(/\\/g, '/')
-    .split('/')
-    .map((part) => part.trim())
-    .filter((part) => part && part !== '.' && part !== '..')
-    .join('/');
-  return normalized || undefined;
+  try {
+    return normalizeProductFolder(prefix) || undefined;
+  } catch {
+    throw badRequest('Invalid folder path');
+  }
 }
 
 function inputStorageFolderPrefix(prefix?: string): string {
@@ -1521,33 +1614,61 @@ async function saveProductWorkbook(params: {
   mimeType?: string;
   uploadedBy?: string;
   folderPrefix?: string;
+  conflictPolicy?: 'error' | 'overwrite';
 }) {
   const mimeType =
     params.mimeType?.trim() ||
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const uploadedBy = params.uploadedBy?.trim() || 'Workflow';
   const folderPrefix = normalizeProductFileStoragePrefix(params.folderPrefix);
-  const versionTag = timestampVersionTag();
-  const originalName = withFileVersion(stripFileVersion(params.originalName), versionTag);
+  const originalName = normalizeProductFileName(params.originalName);
   const checksum = crypto.createHash('sha256').update(params.buffer).digest('hex');
   const ext = path.extname(originalName).toLowerCase() || '.xlsx';
-  const storedName = originalName.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(new RegExp(`${ext.replace('.', '\\.')}$`, 'i'), `.${checksum.slice(0, 12)}${ext}`);
+  const storedName = originalName;
+  const logicalPath = canonicalProductFilePath(folderPrefix, originalName);
+  const existing = await db.queryOne<Record<string, unknown>>(
+    'select * from product_files where lower(logical_path) = lower($1)',
+    [logicalPath],
+  );
+  if (existing && params.conflictPolicy !== 'overwrite') {
+    const error = conflict(`File already exists: ${logicalPath}`) as Error & { existingFile?: Record<string, unknown> };
+    error.existingFile = existing;
+    throw error;
+  }
   const stored = await fileStorage.save('product', storedName, params.buffer, {
     prefix: folderPrefix,
   });
   const summary = summarizeWorkbook(params.buffer);
 
+  if (existing) {
+    const row = await db.queryOne<Record<string, unknown>>(
+      `update product_files
+          set original_name = $2, stored_name = $3, file_ext = $4, file_path = $5,
+              logical_path = $6, file_size_bytes = $7, mime_type = $8, checksum = $9,
+              storage_backend = $10, workbook_sheet_count = $11, workbook_row_count = $12,
+              uploaded_by = $13, created_at = current_timestamp
+        where id = $1
+        returning *`,
+      [existing.id, originalName, stored.storedName, ext.replace(/^\./, ''), stored.filePath, logicalPath,
+        params.buffer.length, mimeType, checksum, stored.storageBackend, summary.sheetCount,
+        summary.totalRowCount, uploadedBy],
+    );
+    if (!row) throw new Error('Failed to overwrite product file');
+    return { file: row, summary };
+  }
+
   const row = await db.queryOne<Record<string, unknown>>(
     `insert into product_files (
-      original_name, stored_name, file_ext, file_path, file_size_bytes, mime_type, checksum,
+      original_name, stored_name, file_ext, file_path, logical_path, file_size_bytes, mime_type, checksum,
       storage_backend, workbook_sheet_count, workbook_row_count, uploaded_by
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     returning *`,
     [
       originalName,
       stored.storedName,
       ext.replace(/^\./, ''),
       stored.filePath,
+      logicalPath,
       params.buffer.length,
       mimeType,
       checksum,
@@ -1618,11 +1739,10 @@ async function updateProductWorkbook(params: {
     params.mimeType?.trim() ||
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const uploadedBy = params.uploadedBy?.trim() || String(existing.uploaded_by ?? 'Administrator');
-  const versionTag = timestampVersionTag();
-  const originalName = withFileVersion(stripFileVersion(params.originalName), versionTag);
+  const originalName = String(existing.original_name);
   const checksum = crypto.createHash('sha256').update(params.buffer).digest('hex');
   const ext = path.extname(originalName).toLowerCase() || '.xlsx';
-  const storedName = originalName.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(new RegExp(`${ext.replace('.', '\\.')}$`, 'i'), `.${checksum.slice(0, 12)}${ext}`);
+  const storedName = originalName;
   const existingDirectory = productFileRelativeStoragePath(existing).split('/').slice(0, -1).join('/');
   const summary = summarizeWorkbook(params.buffer);
 
@@ -1636,13 +1756,14 @@ async function updateProductWorkbook(params: {
           file_ext = $3,
           stored_name = $4,
           file_path = $5,
-          file_size_bytes = $6,
-          mime_type = $7,
-          checksum = $8,
-          storage_backend = $9,
-          workbook_sheet_count = $10,
-          workbook_row_count = $11,
-          uploaded_by = $12,
+          logical_path = $6,
+          file_size_bytes = $7,
+          mime_type = $8,
+          checksum = $9,
+          storage_backend = $10,
+          workbook_sheet_count = $11,
+          workbook_row_count = $12,
+          uploaded_by = $13,
           created_at = current_timestamp
     where id = $1
     returning *`,
@@ -1652,6 +1773,7 @@ async function updateProductWorkbook(params: {
       ext.replace(/^\./, ''),
       stored.storedName,
       stored.filePath,
+      String(existing.logical_path ?? canonicalProductFilePath(existingDirectory, originalName)),
       params.buffer.length,
       mimeType,
       checksum,
@@ -1676,6 +1798,15 @@ const workflowFileSources = new WorkflowFileSourceRegistry();
 workflowFileSources.register({
   provider: 'product-files',
   async read(ref) {
+    const fileKey = String(ref.key ?? '').trim();
+    if (fileKey) {
+      const file = await db.queryOne<Record<string, unknown>>(
+        'select * from product_files where lower(logical_path) = lower($1)',
+        [fileKey],
+      );
+      if (!file) throw notFound(`Product file not found: ${fileKey}`);
+      return fileStorage.read(String(file.file_path));
+    }
     const fileId = Number(ref.id);
     if (!Number.isInteger(fileId) || fileId <= 0) throw new Error('product-files source requires a positive id');
     const file = await getProductFileOrThrow(fileId);
@@ -1691,7 +1822,8 @@ const workflowOperatorRuntime: WorkflowOperatorRuntime = {
   dataFrameToWorkbookBuffer,
   readFile: (ref) => workflowFileSources.read(ref),
   async getProductFileBufferById(fileId) {
-    return workflowFileSources.read(productFileRef(fileId));
+    const file = await getProductFileOrThrow(fileId);
+    return fileStorage.read(String(file.file_path));
   },
   async saveGeneratedWorkbook(params) {
     const saved = await saveProductWorkbook(params);
@@ -1699,6 +1831,65 @@ const workflowOperatorRuntime: WorkflowOperatorRuntime = {
   },
   upsertTableRows(params) {
     return upsertTableRows(db, params, WORKFLOW_WRITABLE_TABLES);
+  },
+  async invokeWorkflow(params) {
+    const requestedKey = params.workflowId ? `id:${params.workflowId}` : String(params.workflowCode ?? '').trim();
+    if (!requestedKey) {
+      throw new Error('workflow.invoke requires workflowCode or workflowId');
+    }
+    if (params.invocationStack.includes(requestedKey)) {
+      throw new Error(`workflow.invoke recursive workflow call detected: ${[...params.invocationStack, requestedKey].join(' -> ')}`);
+    }
+
+    const workflowRow = params.workflowId
+      ? await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [params.workflowId])
+      : await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where code = $1 and status = $2', [
+          params.workflowCode,
+          'active',
+        ]);
+    if (!workflowRow) {
+      throw new Error(`workflow.invoke target workflow not found: ${params.workflowId ?? params.workflowCode}`);
+    }
+
+    const workflowId = Number(workflowRow.id);
+    const workflowCode = String(workflowRow.code ?? '').trim();
+    const workflowKeys = [requestedKey, workflowCode, `id:${workflowId}`].filter(Boolean);
+    if (workflowKeys.some((key) => params.invocationStack.includes(key))) {
+      throw new Error(
+        `workflow.invoke recursive workflow call detected: ${[...params.invocationStack, workflowCode || `id:${workflowId}`].join(' -> ')}`,
+      );
+    }
+
+    const storedTasks = normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
+    const childRuntimeParamsSchema = parseJson(workflowRow.runtime_params_schema_json, {});
+    const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
+      tasks: storedTasks,
+      runtimeParamsSchema: childRuntimeParamsSchema,
+      runtimeParamsDefaults: parseJson(workflowRow.runtime_params_defaults_json, {}),
+      runtimeParameters: filterWorkflowRuntimeParametersBySchema(params.runtimeParameters, childRuntimeParamsSchema),
+    });
+    const childResult = await executeWorkflowDefinition(runtimeConfiguration.tasks, workflowOperatorRuntime, {
+      runtimeParameters: runtimeConfiguration.runtimeParameters,
+      initialDataFrames: params.inputDataFrames,
+      invocationStack: Array.from(new Set([...params.invocationStack, ...workflowKeys])),
+    });
+
+    if (childResult.errorMessage) {
+      throw new Error(childResult.errorMessage);
+    }
+
+    if (params.outputTaskId) {
+      const selected = childResult.taskResults[params.outputTaskId];
+      if (!selected?.dataFrame) {
+        throw new Error(`workflow.invoke output task not found or did not produce dataframe: ${params.outputTaskId}`);
+      }
+      return selected;
+    }
+
+    if (!childResult.result?.dataFrame) {
+      throw new Error(`workflow.invoke target workflow did not produce dataframe output: ${workflowCode || workflowId}`);
+    }
+    return childResult.result;
   },
 };
 
@@ -2028,7 +2219,10 @@ async function registerRoutes() {
 
     await assertMonthlyRunInstanceReady(monthlyRunInstance);
     const resolvedRuntimeParameters: WorkflowRuntimeParameters = monthlyRunInstanceToRuntimeParameters(monthlyRunInstance);
-    resolvedRuntimeParameters.fixedValues = await loadMonthlyRunRuntimeFixedValues(db);
+    resolvedRuntimeParameters.fixedValues = {
+      ...(resolvedRuntimeParameters.fixedValues as Record<string, number> | undefined),
+      ...(await loadMonthlyRunRuntimeFixedValues(db)),
+    };
 
     const monthKey = String(resolvedRuntimeParameters.month);
     const monthId = await getOrCreateMonth(monthKey);
@@ -2125,6 +2319,7 @@ async function registerRoutes() {
   app.post('/api/files/upload', async (request, reply) => {
     let uploadedBy = 'Administrator';
     let folderPrefix: string | undefined;
+    let conflictPolicy: 'error' | 'overwrite' = 'error';
     let uploaded: { fileName: string; buffer: Buffer; mimeType: string } | null = null;
 
     for await (const part of request.parts()) {
@@ -2138,6 +2333,8 @@ async function registerRoutes() {
         uploadedBy = part.value.trim();
       } else if (part.fieldname === 'folderPrefix' && typeof part.value === 'string' && part.value.trim()) {
         folderPrefix = part.value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+      } else if (part.fieldname === 'conflictPolicy' && part.value === 'overwrite') {
+        conflictPolicy = 'overwrite';
       }
     }
 
@@ -2146,13 +2343,27 @@ async function registerRoutes() {
       return reply.code(400).send({ error: 'Only .xlsx, .xls, and .csv files are supported' });
     }
 
-    const saved = await saveProductWorkbook({
-      originalName: uploaded.fileName,
-      buffer: uploaded.buffer,
-      mimeType: uploaded.mimeType,
-      uploadedBy,
-      folderPrefix: inputStorageFolderPrefix(folderPrefix),
-    });
+    let saved;
+    try {
+      saved = await saveProductWorkbook({
+        originalName: uploaded.fileName,
+        buffer: uploaded.buffer,
+        mimeType: uploaded.mimeType,
+        uploadedBy,
+        folderPrefix: inputStorageFolderPrefix(folderPrefix),
+        conflictPolicy,
+      });
+    } catch (error) {
+      const uploadError = error as Error & { statusCode?: number; existingFile?: Record<string, unknown> };
+      if (uploadError.statusCode === 409) {
+        return reply.code(409).send({
+          error: uploadError.message,
+          code: 'FILE_ALREADY_EXISTS',
+          existingFile: uploadError.existingFile ? toProductFile(uploadError.existingFile) : undefined,
+        });
+      }
+      throw error;
+    }
 
     return reply.code(201).send({
       file: toProductFile(saved.file),
@@ -2174,17 +2385,96 @@ async function registerRoutes() {
   app.patch('/api/files/:id', async (request) => {
     const { id } = request.params as { id: string };
     const fileId = Number(id);
-    await getProductFileOrThrow(fileId);
+    const file = await getProductFileOrThrow(fileId);
     const body = productFilePatchSchema.parse(request.body ?? {});
+    const originalName = normalizeProductFileName(body.originalName);
+    const currentLogicalPath = String(file.logical_path ?? productFileDisplayPath(file));
+    const directory = currentLogicalPath.split('/').slice(0, -1).join('/');
+    const logicalPath = canonicalProductFilePath(directory, originalName);
+    const existing = await db.queryOne<{ id: number }>(
+      'select id from product_files where lower(logical_path) = lower($1) and id <> $2',
+      [logicalPath, fileId],
+    );
+    if (existing) throw conflict(`File already exists: ${logicalPath}`);
+    const oldFilePath = String(file.file_path);
+    const buffer = await fileStorage.read(oldFilePath);
+    const stored = await fileStorage.save('product', originalName, buffer, { prefix: directory });
+    const ext = path.extname(originalName).toLowerCase();
     const row = await db.queryOne<Record<string, unknown>>(
       `update product_files
-          set original_name = $2
+          set original_name = $2,
+              stored_name = $2,
+              file_ext = $3,
+              file_path = $4,
+              logical_path = $5,
+              storage_backend = $6,
+              created_at = current_timestamp
         where id = $1
         returning *`,
-      [fileId, body.originalName],
+      [fileId, originalName, ext.replace(/^\./, ''), stored.filePath, logicalPath, stored.storageBackend],
     );
     if (!row) throw notFound('Product file not found');
+    if (oldFilePath !== stored.filePath) await fileStorage.remove(oldFilePath);
     return { file: toProductFile(row) };
+  });
+
+  app.post('/api/files/:id/move', async (request, reply) => {
+    const fileId = Number((request.params as { id: string }).id);
+    const file = await getProductFileOrThrow(fileId);
+    const body = productFileMoveSchema.parse(request.body ?? {});
+    const originalName = String(file.original_name);
+    const oldLogicalPath = String(file.logical_path ?? productFileDisplayPath(file));
+
+    let folderPrefix: string;
+    try {
+      const requestedFolder = normalizeProductFolder(body.folder);
+      // Output workbooks stay in the output class; everything else is an input.
+      folderPrefix = oldLogicalPath.startsWith('output/')
+        ? normalizeProductFileStoragePrefix(requestedFolder)
+        : inputStorageFolderPrefix(requestedFolder);
+    } catch {
+      throw badRequest('Invalid folder path');
+    }
+
+    const logicalPath = canonicalProductFilePath(folderPrefix, originalName);
+    if (productFileCollisionKey(logicalPath) === productFileCollisionKey(oldLogicalPath)) {
+      return { file: toProductFile(file), rewrittenWorkflows: 0 };
+    }
+
+    const existing = await db.queryOne<{ id: number }>(
+      'select id from product_files where lower(logical_path) = lower($1) and id <> $2',
+      [logicalPath, fileId],
+    );
+    if (existing) {
+      const existingFile = await getProductFileOrThrow(existing.id);
+      return reply.code(409).send({
+        error: `File already exists: ${logicalPath}`,
+        code: 'FILE_ALREADY_EXISTS',
+        existingFile: toProductFile(existingFile),
+      });
+    }
+
+    const oldFilePath = String(file.file_path);
+    const buffer = await fileStorage.read(oldFilePath);
+    const stored = await fileStorage.save('product', originalName, buffer, { prefix: folderPrefix });
+
+    const moved = await db.transaction(async (tx) => {
+      const row = await tx.queryOne<Record<string, unknown>>(
+        `update product_files
+            set file_path = $2,
+                logical_path = $3,
+                storage_backend = $4
+          where id = $1
+          returning *`,
+        [fileId, stored.filePath, logicalPath, stored.storageBackend],
+      );
+      if (!row) throw notFound('Product file not found');
+      const rewrittenWorkflows = await rewriteProductFileKeyInWorkflows(tx, oldLogicalPath, logicalPath);
+      return { row, rewrittenWorkflows };
+    });
+
+    if (oldFilePath !== stored.filePath) await fileStorage.remove(oldFilePath);
+    return { file: toProductFile(moved.row), rewrittenWorkflows: moved.rewrittenWorkflows };
   });
 
   app.get('/api/files/:id/content', async (request, reply) => {
@@ -2256,6 +2546,24 @@ async function registerRoutes() {
       range: query.range,
       headerRow: query.headerRow,
     });
+  });
+
+  app.delete('/api/files', async (request, reply) => {
+    const { ids } = productFileBulkDeleteSchema.parse(request.body ?? {});
+    const uniqueIds = [...new Set(ids)];
+    const files = await db.transaction(async (tx) => {
+      const rows = await tx.query<Record<string, unknown>>(
+        'select * from product_files where id = any($1::int[])',
+        [uniqueIds],
+      );
+      if (rows.length > 0) {
+        await tx.execute('delete from product_files where id = any($1::int[])', [uniqueIds]);
+      }
+      return rows;
+    });
+
+    await Promise.all(files.map((file) => fileStorage.remove(String(file.file_path))));
+    return reply.send({ deletedIds: files.map((file) => Number(file.id)) });
   });
 
   app.delete('/api/files/:id', async (request, reply) => {
@@ -3793,7 +4101,7 @@ async function registerRoutes() {
       })
       .parse(request.body);
 
-    const normalizedTasks = normalizeWorkflowTasks(body.tasks);
+    const normalizedTasks = normalizeWorkflowTasksForPersistence(body.tasks, 'Workflow');
     const runtimeConfig = normalizeWorkflowRuntimeConfig({
       tasks: normalizedTasks,
       runtimeParamsSchema: body.runtimeParamsSchema,
@@ -3837,11 +4145,14 @@ async function registerRoutes() {
         tasks: z.array(z.record(z.string(), z.unknown())).optional(),
         runtimeParamsSchema: z.record(z.string(), z.unknown()).optional(),
         runtimeParamsDefaults: z.record(z.string(), z.unknown()).optional(),
+        expectedUpdatedAt: z.string().trim().min(1).optional(),
       })
       .parse(request.body);
 
     const normalizedTasks =
-      body.tasks === undefined ? normalizeWorkflowTasks(parseJson(existing.tasks_json, [])) : normalizeWorkflowTasks(body.tasks);
+      body.tasks === undefined
+        ? normalizeWorkflowTasksForPersistence(parseJson(existing.tasks_json, []), 'Stored workflow')
+        : normalizeWorkflowTasksForPersistence(body.tasks, 'Workflow');
     const runtimeConfig = normalizeWorkflowRuntimeConfig({
       tasks: normalizedTasks,
       runtimeParamsSchema:
@@ -3862,6 +4173,8 @@ async function registerRoutes() {
            runtime_params_defaults_json = $8::jsonb,
            updated_at = current_timestamp
        where id = $9
+         and ($10::timestamptz is null
+           or date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $10::timestamptz))
        returning *`,
       [
         body.code ?? existing.code,
@@ -3873,9 +4186,12 @@ async function registerRoutes() {
         JSON.stringify(runtimeConfig.runtimeParamsSchema),
         JSON.stringify(runtimeConfig.runtimeParamsDefaults),
         workflowId,
+        body.expectedUpdatedAt ?? null,
       ],
     );
-    if (!row) throw notFound('Workflow not found');
+    if (!row) {
+      throw conflict('工作流已被其他页面或请求更新，请刷新后重新应用本次修改');
+    }
     return toWorkflowDefinition(row);
   });
 
@@ -3885,8 +4201,9 @@ async function registerRoutes() {
     if (!workflowRow) throw notFound('Workflow not found');
 
     const sourceTasks = body.tasks ? normalizeWorkflowTasks(body.tasks) : normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
+    const previewTasks = selectWorkflowPreviewTasks(sourceTasks, body.taskId);
     const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
-      tasks: sourceTasks,
+      tasks: previewTasks,
       runtimeParamsSchema: body.runtimeParamsSchema ?? parseJson(workflowRow.runtime_params_schema_json, {}),
       runtimeParamsDefaults: body.runtimeParamsDefaults ?? parseJson(workflowRow.runtime_params_defaults_json, {}),
       runtimeParameters: body.runtimeParameters,
@@ -3895,7 +4212,10 @@ async function registerRoutes() {
     const task = taskMap.get(body.taskId);
     if (!task) throw notFound('Workflow task not found');
 
-    return executeWorkflowTaskPreview(task, new Map(), taskMap, workflowOperatorRuntime);
+    return executeWorkflowTaskPreview(task, new Map(), taskMap, workflowOperatorRuntime, {
+      runtimeParameters: runtimeConfiguration.runtimeParameters,
+      invocationStack: [String(workflowRow.code), `id:${body.workflowId}`],
+    });
   });
 
   app.post('/api/workflows/:id/execute', async (request) => {

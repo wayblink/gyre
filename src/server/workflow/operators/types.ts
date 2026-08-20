@@ -6,6 +6,7 @@ import type {
   WorkflowOperatorDocumentation,
   WorkflowOperatorParamsSchema,
   WorkflowRuntimeParameterField,
+  WorkflowRuntimeParameters,
   WorkflowOperatorSlot,
   WorkflowSqlTableBinding,
   WorkflowTask,
@@ -50,6 +51,7 @@ export type WorkflowOperatorRuntime = {
     mimeType?: string;
     uploadedBy?: string;
     folderPrefix?: string;
+    conflictPolicy?: 'error' | 'overwrite';
   }) => Promise<ProductFileRecord>;
   /**
    * Upsert dataframe rows into a whitelisted database table. Only present when the
@@ -63,6 +65,14 @@ export type WorkflowOperatorRuntime = {
     conflictColumns: string[];
     updateColumns: string[];
   }) => Promise<{ inserted: number; updated: number }>;
+  invokeWorkflow?: (params: {
+    workflowId?: number;
+    workflowCode?: string;
+    runtimeParameters: WorkflowRuntimeParameters;
+    inputDataFrames: Record<string, WorkflowDataFrame>;
+    outputTaskId?: string;
+    invocationStack: string[];
+  }) => Promise<WorkflowTaskPreviewResult>;
 };
 
 export type WorkflowOperatorExecutionContext = {
@@ -70,6 +80,8 @@ export type WorkflowOperatorExecutionContext = {
   executed: Map<string, WorkflowDataFrame>;
   taskMap: Map<string, WorkflowTask>;
   runtime: WorkflowOperatorRuntime;
+  runtimeParameters: WorkflowRuntimeParameters;
+  invocationStack: string[];
   executeTask: (task: WorkflowTask) => Promise<WorkflowDataFrame>;
   resolveInputDataFrame: (inputSlot: string) => Promise<WorkflowDataFrame>;
 };
@@ -134,6 +146,8 @@ export function normalizeWorkflowFileReference(value: unknown): WorkflowFileRefe
   if (!provider) return null;
 
   if (provider === 'product-files') {
+    const key = String(value.key ?? '').trim();
+    if (key) return { provider, key };
     const id = Number(value.id);
     return Number.isInteger(id) && id > 0 ? { provider, id } : null;
   }

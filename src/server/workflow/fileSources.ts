@@ -21,7 +21,6 @@ export class WorkflowFileSourceRegistry {
   }
 }
 
-export function productFileRef(fileId: number): WorkflowFileReference {
-  return { provider: 'product-files', id: fileId };
+export function productFileRef(key: string): WorkflowFileReference {
+  return { provider: 'product-files', key };
 }
-

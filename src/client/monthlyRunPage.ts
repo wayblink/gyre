@@ -6,7 +6,9 @@ import type {
   MonthlyRunSourceDefinition,
   MonthlyRunSourceBinding,
   MonthlyRunTriggerResponse,
+  ProductFileDetail,
   ProductFileRecord,
+  ProductFileSheetSummary,
   WorkflowExecutionTaskState,
   WorkflowRunRecord,
 } from '../shared/types.js';
@@ -14,7 +16,7 @@ import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { createWorkflowRunClient } from './workflow/runClient.js';
 import type { AppLanguage } from './i18n.js';
-import { uploadFormDataWithProgress } from './uploadProgress.js';
+import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
@@ -25,6 +27,7 @@ type MonthlyRunPageDeps = {
   formatDateTime: (value: string) => string;
   refreshProductFiles: () => Promise<unknown>;
   refreshSummary: (month: string) => Promise<unknown>;
+  openProductFile: (fileId: number) => Promise<void> | void;
   notify: NotifyFn;
   confirmAction: ConfirmActionFn;
   getLanguage?: () => AppLanguage;
@@ -33,15 +36,150 @@ type MonthlyRunPageDeps = {
 };
 
 type SourceDraftBindings = Record<string, MonthlyRunSourceBinding | null>;
+type SourceSheetSummaryState = {
+  sheets: ProductFileSheetSummary[];
+  loading: boolean;
+  errorMessage: string | null;
+};
+
+const sourceFileNameMatchers: Record<string, string[]> = {
+  base_control_book: ['eq control book'],
+  incremental_control_book: ['control books detail', 'control_books_detail', 'detail data', '27591'],
+  option_plans_summary: ['option plans summary', 'gyre option plans summary sl', 'gyre cap table', 'cap table'],
+  options_os_detail_by_plan: ['options os detail by plan', 'options os detail'],
+};
+
+function normalizeCandidateText(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_.!]+/g, ' ')
+    .replace(/[-–—]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function productFileCandidateName(file: Pick<ProductFileRecord, 'displayName' | 'originalName'>): string {
+  return file.displayName || file.originalName;
+}
+
+export function getMonthlyRunSheetNameOptions(params: {
+  bindingSheetName?: string | null;
+  defaultSheetName?: string | null;
+  sheets: ReadonlyArray<ProductFileSheetSummary>;
+}): { selectedSheetName: string; options: string[] } {
+  const options = params.sheets
+    .map((sheet) => sheet.sheetName.trim())
+    .filter((sheetName) => sheetName.length > 0);
+  const selectedSheetName = params.bindingSheetName?.trim() || params.defaultSheetName?.trim() || options[0] || '';
+  if (selectedSheetName && !options.some((sheetName) => sheetName === selectedSheetName)) {
+    return { selectedSheetName, options: [selectedSheetName, ...options] };
+  }
+  return { selectedSheetName, options };
+}
+
+export function getMonthlyRunSourceSheetControlModel(params: {
+  allowSheetNameOverride?: boolean;
+  binding: MonthlyRunSourceBinding | null;
+  defaultSheetName?: string | null;
+  sheets: ReadonlyArray<ProductFileSheetSummary>;
+}): { fileId: number; selectedSheetName: string; options: string[] } | null {
+  if (!params.allowSheetNameOverride || !params.binding?.fileId) return null;
+  return {
+    fileId: params.binding.fileId,
+    ...getMonthlyRunSheetNameOptions({
+      bindingSheetName: params.binding.sheetName,
+      defaultSheetName: params.defaultSheetName,
+      sheets: params.sheets,
+    }),
+  };
+}
 
 export function retainAvailableSourceBindings(
   bindings: Record<string, MonthlyRunSourceBinding>,
-  availableFiles: ReadonlyArray<Pick<ProductFileRecord, 'id'>>,
+  availableFiles: ReadonlyArray<Pick<ProductFileRecord, 'id' | 'logicalPath'>>,
 ): Record<string, MonthlyRunSourceBinding> {
   if (availableFiles.length === 0) return bindings;
   return Object.fromEntries(
-    Object.entries(bindings).filter(([, binding]) => availableFiles.some((file) => file.id === binding.fileId)),
+    Object.entries(bindings).filter(([, binding]) => availableFiles.some((file) => isFileForBinding(file, binding))),
   );
+}
+
+export function getMonthlyRunModalSourceDefinitions<T extends Pick<MonthlyRunSourceDefinition, 'sourceKey'>>(
+  sourceDefinitions: ReadonlyArray<T>,
+  activeSourceKey?: string | null,
+): T[] {
+  if (!activeSourceKey) return [...sourceDefinitions];
+  return sourceDefinitions.filter((source) => source.sourceKey === activeSourceKey);
+}
+
+export function getMonthlyRunFileCandidatesForSource<T extends Pick<ProductFileRecord, 'id' | 'displayName' | 'originalName'> & { logicalPath?: string | null }>(
+  sourceKey: string,
+  files: ReadonlyArray<T>,
+  currentFileId?: number | null,
+  currentFileKey?: string | null,
+): T[] {
+  const matchers = sourceFileNameMatchers[sourceKey];
+  if (!matchers?.length) return [...files];
+  const currentBinding = currentFileId
+    ? { fileId: currentFileId, logicalPath: currentFileKey ?? null, fileKey: currentFileKey ?? null }
+    : null;
+  const normalizedMatchers = matchers.map(normalizeCandidateText);
+  const matchingFiles = files.filter((file) => {
+    const name = normalizeCandidateText(productFileCandidateName(file));
+    if (sourceKey === 'option_plans_summary' && name.includes('options os detail')) return false;
+    return normalizedMatchers.some((matcher) => name.includes(matcher));
+  });
+  if (!matchingFiles.length) return [...files];
+  if (currentBinding && !matchingFiles.some((file) => isFileForBinding(file, currentBinding))) {
+    const currentFile = files.find((file) => isFileForBinding(file, currentBinding));
+    return currentFile ? [...matchingFiles, currentFile] : matchingFiles;
+  }
+  return matchingFiles;
+}
+
+function sourceBindingsFromInstance(instance: MonthlyRunInstanceRecord): Record<string, MonthlyRunSourceBinding> {
+  return Object.fromEntries(
+    Object.entries(instance.sources)
+      .filter(([, value]) => typeof value.fileId === 'number' && value.fileId > 0)
+      .map(([sourceKey, value]) => [
+        sourceKey,
+        {
+          fileId: value.fileId as number,
+          logicalPath: value.logicalPath ?? null,
+          fileKey: value.logicalPath ?? null,
+          sheetName: value.sheetName,
+        },
+      ]),
+  );
+}
+
+function normalizedFileKey(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isFileForBinding(
+  file: Pick<ProductFileRecord, 'id'> & { logicalPath?: string | null },
+  binding: Pick<MonthlyRunSourceBinding, 'fileId' | 'logicalPath' | 'fileKey'> | null | undefined,
+): boolean {
+  if (!binding) return false;
+  if (file.id === binding.fileId) return true;
+  const bindingKey = normalizedFileKey(binding.logicalPath ?? binding.fileKey);
+  return Boolean(bindingKey && normalizedFileKey(file.logicalPath) === bindingKey);
+}
+
+export function getMonthlyRunWarningTaskIds(run: Pick<WorkflowRunRecord, 'steps'>): string[] {
+  return run.steps.filter((step) => step.status === 'warning').map((step) => step.taskId);
+}
+
+export function getBcSubplanCancelledAdjustmentInfo(run: Pick<WorkflowRunRecord, 'id' | 'steps'>): { key: string; message: string } | null {
+  const step = run.steps.find((item) => item.taskId === 'calc_option_metrics');
+  if (step?.status !== 'completed' || step.result?.kind !== 'dataframe') return null;
+  const adjustment = Number(step.result.dataFrame.rows[0]?.bc_subplan_cancelled_adjustment ?? 0);
+  if (!Number.isFinite(adjustment) || Math.abs(adjustment) <= 0) return null;
+  return {
+    key: `${run.id}:${step.taskId}:bc-subplan-cancelled-adjustment`,
+    message: `GYRE 2025 BC Subplan 的 Cancelled 为 0，已使用 2025 BC Subplan Transfer 补充 cancel 数据：${adjustment}`,
+  };
 }
 
 function statusLabel(status: string, language: AppLanguage = 'zh-CN'): string {
@@ -94,6 +232,16 @@ function monthFolder(month: string): string {
   return /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7);
 }
 
+export function resolveMonthlyRunPreviewFileId(
+  run: Pick<WorkflowRunRecord, 'artifacts'> | null | undefined,
+  instance: Pick<MonthlyRunInstanceRecord, 'latestOutputFileId'> | null | undefined,
+): number | null {
+  const artifactFileId = run?.artifacts.find((artifact) => artifact.artifactType === 'file' && typeof artifact.fileId === 'number' && artifact.fileId > 0)?.fileId ?? null;
+  if (artifactFileId) return artifactFileId;
+  const latestOutputFileId = instance?.latestOutputFileId ?? null;
+  return typeof latestOutputFileId === 'number' && latestOutputFileId > 0 ? latestOutputFileId : null;
+}
+
 export function createMonthlyRunPage({
   el,
   api,
@@ -101,6 +249,7 @@ export function createMonthlyRunPage({
   formatDateTime,
   refreshProductFiles,
   refreshSummary,
+  openProductFile,
   notify,
   confirmAction,
   getLanguage,
@@ -114,11 +263,14 @@ export function createMonthlyRunPage({
   let currentInstance: MonthlyRunInstanceRecord | null = null;
   let selectedSources: Record<string, MonthlyRunSourceBinding> = {};
   let draftSources: SourceDraftBindings = {};
+  let activeSourceModalKey: string | null = null;
+  const sourceSheetSummariesByFileId = new Map<number, SourceSheetSummaryState>();
   let activeHistoryId: number | null = null;
   let activeRun: WorkflowRunRecord | null = null;
   let isRunning = false;
   let isSavingSources = false;
   const expandedWarningTaskIds = new Set<string>();
+  const shownRunInfoNoticeKeys = new Set<string>();
   const text = {
     selectMonth: { 'zh-CN': '请选择月份', 'en-US': 'Please select a month' },
     codeDefined: { 'zh-CN': '代码定义', 'en-US': 'Code defined' },
@@ -130,6 +282,14 @@ export function createMonthlyRunPage({
     currentFile: { 'zh-CN': '当前文件', 'en-US': 'Current file' },
     uploadNewFile: { 'zh-CN': '上传新文件', 'en-US': 'Upload new file' },
     defaultSheet: { 'zh-CN': '默认 Sheet', 'en-US': 'Default Sheet' },
+    sheetName: { 'zh-CN': 'Sheet 名称', 'en-US': 'Sheet name' },
+    sheetNameRequired: { 'zh-CN': '请填写 Sheet 名称', 'en-US': 'Enter a sheet name' },
+    inputSheet: { 'zh-CN': '输入 Sheet', 'en-US': 'Input sheet' },
+    sheetSaved: { 'zh-CN': '输入 Sheet 已保存', 'en-US': 'Input sheet saved' },
+    sheetSaveFailed: { 'zh-CN': '输入 Sheet 保存失败', 'en-US': 'Failed to save input sheet' },
+    copy: { 'zh-CN': '复制', 'en-US': 'Copy' },
+    copiedFileName: { 'zh-CN': '文件名已复制', 'en-US': 'File name copied' },
+    copyFileNameFailed: { 'zh-CN': '复制文件名失败', 'en-US': 'Failed to copy file name' },
     removeConfigTitle: { 'zh-CN': '删除 Uploaded file 配置', 'en-US': 'Delete Uploaded file configuration' },
     removeConfigConfirm: { 'zh-CN': '确定删除', 'en-US': 'Delete the Uploaded file configuration for' },
     removeConfigSuffix: { 'zh-CN': '的 Uploaded file 配置吗？文件中心里的文件不会被删除。', 'en-US': '? The file in Files will not be deleted.' },
@@ -146,6 +306,9 @@ export function createMonthlyRunPage({
     noHistory: { 'zh-CN': '暂无执行历史', 'en-US': 'No execution history' },
     fileCount: { 'zh-CN': '个文件', 'en-US': 'files' },
     noInputSnapshot: { 'zh-CN': '暂无输入快照', 'en-US': 'No input snapshot' },
+    loadingHistoryRun: { 'zh-CN': '正在加载历史执行记录...', 'en-US': 'Loading historical run...' },
+    historyMissingRun: { 'zh-CN': '该历史记录没有关联 workflow 执行记录', 'en-US': 'This history record has no workflow run attached' },
+    historyLoadFailed: { 'zh-CN': '加载历史执行记录失败', 'en-US': 'Failed to load historical run' },
     runHistory: { 'zh-CN': '运行历史', 'en-US': 'Run history' },
     cannotDeleteRunning: { 'zh-CN': '运行中或待审批的记录不能删除', 'en-US': 'Running or approval-pending records cannot be deleted' },
     deleteHistoryTitle: { 'zh-CN': '删除运行历史及输出文件', 'en-US': 'Delete run history and output file' },
@@ -153,6 +316,7 @@ export function createMonthlyRunPage({
     outputDeleteNotice: { 'zh-CN': '对应输出文件', 'en-US': 'The output file' },
     outputDeleteNoticeSuffix: { 'zh-CN': '也会被永久删除。', 'en-US': 'will also be permanently deleted.' },
     historyDeleted: { 'zh-CN': '运行历史及对应输出文件已删除', 'en-US': 'Run history and corresponding output file deleted' },
+    previewExcel: { 'zh-CN': '预览', 'en-US': 'Preview' },
     delete: { 'zh-CN': '删除', 'en-US': 'Delete' },
   } satisfies Record<string, Record<AppLanguage, string>>;
 
@@ -226,11 +390,7 @@ export function createMonthlyRunPage({
     }
     const data = await api<{ instance: MonthlyRunInstanceRecord }>(`/api/monthly-runs/instance?month=${encodeURIComponent(month)}`);
     currentInstance = data.instance;
-    selectedSources = Object.fromEntries(
-      Object.entries(data.instance.sources)
-        .filter(([, value]) => typeof value.fileId === 'number' && value.fileId > 0)
-        .map(([sourceKey, value]) => [sourceKey, { fileId: value.fileId as number }]),
-    );
+    selectedSources = sourceBindingsFromInstance(data.instance);
     renderSourceInfo();
     renderBusinessDefinedInputConfiguration();
   }
@@ -243,11 +403,7 @@ export function createMonthlyRunPage({
       body: JSON.stringify(patch),
     });
     currentInstance = data.instance;
-    selectedSources = Object.fromEntries(
-      Object.entries(data.instance.sources)
-        .filter(([, value]) => typeof value.fileId === 'number' && value.fileId > 0)
-        .map(([sourceKey, value]) => [sourceKey, { fileId: value.fileId as number }]),
-    );
+    selectedSources = sourceBindingsFromInstance(data.instance);
     renderSourceInfo();
     renderBusinessDefinedInputConfiguration();
   }
@@ -263,10 +419,6 @@ export function createMonthlyRunPage({
     }
   }
 
-  function renderUsedValue(used: boolean): string {
-    return used ? '<span class="source-used source-used--true">true</span>' : '<span class="source-used source-used--false">false</span>';
-  }
-
   function renderBusinessDefinedInputConfiguration() {
     el('shareworksBody').innerHTML = renderBusinessDefinedSourceRows('shareworks', (source) => source.sourceKey !== 'previous_capitalization_summary');
     el('previousCapitalizationSummaryBody').innerHTML = renderBusinessDefinedSingleSourceRow('previous_capitalization_summary');
@@ -280,6 +432,22 @@ export function createMonthlyRunPage({
       });
     });
 
+    document.querySelectorAll<HTMLButtonElement>('[data-business-source-configure]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const sourceKey = button.dataset.businessSourceConfigure;
+        if (!sourceKey) return;
+        openSourceModal(sourceKey);
+      });
+    });
+
+    document.querySelectorAll<HTMLSelectElement>('[data-business-source-sheet]').forEach((select) => {
+      select.addEventListener('change', () => {
+        const sourceKey = select.dataset.businessSourceSheet;
+        if (!sourceKey) return;
+        void saveBusinessSourceSheet(sourceKey, select.value);
+      });
+    });
+
     document.querySelectorAll<HTMLButtonElement>('[data-business-source-remove]').forEach((button) => {
       button.addEventListener('click', () => {
         const sourceKey = button.dataset.businessSourceRemove;
@@ -288,42 +456,131 @@ export function createMonthlyRunPage({
       });
     });
 
-    document.querySelectorAll<HTMLElement>('.source-file-link[data-product-file-id]').forEach((link) => {
-      link.addEventListener('click', (event) => {
-        event.preventDefault();
-        const fileId = Number(link.dataset.productFileId);
+    document.querySelectorAll<HTMLButtonElement>('.source-file-link[data-source-file-preview]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const fileId = Number(button.dataset.sourceFilePreview);
         if (!fileId) return;
-        window.location.href = `/files?fileId=${fileId}`;
+        void openProductFile(fileId);
       });
     });
+
+    document.querySelectorAll<HTMLButtonElement>('.source-file-copy[data-source-file-copy]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const fileName = button.dataset.sourceFileCopy;
+        if (!fileName) return;
+        void copySourceFileName(fileName);
+      });
+    });
+  }
+
+  function renderUploadedFileCell(file: ProductFileRecord) {
+    const displayName = getFileDisplayName(file);
+    const escapedDisplayName = escapeHtml(displayName);
+    const copyLabel = tt('copy');
+    const previewLabel = tt('previewExcel');
+    return `<div class="source-file-actions">
+      <button
+        type="button"
+        class="source-file-link"
+        data-source-file-preview="${file.id}"
+        title="${escapedDisplayName}"
+        aria-label="${escapeHtml(`${previewLabel} ${displayName}`)}"
+      >
+        <span class="source-file-link__text">${escapedDisplayName}</span>
+      </button>
+      <button
+        type="button"
+        class="source-file-copy"
+        data-source-file-copy="${escapedDisplayName}"
+        title="${escapeHtml(copyLabel)}"
+        aria-label="${escapeHtml(copyLabel)}"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+          <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
+        </svg>
+      </button>
+    </div>`;
+  }
+
+  function renderBusinessSourceSheetControl(
+    source: MonthlyRunSourceDefinition,
+    binding: MonthlyRunSourceBinding | null,
+  ) {
+    const sheetState = binding?.fileId ? sourceSheetSummariesByFileId.get(binding.fileId) : null;
+    const model = getMonthlyRunSourceSheetControlModel({
+      allowSheetNameOverride: source.allowSheetNameOverride,
+      binding,
+      defaultSheetName: source.defaultSheetName,
+      sheets: sheetState?.sheets ?? [],
+    });
+    if (!model) return '';
+    void ensureSourceSheetSummaries(model.fileId);
+    const options = model.options
+      .map((sheetName) => `<option value="${escapeHtml(sheetName)}"${sheetName === model.selectedSheetName ? ' selected' : ''}>${escapeHtml(sheetName)}</option>`)
+      .join('');
+    const status = sheetState?.loading
+      ? `<span class="source-sheet-control__status">Loading...</span>`
+      : sheetState?.errorMessage
+        ? `<span class="source-sheet-control__status source-sheet-control__status--error">${escapeHtml(sheetState.errorMessage)}</span>`
+        : '';
+    return `<label class="source-sheet-control">
+      <span class="source-sheet-control__label">${escapeHtml(tt('inputSheet'))}</span>
+      <select class="search-input source-sheet-control__select" data-business-source-sheet="${escapeHtml(source.sourceKey)}"${sheetState?.loading ? ' disabled' : ''}>
+        ${options}
+      </select>
+      ${status}
+    </label>`;
+  }
+
+  async function saveBusinessSourceSheet(sourceKey: string, sheetName: string) {
+    const binding = selectedSources[sourceKey];
+    const nextSheetName = sheetName.trim();
+    if (!binding?.fileId || !nextSheetName || binding.sheetName === nextSheetName) return;
+    const previousBinding = binding;
+    selectedSources[sourceKey] = { ...binding, sheetName: nextSheetName };
+    renderBusinessDefinedInputConfiguration();
+    try {
+      await saveInstance({
+        operator: currentInstance?.operator ?? 'Administrator',
+        sources: { [sourceKey]: selectedSources[sourceKey] },
+      });
+      notify(tt('sheetSaved'), { type: 'success' });
+    } catch (error) {
+      selectedSources[sourceKey] = previousBinding;
+      renderBusinessDefinedInputConfiguration();
+      notify(error instanceof Error ? error.message : tt('sheetSaveFailed'), { type: 'error' });
+    }
   }
 
   function renderBusinessDefinedSourceRows(
     sourceGroup: 'shareworks' | 'futu',
     predicate: (source: MonthlyRunSourceDefinition) => boolean = () => true,
   ) {
-    const sources = sourceDefinitions.filter((source) => source.sourceGroup === sourceGroup && predicate(source));
-    if (!sources.length) return `<tr><td colspan="6" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
+    const sources = sourceDefinitions.filter((source) => source.sourceGroup === sourceGroup && !source.hidden && predicate(source));
+    if (!sources.length) return `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
     return sources
       .map((source) => {
         const binding = selectedSources[source.sourceKey] ?? null;
-        const file = binding ? getFileById(binding.fileId) : null;
-        const displayName = file ? getFileDisplayName(file) : '';
+        const file = getFileForBinding(binding);
         const uploaded = file
-          ? `<div class="source-file-actions"><a href="/files?fileId=${file.id}" class="source-file-link" data-product-file-id="${file.id}" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</a></div>`
+          ? `${renderUploadedFileCell(file)}${renderBusinessSourceSheetControl(source, binding)}`
           : '<span class="source-not-uploaded">Not uploaded</span>';
-        const uploadedTime = file ? formatCompactTimestamp(file.createdAt) : '-';
+        const uploadedTime = file ? formatUploadedTimestamp(file.createdAt) : '-';
         const actions = file
           ? `<div class="source-file-action-group">
+              <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
               <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Update</button>
               <button class="source-file-delete source-file-delete--text" type="button" data-business-source-remove="${escapeHtml(source.sourceKey)}">Delete</button>
             </div>`
-          : `<button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>`;
+          : `<div class="source-file-action-group">
+              <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
+              <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>
+            </div>`;
         return `<tr>
           <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
-          <td>${renderUsedValue(source.required)}</td>
           <td>${source.required ? '<span class="source-required-badge">Required</span>' : '<span class="source-optional-badge">Optional</span>'}</td>
-          <td>${uploaded}</td>
+          <td class="source-uploaded-cell">${uploaded}</td>
           <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>
           <td>${actions}</td>
         </tr>`;
@@ -333,25 +590,27 @@ export function createMonthlyRunPage({
 
   function renderBusinessDefinedSingleSourceRow(sourceKey: string) {
     const source = sourceDefinitions.find((item) => item.sourceKey === sourceKey);
-    if (!source) return `<tr><td colspan="6" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
+    if (!source) return `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
     const binding = selectedSources[source.sourceKey] ?? null;
-    const file = binding ? getFileById(binding.fileId) : null;
-    const displayName = file ? getFileDisplayName(file) : '';
+    const file = getFileForBinding(binding);
     const uploaded = file
-      ? `<div class="source-file-actions"><a href="/files?fileId=${file.id}" class="source-file-link" data-product-file-id="${file.id}" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</a></div>`
+      ? `${renderUploadedFileCell(file)}${renderBusinessSourceSheetControl(source, binding)}`
       : '<span class="source-not-uploaded">Not uploaded</span>';
-    const uploadedTime = file ? formatCompactTimestamp(file.createdAt) : '-';
+    const uploadedTime = file ? formatUploadedTimestamp(file.createdAt) : '-';
     const actions = file
       ? `<div class="source-file-action-group">
+          <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
           <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Update</button>
           <button class="source-file-delete source-file-delete--text" type="button" data-business-source-remove="${escapeHtml(source.sourceKey)}">Delete</button>
         </div>`
-      : `<button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>`;
+      : `<div class="source-file-action-group">
+          <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
+          <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>
+        </div>`;
     return `<tr>
       <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
-      <td>${renderUsedValue(source.required)}</td>
       <td>${source.required ? '<span class="source-required-badge">Required</span>' : '<span class="source-optional-badge">Optional</span>'}</td>
-      <td>${uploaded}</td>
+      <td class="source-uploaded-cell">${uploaded}</td>
       <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>
       <td>${actions}</td>
     </tr>`;
@@ -372,15 +631,49 @@ export function createMonthlyRunPage({
     return files.find((file) => file.id === fileId) ?? null;
   }
 
+  function getFileForBinding(binding: MonthlyRunSourceBinding | null | undefined): ProductFileRecord | null {
+    if (!binding) return null;
+    return files.find((file) => isFileForBinding(file, binding)) ?? null;
+  }
+
   function getFileDisplayName(file: ProductFileRecord) {
     return file.displayName || file.originalName;
   }
 
-  function formatCompactTimestamp(value: string) {
+  async function copySourceFileName(fileName: string) {
+    try {
+      await copyTextToClipboard(fileName);
+      notify(`${fileName} ${tt('copiedFileName')}`, { type: 'success' });
+    } catch (error) {
+      notify(error instanceof Error ? error.message : tt('copyFileNameFailed'), { type: 'error' });
+    }
+  }
+
+  async function copyTextToClipboard(text: string) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', 'true');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error(tt('copyFileNameFailed'));
+  }
+
+  function formatUploadedTimestamp(value: string) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '-';
     const pad = (part: number) => String(part).padStart(2, '0');
-    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+    const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    return `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   }
 
   function renderSourceInfo() {
@@ -398,36 +691,122 @@ export function createMonthlyRunPage({
 
     info.innerHTML = configured
       .map((source) => {
-        const file = getFileById(selectedSources[source.sourceKey]?.fileId);
+        const file = getFileForBinding(selectedSources[source.sourceKey] ?? null);
         return `<span class="monthly-run-source-pill"><strong>${escapeHtml(source.label)}</strong>${file ? escapeHtml(getFileDisplayName(file)) : escapeHtml(tt('notConfigured'))}</span>`;
       })
       .join('');
   }
 
-  function openSourceModal() {
+  function openSourceModal(focusSourceKey?: string) {
+    activeSourceModalKey = focusSourceKey && sourceDefinitions.some((source) => source.sourceKey === focusSourceKey)
+      ? focusSourceKey
+      : null;
     draftSources = Object.fromEntries(
       sourceDefinitions.map((source) => [source.sourceKey, selectedSources[source.sourceKey] ?? null]),
     );
     renderSourceModal();
     el('monthlyRunSourceModal').classList.remove('hidden');
+    if (focusSourceKey) {
+      requestAnimationFrame(() => {
+        const card = document.querySelector<HTMLElement>(`[data-source-key="${CSS.escape(focusSourceKey)}"]`);
+        card?.scrollIntoView({ block: 'center' });
+        card?.querySelector<HTMLInputElement | HTMLSelectElement>('[data-source-sheet]')?.focus();
+      });
+    }
   }
 
   function closeSourceModal() {
     if (isSavingSources) return;
     el('monthlyRunSourceModal').classList.add('hidden');
+    activeSourceModalKey = null;
+  }
+
+  async function ensureSourceSheetSummaries(fileId: number) {
+    const existing = sourceSheetSummariesByFileId.get(fileId);
+    if (existing) return;
+    sourceSheetSummariesByFileId.set(fileId, { sheets: [], loading: true, errorMessage: null });
+    try {
+      const detail = await api<ProductFileDetail>(`/api/files/${fileId}`);
+      sourceSheetSummariesByFileId.set(fileId, { sheets: detail.sheets, loading: false, errorMessage: null });
+    } catch (error) {
+      sourceSheetSummariesByFileId.set(fileId, {
+        sheets: [],
+        loading: false,
+        errorMessage: error instanceof Error ? error.message : 'Failed to load workbook sheets',
+      });
+    }
+    if (!el('monthlyRunSourceModal').classList.contains('hidden')) {
+      renderSourceModal();
+    }
+    renderBusinessDefinedInputConfiguration();
+  }
+
+  function renderSourceSheetControl(source: MonthlyRunSourceDefinition, binding: MonthlyRunSourceBinding | null) {
+    const selectedFileId = binding?.fileId ?? null;
+    const sheetState = selectedFileId ? sourceSheetSummariesByFileId.get(selectedFileId) : null;
+    if (selectedFileId) void ensureSourceSheetSummaries(selectedFileId);
+    const sheetOptions = getMonthlyRunSourceSheetControlModel({
+      allowSheetNameOverride: source.allowSheetNameOverride,
+      binding,
+      defaultSheetName: source.defaultSheetName,
+      sheets: sheetState?.sheets ?? [],
+    });
+    if (!sheetOptions) return '';
+    const currentSheet = sheetOptions.selectedSheetName;
+    const hint = sheetState?.loading
+      ? `<div class="monthly-run-source-card__sheet-hint">Loading workbook sheets...</div>`
+      : sheetState?.errorMessage
+        ? `<div class="monthly-run-source-card__sheet-hint monthly-run-source-card__sheet-hint--error">${escapeHtml(sheetState.errorMessage)}</div>`
+        : '';
+
+    if (sheetOptions.options.length > 0) {
+      const options = sheetOptions.options
+        .map((sheetName) => `<option value="${escapeHtml(sheetName)}"${sheetName === currentSheet ? ' selected' : ''}>${escapeHtml(sheetName)}</option>`)
+        .join('');
+      return `
+        <label class="monthly-run-source-card__sheet">
+          <span>${escapeHtml(tt('sheetName'))}</span>
+          <select class="search-input" data-source-sheet="${escapeHtml(source.sourceKey)}">
+            ${options}
+          </select>
+        </label>
+        ${hint}
+      `;
+    }
+
+    return `
+      <label class="monthly-run-source-card__sheet">
+        <span>${escapeHtml(tt('sheetName'))}</span>
+        <input
+          class="search-input"
+          type="text"
+          value="${escapeHtml(currentSheet)}"
+          placeholder="${escapeHtml(source.defaultSheetName ?? 'Vesting Schedule')}"
+          data-source-sheet="${escapeHtml(source.sourceKey)}"
+        >
+      </label>
+      ${hint}
+    `;
   }
 
   function renderSourceModal() {
     el('monthlyRunSourceModalMonth').textContent = monthFolder(el<HTMLInputElement>('monthlyRunMonth').value);
     const list = el('monthlyRunSourceList');
-    list.innerHTML = sourceDefinitions
+    const modalSources = getMonthlyRunModalSourceDefinitions(sourceDefinitions, activeSourceModalKey);
+    list.innerHTML = modalSources
       .map((source) => {
         const binding = draftSources[source.sourceKey];
-        const file = binding ? getFileById(binding.fileId) : null;
+        const file = getFileForBinding(binding);
+        const candidateFiles = getMonthlyRunFileCandidatesForSource(
+          source.sourceKey,
+          files,
+          binding?.fileId ?? null,
+          binding?.logicalPath ?? binding?.fileKey ?? null,
+        );
         const options = [
           `<option value="">${escapeHtml(tt('chooseUploadedFile'))}</option>`,
-          ...files.map((productFile) => {
-            const selected = binding?.fileId === productFile.id ? ' selected' : '';
+          ...candidateFiles.map((productFile) => {
+            const selected = isFileForBinding(productFile, binding) ? ' selected' : '';
             return `<option value="${productFile.id}"${selected}>${escapeHtml(getFileDisplayName(productFile))} · ${escapeHtml(formatDateTime(productFile.createdAt))}</option>`;
           }),
         ].join('');
@@ -453,6 +832,7 @@ export function createMonthlyRunPage({
                 ${escapeHtml(tt('uploadNewFile'))}
               </button>
             </div>
+            ${renderSourceSheetControl(source, binding)}
             <div class="monthly-run-source-card__hint">
               <span>${escapeHtml(tt('defaultSheet'))}</span>
               <strong>${escapeHtml(source.defaultSheetName ?? '-')}</strong>
@@ -467,9 +847,30 @@ export function createMonthlyRunPage({
         const sourceKey = select.dataset.sourceSelect;
         if (!sourceKey) return;
         const fileId = select.value ? Number(select.value) : null;
-        draftSources[sourceKey] = fileId ? { fileId } : null;
+        const source = sourceDefinitions.find((item) => item.sourceKey === sourceKey);
+        const file = fileId ? getFileById(fileId) : null;
+        draftSources[sourceKey] = fileId
+          ? {
+              fileId,
+              logicalPath: file?.logicalPath ?? null,
+              fileKey: file?.logicalPath ?? null,
+              sheetName: draftSources[sourceKey]?.sheetName ?? source?.defaultSheetName ?? null,
+            }
+          : null;
+        if (fileId) void ensureSourceSheetSummaries(fileId);
         renderSourceModal();
       });
+    });
+
+    list.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-source-sheet]').forEach((control) => {
+      const updateSheetName = () => {
+        const sourceKey = control.dataset.sourceSheet;
+        const binding = sourceKey ? draftSources[sourceKey] : null;
+        if (!sourceKey || !binding) return;
+        draftSources[sourceKey] = { ...binding, sheetName: control.value };
+      };
+      control.addEventListener('input', updateSheetName);
+      control.addEventListener('change', updateSheetName);
     });
 
     list.querySelectorAll<HTMLButtonElement>('[data-source-upload]').forEach((button) => {
@@ -488,21 +889,42 @@ export function createMonthlyRunPage({
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       if (!file) return;
-      const form = new FormData();
-      form.append('file', file);
-      form.append('uploadedBy', `Monthly Run · ${sourceKey}`);
-      form.append('folderPrefix', monthFolder(el<HTMLInputElement>('monthlyRunMonth').value));
-      const data = await uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
-        fileName: file.name,
-        title: { 'zh-CN': '正在上传月度输入文件', 'en-US': 'Uploading monthly input' },
-      });
+      const upload = (overwrite = false) => {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('uploadedBy', `Monthly Run · ${sourceKey}`);
+        form.append('folderPrefix', monthFolder(el<HTMLInputElement>('monthlyRunMonth').value));
+        if (overwrite) form.append('conflictPolicy', 'overwrite');
+        return uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
+          fileName: file.name,
+          title: { 'zh-CN': '正在上传月度输入文件', 'en-US': 'Uploading monthly input' },
+        });
+      };
+      let data;
+      try {
+        data = await upload();
+      } catch (error) {
+        if (!(error instanceof UploadHttpError) || error.status !== 409) throw error;
+        const confirmed = await confirmAction(`本月文件夹中已存在“${file.name}”，是否覆盖？`, {
+          title: '文件已存在', confirmText: '覆盖', tone: 'danger',
+        });
+        if (!confirmed) return;
+        data = await upload(true);
+      }
       await refreshFiles();
       await refreshProductFiles();
-      draftSources[sourceKey] = { fileId: data.file.id };
-      selectedSources[sourceKey] = { fileId: data.file.id };
+      const source = sourceDefinitions.find((item) => item.sourceKey === sourceKey);
+      const binding = {
+        fileId: data.file.id,
+        logicalPath: data.file.logicalPath ?? null,
+        fileKey: data.file.logicalPath ?? null,
+        sheetName: source?.defaultSheetName ?? null,
+      };
+      draftSources[sourceKey] = binding;
+      selectedSources[sourceKey] = binding;
       await saveInstance({
         operator: currentInstance?.operator ?? 'Administrator',
-        sources: { [sourceKey]: { fileId: data.file.id } },
+        sources: { [sourceKey]: binding },
       });
       renderSourceInfo();
       renderBusinessDefinedInputConfiguration();
@@ -537,27 +959,42 @@ export function createMonthlyRunPage({
   }
 
   async function saveSourceModal() {
-    const missing = sourceDefinitions.find((source) => source.required && !draftSources[source.sourceKey]?.fileId);
+    const modalSources = getMonthlyRunModalSourceDefinitions(sourceDefinitions, activeSourceModalKey);
+    const missing = modalSources.find((source) => source.required && !draftSources[source.sourceKey]?.fileId);
     if (missing) {
       notify(`${tt('chooseFileFor')} ${missing.label}`, { type: 'warning' });
       return;
     }
-    isSavingSources = true;
-    const nextSources: Record<string, MonthlyRunSourceBinding> = {};
-    for (const [sourceKey, binding] of Object.entries(draftSources)) {
-      if (binding?.fileId) nextSources[sourceKey] = binding;
+    const missingSheet = modalSources.find(
+      (source) => source.allowSheetNameOverride && !draftSources[source.sourceKey]?.sheetName?.trim(),
+    );
+    if (missingSheet) {
+      notify(`${tt('sheetNameRequired')}: ${missingSheet.label}`, { type: 'warning' });
+      return;
     }
-    selectedSources = nextSources;
-    await saveInstance({
-      operator: currentInstance?.operator ?? 'Administrator',
-      sources: Object.fromEntries(
-        sourceDefinitions.map((source) => [source.sourceKey, nextSources[source.sourceKey] ?? null]),
-      ),
-    });
-    renderSourceInfo();
-    renderBusinessDefinedInputConfiguration();
-    isSavingSources = false;
-    closeSourceModal();
+    isSavingSources = true;
+    try {
+      const scopedSourceKeys = new Set(modalSources.map((source) => source.sourceKey));
+      const nextSources: Record<string, MonthlyRunSourceBinding> = { ...selectedSources };
+      for (const sourceKey of scopedSourceKeys) {
+        const binding = draftSources[sourceKey];
+        if (binding?.fileId) nextSources[sourceKey] = binding;
+        else delete nextSources[sourceKey];
+      }
+      selectedSources = nextSources;
+      await saveInstance({
+        operator: currentInstance?.operator ?? 'Administrator',
+        sources: Object.fromEntries(
+          modalSources.map((source) => [source.sourceKey, nextSources[source.sourceKey] ?? null]),
+        ),
+      });
+      renderSourceInfo();
+      renderBusinessDefinedInputConfiguration();
+      isSavingSources = false;
+      closeSourceModal();
+    } finally {
+      isSavingSources = false;
+    }
   }
 
   async function triggerMonthlyRun() {
@@ -566,7 +1003,12 @@ export function createMonthlyRunPage({
       notify(tt('selectMonth'), { type: 'warning' });
       return;
     }
-    if (!sourceDefinitions.every((source) => !source.required || selectedSources[source.sourceKey]?.fileId)) {
+    if (!sourceDefinitions.every((source) => {
+      const binding = selectedSources[source.sourceKey];
+      if (source.required && !binding?.fileId) return false;
+      if (source.allowSheetNameOverride && binding?.fileId && !binding.sheetName?.trim()) return false;
+      return true;
+    })) {
       notify(tt('completeSourceConfig'), { type: 'warning' });
       return;
     }
@@ -596,6 +1038,7 @@ export function createMonthlyRunPage({
           minimumPollCount: 1,
           onUpdate: (run) => {
             activeRun = run;
+            notifyBcSubplanCancelledAdjustmentIfNeeded(run);
             renderRunPanel();
           },
         });
@@ -629,6 +1072,7 @@ export function createMonthlyRunPage({
       minimumPollCount: 2,
       onUpdate: (run) => {
         activeRun = run;
+        notifyBcSubplanCancelledAdjustmentIfNeeded(run);
         renderRunPanel();
       },
     });
@@ -642,7 +1086,15 @@ export function createMonthlyRunPage({
   async function refreshActiveRun() {
     if (!activeRun) return;
     activeRun = await runClient.getRun(activeRun.id);
+    notifyBcSubplanCancelledAdjustmentIfNeeded(activeRun);
     renderRunPanel();
+  }
+
+  function notifyBcSubplanCancelledAdjustmentIfNeeded(run: WorkflowRunRecord) {
+    const info = getBcSubplanCancelledAdjustmentInfo(run);
+    if (!info || shownRunInfoNoticeKeys.has(info.key)) return;
+    shownRunInfoNoticeKeys.add(info.key);
+    notify(info.message, { type: 'info' });
   }
 
   function getWarningMessageForTask(run: WorkflowRunRecord, taskId: string): string | null {
@@ -668,6 +1120,45 @@ export function createMonthlyRunPage({
     renderRunPanel();
   }
 
+  function syncHistorySelection() {
+    const body = el('monthlyRunHistoryBody');
+    body.querySelectorAll<HTMLElement>('[data-history-row]').forEach((row) => {
+      row.classList.toggle('is-selected', Number(row.dataset.historyRow) === activeHistoryId);
+    });
+  }
+
+  async function openHistoricalRun(history: MonthlyRunHistoryRecord) {
+    if (isRunning) return;
+    activeHistoryId = history.id;
+    syncHistorySelection();
+
+    if (!history.workflowRunId) {
+      activeRun = null;
+      expandedWarningTaskIds.clear();
+      renderRunPanel(tt('historyMissingRun'));
+      notify(tt('historyMissingRun'), { type: 'warning' });
+      return;
+    }
+
+    activeRun = null;
+    expandedWarningTaskIds.clear();
+    renderRunPanel(tt('loadingHistoryRun'), 'loading');
+
+    try {
+      const run = await runClient.getRun(history.workflowRunId);
+      if (activeHistoryId !== history.id) return;
+      activeRun = run;
+      expandedWarningTaskIds.clear();
+      getMonthlyRunWarningTaskIds(run).forEach((taskId) => expandedWarningTaskIds.add(taskId));
+      renderRunPanel();
+    } catch (error) {
+      if (activeHistoryId !== history.id) return;
+      activeRun = null;
+      renderRunPanel(tt('historyLoadFailed'));
+      notify(error instanceof Error ? error.message : tt('historyLoadFailed'), { type: 'error' });
+    }
+  }
+
   async function finalizeAfterRun(month: string) {
     if (!activeRun) return;
     if (activeRun.artifacts.some((artifact) => artifact.artifactType === 'file')) {
@@ -678,17 +1169,28 @@ export function createMonthlyRunPage({
     }
   }
 
-  function renderRunPanel(overrideMessage?: string) {
+  function renderRunPanel(overrideMessage?: string, mode: 'normal' | 'loading' = 'normal') {
     const panel = el('monthlyRunPanel');
     const summary = el('monthlyRunSummary');
     const taskList = el('monthlyRunTaskList');
     const progressBar = el('monthlyRunProgressBar');
     const progressText = el('monthlyRunProgressText');
     const actions = el('monthlyRunActions');
+    const continueButton = el<HTMLButtonElement>('btnMonthlyRunContinue');
+    const skipButton = el<HTMLButtonElement>('btnMonthlyRunSkip');
+    const run = activeRun;
 
     panel.classList.remove('hidden');
-    const run = activeRun;
     if (!run) {
+      if (mode === 'loading') {
+        summary.classList.remove('hidden');
+        summary.innerHTML = `<span class="monthly-run-status monthly-run-status--running">${escapeHtml(overrideMessage ?? tt('loadingHistoryRun'))}</span>`;
+        taskList.innerHTML = `<div class="monthly-run-empty">${escapeHtml(tt('emptyRunState'))}</div>`;
+        progressBar.style.width = '0%';
+        progressText.textContent = '0 / 0';
+        actions.classList.add('hidden');
+        return;
+      }
       if (isMonthlyRunAttentionMessage(overrideMessage)) {
         summary.classList.remove('hidden');
         summary.innerHTML = `<span class="monthly-run-status monthly-run-status--failed">${escapeHtml(overrideMessage)}</span>`;
@@ -724,7 +1226,11 @@ export function createMonthlyRunPage({
     taskList.innerHTML = run.steps
       .map((step, index) => {
         const warningMessage = step.status === 'warning' ? getWarningMessageForTask(run, step.taskId) : null;
-        const failureMessage = step.status === 'failed' || step.status === 'blocked' ? step.errorMessage?.trim() ?? '' : '';
+        const failureMessage = step.status === 'failed' || step.status === 'blocked'
+          ? step.result?.kind === 'assert'
+            ? step.result.assertion.failureMessage
+            : step.errorMessage?.trim() ?? ''
+          : '';
         const isWarningExpandable = Boolean(warningMessage);
         const isExpanded = isWarningExpandable && expandedWarningTaskIds.has(step.taskId);
         return `
@@ -735,7 +1241,7 @@ export function createMonthlyRunPage({
           <span class="monthly-run-task__index">${step.status === 'completed' ? '✓' : step.status === 'running' ? '…' : String(index + 1).padStart(2, '0')}</span>
           <div class="monthly-run-task__main">
             <strong>${escapeHtml(step.taskName)}</strong>
-            <span>${escapeHtml(step.operatorCode)}</span>
+            <span>${escapeHtml(step.description || step.operatorCode)}</span>
             ${
               isWarningExpandable
                 ? `<button type="button" class="monthly-run-task__warning-toggle" data-warning-task-id="${escapeHtml(step.taskId)}">
@@ -760,6 +1266,8 @@ export function createMonthlyRunPage({
       });
     });
 
+    continueButton.classList.toggle('hidden', pendingApprovals.length === 0);
+    skipButton.classList.toggle('hidden', pendingApprovals.length === 0);
     actions.classList.toggle('hidden', pendingApprovals.length === 0);
   }
 
@@ -793,7 +1301,7 @@ export function createMonthlyRunPage({
               .join('')
               : `<div class="monthly-run-history__input-empty">${escapeHtml(tt('noInputSnapshot'))}</div>`;
         return `
-        <tr class="monthly-run-history__row">
+        <tr class="monthly-run-history__row${item.id === activeHistoryId ? ' is-selected' : ''}" data-history-row="${item.id}">
           <td class="monthly-run-history__run-cell">
             <button class="table-link-button table-link-button--subtle" data-history-toggle="${item.id}" type="button">
               ${item.workflowRunId ? `#${item.workflowRunId}` : `${escapeHtml(tt('runHistory'))} #${item.id}`}
@@ -826,7 +1334,11 @@ export function createMonthlyRunPage({
       button.addEventListener('click', () => {
         const historyId = button.dataset.historyToggle;
         if (!historyId) return;
-        body.querySelector(`[data-history-detail="${historyId}"]`)?.classList.toggle('hidden');
+        const history = items.find((item) => item.id === Number(historyId));
+        if (!history) return;
+        const detailRow = body.querySelector<HTMLElement>(`[data-history-detail="${historyId}"]`);
+        detailRow?.classList.toggle('hidden');
+        void openHistoricalRun(history);
       });
     });
     body.querySelectorAll<HTMLElement>('[data-history-delete]').forEach((button) => {

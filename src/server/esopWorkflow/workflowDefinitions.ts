@@ -25,7 +25,7 @@ export type EsopPageWorkflowConfig = {
   sources: EsopWorkflowSourceDefinition[];
 };
 
-export type EsopWorkflowSourceBindings = Record<string, { fileId: number } | undefined>;
+export type EsopWorkflowSourceBindings = Record<string, { fileId?: number; fileKey?: string } | undefined>;
 
 export const ESOP_PAGE_WORKFLOW_CONFIGS: Record<EsopPageKey, EsopPageWorkflowConfig> = {
   'grant-record': {
@@ -341,13 +341,13 @@ export function buildEsopWorkflowRuntimeParameters(
   sources: EsopWorkflowSourceBindings,
 ): WorkflowRuntimeParameters {
   const config = ESOP_PAGE_WORKFLOW_CONFIGS[pageKey];
-  const fileRefs: Record<string, { provider: 'product-files'; id: number }> = {};
+  const fileRefs: Record<string, { provider: 'product-files'; key: string }> = {};
   for (const source of config.sources) {
-    const fileId = Number(sources[source.sourceKey]?.fileId);
-    if (!Number.isInteger(fileId) || fileId <= 0) {
+    const fileKey = String(sources[source.sourceKey]?.fileKey ?? '').trim();
+    if (!fileKey) {
       throw new Error(`Missing ESOP workflow source: ${source.sourceKey}`);
     }
-    fileRefs[source.sourceKey] = { provider: 'product-files', id: fileId };
+    fileRefs[source.sourceKey] = { provider: 'product-files', key: fileKey };
   }
   return { fileRefs };
 }

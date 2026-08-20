@@ -266,6 +266,10 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 
 点开一个文件，右侧会打开工作簿，可以逐个 Sheet 查看内容，无需下载到本地。
 
+打开时默认是 **只读预览**，不能改动单元格；需要修改时点工作簿上方的 **编辑**，改完点 **保存** 写回文件，或点 **取消** 放弃修改。
+
+在月度更新的输入表里点击 Uploaded file 的文件名，也会跳到这里以只读方式预览该文件。
+
 上传后的文件会成为「产品文件」，可以在月度更新或工作流里被选作输入。`,
   },
   {
@@ -555,6 +559,10 @@ Plan Summary and 5% Holders are result pages: after changing source files or par
 ## Right: in-browser preview
 
 Open a file to view its workbook on the right, inspecting each sheet without downloading it.
+
+Files open as a **read-only preview**, so cells cannot be changed. To make changes, click **Edit** above the workbook, then **Save** to write them back, or **Cancel** to discard them.
+
+Clicking an uploaded file name in a Monthly Updates input table also jumps here and previews that file read-only.
 
 Uploaded files become "product files" that can be selected as inputs in Monthly Updates or Workflow.`,
   },

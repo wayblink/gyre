@@ -9,15 +9,17 @@ import {
 } from './inputUsage.js';
 
 test('monthly run input usage marks workflow file runtime rows as used', () => {
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'EQ Control Book' }), 'control_book');
+  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'EQ Control Book' }), 'base_control_book');
   assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'futu', label: 'Futu BCI Exercises to Date' }), 'futu_exercises');
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Option Plans Summary' }), 'option_plans');
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Detailed Cap Table' }), 'summary_source');
+  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Option Plans Summary' }), 'option_plans_summary');
+  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Options OS Detail by Plan' }), 'options_os_detail_by_plan');
+  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Detailed Cap Table' }), null);
 });
 
 test('monthly run source usage can be calculated from the merged source file name', () => {
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForName('EQ Control Book'), 'control_book');
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForName('Option Plans Summary.xlsx'), 'option_plans');
+  assert.equal(monthlyRunWorkflowFileRuntimeKeyForName('EQ Control Book'), 'base_control_book');
+  assert.equal(monthlyRunWorkflowFileRuntimeKeyForName('Option Plans Summary.xlsx'), 'option_plans_summary');
+  assert.equal(monthlyRunWorkflowFileRuntimeKeyForName('Options OS Detail.xlsx'), 'options_os_detail_by_plan');
   assert.equal(monthlyRunWorkflowFileRuntimeKeyForName('Futu BCI Exercises to Date'), 'futu_exercises');
   assert.equal(monthlyRunWorkflowFileRuntimeKeyForName('Option plans summary(include cancel)'), null);
   assert.equal(monthlyRunWorkflowFileRuntimeKeyForName('GYRE 2025 BC Subplan canceled'), null);

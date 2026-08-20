@@ -9,6 +9,17 @@ type UploadProgressOptions = {
   completedText?: LocalizedText;
 };
 
+export class UploadHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = 'UploadHttpError';
+  }
+}
+
 const DEFAULT_TITLE = { 'zh-CN': '正在上传文件', 'en-US': 'Uploading file' };
 const DEFAULT_STATUS = { 'zh-CN': '准备上传...', 'en-US': 'Preparing upload...' };
 const UPLOADING_STATUS = { 'zh-CN': '正在上传...', 'en-US': 'Uploading...' };
@@ -74,16 +85,16 @@ function parseUploadResponse<T>(xhr: XMLHttpRequest): T {
   return JSON.parse(xhr.responseText) as T;
 }
 
-function parseUploadError(xhr: XMLHttpRequest): string {
+function parseUploadError(xhr: XMLHttpRequest): { message: string; body: Record<string, unknown> } {
   if (xhr.responseText) {
     try {
-      const body = JSON.parse(xhr.responseText) as { error?: string; message?: string };
-      return body.error ?? body.message ?? xhr.statusText;
+      const body = JSON.parse(xhr.responseText) as Record<string, unknown>;
+      return { message: String(body.error ?? body.message ?? xhr.statusText), body };
     } catch {
-      return xhr.responseText;
+      return { message: xhr.responseText, body: {} };
     }
   }
-  return xhr.statusText || 'Upload failed';
+  return { message: xhr.statusText || 'Upload failed', body: {} };
 }
 
 export function uploadFormDataWithProgress<T>(
@@ -124,7 +135,8 @@ export function uploadFormDataWithProgress<T>(
       }
 
       hideUploadProgress();
-      reject(new Error(xhr.status === 401 ? '请先登录' : parseUploadError(xhr)));
+      const parsed = parseUploadError(xhr);
+      reject(new UploadHttpError(xhr.status === 401 ? '请先登录' : parsed.message, xhr.status, parsed.body));
     };
 
     xhr.onerror = () => {

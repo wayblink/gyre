@@ -159,13 +159,13 @@ export function deriveWorkflowRuntimeConfigFromTasks(params: {
             runtimeFieldForTaskReference(task, reference.paramPath, reference.reference),
         );
       }
-      if (Object.prototype.hasOwnProperty.call(reference.reference, '$default')) {
-        setNestedRuntimeDefault(runtimeParamsDefaults, reference.runtimePath, reference.reference.$default);
-        continue;
-      }
       const defaultHint = getNestedRuntimeDefault(runtimeParamsDefaultHints, reference.runtimePath);
       if (defaultHint !== undefined) {
         setNestedRuntimeDefault(runtimeParamsDefaults, reference.runtimePath, defaultHint);
+        continue;
+      }
+      if (Object.prototype.hasOwnProperty.call(reference.reference, '$default')) {
+        setNestedRuntimeDefault(runtimeParamsDefaults, reference.runtimePath, reference.reference.$default);
       }
     }
 
@@ -174,6 +174,12 @@ export function deriveWorkflowRuntimeConfigFromTasks(params: {
       if (requirement.appliesTo && !requirement.appliesTo(task)) continue;
       setNestedRuntimeField(runtimeParamsSchema, requirement.path, requirement.field);
 
+      const defaultHint = getNestedRuntimeDefault(runtimeParamsDefaultHints, requirement.path);
+      if (defaultHint !== undefined) {
+        setNestedRuntimeDefault(runtimeParamsDefaults, requirement.path, defaultHint);
+        continue;
+      }
+      if (getNestedRuntimeDefault(runtimeParamsDefaults, requirement.path) !== undefined) continue;
       const defaultValue = getRuntimeDefaultValue(requirement);
       if (defaultValue !== undefined) {
         setNestedRuntimeDefault(runtimeParamsDefaults, requirement.path, defaultValue);

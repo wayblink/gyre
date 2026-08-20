@@ -127,6 +127,30 @@ test('extractSheetRangeAsDataFrame supports open-ended row ranges to the sheet b
   assert.equal(dataframe.range.a1Range, 'A2:B5');
 });
 
+test('extractSheetRangeAsDataFrame caps wide open-ended ranges to actual cells', () => {
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    ['ignore', 'ignore', 'ignore'],
+    ['ignore', 'ignore', 'ignore'],
+    ['Plan Name', 'Outstanding Calc.', 'Options Outstanding'],
+    ['Plan A', 100, 0],
+    ['Plan B', 0, 220],
+  ]);
+  worksheet['!ref'] = 'A1:ZZ1000';
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'WideRef');
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+  const dataframe = extractSheetRangeAsDataFrame(buffer, 'WideRef', { range: 'A3:XFD', headerRow: 3 });
+
+  assert.deepEqual(dataframe.columns, ['Plan Name', 'Outstanding Calc.', 'Options Outstanding']);
+  assert.deepEqual(
+    dataframe.rows.map((row) => row['Plan Name']),
+    ['Plan A', 'Plan B'],
+  );
+  assert.equal(dataframe.range.a1Range, 'A3:C5');
+  assert.equal(dataframe.range.endCol, 3);
+});
+
 test('extractSheetRangeAsDataFrame trims trailing blank rows from extracted data', () => {
   const worksheet = XLSX.utils.aoa_to_sheet([
     ['ignore', 'ignore'],

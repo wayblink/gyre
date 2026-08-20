@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  insertWorkflowDefinitionIfMissing,
   loadExerciseWorkbook,
   loadFivePercentHoldersWorkbook,
   loadShareworksGrantWorkbook,
@@ -126,4 +127,35 @@ test('Transfer to Futu seed data comes from the standalone workbook and preserve
     sourceCancelled: -28171,
     transferToFutu: 2071829,
   });
+});
+
+test('workflow definition seed only bootstraps missing rows and does not overwrite database workflows', async () => {
+  const calls: Array<{ text: string; params: unknown[] }> = [];
+  const db = {
+    async execute(text: string, params: unknown[] = []) {
+      calls.push({ text, params });
+    },
+  };
+
+  await insertWorkflowDefinitionIfMissing(db, {
+    code: 'sample-workflow',
+    name: 'Sample Workflow',
+    description: 'Only inserted into a fresh database.',
+    status: 'active',
+    version: 1,
+    tasks: [],
+    runtimeParamsSchema: {},
+    runtimeParamsDefaults: {},
+  });
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]?.text ?? '', /on conflict \(code\) do nothing/i);
+  assert.doesNotMatch(calls[0]?.text ?? '', /do update set/i);
+  assert.deepEqual(calls[0]?.params.slice(0, 5), [
+    'sample-workflow',
+    'Sample Workflow',
+    'Only inserted into a fresh database.',
+    'active',
+    1,
+  ]);
 });
