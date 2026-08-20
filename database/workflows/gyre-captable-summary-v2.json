@@ -194,7 +194,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) < {constants.workflowMonth} order by __workflow_row_number desc limit 1) as last_month_eq_balance_os,\n  (select wf_month_key([As of Date]) from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null order by __workflow_row_number desc limit 1) as last_control_book_month,\n  sum(case when [Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.') then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}",
+        "sql": "\nselect\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null and wf_month_key([As of Date]) <= {constants.workflowMonth} order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) < {constants.workflowMonth} order by __workflow_row_number desc limit 1) as last_month_eq_balance_os,\n  (select wf_month_key([As of Date]) from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null and wf_month_key([As of Date]) <= {constants.workflowMonth} order by __workflow_row_number desc limit 1) as last_control_book_month,\n  sum(case when [Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.') and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}",
         "constants": {
           "workflowMonth": {
             "$type": "string",
@@ -210,7 +210,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "计算 EOM EQ Balance OS 和 Control Book 口径的 2025 BC Subplan transfer。",
+      "description": "从合并后的 EQ Control Book 汇总当月指标：EOM / Last Month 余额与 2025 BC Subplan transfer 均按 As of Date 截断到 workflow 月份（同一份完整 Control Book 可回算任意历史月份）；Cullgen 合并股数与 Gyre 2023 China SubPlan 总数为全表口径，用于与 Global Parameter 交叉校验。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -513,11 +513,11 @@
           }
         ],
         "blockExecution": true,
-        "failureMessage": "EQ Control Book input file error: last row month does not match workflow month",
+        "failureMessage": "EQ Control Book input file error: no Issued & Outstanding row found in the workflow month (rows after the workflow month are ignored)",
         "failureStrategy": "block"
       },
       "dependsOn": [],
-      "description": "阻断错月输入：EQ Control Book 最后一条有效 Issued & Outstanding 的 As of Date 必须属于 workflow 月份。",
+      "description": "阻断错月输入：忽略 workflow 月份之后的数据后，EQ Control Book 最后一条有效 Issued & Outstanding 的 As of Date 必须属于 workflow 月份（即该月必须有数据）。",
       "operatorCode": "dataframe.sql.assert",
       "operatorVersion": "1.0.0"
     },
@@ -615,7 +615,7 @@
         "assert_control_book_workflow_month",
         "assert_previous_summary_last_month"
       ],
-      "description": "从 EQ Control Book 单表生成 Shares OS Reconciliation：Last Month 取 workflow 月份之前最后一条 I&O，EOM 取整表最后一条 I&O。",
+      "description": "从 EQ Control Book 单表生成 Shares OS Reconciliation：Last Month 取 workflow 月份之前最后一条 I&O，EOM 取 workflow 月份内最后一条 I&O。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
