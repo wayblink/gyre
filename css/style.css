@@ -6820,6 +6820,41 @@ textarea.form-input {
   border-color: color-mix(in srgb, var(--success-500) 35%, transparent);
 }
 
+.linked-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 6px 2px 0;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--primary-200);
+  border-radius: 999px;
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.linked-identity__unlink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--danger-600);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+}
+
+.linked-identity__unlink:hover {
+  background: var(--danger-50);
+  color: var(--danger-700);
+}
+
 .employee-origin-badge,
 .employee-evidence-badge {
   display: inline-flex;

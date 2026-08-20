@@ -287,6 +287,7 @@ export type MergedGrant = {
 export type EmployeeSource = 'futu' | 'shareworks' | 'manual';
 
 export type LinkedEmployeeIdentity = {
+  id: number;
   employeeId: string;
   source: string;
   name: string;

@@ -3275,8 +3275,14 @@ function renderEmployeesPageTable() {
       const sourceLabels: Record<string, string> = { futu: 'Futu', shareworks: 'Shareworks', manual: '手工' };
       const sourceLabel = sourceLabels[item.source] ?? item.source;
       const sourceClass = item.source === 'manual' ? 'employee-origin-badge--manual' : 'employee-origin-badge--extracted';
-      const linkedText = item.linkedIdentities.length
-        ? item.linkedIdentities.map((identity) => `${identity.source}:${identity.employeeId} ${identity.name}`.trim()).join('；')
+      const linkedHtml = item.linkedIdentities.length
+        ? item.linkedIdentities
+            .map(
+              (identity) =>
+                `<span class="linked-identity">${escapeHtml(`${identity.source}:${identity.employeeId} ${identity.name}`.trim())}` +
+                `<button type="button" class="linked-identity__unlink" data-action="unlink-employee" data-source-id="${identity.id}" data-target-number="${escapeHtml(item.employeeNumber)}" title="${currentLanguage === 'zh-CN' ? '取消关联' : 'Unlink'}">×</button></span>`,
+            )
+            .join(' ')
         : '-';
       const toggleLabel = item.active ? '停用' : '启用';
       const toggleButtonClass = item.active ? 'btn-danger' : 'btn-secondary';
@@ -3287,7 +3293,7 @@ function renderEmployeesPageTable() {
         <td style="text-align:left; font-weight:600;">${escapeHtml(item.employeeName)}</td>
         <td>${escapeHtml(item.employeeNumber || '-')}</td>
         <td><span class="employee-origin-badge ${sourceClass}">${escapeHtml(sourceLabel)}</span></td>
-        <td style="text-align:left;">${escapeHtml(linkedText)}</td>
+        <td style="text-align:left;">${linkedHtml}</td>
         <td style="text-align:left;">${formatTagChips(item.labels ?? [], item.tags)}</td>
         <td class="col-number">${formatNumber(item.grantCount)}</td>
         <td>
@@ -3309,7 +3315,34 @@ function renderEmployeesPageTable() {
   el('employeesPageBody')
     .querySelectorAll<HTMLElement>('[data-action="toggle-employee-page"]')
     .forEach((button) => button.addEventListener('click', () => void toggleEmployeeActive(Number(button.dataset.id))));
+  el('employeesPageBody')
+    .querySelectorAll<HTMLElement>('[data-action="unlink-employee"]')
+    .forEach((button) =>
+      button.addEventListener('click', () =>
+        void unlinkEmployee(Number(button.dataset.sourceId), button.dataset.targetNumber ?? ''),
+      ),
+    );
   localizeAppDom();
+}
+
+async function unlinkEmployee(sourceId: number, targetNumber: string): Promise<void> {
+  if (!sourceId || !targetNumber) return;
+  const confirmed = await confirmAction(
+    currentLanguage === 'zh-CN'
+      ? '确认取消该关联？取消后该编号恢复为独立员工，不影响授予/行权/卖出等任何业务记录。'
+      : 'Unlink this identity? It becomes a standalone employee again; grant/exercise/sale records are unaffected.',
+    {
+      title: currentLanguage === 'zh-CN' ? '取消关联' : 'Unlink',
+      confirmText: currentLanguage === 'zh-CN' ? '取消关联' : 'Unlink',
+    },
+  );
+  if (!confirmed) return;
+  await api(`/api/employees/${encodeURIComponent(targetNumber)}/unlink`, {
+    method: 'POST',
+    body: JSON.stringify({ mergeFromId: sourceId }),
+  });
+  notify(currentLanguage === 'zh-CN' ? '已取消关联' : 'Unlinked', { type: 'success' });
+  await loadEmployeesPage();
 }
 
 function openEmployeesPageModal(id?: number) {

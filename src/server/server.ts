@@ -98,6 +98,7 @@ import {
 } from './dataManagementWorkflow/workflowDefinitions.js';
 import { upsertTableRows } from './workflow/tableUpsert.js';
 import { normalizeEmployeeSourceFilter, normalizeExternalNumber } from './employees.js';
+import { expandByLinkedGroup } from './employeeLinkExpansion.js';
 import { executeWorkflowDefinition, executeWorkflowTaskPreview } from './workflow/engine.js';
 import { selectWorkflowPreviewTasks } from './workflow/previewTask.js';
 import { WorkflowFileSourceRegistry, productFileRef } from './workflow/fileSources.js';
@@ -1218,6 +1219,18 @@ async function employeeLabelsByNumber(): Promise<Map<string, EmployeeLabelRef[]>
   );
 }
 
+// Map each external 工号 to its canonical employee id (coalesce(merged_into_id, id)).
+// Same canonical-folding basis as employeeLabelsByNumber; used to expand searches across a
+// linked "same person" group so any one 工号 surfaces all linked identities' records.
+async function employeeCanonicalByNumber(): Promise<Map<string, number>> {
+  const rows = await db.query<{ employee_id: string; canonical_id: number }>(
+    `select employee_id, coalesce(merged_into_id, id) as canonical_id
+       from employees
+      where btrim(coalesce(employee_id, '')) <> ''`,
+  );
+  return new Map(rows.map((row) => [String(row.employee_id ?? ''), Number(row.canonical_id)]));
+}
+
 function employeeLabelIds(labels: EmployeeLabelRef[]): number[] {
   return labels.map((label) => label.id);
 }
@@ -1494,6 +1507,7 @@ function toEmployee(row: Record<string, unknown>) {
   const linkedRaw = row.linked_identities;
   const linkedIdentities = Array.isArray(linkedRaw)
     ? linkedRaw.map((identity) => ({
+        id: Number((identity as Record<string, unknown>).id),
         employeeId: String((identity as Record<string, unknown>).employeeId ?? ''),
         source: String((identity as Record<string, unknown>).source ?? ''),
         name: String((identity as Record<string, unknown>).name ?? ''),
@@ -2869,31 +2883,36 @@ async function registerRoutes() {
     const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-grant-record-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
-    const rows = (artifact?.rows ?? [])
-      .map((row, index) => {
-        const employeeNumber = textValue(row['工号']) ?? '';
-        return futuGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
-      })
-      .filter((row) => {
-        if (grantType && row.incentiveType !== grantType) return false;
-        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
-        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
-        if (!normalizedQuery) return true;
-        return [
+    const canonicalByNumber = await employeeCanonicalByNumber();
+    const rows = expandByLinkedGroup(
+      (artifact?.rows ?? [])
+        .map((row, index) => {
+          const employeeNumber = textValue(row['工号']) ?? '';
+          return futuGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+        })
+        .filter((row) => {
+          if (grantType && row.incentiveType !== grantType) return false;
+          if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+          if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+          return true;
+        }),
+      normalizedQuery,
+      canonicalByNumber,
+      (row) =>
+        [
           row.employeeName,
           row.employeeNumber,
           row.tags.join(' '),
           row.grantNumber,
           row.planName,
           row.vestingRuleName,
-        ].join(' ').toLowerCase().includes(normalizedQuery);
-      })
-      .sort(
-        (left, right) =>
-          left.employeeNumber.localeCompare(right.employeeNumber) ||
-          String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
-          left.grantNumber.localeCompare(right.grantNumber),
-      );
+        ].join(' ').toLowerCase().includes(normalizedQuery),
+    ).sort(
+      (left, right) =>
+        left.employeeNumber.localeCompare(right.employeeNumber) ||
+        String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
+        left.grantNumber.localeCompare(right.grantNumber),
+    );
     const sortedRows = sortRowsByNameOrEmpNo(
       rows,
       readNameEmpNoSort(request.query),
@@ -2930,18 +2949,22 @@ async function registerRoutes() {
     const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-grant-record-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
-    const rows = (artifact?.rows ?? [])
-      .map((row, index) => {
-        const employeeNumber = textValue(row['Employee Number']) ?? '';
-        return shareworksGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
-      })
-      .filter((row) => Boolean(row.employeeGrantNumber))
-      .filter((row) => {
-        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
-        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
-        return true;
-      })
-      .filter((row) =>
+    const canonicalByNumber = await employeeCanonicalByNumber();
+    const rows = expandByLinkedGroup(
+      (artifact?.rows ?? [])
+        .map((row, index) => {
+          const employeeNumber = textValue(row['Employee Number']) ?? '';
+          return shareworksGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+        })
+        .filter((row) => Boolean(row.employeeGrantNumber))
+        .filter((row) => {
+          if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+          if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+          return true;
+        }),
+      normalizedQuery,
+      canonicalByNumber,
+      (row) =>
         [
           row.lastName,
           row.firstName,
@@ -2952,13 +2975,12 @@ async function registerRoutes() {
           row.grantName,
           row.grantType,
         ].join(' ').toLowerCase().includes(normalizedQuery),
-      )
-      .sort(
-        (left, right) =>
-          String(left.employeeNumber ?? '').localeCompare(String(right.employeeNumber ?? '')) ||
-          String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
-          String(left.employeeGrantNumber ?? '').localeCompare(String(right.employeeGrantNumber ?? '')),
-      );
+    ).sort(
+      (left, right) =>
+        String(left.employeeNumber ?? '').localeCompare(String(right.employeeNumber ?? '')) ||
+        String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
+        String(left.employeeGrantNumber ?? '').localeCompare(String(right.employeeGrantNumber ?? '')),
+    );
     const sortedRows = sortRowsByNameOrEmpNo(
       rows,
       readNameEmpNoSort(request.query),
@@ -3021,13 +3043,16 @@ async function registerRoutes() {
         if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
         return true;
       });
-    const items = [
-      ...futuRows.map((row) => mergeFutuGrant(row)),
-      ...shareworksRows.map((row) => mergeShareworksGrant(row)),
-    ]
-      .filter((row) => {
-        if (!normalizedQuery) return true;
-        return [
+    const canonicalByNumber = await employeeCanonicalByNumber();
+    const items = expandByLinkedGroup(
+      [
+        ...futuRows.map((row) => mergeFutuGrant(row)),
+        ...shareworksRows.map((row) => mergeShareworksGrant(row)),
+      ],
+      normalizedQuery,
+      canonicalByNumber,
+      (row) =>
+        [
           row.employeeName,
           row.employeeNumber,
           row.grantNumber,
@@ -3038,14 +3063,13 @@ async function registerRoutes() {
         ]
           .join(' ')
           .toLowerCase()
-          .includes(normalizedQuery);
-      })
-      .sort(
-        (left, right) =>
-          left.employeeNumber.localeCompare(right.employeeNumber) ||
-          String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
-          left.grantNumber.localeCompare(right.grantNumber),
-      );
+          .includes(normalizedQuery),
+    ).sort(
+      (left, right) =>
+        left.employeeNumber.localeCompare(right.employeeNumber) ||
+        String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
+        left.grantNumber.localeCompare(right.grantNumber),
+    );
     const sortedItems = sortRowsByNameOrEmpNo(
       items,
       readNameEmpNoSort(request.query),
@@ -3089,18 +3113,22 @@ async function registerRoutes() {
     const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-exercise-record-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
-    const rows = (artifact?.rows ?? [])
-      .map((row, index) => {
-        const employeeNumber = textValue(row['Employee No.']) ?? '';
-        return exerciseFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
-      })
-      .filter((row) => {
-        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
-        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
-        return true;
-      })
-      .filter((row) => !normalizedGrantYear || row.grantDate.slice(0, 4) === normalizedGrantYear)
-      .filter((row) =>
+    const canonicalByNumber = await employeeCanonicalByNumber();
+    const rows = expandByLinkedGroup(
+      (artifact?.rows ?? [])
+        .map((row, index) => {
+          const employeeNumber = textValue(row['Employee No.']) ?? '';
+          return exerciseFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+        })
+        .filter((row) => {
+          if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+          if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+          return true;
+        })
+        .filter((row) => !normalizedGrantYear || row.grantDate.slice(0, 4) === normalizedGrantYear),
+      normalizedQuery,
+      canonicalByNumber,
+      (row) =>
         [
           row.name,
           row.employeeNumber,
@@ -3110,14 +3138,13 @@ async function registerRoutes() {
           row.grantDate,
           row.exerciseDate,
         ].join(' ').toLowerCase().includes(normalizedQuery),
-      )
-      .sort(
-        (left, right) =>
-          String(right.exerciseDate ?? '').localeCompare(String(left.exerciseDate ?? '')) ||
-          left.employeeNumber.localeCompare(right.employeeNumber) ||
-          left.grantNumber.localeCompare(right.grantNumber) ||
-          left.id - right.id,
-      );
+    ).sort(
+      (left, right) =>
+        String(right.exerciseDate ?? '').localeCompare(String(left.exerciseDate ?? '')) ||
+        left.employeeNumber.localeCompare(right.employeeNumber) ||
+        left.grantNumber.localeCompare(right.grantNumber) ||
+        left.id - right.id,
+    );
     const sortedRows = sortRowsByNameOrEmpNo(
       rows,
       readNameEmpNoSort(request.query),
@@ -3160,18 +3187,22 @@ async function registerRoutes() {
     const inputSourceBindings = await latestWorkflowInputSourceBindings('esop-sold-shares-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
-    const rows = (artifact?.rows ?? [])
-      .map((row, index) => {
-        const employeeNumber = textValue(row['工号']) ?? '';
-        return soldShareFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
-      })
-      .filter((row) => {
-        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
-        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
-        return true;
-      })
-      .filter((row) => !normalizedEmploymentStatus || row.employmentStatus === normalizedEmploymentStatus)
-      .filter((row) =>
+    const canonicalByNumber = await employeeCanonicalByNumber();
+    const rows = expandByLinkedGroup(
+      (artifact?.rows ?? [])
+        .map((row, index) => {
+          const employeeNumber = textValue(row['工号']) ?? '';
+          return soldShareFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+        })
+        .filter((row) => {
+          if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+          if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+          return true;
+        })
+        .filter((row) => !normalizedEmploymentStatus || row.employmentStatus === normalizedEmploymentStatus),
+      normalizedQuery,
+      canonicalByNumber,
+      (row) =>
         [
           row.name,
           row.employeeNumber,
@@ -3180,8 +3211,7 @@ async function registerRoutes() {
           row.employmentStatus,
           row.relatedPartyIdentity,
         ].join(' ').toLowerCase().includes(normalizedQuery),
-      )
-      .sort((left, right) => left.employeeNumber.localeCompare(right.employeeNumber) || left.id - right.id);
+    ).sort((left, right) => left.employeeNumber.localeCompare(right.employeeNumber) || left.id - right.id);
     const sortedRows = sortRowsByNameOrEmpNo(
       rows,
       readNameEmpNoSort(request.query),
@@ -3370,26 +3400,29 @@ async function registerRoutes() {
     e.is_active,
     count(g.id)::int as grant_count,
     coalesce((
-      select array_agg(l.id order by l.name)
+      select array_agg(distinct l.id)
       from employee_label_assignment ela
       join employee_label l on l.id = ela.label_id
-      where ela.employee_id = e.id
+      where ela.employee_id in (select m.id from employees m where m.id = e.id or m.merged_into_id = e.id)
     ), '{}') as label_ids,
     coalesce((
-      select array_agg(l.name order by l.name)
+      select array_agg(distinct l.name order by l.name)
       from employee_label_assignment ela
       join employee_label l on l.id = ela.label_id
-      where ela.employee_id = e.id
+      where ela.employee_id in (select m.id from employees m where m.id = e.id or m.merged_into_id = e.id)
     ), '{}') as tags,
     coalesce((
-      select json_agg(json_build_object('id', l.id, 'name', l.name, 'color', l.color) order by l.name)
-      from employee_label_assignment ela
-      join employee_label l on l.id = ela.label_id
-      where ela.employee_id = e.id
+      select json_agg(json_build_object('id', dl.id, 'name', dl.name, 'color', dl.color) order by dl.name)
+      from (
+        select distinct l.id, l.name, l.color
+        from employee_label_assignment ela
+        join employee_label l on l.id = ela.label_id
+        where ela.employee_id in (select m.id from employees m where m.id = e.id or m.merged_into_id = e.id)
+      ) dl
     ), '[]'::json) as labels,
     coalesce((
       select json_agg(json_build_object(
-        'employeeId', t.employee_id, 'source', t.source, 'name', t.employee_name
+        'id', t.id, 'employeeId', t.employee_id, 'source', t.source, 'name', t.employee_name
       ) order by t.id)
       from employees t where t.merged_into_id = e.id
     ), '[]'::json) as linked_identities`;
@@ -3664,20 +3697,8 @@ async function registerRoutes() {
       if (!target) throw notFound('Target employee not found');
       if (!source) throw notFound('Source employee not found');
 
-      await tx.execute('update equity_grants set employee_id = $1, updated_at = current_timestamp where employee_id = $2', [targetId, sourceId]);
-      await tx.execute(
-        `update employees
-         set has_file_evidence = has_file_evidence or (select has_file_evidence from employees where id = $2),
-             updated_at = current_timestamp
-         where id = $1`,
-        [targetId, sourceId],
-      );
-      await tx.execute(
-        `insert into employee_label_assignment (employee_id, label_id)
-         select $1, label_id from employee_label_assignment where employee_id = $2
-         on conflict do nothing`,
-        [targetId, sourceId],
-      );
+      // 关联只声明"同一人"：来源设为指向目标的 tombstone。不改写 equity_grants / 标签 / has_file_evidence
+      // 等任何业务数据——展示时按 canonical 关联组读时聚合，取消关联(unlink)因此零副作用、可无损还原。
       await tx.execute(
         'update employees set merged_into_id = $1, is_active = false, updated_at = current_timestamp where id = $2',
         [targetId, sourceId],
@@ -3686,6 +3707,37 @@ async function registerRoutes() {
 
     const merged = await fetchEmployeeById(targetId);
     return merged;
+  });
+
+  // Undo a link: detach `mergeFromId` from the target, restoring it to a standalone active employee.
+  // Reverse of the pure mapping above — since merge no longer touches business data, unlink is side-effect free.
+  app.post('/api/employees/:id/unlink', async (request, reply) => {
+    const rawTarget = String((request.params as { id: string }).id).trim();
+    const body = z.object({ mergeFromId: z.number().int().positive() }).parse(request.body);
+    const sourceId = body.mergeFromId;
+
+    let targetId: number | null = null;
+    const normalizedTarget = normalizeExternalNumber(rawTarget);
+    if (normalizedTarget) {
+      const idRow = await db.queryOne<{ id: number }>('select id from employees where employee_id = $1 limit 1', [normalizedTarget]);
+      if (idRow) targetId = Number(idRow.id);
+    }
+    if (targetId === null && /^\d+$/.test(rawTarget)) targetId = Number(rawTarget);
+    if (targetId === null) return reply.code(404).send({ error: '找不到目标员工' });
+
+    const source = await db.queryOne<{ id: number; merged_into_id: number | null }>(
+      'select id, merged_into_id from employees where id = $1',
+      [sourceId],
+    );
+    if (!source) throw notFound('Source employee not found');
+    if (source.merged_into_id === null || Number(source.merged_into_id) !== targetId) {
+      return reply.code(400).send({ error: '该员工未关联到此目标' });
+    }
+    await db.execute(
+      'update employees set merged_into_id = null, is_active = true, updated_at = current_timestamp where id = $1',
+      [sourceId],
+    );
+    return fetchEmployeeById(targetId);
   });
 
   app.get('/api/plan-summary', async () => {
