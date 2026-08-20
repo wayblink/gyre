@@ -7,12 +7,13 @@
 - 新增或修改工作流：直接改数据库（通过工作流编辑页面或 SQL / API），**不改代码**。
 - 代码只应保留：通用算子实现（`src/server/workflow/operators/`）、工作流引擎、以及"从 DB 读取并执行工作流"的通用逻辑。
 
-### 待清理 TODO（把下列代码内工作流定义迁移为纯 DB 驱动后删除）
+### 实现现状（已按硬规则完成）
 
-- `src/server/monthlyRun/workflowDefinition.ts` / `workflowDefinitionV2.ts`（月度工作流定义、源定义、schema、defaults）
-- `src/server/esopWorkflow/workflowDefinitions.ts`（ESOP 产品页 Update 工作流）
-- `src/server/dataManagementWorkflow/workflowDefinitions.ts`（员工归集等 Update 工作流）
-- `src/server/seed.ts` 中 seed 工作流定义的部分（`buildMonthlyWorkflowSeedDefinition` / `buildEsopPageWorkflowSeedDefinitions` / `buildDataManagementWorkflowSeedDefinitions`）
-- 月度执行页面的输入源应改为**从 DB 工作流的 `runtime_params_schema` / `tasks` 推导**，而非代码常量 `MONTHLY_RUN_SOURCE_DEFINITIONS`；`monthly_run_instances` 的"每源一列"schema 亦应通用化（source key → file 映射）。
+工作流定义已全部移出代码，实现为 DB + JSON 种子驱动：
 
-> 现状说明：上述代码内定义目前仍被 `server.ts` / `instanceStore.ts` / 各 `service.ts` 的运行时逻辑依赖（月度输入源渲染、产品页 Update）。删除需连带把这些运行时逻辑改为 DB 驱动，属独立任务，按本规则分批推进。
+- **种子来源**：`database/workflows/*.json` 是各内置工作流的定义种子（由 `scripts/export-workflows.ts` 从 DB 导出）。空数据库启动时，`src/server/workflow/workflowSeedLoader.ts` 读取这些 JSON，经 `insertWorkflowDefinitionIfMissing`（`on conflict(code) do nothing`）导入——只补缺失，绝不覆盖已有行。
+- **页面输入源**：ESOP / 数据归集 / 月度执行页面的输入源清单，全部从 DB 工作流的 `runtime_params_schema.fileRefs.properties` 推导（月度页面的富元数据 sourceGroup / taskId / required / hidden / defaultSheetName / allowSheetNameOverride / order 也存在该 schema 里）。代码只保留 `pageKey → workflowCode` 路由映射。
+- **月度实例表**：`monthly_run_instances` 的输入源已通用化为子表 `monthly_run_instance_sources`（source_key → file/sheet 映射），不再按源硬编码物理列。
+- 新增或修改工作流：改 DB（工作流编辑页面 / SQL / API）；若要让新环境也带上，跑 `scripts/export-workflows.ts` 重新导出 JSON 种子并提交。
+
+> 代码中已无任何工作流的 `tasks` / `runtime_params_schema` / sources 定义。保留项：通用算子（`src/server/workflow/operators/`）、工作流引擎、JSON 种子加载器、页面路由映射、以及"从 DB 读取并执行 / 推导页面输入源"的通用逻辑。
