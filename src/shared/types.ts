@@ -627,6 +627,15 @@ export type WorkflowRuntimeParameterField = {
   description?: string;
   enum?: string[];
   properties?: WorkflowRuntimeParametersSchema;
+  // Optional business-page input-source rendering metadata carried on fileRefs.properties.<sourceKey>.
+  // Lets a page's source list (e.g. MonthlyRunSourceDefinition) be derived from a DB workflow schema.
+  // jsonb does not preserve key insertion order, so `order` drives display ordering.
+  order?: number;
+  sourceGroup?: 'shareworks' | 'futu';
+  taskId?: string;
+  defaultSheetName?: string | null;
+  allowSheetNameOverride?: boolean;
+  hidden?: boolean;
 };
 
 export type WorkflowRuntimeParametersSchema = Record<string, WorkflowRuntimeParameterField>;

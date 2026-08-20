@@ -735,4 +735,32 @@ create index if not exists idx_monthly_run_history_month on monthly_run_history(
 create index if not exists idx_monthly_run_history_run on monthly_run_history(workflow_run_id);
 create index if not exists idx_monthly_run_history_plan on monthly_run_history(update_plan_id, triggered_at desc);
 create index if not exists idx_monthly_run_instances_month on monthly_run_instances(month_id, updated_at desc);
+
+-- 月度实例输入源：通用 source_key → file 映射（替代每源一个物理列）。
+-- 工作流定义只存 DB（见 CLAUDE.md），实例的输入源也不再按源硬编码物理列。
+create table if not exists monthly_run_instance_sources (
+  instance_id integer not null references monthly_run_instances(id) on delete cascade,
+  source_key text not null,
+  file_id integer references product_files(id) on delete set null,
+  sheet_name text,
+  primary key (instance_id, source_key)
+);
+create index if not exists idx_monthly_run_instance_sources_instance on monthly_run_instance_sources(instance_id);
+
+-- 一次性迁移：把旧的每源物理列灌入子表（幂等：on conflict do nothing；仅迁有文件的源）。
+-- 旧表无 base/incremental 的 sheet 列，用其 defaultSheetName 保持运行时传 sheet 行为一致。
+insert into monthly_run_instance_sources (instance_id, source_key, file_id, sheet_name)
+select i.id, s.source_key, s.file_id, s.sheet_name
+  from monthly_run_instances i
+  cross join lateral (values
+    ('base_control_book', i.control_book_file_id, 'EQ Control Book'),
+    ('incremental_control_book', i.incremental_control_book_file_id, '27591'),
+    ('previous_capitalization_summary', i.previous_capitalization_summary_file_id, null::text),
+    ('futu_exercises', i.futu_exercises_file_id, null),
+    ('option_plans_summary', i.option_plans_file_id, i.option_plans_sheet_name),
+    ('bc_subplan_transfer', i.bc_subplan_transfer_file_id, i.bc_subplan_transfer_sheet_name),
+    ('options_os_detail_by_plan', i.summary_source_file_id, null)
+  ) as s(source_key, file_id, sheet_name)
+ where s.file_id is not null
+on conflict (instance_id, source_key) do nothing;
 `;

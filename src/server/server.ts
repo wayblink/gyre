@@ -76,12 +76,6 @@ import {
 } from './monthlyRun/instanceStore.js';
 import { monthlyWorkflowSelectionLabel, resolveMonthlyWorkflowDefinition } from './monthlyRun/workflowSelection.js';
 import {
-  MONTHLY_RUN_SOURCE_DEFINITIONS,
-  MONTHLY_WORKFLOW_NAME,
-} from './monthlyRun/workflowDefinition.js';
-import {
-} from './monthlyRun/inputUsage.js';
-import {
   buildPlanSummary,
   mergeFutuGrant,
   mergeShareworksGrant,
@@ -125,6 +119,7 @@ import type {
   MonthlyRunInstanceRecord,
   MonthlyRunInstanceUpsertRequest,
   MonthlyRunSourceConfigResponse,
+  MonthlyRunSourceDefinition,
   SummarySnapshot,
   SummaryCapitalizationSource,
   WorkflowDataFrame,
@@ -409,7 +404,8 @@ function eomForMonth(monthKey: string): string {
 }
 
 async function assertMonthlyRunInstanceReady(instance: MonthlyRunInstanceRecord): Promise<void> {
-  for (const source of MONTHLY_RUN_SOURCE_DEFINITIONS) {
+  const sources = await monthlySourceDescriptors();
+  for (const source of sources) {
     const binding = instance.sources[source.sourceKey];
     const fileId = binding?.fileId ?? null;
     if (!fileId) {
@@ -955,6 +951,41 @@ function sourcesFromWorkflowSchemaJson(schemaJson: unknown): WorkflowPageSourceD
     label:
       isRecord(field) && typeof field.label === 'string' && field.label.trim() ? field.label.trim() : sourceKey,
   }));
+}
+
+// Monthly page's rich source definitions, derived from the DB workflow's fileRefs.properties
+// metadata (workflow definitions are DB-owned; see CLAUDE.md). jsonb does not preserve key order,
+// so entries carry an explicit `order` used to sort them back into display order.
+function monthlySourcesFromSchema(schemaJson: unknown): MonthlyRunSourceDefinition[] {
+  const schema = parseJson<Record<string, unknown>>(schemaJson, {});
+  const fileRefs = isRecord(schema.fileRefs) ? schema.fileRefs : {};
+  const properties = isRecord(fileRefs.properties) ? (fileRefs.properties as Record<string, unknown>) : {};
+  return Object.entries(properties)
+    .map(([sourceKey, raw]) => {
+      const field = isRecord(raw) ? raw : {};
+      return {
+        sourceKey,
+        sourceGroup: field.sourceGroup === 'futu' ? ('futu' as const) : ('shareworks' as const),
+        taskId: typeof field.taskId === 'string' ? field.taskId : '',
+        label: typeof field.label === 'string' ? field.label : sourceKey,
+        description: typeof field.description === 'string' ? field.description : '',
+        defaultSheetName: typeof field.defaultSheetName === 'string' ? field.defaultSheetName : null,
+        allowSheetNameOverride: field.allowSheetNameOverride === true,
+        required: field.required === true,
+        hidden: field.hidden === true,
+        order: typeof field.order === 'number' ? field.order : 0,
+      };
+    })
+    .sort((left, right) => left.order - right.order)
+    .map(({ order: _order, ...source }): MonthlyRunSourceDefinition => source);
+}
+
+async function monthlySourceDescriptors(): Promise<MonthlyRunSourceDefinition[]> {
+  const row = await db.queryOne<Record<string, unknown>>(
+    "select runtime_params_schema_json from workflow_definitions where code = $1 and status = 'active' limit 1",
+    [MONTHLY_WORKFLOW_CODE],
+  );
+  return monthlySourcesFromSchema(row?.runtime_params_schema_json);
 }
 
 // Page input-source lists are derived from the DB workflow's runtime_params_schema.fileRefs
@@ -2239,12 +2270,18 @@ async function registerRoutes() {
     return { instance };
   });
 
-  app.get('/api/monthly-runs/source-config', async (): Promise<MonthlyRunSourceConfigResponse> => ({
-    workflowCode: MONTHLY_WORKFLOW_CODE,
-    workflowName: MONTHLY_WORKFLOW_NAME,
-    sources: MONTHLY_RUN_SOURCE_DEFINITIONS,
-    fixedValues: [],
-  }));
+  app.get('/api/monthly-runs/source-config', async (): Promise<MonthlyRunSourceConfigResponse> => {
+    const row = await db.queryOne<Record<string, unknown>>(
+      "select name, runtime_params_schema_json from workflow_definitions where code = $1 and status = 'active' limit 1",
+      [MONTHLY_WORKFLOW_CODE],
+    );
+    return {
+      workflowCode: MONTHLY_WORKFLOW_CODE,
+      workflowName: row?.name ? String(row.name) : MONTHLY_WORKFLOW_CODE,
+      sources: monthlySourcesFromSchema(row?.runtime_params_schema_json),
+      fixedValues: [],
+    };
+  });
 
   app.get('/api/monthly-runs/latest-output', async (): Promise<{ output: LatestMonthlyRunOutput | null }> => ({
     output: await getLatestMonthlyRunOutput(db),
