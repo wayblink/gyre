@@ -41,8 +41,10 @@ const FILE_REFS_PROPERTIES: Record<string, unknown> = {
   previous_capitalization_summary: {
     type: 'object',
     label: 'Previous Capitalization Summary',
-    description: '可选：用于校验当前 EQ Control Book 算出的 Last Month 是否等于上月股权结构汇总表的 EOM。',
+    description:
+      '由业务逻辑自动引入：触发时若存在上一个月的 Capitalization Summary 输出，则自动作为本源用于校验本月 EQ Control Book 的 Last Month；无则置空跳过。UI 不暴露该源。',
     required: false,
+    hidden: true,
     order: 3,
     sourceGroup: 'shareworks',
     taskId: 'extract_previous_capitalization_summary',

@@ -68,6 +68,7 @@ import {
   ensureMonthlyRunInstance,
   getLatestMonthlyRunOutput,
   getMonthlyRunInstance,
+  getMonthlyRunOutputForMonth,
   listMonthlyRunInstances,
   loadMonthlyRunRuntimeFixedValues,
   monthlyRunInstanceToRuntimeParameters,
@@ -401,6 +402,11 @@ function isUniqueConstraintViolation(error: unknown): boolean {
 function eomForMonth(monthKey: string): string {
   const [year, month] = monthKey.split('-').map(Number);
   return `${year}/${month}/${new Date(year, month, 0).getDate()}`;
+}
+
+function previousMonthKey(monthKey: string): string {
+  const [year, month] = monthKey.split('-').map(Number);
+  return month <= 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
 }
 
 async function assertMonthlyRunInstanceReady(instance: MonthlyRunInstanceRecord): Promise<void> {
@@ -2306,6 +2312,16 @@ async function registerRoutes() {
       ...(resolvedRuntimeParameters.fixedValues as Record<string, number> | undefined),
       ...(await loadMonthlyRunRuntimeFixedValues(db)),
     };
+
+    // Previous Capitalization Summary 由业务自动引入：若上一个月的月度执行已产出汇总表，则用它作为
+    // 本源（用于校验本月 EQ Control Book 的 Last Month）；无则置空、跳过对账校验。该源在 UI 隐藏。
+    const prevFileRefs = resolvedRuntimeParameters.fileRefs as Record<string, unknown> | undefined;
+    if (prevFileRefs && !prevFileRefs.previous_capitalization_summary) {
+      const previousOutput = await getMonthlyRunOutputForMonth(db, previousMonthKey(monthlyRunInstance.monthKey));
+      if (previousOutput?.logicalPath) {
+        prevFileRefs.previous_capitalization_summary = { provider: 'product-files', key: previousOutput.logicalPath };
+      }
+    }
 
     const monthKey = String(resolvedRuntimeParameters.month);
     const monthId = await getOrCreateMonth(monthKey);

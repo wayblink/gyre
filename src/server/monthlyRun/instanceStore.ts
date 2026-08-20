@@ -180,6 +180,24 @@ export async function getLatestMonthlyRunOutput(db: MonthlyRunDb): Promise<Lates
   };
 }
 
+export async function getMonthlyRunOutputForMonth(
+  db: MonthlyRunDb,
+  monthKey: string,
+): Promise<{ fileId: number; logicalPath: string } | null> {
+  const row = await db.queryOne<{ latest_output_file_id: number; logical_path: string }>(
+    `select i.latest_output_file_id, f.logical_path
+       from monthly_run_instances i
+       join product_files f on f.id = i.latest_output_file_id
+      where i.month_key = $1
+        and i.status in ('completed', 'completed_with_warnings')
+        and i.latest_output_file_id is not null
+      limit 1`,
+    [monthKey],
+  );
+  if (!row?.latest_output_file_id) return null;
+  return { fileId: Number(row.latest_output_file_id), logicalPath: String(row.logical_path) };
+}
+
 export async function ensureMonthlyRunInstance(db: MonthlyRunDb, monthKey: string): Promise<MonthlyRunInstanceRecord> {
   const existing = await getMonthlyRunInstance(db, monthKey);
   if (existing) return existing;
