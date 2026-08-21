@@ -1055,6 +1055,7 @@ export function createMonthlyRunPage({
       if (activeRun) {
         await runClient.pollUntilSettled(activeRun.id, {
           minimumPollCount: 1,
+          light: true,
           onUpdate: (run) => {
             if (activeRunMonth !== month) return;
             activeRun = run;
@@ -1091,6 +1092,7 @@ export function createMonthlyRunPage({
     expandedWarningTaskIds.clear();
     await runClient.pollUntilSettled(activeRun.id, {
       minimumPollCount: 2,
+      light: true,
       onUpdate: (run) => {
         if (activeRunMonth !== month) return;
         activeRun = run;
@@ -1107,7 +1109,7 @@ export function createMonthlyRunPage({
 
   async function refreshActiveRun() {
     if (!activeRun) return;
-    activeRun = await runClient.getRun(activeRun.id);
+    activeRun = await runClient.getRun(activeRun.id, { light: true });
     notifyBcSubplanCancelledAdjustmentIfNeeded(activeRun);
     renderRunPanel();
   }
@@ -1168,7 +1170,7 @@ export function createMonthlyRunPage({
     renderRunPanel(tt('loadingHistoryRun'), 'loading');
 
     try {
-      const run = await runClient.getRun(history.workflowRunId);
+      const run = await runClient.getRun(history.workflowRunId, { light: true });
       if (activeHistoryId !== history.id) return;
       activeRun = run;
       expandedWarningTaskIds.clear();

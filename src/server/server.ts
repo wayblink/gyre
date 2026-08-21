@@ -4433,7 +4433,8 @@ async function registerRoutes() {
 
   app.get('/api/workflow-runs/:id', async (request) => {
     const runId = Number((request.params as { id: string }).id);
-    return workflowRunStore.getRun(runId);
+    const light = (request.query as { light?: string } | undefined)?.light;
+    return workflowRunStore.getRun(runId, { light: light === '1' || light === 'true' });
   });
 
   app.post('/api/workflow-runs/:id/approvals', async (request) => {

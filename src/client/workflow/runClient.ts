@@ -6,8 +6,8 @@ export type WorkflowRunApi = <T>(url: string, options?: RequestInit) => Promise<
 export function createWorkflowRunClient(api: WorkflowRunApi) {
   const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
-  async function getRun(runId: number): Promise<WorkflowRunRecord> {
-    return api<WorkflowRunRecord>(`/api/workflow-runs/${runId}`);
+  async function getRun(runId: number, opts?: { light?: boolean }): Promise<WorkflowRunRecord> {
+    return api<WorkflowRunRecord>(`/api/workflow-runs/${runId}${opts?.light ? '?light=1' : ''}`);
   }
 
   async function approveWarnings(
@@ -25,6 +25,7 @@ export function createWorkflowRunClient(api: WorkflowRunApi) {
     options: {
       intervalMs?: number;
       minimumPollCount?: number;
+      light?: boolean;
       onUpdate?: (run: WorkflowRunRecord) => void | Promise<void>;
     } = {},
   ): Promise<WorkflowRunRecord> {
@@ -35,7 +36,7 @@ export function createWorkflowRunClient(api: WorkflowRunApi) {
     for (;;) {
       await wait(intervalMs);
       pollCount += 1;
-      const run = await getRun(runId);
+      const run = await getRun(runId, { light: options.light });
       await options.onUpdate?.(run);
       const hasRunningStep = run.steps.some((step) => step.status === 'running');
       const isSettled = isWorkflowRunTerminalStatus(run.status) || (run.status !== 'running' && !hasRunningStep);

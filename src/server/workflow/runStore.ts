@@ -1,6 +1,7 @@
 import type { AppDb } from '../db.js';
 import { normalizeWorkflowRuntimeParameters } from './runtimeParameters.js';
 import type {
+  WorkflowDataFrame,
   WorkflowExecutionTaskState,
   WorkflowRunApprovalRecord,
   WorkflowRunArtifactRecord,
@@ -146,6 +147,58 @@ function toWorkflowRunRecord(
   };
 }
 
+const LIGHT_SAMPLE_ROW_COUNT = 5;
+
+/** Keep only shape + a few sample rows; drop the big rows/matrix/cells for display payloads. */
+function projectDataFrameLight(dataFrame: WorkflowDataFrame): WorkflowDataFrame {
+  return {
+    columns: dataFrame.columns,
+    rows: dataFrame.rows.slice(0, LIGHT_SAMPLE_ROW_COUNT),
+    index: dataFrame.index.slice(0, LIGHT_SAMPLE_ROW_COUNT),
+    matrix: [],
+    range: dataFrame.range,
+    schema: dataFrame.schema,
+  };
+}
+
+function projectResultLight(result: WorkflowTaskPreviewResult | null): WorkflowTaskPreviewResult | null {
+  if (!result) return result;
+  if (result.kind === 'assert') {
+    return { kind: 'assert', assertion: result.assertion, dataFrame: projectDataFrameLight(result.dataFrame) };
+  }
+  if (result.kind === 'file-plan') {
+    return {
+      kind: 'file-plan',
+      fileName: result.fileName,
+      sheetName: result.sheetName,
+      dataFrame: projectDataFrameLight(result.dataFrame),
+    };
+  }
+  if (result.kind === 'file') {
+    return { kind: 'file', file: result.file, dataFrame: projectDataFrameLight(result.dataFrame) };
+  }
+  return { kind: 'dataframe', dataFrame: projectDataFrameLight(result.dataFrame) };
+}
+
+/**
+ * Slim a run record for the display/polling path: step results keep status + assertion + shape +
+ * a few sample rows (enough for the panel and rows[0] reads), and the artifact metadata dataframe
+ * is dropped (no reader consumes it). The execution-internal getRun (no `light`) is left untouched
+ * because runScheduler.hydrateRunOutputs relies on the full step.result.dataFrame.rows.
+ */
+export function projectRunRecordLight(run: WorkflowRunRecord): WorkflowRunRecord {
+  return {
+    ...run,
+    steps: run.steps.map((step) => ({ ...step, result: projectResultLight(step.result) })),
+    artifacts: run.artifacts.map((artifact) => {
+      const metadata = artifact.metadata;
+      if (!metadata || typeof metadata !== 'object' || !('dataframe' in metadata)) return artifact;
+      const { dataframe: _dropped, ...rest } = metadata as Record<string, unknown>;
+      return { ...artifact, metadata: rest };
+    }),
+  };
+}
+
 function buildArtifactInput(task: WorkflowTask, stepId: number, result: WorkflowTaskPreviewResult | null) {
   if (!result) return null;
   const base = {
@@ -190,7 +243,6 @@ function buildArtifactInput(task: WorkflowTask, stepId: number, result: Workflow
       rows: result.dataFrame.rows.length,
       columns: result.dataFrame.columns.length,
       range: result.dataFrame.range,
-      dataframe: result.dataFrame,
     },
   };
 }
@@ -241,7 +293,7 @@ export class WorkflowRunStore implements WorkflowRunRepository {
     return this.getRun(runId);
   }
 
-  async getRun(runId: number): Promise<WorkflowRunRecord> {
+  async getRun(runId: number, opts?: { light?: boolean }): Promise<WorkflowRunRecord> {
     const runRow = await this.db.queryOne<Record<string, unknown>>('select * from workflow_runs where id = $1', [runId]);
     if (!runRow) {
       const error = new Error('Workflow run not found') as Error & { statusCode?: number };
@@ -255,7 +307,8 @@ export class WorkflowRunStore implements WorkflowRunRepository {
       this.listEvents(runId),
       this.listApprovals(runId),
     ]);
-    return toWorkflowRunRecord(runRow, steps, artifacts, events, approvals);
+    const record = toWorkflowRunRecord(runRow, steps, artifacts, events, approvals);
+    return opts?.light ? projectRunRecordLight(record) : record;
   }
 
   async updateRunTasksSnapshot(runId: number, tasks: WorkflowTask[]): Promise<void> {

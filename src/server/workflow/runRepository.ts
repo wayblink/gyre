@@ -56,7 +56,7 @@ export type WorkflowRunStatusUpdateInput = {
 
 export interface WorkflowRunRepository {
   createRun(params: WorkflowRunCreateInput): Promise<WorkflowRunRecord>;
-  getRun(runId: number): Promise<WorkflowRunRecord>;
+  getRun(runId: number, opts?: { light?: boolean }): Promise<WorkflowRunRecord>;
   updateRunTasksSnapshot(runId: number, tasks: WorkflowTask[]): Promise<void>;
   createEvent(params: WorkflowRunEventInput): Promise<void>;
   // Claim/finish are the worker ownership boundary. A distributed worker must
