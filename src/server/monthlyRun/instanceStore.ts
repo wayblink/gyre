@@ -287,6 +287,7 @@ export function monthlyRunInstanceToRuntimeParameters(instance: MonthlyRunInstan
   }
   return {
     month: instance.monthKey,
+    monthUnderscore: instance.monthKey.replace(/-/g, '_'),
     fileRefs,
     fixedValues: instance.fixedValues,
   };

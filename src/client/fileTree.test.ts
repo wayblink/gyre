@@ -71,14 +71,14 @@ test('the tree can be grouped by logical path instead of display path', () => {
   assert.ok(byLogical.children.get('input')?.children.get('2026-06'));
 });
 
-test('folder collection returns sorted ancestor folders and always offers input', () => {
+test('folder collection returns sorted ancestor folders and always offers input and control_book', () => {
   const files = [
     fileFixture({ id: 1, displayPath: 'input/2026-05/base.xlsx', logicalPath: 'input/2026-05/base.xlsx' }),
     fileFixture({ id: 2, displayPath: 'output/captable/summary.xlsx', logicalPath: 'output/captable/summary.xlsx' }),
   ];
 
-  assert.deepEqual(collectProductFileFolders(files), ['input', 'input/2026-05', 'output', 'output/captable']);
-  assert.deepEqual(collectProductFileFolders([]), ['input']);
+  assert.deepEqual(collectProductFileFolders(files), ['control_book', 'input', 'input/2026-05', 'output', 'output/captable']);
+  assert.deepEqual(collectProductFileFolders([]), ['control_book', 'input']);
   assert.equal(productFileFolder(files[1]), 'output/captable');
 });
 

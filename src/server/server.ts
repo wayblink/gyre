@@ -629,6 +629,7 @@ function normalizeProductFileStoragePrefix(prefix?: string): string {
   if (!normalized) return 'input';
   if (normalized === 'output' || normalized.startsWith('output/')) return normalized;
   if (normalized === 'input' || normalized.startsWith('input/')) return normalized;
+  if (normalized === 'control_book' || normalized.startsWith('control_book/')) return normalized;
   return `input/${normalized}`;
 }
 

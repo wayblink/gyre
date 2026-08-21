@@ -65,6 +65,7 @@ test('runtime parameters build fileRefs from instance sources, adding sheet only
   const runtime = monthlyRunInstanceToRuntimeParameters(instance);
 
   assert.equal(runtime.month, '2026-06');
+  assert.equal(runtime.monthUnderscore, '2026_06');
   assert.deepEqual(runtime.fileRefs, {
     base_control_book: { provider: 'product-files', key: 'input/2026-06/control.xlsx', sheet: 'EQ Control Book' },
     futu_exercises: { provider: 'product-files', key: 'input/2026-06/futu.xlsx' },

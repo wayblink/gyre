@@ -554,3 +554,53 @@ test('deriveWorkflowRuntimeConfigFromTasks drops schema and defaults that are no
     },
   });
 });
+
+test('resolveWorkflowRuntimeConfiguration resolves a persist fileNameSuffix from monthUnderscore', () => {
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [
+      baseTask({
+        id: 'persist_control_book_base_dated',
+        operatorCode: 'workbook.persist.excel',
+        params: {
+          fileName: 'EQ_Control_Book_Base.xlsx',
+          folderPrefix: 'control_book',
+          fileNameSuffix: { $fromRuntime: 'monthUnderscore' },
+        },
+      }),
+    ],
+    runtimeParamsSchema: { monthUnderscore: { type: 'string', label: 'Month (underscore)' } },
+    runtimeParamsDefaults: { monthUnderscore: '2026_05' },
+    runtimeParameters: { monthUnderscore: '2026_06' },
+  });
+  assert.equal(resolved.tasks[0].params.fileNameSuffix, '2026_06');
+});
+
+test('resolveWorkflowRuntimeConfiguration falls back to the default monthUnderscore when none is provided', () => {
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [
+      baseTask({
+        id: 'persist_control_book_base_dated',
+        operatorCode: 'workbook.persist.excel',
+        params: { fileName: 'EQ_Control_Book_Base.xlsx', fileNameSuffix: { $fromRuntime: 'monthUnderscore' } },
+      }),
+    ],
+    runtimeParamsSchema: { monthUnderscore: { type: 'string', label: 'Month (underscore)' } },
+    runtimeParamsDefaults: { monthUnderscore: '2026_05' },
+  });
+  assert.equal(resolved.tasks[0].params.fileNameSuffix, '2026_05');
+});
+
+test('filterWorkflowRuntimeParametersBySchema keeps monthUnderscore only when the child schema declares it', () => {
+  const inherited = { month: '2026-06', monthUnderscore: '2026_06', fileRefs: {} };
+  assert.deepEqual(
+    filterWorkflowRuntimeParametersBySchema(inherited, { monthUnderscore: { type: 'string', label: 'Month (underscore)' } }),
+    { monthUnderscore: '2026_06' },
+  );
+  // Without the declaration the inherited value is dropped at the invoke boundary.
+  assert.deepEqual(
+    filterWorkflowRuntimeParametersBySchema(inherited, {
+      fileRefs: { type: 'object', label: 'Files', properties: {} },
+    }),
+    { fileRefs: {} },
+  );
+});

@@ -1023,6 +1023,11 @@
           "label": "Warrants for Convertible Preferred Stock"
         }
       }
+    },
+    "monthUnderscore": {
+      "type": "string",
+      "label": "Month (underscore)",
+      "description": "产出月下划线形式（yyyy_MM），用于带月份后缀的输出文件名。"
     }
   },
   "runtimeParamsDefaults": {
@@ -1052,6 +1057,7 @@
       "gyre2023ChinaSubplanTotal": 7815396,
       "optionsOutstandingCullgen": 4156815,
       "warrantsConvertiblePreferred": 540666
-    }
+    },
+    "monthUnderscore": "2026_05"
   }
 }

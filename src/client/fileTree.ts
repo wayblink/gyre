@@ -71,7 +71,7 @@ export function collectProductFileFolders(
   files: ReadonlyArray<ProductFileRecord>,
   pathOf: ProductFilePathResolver = productFileLogicalTreePath,
 ): string[] {
-  const folders = new Set<string>(['input']);
+  const folders = new Set<string>(['input', 'control_book']);
   files.forEach((file) => {
     const segments = pathOf(file).split('/').map((segment) => segment.trim()).filter(Boolean);
     segments.slice(0, -1).forEach((segment, index, directorySegments) => {

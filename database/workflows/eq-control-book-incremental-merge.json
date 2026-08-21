@@ -174,6 +174,58 @@
       "description": "仅输出合并后的 EQ Control Book Sheet，作为下一次运行的 base。",
       "operatorCode": "workbook.persist.excel",
       "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1000,
+      "y": 456,
+      "id": "persist_control_book_base_dated",
+      "name": "Persist Dated Control Book Base",
+      "inputs": {
+        "control_book": {
+          "from": "merge_control_book",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_control_book_dated_output_schema",
+              "name": "Assert Control Book Output Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "exact",
+                "failureMessage": "Control Book base output schema changed",
+                "expectedColumns": "Security ID, Security, As of Date, Process Date, Trans. Type, Trans. No., Broker No., Shares Issued, Shares Retired, Issued & Outstanding, Comment, Net Shares issued in Period",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sheets": [
+          {
+            "headerRow": 9,
+            "inputSlot": "control_book",
+            "sheetName": "EQ Control Book",
+            "columnFormats": {
+              "As of Date": "dd\\-mmm\\-yyyy",
+              "Process Date": "dd\\-mmm\\-yyyy"
+            }
+          }
+        ],
+        "fileName": "EQ_Control_Book_Base.xlsx",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "control_book",
+        "conflictPolicy": "overwrite",
+        "fileNamePrefix": "",
+        "fileNameSuffix": {
+          "$fromRuntime": "monthUnderscore"
+        },
+        "versionedOutput": false
+      },
+      "dependsOn": [],
+      "description": "额外落一份带产出月后缀的完整 EQ Control Book base 到独立 control_book/ 目录，文件名 EQ_Control_Book_Base_<yyyy_MM>.xlsx。",
+      "operatorCode": "workbook.persist.excel",
+      "operatorVersion": "1.0.0"
     }
   ],
   "runtimeParamsSchema": {
@@ -202,6 +254,11 @@
           }
         }
       }
+    },
+    "monthUnderscore": {
+      "type": "string",
+      "label": "Month (underscore)",
+      "description": "产出月下划线形式（yyyy_MM），用于带月份后缀的输出文件名。"
     }
   },
   "runtimeParamsDefaults": {
@@ -216,6 +273,7 @@
         "sheet": "27591",
         "provider": "product-files"
       }
-    }
+    },
+    "monthUnderscore": "2026_05"
   }
 }

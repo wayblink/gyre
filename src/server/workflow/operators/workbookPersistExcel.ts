@@ -6,6 +6,7 @@ import {
   normalizePersistExcelFileName,
   normalizeWorkflowTaskDependencies,
   prefixPersistExcelFileName,
+  suffixPersistExcelFileName,
   requireInputDataFrame,
 } from './types.js';
 
@@ -135,6 +136,7 @@ export const workbookPersistExcelOperator = defineWorkflowOperator({
   paramsSchema: {
     fileName: { type: 'string', label: '文件名', required: true, placeholder: 'workflow-output.xlsx', default: 'workflow-output.xlsx' },
     fileNamePrefix: { type: 'string', label: '文件名前缀', required: false, placeholder: '2026-05', default: '' },
+    fileNameSuffix: { type: 'string', label: '文件名后缀', required: false, placeholder: '2026_06', default: '' },
     folderPrefix: { type: 'string', label: '输出目录', required: false, placeholder: 'output/captable', default: '' },
     sheets: {
       type: 'array',
@@ -222,9 +224,11 @@ export const workbookPersistExcelOperator = defineWorkflowOperator({
     const baseFileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
     const folderPrefix = String(task.params.folderPrefix ?? '').trim() || undefined;
     const versionedOutput = task.params.versionedOutput !== false;
-    const fileName = versionedOutput
-      ? withOutputFileVersion(prefixPersistExcelFileName(baseFileName, task.params.fileNamePrefix), folderPrefix)
-      : prefixPersistExcelFileName(baseFileName, task.params.fileNamePrefix);
+    const withSuffix = suffixPersistExcelFileName(
+      prefixPersistExcelFileName(baseFileName, task.params.fileNamePrefix),
+      task.params.fileNameSuffix,
+    );
+    const fileName = versionedOutput ? withOutputFileVersion(withSuffix, folderPrefix) : withSuffix;
     const uploadedBy = String(task.params.uploadedBy ?? '').trim() || 'Workflow';
     const conflictPolicy = normalizeConflictPolicy(task.params.conflictPolicy);
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
@@ -255,7 +259,10 @@ export const workbookPersistExcelOperator = defineWorkflowOperator({
     };
     const dataframe = await requireInputDataFrame(context, first.inputSlot);
     const baseFileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
-    const fileName = prefixPersistExcelFileName(baseFileName, task.params.fileNamePrefix);
+    const fileName = suffixPersistExcelFileName(
+      prefixPersistExcelFileName(baseFileName, task.params.fileNamePrefix),
+      task.params.fileNameSuffix,
+    );
     return {
       kind: 'file-plan',
       fileName,
