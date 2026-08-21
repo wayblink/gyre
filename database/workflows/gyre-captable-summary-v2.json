@@ -76,11 +76,18 @@
         "fileRef": {
           "$type": "object",
           "$label": "Futu exercises workbook",
-          "$default": {},
+          "$default": {
+            "sheet": "Futu BCI Exercises to Date"
+          },
           "$fromRuntime": "fileRefs.futu_exercises"
         },
         "headerRow": 1,
-        "sheetName": "Futu BCI Exercises to Date"
+        "sheetName": {
+          "$type": "string",
+          "$label": "Sheet",
+          "$default": "Futu BCI Exercises to Date",
+          "$fromRuntime": "fileRefs.futu_exercises.sheet"
+        }
       },
       "dependsOn": [],
       "description": "提取 Futu BCI Exercises to Date 明细，用于汇总已行权数量。",
@@ -902,9 +909,16 @@
           "order": 4,
           "taskId": "extract_futu_exercises",
           "required": true,
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Sheet"
+            }
+          },
           "description": "用于汇总 Futu exercises to date 的已行权数量。",
           "sourceGroup": "futu",
-          "defaultSheetName": "Futu BCI Exercises to Date"
+          "defaultSheetName": "Futu BCI Exercises to Date",
+          "allowSheetNameOverride": true
         },
         "base_control_book": {
           "type": "object",

@@ -59,6 +59,8 @@ const FILE_REFS_PROPERTIES: Record<string, unknown> = {
     sourceGroup: 'futu',
     taskId: 'extract_futu_exercises',
     defaultSheetName: 'Futu BCI Exercises to Date',
+    allowSheetNameOverride: true,
+    properties: { sheet: { type: 'string', label: 'Sheet' } },
   },
   option_plans_summary: {
     type: 'object',
