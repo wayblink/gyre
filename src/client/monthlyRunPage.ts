@@ -319,6 +319,7 @@ export function createMonthlyRunPage({
     chooseUploadedFile: { 'zh-CN': '选择已上传文件', 'en-US': 'Choose uploaded file' },
     currentFile: { 'zh-CN': '当前文件', 'en-US': 'Current file' },
     uploadNewFile: { 'zh-CN': '上传新文件', 'en-US': 'Upload new file' },
+    selectSourceFile: { 'zh-CN': '选择', 'en-US': 'Select' },
     defaultSheet: { 'zh-CN': '默认 Sheet', 'en-US': 'Default Sheet' },
     sheetName: { 'zh-CN': 'Sheet 名称', 'en-US': 'Sheet name' },
     sheetNameRequired: { 'zh-CN': '请填写 Sheet 名称', 'en-US': 'Enter a sheet name' },
@@ -616,11 +617,11 @@ export function createMonthlyRunPage({
         const uploadedTime = file ? formatUploadedTimestamp(file.createdAt) : '-';
         const actions = file
           ? `<div class="source-file-action-group">
-              <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
-              <button class="source-file-delete source-file-delete--text" type="button" data-business-source-remove="${escapeHtml(source.sourceKey)}">Delete</button>
+              <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">${escapeHtml(tt('selectSourceFile'))}</button>
+              <button class="source-file-delete source-file-delete--text" type="button" data-business-source-remove="${escapeHtml(source.sourceKey)}">${escapeHtml(tt('delete'))}</button>
             </div>`
           : `<div class="source-file-action-group">
-              <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
+              <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">${escapeHtml(tt('selectSourceFile'))}</button>
             </div>`;
         return `<tr>
           <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
