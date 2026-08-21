@@ -6855,6 +6855,22 @@ textarea.form-input {
   color: var(--danger-700);
 }
 
+.linked-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--primary-200);
+  border-radius: 999px;
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: default;
+}
+
 .employee-origin-badge,
 .employee-evidence-badge {
   display: inline-flex;

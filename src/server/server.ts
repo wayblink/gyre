@@ -1231,6 +1231,45 @@ async function employeeCanonicalByNumber(): Promise<Map<string, number>> {
   return new Map(rows.map((row) => [String(row.employee_id ?? ''), Number(row.canonical_id)]));
 }
 
+function parseLinkedIdentities(value: unknown): Array<{ id: number; employeeId: string; source: string; name: string }> {
+  const arr = Array.isArray(value) ? value : [];
+  return arr
+    .map((item) => {
+      const record = item as Record<string, unknown>;
+      return {
+        id: Number(record.id),
+        employeeId: String(record.employeeId ?? ''),
+        source: String(record.source ?? ''),
+        name: String(record.name ?? ''),
+      };
+    })
+    .filter((identity) => Number.isInteger(identity.id));
+}
+
+// For each external 工号, the OTHER members of its linked "same person" group (同一 canonical 下的
+// 其它编号). Empty array means the 工号 is not linked to anyone. Detail rows use this to show a
+// read-only "关联" badge marking records that belong to a linked identity.
+async function employeeLinkGroupByNumber(): Promise<Map<string, Array<{ id: number; employeeId: string; source: string; name: string }>>> {
+  const rows = await db.query<Record<string, unknown>>(
+    `with aliases as (
+       select e.id, e.employee_id, e.source, e.employee_name,
+              coalesce(e.merged_into_id, e.id) as canonical_id
+         from employees e
+        where btrim(coalesce(e.employee_id, '')) <> ''
+     )
+     select a.employee_id,
+            coalesce(
+              json_agg(json_build_object('id', o.id, 'employeeId', o.employee_id, 'source', o.source, 'name', o.employee_name) order by o.id)
+                filter (where o.id <> a.id),
+              '[]'::json
+            ) as linked
+       from aliases a
+       join aliases o on o.canonical_id = a.canonical_id
+      group by a.employee_id`,
+  );
+  return new Map(rows.map((row) => [String(row.employee_id ?? ''), parseLinkedIdentities(row.linked)]));
+}
+
 function employeeLabelIds(labels: EmployeeLabelRef[]): number[] {
   return labels.map((label) => label.id);
 }
@@ -1291,7 +1330,7 @@ function futuGrantFromWorkflowRow(row: Record<string, unknown>, index: number, l
 function shareworksGrantFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
   return {
     id: index + 1,
-    employeeNumber: textValue(row['Employee Number']),
+    employeeNumber: textValue(row['Employee Number']) ?? '',
     labelIds: employeeLabelIds(labels),
     labels,
     tags: employeeLabelNames(labels),
@@ -2884,11 +2923,15 @@ async function registerRoutes() {
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
     const canonicalByNumber = await employeeCanonicalByNumber();
+    const linkGroup = await employeeLinkGroupByNumber();
     const rows = expandByLinkedGroup(
       (artifact?.rows ?? [])
         .map((row, index) => {
           const employeeNumber = textValue(row['工号']) ?? '';
-          return futuGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+          return {
+            ...futuGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
+            linkedIdentities: linkGroup.get(employeeNumber) ?? [],
+          };
         })
         .filter((row) => {
           if (grantType && row.incentiveType !== grantType) return false;
@@ -2950,11 +2993,15 @@ async function registerRoutes() {
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
     const canonicalByNumber = await employeeCanonicalByNumber();
+    const linkGroup = await employeeLinkGroupByNumber();
     const rows = expandByLinkedGroup(
       (artifact?.rows ?? [])
         .map((row, index) => {
           const employeeNumber = textValue(row['Employee Number']) ?? '';
-          return shareworksGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+          return {
+            ...shareworksGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
+            linkedIdentities: linkGroup.get(employeeNumber) ?? [],
+          };
         })
         .filter((row) => Boolean(row.employeeGrantNumber))
         .filter((row) => {
@@ -3044,10 +3091,11 @@ async function registerRoutes() {
         return true;
       });
     const canonicalByNumber = await employeeCanonicalByNumber();
+    const linkGroup = await employeeLinkGroupByNumber();
     const items = expandByLinkedGroup(
       [
-        ...futuRows.map((row) => mergeFutuGrant(row)),
-        ...shareworksRows.map((row) => mergeShareworksGrant(row)),
+        ...futuRows.map((row) => ({ ...mergeFutuGrant(row), linkedIdentities: linkGroup.get(row.employeeNumber) ?? [] })),
+        ...shareworksRows.map((row) => ({ ...mergeShareworksGrant(row), linkedIdentities: linkGroup.get(row.employeeNumber ?? '') ?? [] })),
       ],
       normalizedQuery,
       canonicalByNumber,
@@ -3114,11 +3162,15 @@ async function registerRoutes() {
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
     const canonicalByNumber = await employeeCanonicalByNumber();
+    const linkGroup = await employeeLinkGroupByNumber();
     const rows = expandByLinkedGroup(
       (artifact?.rows ?? [])
         .map((row, index) => {
           const employeeNumber = textValue(row['Employee No.']) ?? '';
-          return exerciseFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+          return {
+            ...exerciseFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
+            linkedIdentities: linkGroup.get(employeeNumber) ?? [],
+          };
         })
         .filter((row) => {
           if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
@@ -3188,11 +3240,15 @@ async function registerRoutes() {
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const labelsByEmployee = await employeeLabelsByNumber();
     const canonicalByNumber = await employeeCanonicalByNumber();
+    const linkGroup = await employeeLinkGroupByNumber();
     const rows = expandByLinkedGroup(
       (artifact?.rows ?? [])
         .map((row, index) => {
           const employeeNumber = textValue(row['工号']) ?? '';
-          return soldShareFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+          return {
+            ...soldShareFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
+            linkedIdentities: linkGroup.get(employeeNumber) ?? [],
+          };
         })
         .filter((row) => {
           if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;

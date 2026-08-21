@@ -55,6 +55,7 @@ import {
 } from './summaryPage.js';
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
 import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './transferPlanPage.js';
+import { buildLinkedBadge } from './linkedBadge.js';
 import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
 import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
 import '../../css/style.css';
@@ -1214,6 +1215,10 @@ function normalizeEmployeeLabelColor(value: unknown): string {
 
 function employeeLabelStyle(color: unknown): string {
   return ` style="--employee-label-color:${normalizeEmployeeLabelColor(color)}"`;
+}
+
+function linkedBadge(row: { linkedIdentities?: Array<{ source: string; employeeId: string; name: string }> }): string {
+  return buildLinkedBadge(row.linkedIdentities, currentLanguage, escapeHtml);
 }
 
 function formatTagChips(labels: Array<{ name: string; color: string }>, fallbackTags: string[] = []): string {
@@ -2666,7 +2671,7 @@ async function renderHoldingsPage(month: string) {
       (item, index) => `
       <tr>
         <td>${(data.page - 1) * data.pageSize + index + 1}</td>
-        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.employeeName)}</td>
+        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.employeeName)}${linkedBadge(item)}</td>
         <td>${escapeHtml(item.grantNumber)}</td>
         <td>${escapeHtml(item.userId)}</td>
         <td>${escapeHtml(item.employeeNumber)}</td>
@@ -2717,7 +2722,7 @@ function renderShareworksGrants(items: ShareworksGrant[], data: PaginatedResult<
       (item, index) => `
       <tr>
         <td>${(data.page - 1) * data.pageSize + index + 1}</td>
-        <td>${escapeHtml(item.employeeNumber)}</td>
+        <td>${escapeHtml(item.employeeNumber)}${linkedBadge(item)}</td>
         <td>${escapeHtml(item.lastName)}</td>
         <td>${escapeHtml(item.firstName)}</td>
         <td>${escapeHtml(item.middleName)}</td>
@@ -2763,7 +2768,7 @@ function renderMergedGrants(items: MergedGrant[], data: PaginatedResult<MergedGr
       (item, index) => `
       <tr>
         <td>${(data.page - 1) * data.pageSize + index + 1}</td>
-        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.employeeName)}</td>
+        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.employeeName)}${linkedBadge(item)}</td>
         <td>${escapeHtml(item.grantNumber)}</td>
         <td>${escapeHtml(item.employeeNumber)}</td>
         <td>${escapeHtml(item.incentiveType)}</td>
@@ -2811,7 +2816,7 @@ async function renderExerciseRecords() {
       (item, index) => `
       <tr>
         <td>${(data.page - 1) * data.pageSize + index + 1}</td>
-        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.name)}</td>
+        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.name)}${linkedBadge(item)}</td>
         <td>${escapeHtml(item.employeeNumber)}</td>
         <td>${escapeHtml(item.futubullId)}</td>
         <td>${escapeHtml(item.userId)}</td>
@@ -2860,7 +2865,7 @@ async function renderSoldShares() {
       (item, index) => `
       <tr>
         <td>${(data.page - 1) * data.pageSize + index + 1}</td>
-        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.name)}</td>
+        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.name)}${linkedBadge(item)}</td>
         <td>${escapeHtml(item.employeeNumber)}</td>
         <td>${escapeHtml(item.futubullId)}</td>
         <td>${escapeHtml(item.userId)}</td>
