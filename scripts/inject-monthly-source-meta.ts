@@ -82,7 +82,7 @@ const FILE_REFS_PROPERTIES: Record<string, unknown> = {
     order: 6,
     sourceGroup: 'shareworks',
     taskId: 'extract_bc_subplan_transfer',
-    defaultSheetName: 'Vesting Schedule',
+    defaultSheetName: '2025 BC Subplan Transfer',
     allowSheetNameOverride: true,
     properties: { sheet: { type: 'string', label: 'Sheet' } },
   },

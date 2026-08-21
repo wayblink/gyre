@@ -134,7 +134,7 @@
           "$type": "object",
           "$label": "2025 BC Subplan Transfer 输入源",
           "$default": {
-            "sheet": "Vesting Schedule"
+            "sheet": "2025 BC Subplan Transfer"
           },
           "$fromRuntime": "fileRefs.bc_subplan_transfer"
         },
@@ -142,7 +142,7 @@
         "sheetName": {
           "$type": "string",
           "$label": "Sheet",
-          "$default": "Vesting Schedule",
+          "$default": "2025 BC Subplan Transfer",
           "$fromRuntime": "fileRefs.bc_subplan_transfer.sheet"
         },
         "dropTrailingEmptyRows": true
@@ -951,7 +951,7 @@
           },
           "description": "必选：用户明确选择合并表或单独 workbook，并指定包含 2025 BC Subplan transfer/vesting 数据的 Sheet。",
           "sourceGroup": "shareworks",
-          "defaultSheetName": "Vesting Schedule",
+          "defaultSheetName": "2025 BC Subplan Transfer",
           "allowSheetNameOverride": true
         },
         "option_plans_summary": {
