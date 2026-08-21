@@ -594,12 +594,10 @@ export function createMonthlyRunPage({
         const actions = file
           ? `<div class="source-file-action-group">
               <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
-              <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Update</button>
               <button class="source-file-delete source-file-delete--text" type="button" data-business-source-remove="${escapeHtml(source.sourceKey)}">Delete</button>
             </div>`
           : `<div class="source-file-action-group">
               <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
-              <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>
             </div>`;
         return `<tr>
           <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
@@ -624,12 +622,10 @@ export function createMonthlyRunPage({
     const actions = file
       ? `<div class="source-file-action-group">
           <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
-          <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Update</button>
           <button class="source-file-delete source-file-delete--text" type="button" data-business-source-remove="${escapeHtml(source.sourceKey)}">Delete</button>
         </div>`
       : `<div class="source-file-action-group">
           <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
-          <button class="source-upload-btn" type="button" data-business-source-upload="${escapeHtml(source.sourceKey)}">Upload</button>
         </div>`;
     return `<tr>
       <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
