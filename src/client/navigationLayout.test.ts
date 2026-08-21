@@ -38,6 +38,7 @@ test('primary navigation follows the product menu layout before dev tools', () =
     'transfer-plan',
     'employee-management',
     'plan-summary',
+    'data-management',
     'five-percent-holders',
     'fixed-value',
   ];
@@ -54,6 +55,7 @@ test('primary navigation follows the product menu layout before dev tools', () =
       '2025 Transfer to Futu',
       'Employee Management',
       'Plan Summary',
+      'Data Management',
       '5% Holders',
       'Global Parameter',
     ],
@@ -79,6 +81,7 @@ test('captable is the renamed Summary page and new product pages have matching s
     'transfer-plan',
     'employee-management',
     'plan-summary',
+    'data-management',
     'five-percent-holders',
     'fixed-value',
   ].forEach((page) => {
@@ -566,7 +569,7 @@ test('Global Parameter exposes administrator-only create and delete controls', (
   assert.doesNotMatch(fixedValuePage, /<th>Effective From<\/th>/);
   assert.doesNotMatch(fixedValuePage, /id="fixedValueEffectiveFrom"/);
   assert.doesNotMatch(fixedValuePage, /管理员可维护/);
-  assert.match(mainSource, /'fixed-value':\s*\{\s*'zh-CN':\s*'Global Parameter',\s*'en-US':\s*'Global Parameter'\s*\}/);
+  assert.match(mainSource, /'fixed-value':\s*\{\s*'zh-CN':\s*'全局参数',\s*'en-US':\s*'Global Parameter'\s*\}/);
   assert.match(fixedValuePage, /id="btnAddFixedValue"/);
   assert.match(fixedValuePage, /data-admin-only="true"/);
   assert.match(mainSource, /function renderFixedValuePage\(\)/);

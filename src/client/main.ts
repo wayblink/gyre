@@ -110,7 +110,8 @@ const pageTitles: Record<string, string> = {
   'employee-management': '员工管理',
   'plan-summary': '计划汇总',
   'five-percent-holders': '5% 股东',
-  'fixed-value': 'Global Parameter',
+  'fixed-value': '全局参数',
+  'data-management': '数据管理',
   files: '文件中心',
   workflow: '工作流',
   'user-management': '用户管理',
@@ -729,7 +730,8 @@ const pageTitleTranslations: Record<PageKey, Record<AppLanguage, string>> = {
   'employee-management': { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
   'plan-summary': { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
   'five-percent-holders': { 'zh-CN': '5% 股东', 'en-US': '5% Holders' },
-  'fixed-value': { 'zh-CN': 'Global Parameter', 'en-US': 'Global Parameter' },
+  'fixed-value': { 'zh-CN': '全局参数', 'en-US': 'Global Parameter' },
+  'data-management': { 'zh-CN': '数据管理', 'en-US': 'Data Management' },
   files: { 'zh-CN': '文件中心', 'en-US': 'Files' },
   workflow: { 'zh-CN': '工作流', 'en-US': 'Workflow' },
   'user-management': { 'zh-CN': '用户管理', 'en-US': 'User Management' },
@@ -841,6 +843,7 @@ const uiText: Record<string, Record<AppLanguage, string>> = {
   docsHeroText: { 'zh-CN': '系统各页面与工作流的使用说明，按主题分多篇文档。', 'en-US': 'Usage guides for system pages and workflows, organized by topic.' },
   esopHeroEyebrow: { 'zh-CN': '股权明细', 'en-US': 'ESOP Detail' },
   esopHeroText: { 'zh-CN': '股权明细的业务总入口，包含授予、行权、卖出和 2025 转富途计划四类台账。', 'en-US': 'The ESOP detail hub for grants, exercises, sold shares, and the 2025 transfer plan.' },
+  dataManagementHeroText: { 'zh-CN': '数据管理业务入口，维护 5% 股东与全局参数等可由管理员调整的数据。', 'en-US': 'Data management hub for 5% holders and global parameters.' },
 };
 
 const placeholderTranslations: Array<[string, Record<AppLanguage, string>]> = [
@@ -1000,6 +1003,7 @@ function applyLanguage() {
   setPageHero('transfer-plan', 'transferHeroText');
   setPageHero('employee-management', 'employeeHeroText');
   setPageHero('plan-summary', 'planHeroText');
+  setPageHero('data-management', 'dataManagementHeroText');
   setPageHero('five-percent-holders', 'holdersHeroText');
   setPageHero('fixed-value', 'fixedHeroText');
   setText('#page-fixed-value h2', pageTitleFor('fixed-value'));
