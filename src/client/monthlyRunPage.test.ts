@@ -45,6 +45,50 @@ test('monthly source file candidates keep the current logical file even when its
   );
 });
 
+test('monthly source candidates are limited to the current month input folder', () => {
+  const files = [
+    { id: 1, originalName: 'EQ Control Book.xlsx', displayName: '', logicalPath: 'input/2026-02/EQ Control Book.xlsx' },
+    { id: 2, originalName: 'Control_Books_Detail_Data.xlsx', displayName: '', logicalPath: 'input/2026-02/Control_Books_Detail_Data.xlsx' },
+    { id: 3, originalName: 'Control_Books_Detail_Data_prev.xlsx', displayName: '', logicalPath: 'input/2026-01/Control_Books_Detail_Data_prev.xlsx' },
+  ] as const;
+
+  // Current month + name-matched only: the historical-month file (id 3) is excluded.
+  assert.deepEqual(
+    getMonthlyRunFileCandidatesForSource('incremental_control_book', files, null, null, '2026-02').map((file) => file.id),
+    [2],
+  );
+});
+
+test('Control Book Summary candidates come from the control_book folder, not the month input folder', () => {
+  const files = [
+    { id: 1, originalName: 'EQ_Control_Book_Base_2026_01.xlsx', displayName: '', logicalPath: 'control_book/EQ_Control_Book_Base_2026_01.xlsx' },
+    { id: 2, originalName: 'EQ Control Book.xlsx', displayName: '', logicalPath: 'input/2026-02/EQ Control Book.xlsx' },
+  ] as const;
+
+  assert.deepEqual(
+    getMonthlyRunFileCandidatesForSource('base_control_book', files, null, null, '2026-02').map((file) => file.id),
+    [1],
+  );
+});
+
+test('monthly source candidates always keep the configured file even from a historical month', () => {
+  const files = [
+    { id: 2, originalName: 'Control_Books_Detail_Data.xlsx', displayName: '', logicalPath: 'input/2026-02/Control_Books_Detail_Data.xlsx' },
+    { id: 9, originalName: 'Control_Books_Detail_Data_prev.xlsx', displayName: '', logicalPath: 'input/2026-01/Control_Books_Detail_Data_prev.xlsx' },
+  ] as const;
+
+  assert.deepEqual(
+    getMonthlyRunFileCandidatesForSource(
+      'incremental_control_book',
+      files,
+      9,
+      'input/2026-01/Control_Books_Detail_Data_prev.xlsx',
+      '2026-02',
+    ).map((file) => file.id),
+    [2, 9],
+  );
+});
+
 test('monthly source update modal can be scoped to a single input source', () => {
   const sources = [
     { sourceGroup: 'shareworks', sourceKey: 'control_book', taskId: 'extract_control_book', label: 'EQ Control Book', description: '', required: true },

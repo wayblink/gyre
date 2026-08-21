@@ -117,24 +117,39 @@ export function getMonthlyRunFileCandidatesForSource<T extends Pick<ProductFileR
   files: ReadonlyArray<T>,
   currentFileId?: number | null,
   currentFileKey?: string | null,
+  month?: string | null,
 ): T[] {
-  const matchers = sourceFileNameMatchers[sourceKey];
-  if (!matchers?.length) return [...files];
+  // Control Book Summary (base_control_book) reuses prior months' merged base, kept under the
+  // dedicated control_book/ root; every other source is scoped to the current month's input folder.
+  const folderPrefix =
+    sourceKey === 'base_control_book'
+      ? 'control_book/'
+      : month && /^\d{4}-\d{2}$/.test(month)
+        ? `input/${month}/`
+        : null;
+  const scoped = folderPrefix
+    ? files.filter((file) => normalizedFileKey(file.logicalPath).startsWith(folderPrefix))
+    : [...files];
   const currentBinding = currentFileId
     ? { fileId: currentFileId, logicalPath: currentFileKey ?? null, fileKey: currentFileKey ?? null }
     : null;
-  const normalizedMatchers = matchers.map(normalizeCandidateText);
-  const matchingFiles = files.filter((file) => {
-    const name = normalizeCandidateText(productFileCandidateName(file));
-    if (sourceKey === 'option_plans_summary' && name.includes('options os detail')) return false;
-    return normalizedMatchers.some((matcher) => name.includes(matcher));
-  });
-  if (!matchingFiles.length) return [...files];
-  if (currentBinding && !matchingFiles.some((file) => isFileForBinding(file, currentBinding))) {
+  const matchers = sourceFileNameMatchers[sourceKey];
+  const normalizedMatchers = matchers?.map(normalizeCandidateText) ?? [];
+  const matchingFiles = normalizedMatchers.length
+    ? scoped.filter((file) => {
+        const name = normalizeCandidateText(productFileCandidateName(file));
+        if (sourceKey === 'option_plans_summary' && name.includes('options os detail')) return false;
+        return normalizedMatchers.some((matcher) => name.includes(matcher));
+      })
+    : scoped;
+  // Fall back to the whole scoped folder when nothing matches by name, so the folder still limits choice.
+  const result = matchingFiles.length ? matchingFiles : scoped;
+  // Always keep the already-configured file, even if it now lives outside the scoped folder.
+  if (currentBinding && !result.some((file) => isFileForBinding(file, currentBinding))) {
     const currentFile = files.find((file) => isFileForBinding(file, currentBinding));
-    return currentFile ? [...matchingFiles, currentFile] : matchingFiles;
+    if (currentFile) return [...result, currentFile];
   }
-  return matchingFiles;
+  return result;
 }
 
 function sourceBindingsFromInstance(instance: MonthlyRunInstanceRecord): Record<string, MonthlyRunSourceBinding> {
@@ -811,6 +826,7 @@ export function createMonthlyRunPage({
           files,
           binding?.fileId ?? null,
           binding?.logicalPath ?? binding?.fileKey ?? null,
+          monthFolder(el<HTMLInputElement>('monthlyRunMonth').value),
         );
         const options = [
           `<option value="">${escapeHtml(tt('chooseUploadedFile'))}</option>`,

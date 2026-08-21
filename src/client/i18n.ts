@@ -180,7 +180,7 @@ const STATIC_TEXT_TRANSLATIONS: Record<string, string> = {
   记录每次月度工作流执行的输入: 'Record inputs, outputs, and status for each monthly workflow run',
   为本次月度执行配置每个: 'Configure source files for each workflow input node in this monthly run.',
   '为本次月度执行配置每个 workflow 输入节点的文件来源。': 'Configure source files for each workflow input node in this monthly run.',
-  新上传文件会进入当前月份目录: 'New uploads go into the current month folder; files from historical months can still be reused.',
+  '各输入源只能选择当前月份目录内的文件；Control Book Summary 从 control_book 目录选择。': 'Each input source can only use files from the current month folder; Control Book Summary is picked from the control_book folder.',
   保存输入源: 'Save sources',
   账号信息: 'Account Information',
   管理当前登录账号的基础信息和联系方式: 'Manage the current account profile and contact details',
