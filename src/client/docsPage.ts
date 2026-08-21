@@ -72,7 +72,8 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 
 - **股权汇总 / 月度更新**：每月更新与最终结果。
 - **ESOP 明细**：授予记录、行权记录、卖出记录、2025 转仓至 Futu 四个明细页。
-- **员工管理 / 计划汇总 / 5% 股东 / 固定值**：主数据与汇总。
+- **员工管理 / 计划汇总**：员工主数据与按计划的汇总。
+- **Data Management**：数据管理入口，点进去是概览页，下含 **5% 股东** 与 **全局参数（Global Parameter）** 两个子页。
 
 如果你是管理员，左侧菜单底部还会出现 **Admin Only** 分区（文件中心、工作流、用户管理），普通用户看不到这些入口。
 
@@ -100,7 +101,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 
 1. 打开左侧 **月度更新**，点击 **新建月度更新**，选择月份（例如 2026-06）。
 2. 在计划列表点 **查看详情**，进入该月的运行页面。
-3. 在 **Input Configuration** 里，为 Shareworks、Futu、Control Book、Option Plans 等来源逐项选择或上传本月文件。
+3. 在 **Input Configuration** 里，为 Control Book、Option Plans、Futu 等来源逐项用 **选择** 挑本月文件（需要时可在「选择」弹窗里上传新文件）。
 4. 点右上角 **执行**，等待系统跑完抽取、计算与校验。
 5. 运行成功后，打开 **股权汇总（CapTable）** 就能看到本月的股本对账与 Capitalization Summary。
 
@@ -126,7 +127,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 ![月度运行的输入配置与执行状态](/guide/monthly-run.png)
 *运行页面：上方配置输入文件，下方查看执行状态*
 
-- **Input Configuration**：按来源（Shareworks、Futu、Previous Capitalization Summary 等）列出每份需要的文件。带 **Required** 的是必填项，**Optional** 可以留空。用每行的 **Update / Upload** 选择或上传文件。
+- **Input Configuration**：按来源列出每份需要的文件，带 **Required** 的是必填项，**Optional** 可以留空。每行用 **选择** 从当月 input 目录挑选文件（需要上传新文件时，也在「选择」弹窗里完成）；**Control Book Summary** 是特例，从独立的 control_book 目录选择上月产出的 base。允许覆盖 Sheet 的输入源（Control Book、Option Plans、Futu Exercises、2025 BC Subplan Transfer 等）还能指定使用哪个 Sheet，并各有合理的默认 Sheet。
 - **执行状态**：点 **执行** 后，这里会实时显示每个步骤的进度、成功或失败，以及产出的文件。
 
 ## 运行记录与回退
@@ -208,17 +209,17 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 - **搜索与筛选**：按姓名、工号、用户 ID 搜索，或按 **标签** 过滤。
 - **标签管理**：点 **标签管理** 维护标签的名称与颜色（如「董监高」「已离职」）。
 - **新增 / 编辑员工**：维护姓名、用户 ID、来源、状态与标签。
-- **关联**：把同一个人在 Futu、Shareworks 中的不同编号关联到同一名员工。
+- **关联 / 取消关联**：把同一个人在 Futu、Shareworks 中的不同编号关联到同一名员工。关联只维护一张映射关系，**不会改动授予、行权、卖出等业务记录**；关联之后，在授予 / 行权 / 卖出等页面搜索其中任一编号时，会自动带出这个人所有关联编号的记录，并在这些记录上标注「关联」标识。关联可随时取消，取消后各编号恢复独立、互不带出。
 - **停用**：离职或作废的员工用「停用」而不是删除，以保留历史可追溯。`,
   },
   {
     id: 'plan-holders-parameters',
-    title: '计划汇总、5% 股东与 Global Parameter',
+    title: '计划汇总、5% 股东与全局参数',
     group: '数据页面',
     summary: '按计划看、按大股东看，以及可调参数',
-    body: `# 计划汇总、5% 股东与 Global Parameter
+    body: `# 计划汇总、5% 股东与全局参数
 
-这三个页面分别回答「按计划看」「按大股东看」和「可调整的参数」三类问题。
+这三个页面分别回答「按计划看」「按大股东看」和「可调整的参数」三类问题。其中 **5% 股东** 与 **全局参数** 归在左侧 **Data Management** 菜单下。
 
 ## 计划汇总
 
@@ -229,12 +230,12 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 
 ## 5% 股东
 
-按 EDGAR SC13 的口径展示持股 5% 以上的股东。它读取 Capitalization Summary 的分母，并结合 Global Parameter 中维护的数字，计算 Common Stock、Total CSEs、% of Class 和 % Fully Diluted。
+按 EDGAR SC13 的口径展示持股 5% 以上的股东。它读取 Capitalization Summary 的分母，并结合全局参数（Global Parameter）中维护的数字，计算 Common Stock、Total CSEs、% of Class 和 % Fully Diluted。
 
 ![5% 股东页](/guide/five-percent-holders.png)
 *5% 股东：按 EDGAR SC13 口径展示主要股东*
 
-## Global Parameter（固定值）
+## 全局参数（Global Parameter）
 
 维护可由管理员调整的业务常量，例如 Cullgen common stock、各类期权数量等。每个参数都有 Key、数值、生效月份和维护人。
 
@@ -258,7 +259,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 
 ## 左侧：文件目录
 
-- 文件按 **input / output** 等目录分组，可展开查看。
+- 文件按 **input / output / control_book** 等目录分组，可展开查看。每月月度运行产出的完整 EQ Control Book base 会写到 **control_book** 目录（文件名带年月），作为下个月运行时的 base 输入。
 - 顶部可 **搜索**、**刷新**、**上传**（支持 \`.xlsx\`、\`.xls\`、\`.csv\`），也可 **新建** 文件。
 - 每个文件项都可以重命名或删除。
 
@@ -366,7 +367,8 @@ The left menu is the main navigation, from top to bottom:
 
 - **CapTable / Monthly Updates**: monthly runs and final results.
 - **ESOP Detail**: the Grant Record, Exercise to Date, Sold Shares, and 2025 Transfer to Futu pages.
-- **Employee Management / Plan Summary / 5% Holders / Global Parameter**: master data and rollups.
+- **Employee Management / Plan Summary**: employee master data and by-plan rollups.
+- **Data Management**: a hub page whose children are **5% Holders** and **Global Parameter**.
 
 If you are an administrator, an **Admin Only** section (Files, Workflow, User Management) also appears at the bottom of the left menu; regular users don't see these entries.
 
@@ -394,7 +396,7 @@ If this is your first time, these five steps produce this month's equity results
 
 1. Open **Monthly Updates**, click **New Monthly Update**, and pick a month (for example 2026-06).
 2. In the plan list, click **View Details** to open that month's run page.
-3. Under **Input Configuration**, select or upload this month's files for each source (Shareworks, Futu, Control Book, Option Plans, and so on).
+3. Under **Input Configuration**, use **Select** to pick this month's file for each source (Control Book, Option Plans, Futu, and so on); upload a new file inside the picker when needed.
 4. Click **Run** in the top-right and wait for extraction, computation, and validation to finish.
 5. Once the run succeeds, open **CapTable** to see this month's shares reconciliation and Capitalization Summary.
 
@@ -420,7 +422,7 @@ Clicking a month's **View Details** opens the run page, which has two parts:
 ![The Monthly Run input configuration and execution status](/guide/en/monthly-run.png)
 *The run page: configure input files above, watch execution status below*
 
-- **Input Configuration**: lists each required file by source (Shareworks, Futu, Previous Capitalization Summary, and so on). Items marked **Required** are mandatory; **Optional** ones can be left empty. Use each row's **Update / Upload** to choose or upload a file.
+- **Input Configuration**: lists each required file by source; **Required** items are mandatory and **Optional** ones may be left empty. Each row's **Select** picks a file from the current month's input folder (uploading a new file happens inside the picker); **Control Book Summary** is the exception and is picked from the dedicated control_book folder (last month's produced base). Sources that allow a sheet override (Control Book, Option Plans, Futu Exercises, 2025 BC Subplan Transfer) can also choose which sheet to use, each with a sensible default sheet.
 - **Execution status**: after you click **Run**, this shows each step's progress, success or failure, and the files produced, in real time.
 
 ## Run history and rollback
@@ -502,7 +504,7 @@ The transfer page summarizes totals, cancellations/forfeitures, transfers to Fut
 - **Search and filter**: search by name, employee number, or user ID, or filter by **label**.
 - **Manage labels**: click **Manage Labels** to maintain label names and colors (such as "Director/Officer" or "Departed").
 - **Add / edit employee**: maintain name, user ID, source, status, and labels.
-- **Link**: link the different Futu and Shareworks identifiers that belong to the same person.
+- **Link / Unlink**: link the different Futu and Shareworks identifiers that belong to the same person. Linking only maintains a mapping and **does not touch grant, exercise, or sold-share records**; once linked, searching any one identifier on the grant / exercise / sold-share pages surfaces the records of every linked identifier of that person, each marked with a "Linked" badge. A link can be undone at any time, after which the identifiers are independent again.
 - **Deactivate**: departed or invalid employees are deactivated rather than deleted, preserving traceability.`,
   },
   {
@@ -512,7 +514,7 @@ The transfer page summarizes totals, cancellations/forfeitures, transfers to Fut
     summary: 'By plan, by major holder, and adjustable parameters',
     body: `# Plan Summary, 5% Holders, and Global Parameter
 
-These three pages answer three questions: "by plan," "by major holder," and "which parameters can be adjusted."
+These three pages answer three questions: "by plan," "by major holder," and "which parameters can be adjusted." **5% Holders** and **Global Parameter** live under the **Data Management** menu.
 
 ## Plan Summary
 
@@ -552,7 +554,7 @@ Plan Summary and 5% Holders are result pages: after changing source files or par
 
 ## Left: the folder tree
 
-- Files are grouped into folders like **input / output** that you can expand.
+- Files are grouped into folders like **input / output / control_book** that you can expand. Each month's full EQ Control Book base is written to the **control_book** folder (the file name carries the year-month) to serve as next month's base input.
 - The top lets you **search**, **refresh**, and **upload** (\`.xlsx\`, \`.xls\`, \`.csv\`), or **create** a new file.
 - Each file can be renamed or deleted.
 
