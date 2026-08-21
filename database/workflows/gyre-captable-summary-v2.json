@@ -959,7 +959,7 @@
         },
         "incremental_control_book": {
           "type": "object",
-          "label": "Control Book monthly detail",
+          "label": "Control Book Detail",
           "order": 2,
           "taskId": "invoke_control_book_merge",
           "required": true,

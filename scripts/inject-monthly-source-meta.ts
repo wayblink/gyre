@@ -28,7 +28,7 @@ const FILE_REFS_PROPERTIES: Record<string, unknown> = {
   },
   incremental_control_book: {
     type: 'object',
-    label: 'Control Book monthly detail',
+    label: 'Control Book Detail',
     description: '本月下载的增量 Control Book 明细，与 base 按交易自然键幂等合并。',
     required: true,
     order: 2,
