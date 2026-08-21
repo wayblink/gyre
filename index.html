@@ -365,7 +365,7 @@
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="holdingsPaginationSummary">-</div>
                                 <div class="pagination-actions">
-                                    <label class="pagination-size-label">Rows
+                                    <label class="pagination-size-label"><span class="pagination-size-label-text">Rows</span>
                                         <select class="form-input pagination-size-select" id="holdingsPageSizeSelect">
                                             <option value="20">20</option>
                                             <option value="50">50</option>
@@ -451,7 +451,7 @@
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="exercisePaginationSummary">-</div>
                                 <div class="pagination-actions">
-                                    <label class="pagination-size-label">Rows
+                                    <label class="pagination-size-label"><span class="pagination-size-label-text">Rows</span>
                                         <select class="form-input pagination-size-select" id="exercisePageSizeSelect">
                                             <option value="20">20</option>
                                             <option value="50">50</option>
@@ -543,7 +543,7 @@
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="soldSharesPaginationSummary">-</div>
                                 <div class="pagination-actions">
-                                    <label class="pagination-size-label">Rows
+                                    <label class="pagination-size-label"><span class="pagination-size-label-text">Rows</span>
                                         <select class="form-input pagination-size-select" id="soldSharesPageSizeSelect">
                                             <option value="20">20</option>
                                             <option value="50">50</option>
@@ -695,7 +695,7 @@
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="employeesPaginationSummary">-</div>
                                 <div class="pagination-actions">
-                                    <label class="pagination-size-label">Rows
+                                    <label class="pagination-size-label"><span class="pagination-size-label-text">Rows</span>
                                         <select class="form-input pagination-size-select" id="employeesPageSizeSelect">
                                             <option value="20">20</option>
                                             <option value="50">50</option>
@@ -1215,72 +1215,25 @@
                         </div>
                         <div class="card-body monthly-run-input-body" id="monthlyRunInputBody">
                             <div id="sourceTablesContainer">
-                                <div class="source-table-section">
-                                    <div class="source-table-title">来自 Shareworks 的输入表</div>
-                                    <table class="source-table source-table--inputs" id="shareworksTable">
-                                        <colgroup>
-                                            <col class="source-table__col-file">
-                                            <col class="source-table__col-required">
-                                            <col class="source-table__col-uploaded">
-                                            <col class="source-table__col-uploaded-time">
-                                            <col class="source-table__col-actions">
-                                        </colgroup>
-                                        <thead>
-                                            <tr>
-                                                <th>File Name</th>
-                                                <th style="width:80px;">Is required</th>
-                                                <th>Uploaded file</th>
-                                                <th>Uploaded time</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="shareworksBody"></tbody>
-                                    </table>
-                                </div>
-                                <div class="source-table-section">
-                                    <div class="source-table-title">来自 Futu 的输入表</div>
-                                    <table class="source-table source-table--inputs" id="futuTable">
-                                        <colgroup>
-                                            <col class="source-table__col-file">
-                                            <col class="source-table__col-required">
-                                            <col class="source-table__col-uploaded">
-                                            <col class="source-table__col-uploaded-time">
-                                            <col class="source-table__col-actions">
-                                        </colgroup>
-                                        <thead>
-                                            <tr>
-                                                <th>File Name</th>
-                                                <th style="width:80px;">Is required</th>
-                                                <th>Uploaded file</th>
-                                                <th>Uploaded time</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="futuBody"></tbody>
-                                    </table>
-                                </div>
-                                <div class="source-table-section">
-                                    <div class="source-table-title">Previous Capitalization Summary</div>
-                                    <table class="source-table source-table--inputs" id="previousCapitalizationSummaryTable">
-                                        <colgroup>
-                                            <col class="source-table__col-file">
-                                            <col class="source-table__col-required">
-                                            <col class="source-table__col-uploaded">
-                                            <col class="source-table__col-uploaded-time">
-                                            <col class="source-table__col-actions">
-                                        </colgroup>
-                                        <thead>
-                                            <tr>
-                                                <th>File Name</th>
-                                                <th style="width:80px;">Is required</th>
-                                                <th>Uploaded file</th>
-                                                <th>Uploaded time</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="previousCapitalizationSummaryBody"></tbody>
-                                    </table>
-                                </div>
+                                <table class="source-table source-table--inputs" id="monthlyRunSourcesTable">
+                                    <colgroup>
+                                        <col class="source-table__col-file">
+                                        <col class="source-table__col-required">
+                                        <col class="source-table__col-uploaded">
+                                        <col class="source-table__col-uploaded-time">
+                                        <col class="source-table__col-actions">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>File Name</th>
+                                            <th style="width:80px;">Is required</th>
+                                            <th>Uploaded file</th>
+                                            <th>Uploaded time</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="monthlyRunSourcesBody"></tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

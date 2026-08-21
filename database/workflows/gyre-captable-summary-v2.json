@@ -906,7 +906,7 @@
         "futu_exercises": {
           "type": "object",
           "label": "Futu BCI Exercises",
-          "order": 4,
+          "order": 8,
           "taskId": "extract_futu_exercises",
           "required": true,
           "properties": {

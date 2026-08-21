@@ -1105,11 +1105,15 @@ function applyLanguage() {
   setText('#page-plan-summary .card-subtitle', currentLanguage === 'zh-CN' ? '由股权授予明细聚合生成' : 'Aggregated from equity grant detail');
   setText('#page-five-percent-holders .card-title', pageTitleFor('five-percent-holders'));
   setText('#page-fixed-value .card-title', currentLanguage === 'zh-CN' ? '参数' : 'Global Parameter');
-  setAllText('.pagination-size-label', t('rows'));
+  setAllText('.pagination-size-label-text', t('rows'));
   setAllText('[id$="FirstPage"]', t('first'));
   setAllText('[id$="PrevPage"]', t('previous'));
   setAllText('[id$="NextPage"]', t('next'));
   setAllText('[id$="LastPage"]', t('last'));
+  renderHoldingsPagination(holdingsPage, pageCountOf(holdingsTotal, holdingsPageSize), holdingsTotal);
+  renderExercisePagination(exercisePage, pageCountOf(exerciseTotal, exercisePageSize), exerciseTotal);
+  renderSoldSharesPagination(soldSharesPage, pageCountOf(soldSharesTotal, soldSharesPageSize), soldSharesTotal);
+  renderEmployeesPagination(employeesPage, pageCountOf(employeesTotal, employeesPageSize), employeesTotal);
   renderUserManagementTable();
 
   const activePage = getPageFromLocation();
@@ -1643,8 +1647,7 @@ async function openMonthlyRunMonthOnly(month: string) {
   }
   el('monthlyRunInputMonth').textContent = formatMonthCN(month);
   el('modalTitle').textContent = 'Input Configuration';
-  el('shareworksBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">正在加载输入定义...</td></tr>';
-  el('futuBody').innerHTML = '<tr><td colspan="4" class="table-empty-cell">正在加载输入定义...</td></tr>';
+  el('monthlyRunSourcesBody').innerHTML = '<tr><td colspan="5" class="table-empty-cell">正在加载输入定义...</td></tr>';
   setActivePage('monthlyrun');
   localizeAppDom();
   await monthlyRunPage.openForMonth(month);
@@ -2445,10 +2448,22 @@ function closeAccountPasswordModal() {
 }
 
 
+function pageCountOf(total: number, pageSize: number) {
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
+function paginationSummaryText(start: number, end: number, total: number, unit: 'records' | 'employees') {
+  if (currentLanguage === 'zh-CN') {
+    const noun = unit === 'employees' ? '名员工' : '条记录';
+    return total === 0 ? `共 0 ${noun}` : `显示 ${start}-${end}，共 ${total} ${noun}`;
+  }
+  return total === 0 ? `0 ${unit}` : `Showing ${start}-${end} of ${total} ${unit}`;
+}
+
 function renderHoldingsPagination(page: number, totalPages: number, total: number) {
   const start = total === 0 ? 0 : (page - 1) * holdingsPageSize + 1;
   const end = Math.min(page * holdingsPageSize, total);
-  el('holdingsPaginationSummary').textContent = total === 0 ? '0 records' : `Showing ${start}-${end} of ${total} records`;
+  el('holdingsPaginationSummary').textContent = paginationSummaryText(start, end, total, 'records');
   el('holdingsPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
   el<HTMLButtonElement>('btnHoldingsFirstPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnHoldingsPrevPage').disabled = page <= 1;
@@ -2459,7 +2474,7 @@ function renderHoldingsPagination(page: number, totalPages: number, total: numbe
 function renderEmployeesPagination(page: number, totalPages: number, total: number) {
   const start = total === 0 ? 0 : (page - 1) * employeesPageSize + 1;
   const end = Math.min(page * employeesPageSize, total);
-  el('employeesPaginationSummary').textContent = total === 0 ? '0 employees' : `Showing ${start}-${end} of ${total} employees`;
+  el('employeesPaginationSummary').textContent = paginationSummaryText(start, end, total, 'employees');
   el('employeesPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
   el<HTMLButtonElement>('btnEmployeesFirstPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnEmployeesPrevPage').disabled = page <= 1;
@@ -2470,7 +2485,7 @@ function renderEmployeesPagination(page: number, totalPages: number, total: numb
 function renderExercisePagination(page: number, totalPages: number, total: number) {
   const start = total === 0 ? 0 : (page - 1) * exercisePageSize + 1;
   const end = Math.min(page * exercisePageSize, total);
-  el('exercisePaginationSummary').textContent = total === 0 ? '0 records' : `Showing ${start}-${end} of ${total} records`;
+  el('exercisePaginationSummary').textContent = paginationSummaryText(start, end, total, 'records');
   el('exercisePaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
   el<HTMLButtonElement>('btnExercisesFirstPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnExercisesPrevPage').disabled = page <= 1;
@@ -2481,8 +2496,7 @@ function renderExercisePagination(page: number, totalPages: number, total: numbe
 function renderSoldSharesPagination(page: number, totalPages: number, total: number) {
   const start = total === 0 ? 0 : (page - 1) * soldSharesPageSize + 1;
   const end = Math.min(page * soldSharesPageSize, total);
-  el('soldSharesPaginationSummary').textContent =
-    total === 0 ? '0 records' : `Showing ${start}-${end} of ${total} records`;
+  el('soldSharesPaginationSummary').textContent = paginationSummaryText(start, end, total, 'records');
   el('soldSharesPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
   el<HTMLButtonElement>('btnSoldSharesFirstPage').disabled = page <= 1;
   el<HTMLButtonElement>('btnSoldSharesPrevPage').disabled = page <= 1;
@@ -2501,7 +2515,7 @@ function searchExercises() {
 }
 
 function changeExercisePage(delta: number) {
-  const maxPage = Math.max(1, Math.ceil(exerciseTotal / exercisePageSize));
+  const maxPage = pageCountOf(exerciseTotal, exercisePageSize);
   const nextPage = Math.min(Math.max(1, exercisePage + delta), maxPage);
   if (nextPage === exercisePage) return;
   exercisePage = nextPage;
@@ -2509,7 +2523,7 @@ function changeExercisePage(delta: number) {
 }
 
 function goToExercisePage(target: 'first' | 'last') {
-  const maxPage = Math.max(1, Math.ceil(exerciseTotal / exercisePageSize));
+  const maxPage = pageCountOf(exerciseTotal, exercisePageSize);
   const nextPage = target === 'first' ? 1 : maxPage;
   if (nextPage === exercisePage) return;
   exercisePage = nextPage;
@@ -2529,7 +2543,7 @@ function searchSoldShares() {
 }
 
 function changeSoldSharesPage(delta: number) {
-  const maxPage = Math.max(1, Math.ceil(soldSharesTotal / soldSharesPageSize));
+  const maxPage = pageCountOf(soldSharesTotal, soldSharesPageSize);
   const nextPage = Math.min(Math.max(1, soldSharesPage + delta), maxPage);
   if (nextPage === soldSharesPage) return;
   soldSharesPage = nextPage;
@@ -2537,7 +2551,7 @@ function changeSoldSharesPage(delta: number) {
 }
 
 function goToSoldSharesPage(target: 'first' | 'last') {
-  const maxPage = Math.max(1, Math.ceil(soldSharesTotal / soldSharesPageSize));
+  const maxPage = pageCountOf(soldSharesTotal, soldSharesPageSize);
   const nextPage = target === 'first' ? 1 : maxPage;
   if (nextPage === soldSharesPage) return;
   soldSharesPage = nextPage;
@@ -2574,7 +2588,7 @@ function applyGrantView() {
 
 function changeHoldingsPage(delta: number) {
   const currentPage = holdingsPage;
-  const maxPage = Math.max(1, Math.ceil(holdingsTotal / holdingsPageSize));
+  const maxPage = pageCountOf(holdingsTotal, holdingsPageSize);
   const nextPage = Math.min(Math.max(1, currentPage + delta), maxPage);
   if (nextPage === currentPage) return;
   holdingsPage = nextPage;
@@ -2582,7 +2596,7 @@ function changeHoldingsPage(delta: number) {
 }
 
 function goToHoldingsPage(target: 'first' | 'last') {
-  const maxPage = Math.max(1, Math.ceil(holdingsTotal / holdingsPageSize));
+  const maxPage = pageCountOf(holdingsTotal, holdingsPageSize);
   const nextPage = target === 'first' ? 1 : maxPage;
   if (nextPage === holdingsPage) return;
   holdingsPage = nextPage;
@@ -2603,7 +2617,7 @@ function searchEmployeesPage() {
 
 function changeEmployeesPage(delta: number) {
   const currentPage = employeesPage;
-  const maxPage = Math.max(1, Math.ceil(employeesTotal / employeesPageSize));
+  const maxPage = pageCountOf(employeesTotal, employeesPageSize);
   const nextPage = Math.min(Math.max(1, currentPage + delta), maxPage);
   if (nextPage === currentPage) return;
   employeesPage = nextPage;
@@ -2611,7 +2625,7 @@ function changeEmployeesPage(delta: number) {
 }
 
 function goToEmployeesPage(target: 'first' | 'last') {
-  const maxPage = Math.max(1, Math.ceil(employeesTotal / employeesPageSize));
+  const maxPage = pageCountOf(employeesTotal, employeesPageSize);
   const nextPage = target === 'first' ? 1 : maxPage;
   if (nextPage === employeesPage) return;
   employeesPage = nextPage;

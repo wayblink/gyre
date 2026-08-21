@@ -201,11 +201,14 @@ test('new product pages expose real data containers instead of placeholder-only 
   assert.match(html, /id="page-plan-summary"[\s\S]*id="planSummaryBody"/);
   assert.match(html, /id="page-five-percent-holders"[\s\S]*id="fivePercentHoldersBody"/);
   const monthlyRunPage = html.match(/id="page-monthlyrun"[\s\S]*?<div class="modal-overlay hidden" id="monthlyRunSourceModal"/)?.[0] ?? '';
-  assert.match(monthlyRunPage, /来自 Shareworks 的输入表[\s\S]*id="shareworksBody"[\s\S]*来自 Futu 的输入表[\s\S]*id="futuBody"[\s\S]*Previous Capitalization Summary[\s\S]*id="previousCapitalizationSummaryBody"/);
+  // Input Configuration is one flat table: no per-source-group sections or title bars.
+  assert.match(monthlyRunPage, /<tbody id="monthlyRunSourcesBody"><\/tbody>/);
+  assert.doesNotMatch(monthlyRunPage, /source-table-title/);
+  assert.doesNotMatch(monthlyRunPage, /来自 Shareworks 的输入表|来自 Futu 的输入表/);
+  assert.doesNotMatch(monthlyRunPage, /id="shareworksBody"|id="futuBody"|id="previousCapitalizationSummaryBody"/);
+  assert.equal(monthlyRunPage.match(/<table class="source-table source-table--inputs"/g)?.length, 1);
   assert.doesNotMatch(monthlyRunPage, /bcSubplanTransferOverride|transferDecision/);
   assert.match(monthlyRunPage, /id="monthlyRunInputCard"[\s\S]*id="btnToggleMonthlyRunInput"/);
-  const shareworksSection = monthlyRunPage.match(/<div class="source-table-title">来自 Shareworks 的输入表<\/div>[\s\S]*?<tbody id="shareworksBody"><\/tbody>/)?.[0] ?? '';
-  assert.doesNotMatch(shareworksSection, /Previous Capitalization Summary/);
   assert.match(html, /id="page-fixed-value"[\s\S]*id="fixedValuePageBody"/);
   assert.doesNotMatch(html, /id="page-grant-record"[\s\S]*待接入[\s\S]*id="page-exercise-record"/);
 });
@@ -759,4 +762,51 @@ test('Global Parameter editing uses the application modal instead of a browser p
   assert.match(mainSource, /async function saveFixedValueEdit\(\)/);
   assert.match(mainSource, /`\/api\/global-parameters\/\$\{editingFixedValueId\}`/);
   assert.match(mainSource, /btnSubmitFixedValueEdit'\)\.addEventListener\('click', \(\) => void saveFixedValueEdit\(\)\)/);
+});
+
+test('page size selectors survive language switches because only the label text is translated', () => {
+  // Each paginated table keeps its <select> inside the .pagination-size-label element, so
+  // writing textContent onto that label deletes the control. Only the inner span may be rewritten.
+  const sizeSelects = [
+    'holdingsPageSizeSelect',
+    'exercisePageSizeSelect',
+    'soldSharesPageSizeSelect',
+    'employeesPageSizeSelect',
+  ];
+  const labels = html.match(/<label class="pagination-size-label">[\s\S]*?<\/label>/g) ?? [];
+  assert.equal(labels.length, sizeSelects.length);
+  labels.forEach((label, index) => {
+    assert.match(label, /<span class="pagination-size-label-text">Rows<\/span>/);
+    assert.match(label, new RegExp(`id="${sizeSelects[index]}"`));
+  });
+
+  assert.match(mainSource, /setAllText\('\.pagination-size-label-text', t\('rows'\)\)/);
+  assert.doesNotMatch(mainSource, /setAllText\('\.pagination-size-label',/);
+  assert.doesNotMatch(mainSource, /setText\('\.pagination-size-label',/);
+});
+
+test('pagination summaries are localized and refresh when the language changes', () => {
+  const renderers = [
+    'renderHoldingsPagination',
+    'renderEmployeesPagination',
+    'renderExercisePagination',
+    'renderSoldSharesPagination',
+  ];
+  for (const name of renderers) {
+    const body = mainSource.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`))?.[0] ?? '';
+    assert.ok(body, `${name} not found`);
+    assert.match(body, /paginationSummaryText\(/);
+    assert.doesNotMatch(body, /Showing /);
+  }
+
+  assert.match(mainSource, /function paginationSummaryText\(/);
+  assert.match(mainSource, /条记录/);
+  assert.match(mainSource, /名员工/);
+
+  // A language switch only calls applyLanguage(), so the summaries must be re-rendered there
+  // or they keep the previous language until the next data load.
+  const applyLanguageBody = mainSource.match(/function applyLanguage\(\)[\s\S]*?\n\}/)?.[0] ?? '';
+  for (const name of renderers) {
+    assert.match(applyLanguageBody, new RegExp(`${name}\\(`));
+  }
 });

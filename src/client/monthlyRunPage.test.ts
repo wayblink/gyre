@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -6,8 +7,10 @@ import {
   getMonthlyRunModalSourceDefinitions,
   getBcSubplanCancelledAdjustmentInfo,
   getMonthlyRunSourceSheetControlModel,
+  getMonthlyRunVisibleSources,
   getMonthlyRunSheetNameOptions,
   getMonthlyRunWarningTaskIds,
+  isRunPanelStaleForMonth,
   resolveMonthlyRunPreviewFileId,
   retainAvailableSourceBindings,
 } from './monthlyRunPage.js';
@@ -248,4 +251,65 @@ test('monthly run preview falls back to the latest output file', () => {
 
 test('monthly run preview stays empty when no file is available', () => {
   assert.equal(resolveMonthlyRunPreviewFileId({ artifacts: [] as never }, { latestOutputFileId: null }), null);
+});
+
+test('run panel state is dropped once the selected month moves away from the run it belongs to', () => {
+  // Nothing held yet: there is no stale state to drop.
+  assert.equal(isRunPanelStaleForMonth(null, '2026-03'), false);
+  // Same month: the run on screen belongs here.
+  assert.equal(isRunPanelStaleForMonth('2026-03', '2026-03'), false);
+  // Different month: 2026-02's run must not stay on screen while 2026-03 is selected.
+  assert.equal(isRunPanelStaleForMonth('2026-02', '2026-03'), true);
+  // Month cleared: nothing is selected, so a month-scoped run cannot belong to it.
+  assert.equal(isRunPanelStaleForMonth('2026-02', ''), true);
+});
+
+test('monthly run page clears month-scoped run state on month change and on activation', () => {
+  const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+
+  // The run panel state must be tagged with the month it belongs to.
+  assert.match(source, /let activeRunMonth: string \| null = null;/);
+  assert.match(source, /function discardRunStateForOtherMonth\(\)/);
+
+  // Switching the month picker must drop the previous month's run and repaint the panel.
+  const changeHandler = source.match(/addEventListener\('change', \(\) => \{[\s\S]*?\n {4}\}\);/)?.[0] ?? '';
+  assert.match(changeHandler, /discardRunStateForOtherMonth\(\)/);
+  assert.match(changeHandler, /renderRunPanel\(\)/);
+
+  // openForMonth()/SPA re-activation go through onActivate, which must drop it before
+  // reloading the month-scoped history and then repaint.
+  const onActivate = source.match(/async function onActivate\(\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
+  assert.match(onActivate, /discardRunStateForOtherMonth\(\)/);
+  assert.match(onActivate, /renderRunPanel\(\)/);
+  assert.ok(
+    onActivate.indexOf('discardRunStateForOtherMonth()') < onActivate.indexOf('refreshHistory()'),
+    'run state must be dropped before the history reload renders its selection',
+  );
+
+  // An in-flight poll must not repaint another month's panel after the user switches months.
+  for (const poll of source.match(/onUpdate: \(run\) => \{[\s\S]*?\n {8}\},/g) ?? []) {
+    assert.match(poll, /activeRunMonth !== month/);
+  }
+});
+
+test('input configuration renders one flat source list: hidden dropped, group ignored, DB order kept', () => {
+  // The server already sorts by the DB `order` field and strips it, so the incoming array order
+  // is authoritative. The UI must not re-group or re-sort by sourceGroup.
+  const sources = [
+    { sourceKey: 'base_control_book', sourceGroup: 'shareworks', hidden: false },
+    { sourceKey: 'incremental_control_book', sourceGroup: 'shareworks', hidden: false },
+    { sourceKey: 'previous_capitalization_summary', sourceGroup: 'shareworks', hidden: true },
+    { sourceKey: 'option_plans_summary', sourceGroup: 'shareworks', hidden: false },
+    { sourceKey: 'bc_subplan_transfer', sourceGroup: 'shareworks', hidden: false },
+    { sourceKey: 'futu_exercises', sourceGroup: 'futu', hidden: false },
+    { sourceKey: 'options_os_detail_by_plan', sourceGroup: 'shareworks', hidden: true },
+  ] as const;
+
+  assert.deepEqual(getMonthlyRunVisibleSources(sources).map((source) => source.sourceKey), [
+    'base_control_book',
+    'incremental_control_book',
+    'option_plans_summary',
+    'bc_subplan_transfer',
+    'futu_exercises',
+  ]);
 });

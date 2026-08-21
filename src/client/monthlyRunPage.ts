@@ -182,6 +182,27 @@ function isFileForBinding(
   return Boolean(bindingKey && normalizedFileKey(file.logicalPath) === bindingKey);
 }
 
+/**
+ * Input Configuration is a single flat list. The server already sorted the definitions by the
+ * DB-owned `order` field, so this only drops hidden sources — sourceGroup is deliberately not
+ * used for grouping or sorting; reorder rows by editing `order` in the workflow definition.
+ */
+export function getMonthlyRunVisibleSources<T extends Pick<MonthlyRunSourceDefinition, 'hidden'>>(
+  sourceDefinitions: ReadonlyArray<T>,
+): T[] {
+  return sourceDefinitions.filter((source) => !source.hidden);
+}
+
+/**
+ * The run panel shows exactly one month's run. Returns true when the run state currently held
+ * belongs to a different month than the selected one, so it must be dropped rather than left on
+ * screen next to another month's (possibly empty) run history.
+ */
+export function isRunPanelStaleForMonth(activeRunMonth: string | null, selectedMonth: string): boolean {
+  if (!activeRunMonth) return false;
+  return activeRunMonth !== selectedMonth;
+}
+
 export function getMonthlyRunWarningTaskIds(run: Pick<WorkflowRunRecord, 'steps'>): string[] {
   return run.steps.filter((step) => step.status === 'warning').map((step) => step.taskId);
 }
@@ -282,6 +303,8 @@ export function createMonthlyRunPage({
   const sourceSheetSummariesByFileId = new Map<number, SourceSheetSummaryState>();
   let activeHistoryId: number | null = null;
   let activeRun: WorkflowRunRecord | null = null;
+  /** Month that activeRun / activeHistoryId belong to, so they can be dropped when it changes. */
+  let activeRunMonth: string | null = null;
   let isRunning = false;
   let isSavingSources = false;
   const expandedWarningTaskIds = new Set<string>();
@@ -343,6 +366,14 @@ export function createMonthlyRunPage({
     return text[key][lang()] ?? text[key]['zh-CN'];
   }
 
+  function discardRunStateForOtherMonth() {
+    if (!isRunPanelStaleForMonth(activeRunMonth, el<HTMLInputElement>('monthlyRunMonth').value)) return;
+    activeHistoryId = null;
+    activeRun = null;
+    activeRunMonth = null;
+    expandedWarningTaskIds.clear();
+  }
+
   async function init() {
     el('btnMonthlyRunConfigureSources').addEventListener('click', () => void openSourceModal());
     el('btnMonthlyRunRefreshFiles').addEventListener('click', () => void refreshFiles());
@@ -350,7 +381,9 @@ export function createMonthlyRunPage({
     el('btnMonthlyRunContinue').addEventListener('click', () => void approveActiveRun('approved'));
     el('btnMonthlyRunSkip').addEventListener('click', () => void approveActiveRun('skipped'));
     el('monthlyRunMonth').addEventListener('change', () => {
+      discardRunStateForOtherMonth();
       renderSourceInfo();
+      renderRunPanel();
       onMonthChanged?.(el<HTMLInputElement>('monthlyRunMonth').value);
       if (!el('monthlyRunSourceModal').classList.contains('hidden')) {
         renderSourceModal();
@@ -362,7 +395,9 @@ export function createMonthlyRunPage({
   }
 
   async function onActivate() {
+    discardRunStateForOtherMonth();
     await Promise.all([refreshSourceConfig(), refreshFiles(), refreshInstance(), refreshHistory()]);
+    renderRunPanel();
     if (activeRun && !isWorkflowRunTerminalStatus(activeRun.status)) {
       await refreshActiveRun();
     }
@@ -435,18 +470,9 @@ export function createMonthlyRunPage({
   }
 
   function renderBusinessDefinedInputConfiguration() {
-    el('shareworksBody').innerHTML = renderBusinessDefinedSourceRows('shareworks', (source) => source.sourceKey !== 'previous_capitalization_summary');
-    // Previous Capitalization Summary 由业务在触发时自动引入上月输出，其独立配置区域按 DB 源的 hidden 显隐。
-    const previousSource = sourceDefinitions.find((source) => source.sourceKey === 'previous_capitalization_summary');
-    const previousSection = el('previousCapitalizationSummaryTable').closest('.source-table-section') as HTMLElement | null;
-    if (previousSource && !previousSource.hidden) {
-      if (previousSection) previousSection.style.display = '';
-      el('previousCapitalizationSummaryBody').innerHTML = renderBusinessDefinedSingleSourceRow('previous_capitalization_summary');
-    } else {
-      if (previousSection) previousSection.style.display = 'none';
-      el('previousCapitalizationSummaryBody').innerHTML = '';
-    }
-    el('futuBody').innerHTML = renderBusinessDefinedSourceRows('futu');
+    // One flat table in DB `order`; sources flagged hidden in the workflow definition are dropped
+    // (e.g. Previous Capitalization Summary, which the business auto-derives from last month).
+    el('monthlyRunSourcesBody').innerHTML = renderBusinessDefinedSourceRows();
 
     document.querySelectorAll<HTMLButtonElement>('[data-business-source-upload]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -577,11 +603,8 @@ export function createMonthlyRunPage({
     }
   }
 
-  function renderBusinessDefinedSourceRows(
-    sourceGroup: 'shareworks' | 'futu',
-    predicate: (source: MonthlyRunSourceDefinition) => boolean = () => true,
-  ) {
-    const sources = sourceDefinitions.filter((source) => source.sourceGroup === sourceGroup && !source.hidden && predicate(source));
+  function renderBusinessDefinedSourceRows() {
+    const sources = getMonthlyRunVisibleSources(sourceDefinitions);
     if (!sources.length) return `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
     return sources
       .map((source) => {
@@ -608,32 +631,6 @@ export function createMonthlyRunPage({
         </tr>`;
       })
       .join('');
-  }
-
-  function renderBusinessDefinedSingleSourceRow(sourceKey: string) {
-    const source = sourceDefinitions.find((item) => item.sourceKey === sourceKey);
-    if (!source) return `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
-    const binding = selectedSources[source.sourceKey] ?? null;
-    const file = getFileForBinding(binding);
-    const uploaded = file
-      ? `${renderUploadedFileCell(file)}${renderBusinessSourceSheetControl(source, binding)}`
-      : '<span class="source-not-uploaded">Not uploaded</span>';
-    const uploadedTime = file ? formatUploadedTimestamp(file.createdAt) : '-';
-    const actions = file
-      ? `<div class="source-file-action-group">
-          <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
-          <button class="source-file-delete source-file-delete--text" type="button" data-business-source-remove="${escapeHtml(source.sourceKey)}">Delete</button>
-        </div>`
-      : `<div class="source-file-action-group">
-          <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">选择</button>
-        </div>`;
-    return `<tr>
-      <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
-      <td>${source.required ? '<span class="source-required-badge">Required</span>' : '<span class="source-optional-badge">Optional</span>'}</td>
-      <td class="source-uploaded-cell">${uploaded}</td>
-      <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>
-      <td>${actions}</td>
-    </tr>`;
   }
 
   function ensureSelectedSourceBindings() {
@@ -1038,6 +1035,7 @@ export function createMonthlyRunPage({
     isRunning = true;
     activeHistoryId = null;
     activeRun = null;
+    activeRunMonth = month;
     expandedWarningTaskIds.clear();
     renderRunPanel(tt('submittingRun'));
     let failedMessage: string | null = null;
@@ -1058,6 +1056,7 @@ export function createMonthlyRunPage({
         await runClient.pollUntilSettled(activeRun.id, {
           minimumPollCount: 1,
           onUpdate: (run) => {
+            if (activeRunMonth !== month) return;
             activeRun = run;
             notifyBcSubplanCancelledAdjustmentIfNeeded(run);
             renderRunPanel();
@@ -1070,7 +1069,7 @@ export function createMonthlyRunPage({
       renderRunPanel(failedMessage);
     } finally {
       isRunning = false;
-      await refreshHistory(month);
+      await refreshHistory();
       await onPlanStatusChanged?.();
       renderRunPanel(failedMessage ?? undefined);
     }
@@ -1081,6 +1080,7 @@ export function createMonthlyRunPage({
     const waitingTaskIds = activeRun.approvals.filter((approval) => approval.status === 'pending').map((approval) => approval.taskId);
     if (!waitingTaskIds.length) return;
 
+    const month = el<HTMLInputElement>('monthlyRunMonth').value;
     isRunning = true;
     renderRunPanel(decision === 'skipped' ? 'Skipping downstream flow...' : 'Continuing workflow...');
     const result = await api<{ run?: WorkflowRunRecord }>(`/api/monthly-runs/${activeHistoryId}/approvals`, {
@@ -1092,14 +1092,15 @@ export function createMonthlyRunPage({
     await runClient.pollUntilSettled(activeRun.id, {
       minimumPollCount: 2,
       onUpdate: (run) => {
+        if (activeRunMonth !== month) return;
         activeRun = run;
         notifyBcSubplanCancelledAdjustmentIfNeeded(run);
         renderRunPanel();
       },
     });
     isRunning = false;
-    await finalizeAfterRun(el<HTMLInputElement>('monthlyRunMonth').value);
-    await refreshHistory(el<HTMLInputElement>('monthlyRunMonth').value);
+    await finalizeAfterRun(month);
+    await refreshHistory();
     await onPlanStatusChanged?.();
     renderRunPanel();
   }
@@ -1151,6 +1152,7 @@ export function createMonthlyRunPage({
   async function openHistoricalRun(history: MonthlyRunHistoryRecord) {
     if (isRunning) return;
     activeHistoryId = history.id;
+    activeRunMonth = history.monthKey;
     syncHistorySelection();
 
     if (!history.workflowRunId) {
@@ -1375,6 +1377,7 @@ export function createMonthlyRunPage({
         if (activeHistoryId === historyId) {
           activeHistoryId = null;
           activeRun = null;
+          activeRunMonth = null;
           renderRunPanel();
         }
         await Promise.all([refreshHistory(), refreshFiles(), refreshInstance(), refreshProductFiles()]);
