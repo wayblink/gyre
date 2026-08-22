@@ -64,7 +64,7 @@ import {
   reconcileMonthlyUpdatePlanStatuses,
 } from './monthlyRun/store.js';
 import {
-  deleteMonthlyRunInstance,
+  deleteMonthlyRunPlan,
   ensureMonthlyRunInstance,
   getLatestMonthlyRunOutput,
   getMonthlyRunInstance,
@@ -2311,8 +2311,18 @@ async function registerRoutes() {
 
   app.delete('/api/monthly-runs/instances/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    await deleteMonthlyRunInstance(db, Number(id));
-    return reply.code(204).send();
+    try {
+      const deleted = await db.transaction((tx) =>
+        deleteMonthlyRunPlan(tx, Number(id), (filePath) => fileStorage.remove(filePath)),
+      );
+      if (!deleted) throw notFound('Monthly run instance not found');
+      return reply.send({ deleted });
+    } catch (error) {
+      if (error instanceof MonthlyRunHistoryDeleteConflictError) {
+        return reply.code(409).send({ error: error.message });
+      }
+      throw error;
+    }
   });
 
   app.get('/api/monthly-runs/instance', async (request): Promise<{ instance: MonthlyRunInstanceRecord }> => {

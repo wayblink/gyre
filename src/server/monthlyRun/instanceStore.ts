@@ -2,11 +2,17 @@ import type {
   LatestMonthlyRunOutput,
   MonthlyRunInstanceRecord,
   MonthlyRunInstanceSourceValue,
+  MonthlyRunPlanDeleteResult,
   MonthlyRunSourceBinding,
   WorkflowRuntimeParameters,
 } from '../../shared/types.js';
 import type { QueryResultRow } from 'pg';
-import { MONTHLY_WORKFLOW_CODE, type MonthlyRunDb } from './store.js';
+import {
+  MONTHLY_WORKFLOW_CODE,
+  MonthlyRunHistoryDeleteConflictError,
+  deleteMonthlyRunHistory,
+  type MonthlyRunDb,
+} from './store.js';
 import { productFileRef } from '../workflow/fileSources.js';
 
 // Cullgen options fixed-value fallbacks for the two instance columns. The real values flow from
@@ -360,6 +366,92 @@ export async function updateMonthlyRunInstanceExecutionState(
 
 export async function deleteMonthlyRunInstance(db: MonthlyRunDb, id: number): Promise<void> {
   await db.execute('delete from monthly_run_instances where id = $1', [id]);
+}
+
+/**
+ * Delete a Monthly Update Plan together with everything the month owns: its run history (and each
+ * run's produced output file, via {@link deleteMonthlyRunHistory}) and every file under
+ * `input/<monthKey>/`. Files under `control_book/` are left untouched on purpose — month M's merged
+ * base is consumed as month M+1's Control Book Summary input, so it belongs to the cross-month
+ * chain rather than to this plan.
+ *
+ * Every conflict check runs before or during the history loop and throws
+ * {@link MonthlyRunHistoryDeleteConflictError}, so the caller's transaction rolls the whole cascade
+ * back. Returns null when the instance does not exist.
+ */
+export async function deleteMonthlyRunPlan(
+  db: MonthlyRunDb,
+  id: number,
+  removeStoredFile: (filePath: string) => Promise<void>,
+): Promise<MonthlyRunPlanDeleteResult | null> {
+  const instance = await db.queryOne<Record<string, unknown>>(
+    `select i.id, i.month_id, i.month_key
+       from monthly_run_instances i
+      where i.id = $1
+      for update`,
+    [id],
+  );
+  if (!instance) return null;
+
+  const monthId = Number(instance.month_id);
+  const monthKey = String(instance.month_key);
+
+  // Histories are keyed on month_id: update_plan_id is always null for instance-driven runs.
+  const historyRows = await db.query<{ id: number }>(
+    `select h.id
+       from monthly_run_history h
+      where h.month_id = $1
+      order by h.id asc`,
+    [monthId],
+  );
+
+  const deletedOutputFileIds: number[] = [];
+  for (const row of historyRows) {
+    const deleted = await deleteMonthlyRunHistory(db, Number(row.id), removeStoredFile);
+    if (deleted?.deletedOutputFileId != null) deletedOutputFileIds.push(deleted.deletedOutputFileId);
+  }
+
+  // The trailing slash scopes this to the month's own folder, so it never matches a sibling month
+  // like input/2026-06-adjusted/ nor a stray file sitting directly under input/.
+  const inputFiles = await db.query<Record<string, unknown>>(
+    `select f.id, f.file_path, f.logical_path
+       from product_files f
+      where f.logical_path like 'input/' || $1 || '/%'`,
+    [monthKey],
+  );
+
+  if (inputFiles.length) {
+    const inputFileIds = inputFiles.map((file) => Number(file.id));
+    // Refuse rather than let the file_id foreign key silently blank another live plan's binding.
+    const boundElsewhere = await db.query<{ file_id: number }>(
+      `select distinct s.file_id
+         from monthly_run_instance_sources s
+        where s.file_id = any($1::int[])
+          and s.instance_id <> $2`,
+      [inputFileIds, id],
+    );
+    if (boundElsewhere.length) {
+      const blocked = boundElsewhere.map((row) => `#${Number(row.file_id)}`).join(', ');
+      throw new MonthlyRunHistoryDeleteConflictError(`输入文件仍被其他月度计划引用，无法删除：${blocked}`);
+    }
+
+    await db.execute('delete from product_files where id = any($1::int[])', [inputFileIds]);
+    // Storage removal is not transactional: a rollback after this point leaves the row restored but
+    // the object gone. Same exposure the run-history delete path already accepts.
+    for (const file of inputFiles) {
+      await removeStoredFile(String(file.file_path));
+    }
+  }
+
+  await deleteMonthlyRunInstance(db, id);
+
+  return {
+    instanceId: Number(instance.id),
+    monthKey,
+    deletedHistoryCount: historyRows.length,
+    deletedInputFileCount: inputFiles.length,
+    deletedOutputFileIds,
+  };
 }
 
 export async function getProductFilesByIds<T extends QueryResultRow = QueryResultRow>(

@@ -14,6 +14,7 @@ import type {
   ManagedUser,
   MergedGrant,
   MonthlyRunInstanceRecord,
+  MonthlyRunPlanDeleteResult,
   PaginatedResult,
   PlanSummaryResponse,
   ProductFileDetail,
@@ -2022,9 +2023,23 @@ async function renderMonthlyPage(filterMonth: string) {
 async function deleteUpdatePlan(id: number) {
   const plan = updatePlans.find((item) => item.id === id);
   if (!plan) return;
-  if (!(await confirmAction(`确定删除【${plan.monthKey}】的月度运行实例吗？此操作不可撤销。`, { title: '删除月度运行实例', confirmText: '删除', tone: 'danger' }))) return;
-  await api(`/api/monthly-runs/instances/${id}`, { method: 'DELETE' });
-  await renderMonthlyPage('');
+  const confirmed = await confirmAction(
+    `确定删除【${plan.monthKey}】的月度更新计划吗？将同时永久删除该月的输入文件、输出文件及全部历史执行记录，此操作不可撤销。`,
+    { title: '删除月度更新计划', confirmText: '删除', tone: 'danger' },
+  );
+  if (!confirmed) return;
+  try {
+    const { deleted } = await api<{ deleted: MonthlyRunPlanDeleteResult }>(`/api/monthly-runs/instances/${id}`, {
+      method: 'DELETE',
+    });
+    await renderMonthlyPage('');
+    notify(
+      `已删除【${deleted.monthKey}】：输入文件 ${deleted.deletedInputFileCount} 个、输出文件 ${deleted.deletedOutputFileIds.length} 个、历史记录 ${deleted.deletedHistoryCount} 条`,
+      { type: 'success' },
+    );
+  } catch (error) {
+    notify(error instanceof Error ? error.message : '删除月度更新计划失败', { type: 'error' });
+  }
 }
 
 function renderUsedValue(used: boolean): string {

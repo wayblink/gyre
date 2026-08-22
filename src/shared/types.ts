@@ -997,6 +997,20 @@ export type MonthlyRunTriggerResponse = {
   executionResult: WorkflowExecutionResult;
 };
 
+/**
+ * Outcome of deleting a Monthly Update Plan. Deleting the plan cascades to the month's run
+ * history, its produced output files, and every file under `input/<monthKey>/`. Files under
+ * `control_book/` are deliberately left alone: each month's merged base is consumed as the next
+ * month's Control Book Summary input, so it is managed as a cross-month chain.
+ */
+export type MonthlyRunPlanDeleteResult = {
+  instanceId: number;
+  monthKey: string;
+  deletedHistoryCount: number;
+  deletedInputFileCount: number;
+  deletedOutputFileIds: number[];
+};
+
 export type MonthlyRunSourceConfigResponse = {
   workflowCode: string;
   workflowName: string;

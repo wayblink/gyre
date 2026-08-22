@@ -4,6 +4,7 @@ import type { QueryResultRow } from 'pg';
 import type { MonthlyRunInstanceRecord } from '../../shared/types.js';
 import type { MonthlyRunDb } from './store.js';
 import {
+  deleteMonthlyRunPlan,
   getLatestMonthlyRunOutput,
   loadMonthlyRunRuntimeFixedValues,
   monthlyRunInstanceToRuntimeParameters,
@@ -171,4 +172,186 @@ test('upserting a monthly source binding resolves logical path and writes the ge
   assert.ok(childInsert, 'expected an insert into the sources child table');
   // instance id 2, source key, file id resolved by logical path (82), no sheet override
   assert.deepEqual(childInsert?.params, [2, 'base_control_book', 82, null]);
+});
+
+function completedHistoryRow(historyId: number, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: historyId,
+    month_id: 11,
+    month_key: '2026-06',
+    workflow_run_id: 200 + historyId,
+    status: 'completed',
+    produced_file_id: 500 + historyId,
+    produced_file_path: `product/output/captable/2026-06-run-${historyId}.xlsx`,
+    produced_file_name: `2026-06-run-${historyId}.xlsx`,
+    ...overrides,
+  };
+}
+
+/**
+ * deleteMonthlyRunPlan reuses the real deleteMonthlyRunHistory, so the stub has to answer that
+ * helper's three queries too. Unexpected SQL throws on purpose: a new statement must be wired here
+ * deliberately rather than silently returning nothing.
+ */
+function planDeleteStub(config: {
+  instance?: Record<string, unknown> | null;
+  historyIds?: number[];
+  historyRow?: (historyId: number) => Record<string, unknown>;
+  sharedOutput?: (historyId: number) => { id: number } | undefined;
+  inputFiles?: Array<Record<string, unknown>>;
+  boundElsewhere?: Array<{ file_id: number }>;
+  failOnWrite?: boolean;
+} = {}) {
+  const executed: Array<{ sql: string; params: unknown[] }> = [];
+  const queried: Array<{ sql: string; params: unknown[] }> = [];
+  const removedPaths: string[] = [];
+  const instance = config.instance === undefined ? { id: 5, month_id: 11, month_key: '2026-06' } : config.instance;
+  const historyIds = config.historyIds ?? [];
+
+  const db: MonthlyRunDb = {
+    async query<T extends QueryResultRow>(sql: string, params: unknown[] = []): Promise<T[]> {
+      queried.push({ sql, params });
+      if (/from monthly_run_history/i.test(sql) && /order by h\.id asc/i.test(sql)) {
+        return historyIds.map((id) => ({ id })) as unknown as T[];
+      }
+      if (/from product_files/i.test(sql) && /logical_path like/i.test(sql)) {
+        return (config.inputFiles ?? []) as unknown as T[];
+      }
+      if (/from monthly_run_instance_sources/i.test(sql)) {
+        return (config.boundElsewhere ?? []) as unknown as T[];
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    async queryOne<T extends QueryResultRow>(sql: string, params: unknown[] = []): Promise<T | undefined> {
+      queried.push({ sql, params });
+      if (/from monthly_run_instances i/i.test(sql) && /for update/i.test(sql)) {
+        return (instance ?? undefined) as T | undefined;
+      }
+      if (/where h\.id = \$1/i.test(sql) && /for update of h/i.test(sql)) {
+        const historyId = Number(params[0]);
+        return (config.historyRow?.(historyId) ?? completedHistoryRow(historyId)) as T;
+      }
+      if (/h\.id <> \$2/i.test(sql) && /produced_file_id is not null/i.test(sql)) {
+        return undefined;
+      }
+      if (/select h\.id from monthly_run_history/i.test(sql)) {
+        return config.sharedOutput?.(Number(params[1])) as T | undefined;
+      }
+      throw new Error(`Unexpected queryOne: ${sql}`);
+    },
+    async execute(sql: string, params: unknown[] = []): Promise<void> {
+      if (config.failOnWrite) assert.fail(`nothing must be written, got: ${sql}`);
+      executed.push({ sql, params });
+    },
+  };
+
+  const removeStoredFile = async (filePath: string) => {
+    if (config.failOnWrite) assert.fail(`no stored file must be removed, got: ${filePath}`);
+    removedPaths.push(filePath);
+  };
+
+  return { db, executed, queried, removedPaths, removeStoredFile };
+}
+
+test('deleteMonthlyRunPlan returns null when the instance does not exist', async () => {
+  const stub = planDeleteStub({ instance: null, failOnWrite: true });
+  assert.equal(await deleteMonthlyRunPlan(stub.db, 5, stub.removeStoredFile), null);
+  assert.deepEqual(stub.removedPaths, []);
+});
+
+test('deleteMonthlyRunPlan deletes histories, input files, and the instance, removing physical files by file_path', async () => {
+  const stub = planDeleteStub({
+    historyIds: [7, 9],
+    inputFiles: [
+      { id: 88, file_path: 'product/input/2026-06/detail.xlsx', logical_path: 'input/2026-06/detail.xlsx' },
+      { id: 89, file_path: 'product/input/2026-06/unbound.xlsx', logical_path: 'input/2026-06/unbound.xlsx' },
+    ],
+  });
+
+  assert.deepEqual(await deleteMonthlyRunPlan(stub.db, 5, stub.removeStoredFile), {
+    instanceId: 5,
+    monthKey: '2026-06',
+    deletedHistoryCount: 2,
+    deletedInputFileCount: 2,
+    deletedOutputFileIds: [507, 509],
+  });
+
+  for (const historyId of [7, 9]) {
+    assert.ok(stub.executed.some((call) => /delete from monthly_run_history/i.test(call.sql) && call.params[0] === historyId));
+  }
+  assert.ok(stub.executed.some((call) => /delete from product_files where id = any/i.test(call.sql) && Array.isArray(call.params[0]) && (call.params[0] as number[]).join() === '88,89'));
+
+  // Physical removal uses file_path, never logical_path.
+  assert.deepEqual(stub.removedPaths, [
+    'product/output/captable/2026-06-run-7.xlsx',
+    'product/output/captable/2026-06-run-9.xlsx',
+    'product/input/2026-06/detail.xlsx',
+    'product/input/2026-06/unbound.xlsx',
+  ]);
+
+  // The instance row goes last, so the source bindings stay readable for the ownership guard.
+  const deletes = stub.executed.filter((call) => /delete from/i.test(call.sql));
+  assert.match(deletes[deletes.length - 1].sql, /delete from monthly_run_instances/i);
+});
+
+test('deleteMonthlyRunPlan aborts when a history is running and mutates nothing', async () => {
+  const stub = planDeleteStub({
+    historyIds: [8],
+    historyRow: (historyId) => completedHistoryRow(historyId, { status: 'running', produced_file_id: null, produced_file_path: null }),
+    failOnWrite: true,
+  });
+
+  await assert.rejects(() => deleteMonthlyRunPlan(stub.db, 5, stub.removeStoredFile), /运行中或待审批的历史不能删除/);
+});
+
+test('deleteMonthlyRunPlan refuses when a month-scoped input file is bound by another instance', async () => {
+  const stub = planDeleteStub({
+    historyIds: [],
+    inputFiles: [{ id: 88, file_path: 'product/input/2026-06/shared.xlsx', logical_path: 'input/2026-06/shared.xlsx' }],
+    boundElsewhere: [{ file_id: 88 }],
+    failOnWrite: true,
+  });
+
+  await assert.rejects(() => deleteMonthlyRunPlan(stub.db, 5, stub.removeStoredFile), /其他月度计划引用/);
+});
+
+test('deleteMonthlyRunPlan handles a plan with zero histories and zero input files', async () => {
+  const stub = planDeleteStub({ historyIds: [], inputFiles: [] });
+
+  assert.deepEqual(await deleteMonthlyRunPlan(stub.db, 5, stub.removeStoredFile), {
+    instanceId: 5,
+    monthKey: '2026-06',
+    deletedHistoryCount: 0,
+    deletedInputFileCount: 0,
+    deletedOutputFileIds: [],
+  });
+  assert.deepEqual(stub.removedPaths, []);
+  const deletes = stub.executed.filter((call) => /delete from/i.test(call.sql));
+  assert.equal(deletes.length, 1);
+  assert.match(deletes[0].sql, /delete from monthly_run_instances/i);
+  assert.equal(deletes[0].params[0], 5);
+});
+
+test('deleteMonthlyRunPlan does not match sibling-month or root-level input files', async () => {
+  const stub = planDeleteStub({ historyIds: [], inputFiles: [] });
+  await deleteMonthlyRunPlan(stub.db, 5, stub.removeStoredFile);
+
+  const inputSelect = stub.queried.find((call) => /logical_path like/i.test(call.sql));
+  assert.ok(inputSelect, 'input files must be selected by logical_path');
+  // The trailing slash keeps input/2026-06-x/... and root-level input/*.xlsx out of scope.
+  assert.match(inputSelect.sql.replace(/\s+/g, ' '), /logical_path like 'input\/' \|\| \$1 \|\| '\/%'/);
+  assert.deepEqual(inputSelect.params, ['2026-06']);
+});
+
+test('deleteMonthlyRunPlan surfaces the shared-output conflict from the first history', async () => {
+  // Two histories pointing at one produced file: the existing guard in deleteMonthlyRunHistory
+  // refuses, so the whole cascade fails atomically rather than deleting a still-referenced file.
+  const stub = planDeleteStub({
+    historyIds: [7, 9],
+    historyRow: (historyId) => completedHistoryRow(historyId, { produced_file_id: 88, produced_file_path: 'product/output/captable/shared.xlsx' }),
+    sharedOutput: (historyId) => (historyId === 7 ? { id: 9 } : undefined),
+  });
+
+  await assert.rejects(() => deleteMonthlyRunPlan(stub.db, 5, stub.removeStoredFile), /仍被其他月度历史引用/);
+  assert.ok(!stub.executed.some((call) => /delete from monthly_run_instances/i.test(call.sql)));
 });
