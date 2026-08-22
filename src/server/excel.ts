@@ -1,3 +1,4 @@
+import { Worker } from 'node:worker_threads';
 import * as XLSX from 'xlsx';
 import type {
   WorkflowDataFrame,
@@ -356,6 +357,107 @@ export function summarizeWorkbook(buffer: Buffer): WorkbookSummary {
     totalRowCount: sheets.reduce((sum, sheet) => sum + sheet.rowCount, 0),
     sheets,
   };
+}
+
+const XLSX_ZIP_SIGNATURE = Buffer.from([0x50, 0x4b]);
+const XLS_OLE_SIGNATURE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+const WORKBOOK_PARSE_TIMEOUT_MS = 15_000;
+
+const WORKBOOK_SUMMARY_WORKER_SOURCE = String.raw`
+  const { parentPort, workerData } = require('node:worker_threads');
+  const XLSX = require('xlsx');
+  try {
+    const workbook = XLSX.read(Buffer.from(workerData), {
+      type: 'buffer', cellDates: false, cellNF: true, cellText: true
+    });
+    const sheets = workbook.SheetNames.map((sheetName) => {
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: null, raw: true });
+      const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0)));
+      return { sheetName, rowCount: rows.length, columns };
+    });
+    parentPort.postMessage({
+      summary: {
+        sheetCount: sheets.length,
+        totalRowCount: sheets.reduce((sum, sheet) => sum + sheet.rowCount, 0),
+        sheets,
+      },
+    });
+  } catch (error) {
+    parentPort.postMessage({ error: error instanceof Error ? error.message : String(error) });
+  }
+`;
+
+function startsWithBytes(buffer: Buffer, signature: Buffer): boolean {
+  return buffer.length >= signature.length && buffer.subarray(0, signature.length).equals(signature);
+}
+
+function validateWorkbookUploadContainer(buffer: Buffer, fileName: string): void {
+  if (buffer.length === 0) throw new Error('Workbook upload is empty');
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'xlsx' && !startsWithBytes(buffer, XLSX_ZIP_SIGNATURE)) {
+    throw new Error('Invalid XLSX file signature');
+  }
+  if (extension === 'xls' && !startsWithBytes(buffer, XLS_OLE_SIGNATURE)) {
+    throw new Error('Invalid XLS file signature');
+  }
+  if (extension === 'csv') {
+    if (buffer.includes(0)) throw new Error('Invalid CSV: binary content is not supported');
+    try {
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+      if (!text.trim()) throw new Error('Invalid CSV: file is empty');
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Invalid CSV:')) throw error;
+      throw new Error('Invalid CSV: content must be UTF-8 text');
+    }
+  }
+  if (!['xlsx', 'xls', 'csv'].includes(extension ?? '')) {
+    throw new Error('Unsupported workbook file extension');
+  }
+}
+
+function assertValidWorkbookSummary(summary: WorkbookSummary): WorkbookSummary {
+  if (!summary.sheetCount || summary.sheets.some((sheet) => !sheet.sheetName.trim())) {
+    throw new Error('Workbook contains no valid sheets');
+  }
+  return summary;
+}
+
+export function summarizeValidatedWorkbook(buffer: Buffer, fileName: string): WorkbookSummary {
+  validateWorkbookUploadContainer(buffer, fileName);
+  return assertValidWorkbookSummary(summarizeWorkbook(buffer));
+}
+
+export async function summarizeValidatedWorkbookAsync(buffer: Buffer, fileName: string): Promise<WorkbookSummary> {
+  validateWorkbookUploadContainer(buffer, fileName);
+  const summary = await new Promise<WorkbookSummary>((resolve, reject) => {
+    const worker = new Worker(WORKBOOK_SUMMARY_WORKER_SOURCE, {
+      eval: true,
+      workerData: buffer,
+      resourceLimits: { maxOldGenerationSizeMb: 128 },
+    });
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      callback();
+    };
+    const timeout = setTimeout(() => {
+      void worker.terminate();
+      finish(() => reject(new Error('Workbook parsing timed out')));
+    }, WORKBOOK_PARSE_TIMEOUT_MS);
+
+    worker.once('message', (message: { summary?: WorkbookSummary; error?: string }) => {
+      void worker.terminate();
+      finish(() => message.summary ? resolve(message.summary) : reject(new Error(message.error || 'Workbook parsing failed')));
+    });
+    worker.once('error', (error) => finish(() => reject(error)));
+    worker.once('exit', (code) => {
+      if (code !== 0) finish(() => reject(new Error(`Workbook parser exited with code ${code}`)));
+    });
+  });
+
+  return assertValidWorkbookSummary(summary);
 }
 
 export function previewWorkbookSheet(

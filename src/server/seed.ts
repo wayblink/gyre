@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import XLSX from 'xlsx';
 import { config } from './config.js';
@@ -87,9 +88,14 @@ export type TransferPlanWorkbookData = {
     transferToFutu: number;
   };
 };
+
+function readSeedWorkbook(workbookPath: string): XLSX.WorkBook {
+  return XLSX.read(readFileSync(workbookPath), { type: 'buffer' });
+}
+
 export function loadShareworksGrantWorkbook(): GrantSheetRow[] {
   const workbookPath = path.join(config.rootDir, 'database', '!!Gyre Cap Table 05.31.26【新】.xlsx');
-  const workbook = XLSX.readFile(workbookPath);
+  const workbook = readSeedWorkbook(workbookPath);
   const sheet = workbook.Sheets['Options OS Detail'];
   if (!sheet) throw new Error(`Missing Options OS Detail sheet in ${workbookPath}`);
   return XLSX.utils
@@ -99,7 +105,7 @@ export function loadShareworksGrantWorkbook(): GrantSheetRow[] {
 
 export function loadFivePercentHoldersWorkbook(): FivePercentHoldersWorkbook {
   const workbookPath = path.join(config.rootDir, 'database', '!!Gyre Cap Table 05.31.26【新】.xlsx');
-  const workbook = XLSX.readFile(workbookPath);
+  const workbook = readSeedWorkbook(workbookPath);
   const sheet = workbook.Sheets['5% Holders'];
   if (!sheet) throw new Error(`Missing 5% Holders sheet in ${workbookPath}`);
   const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: false });
@@ -124,7 +130,7 @@ export function loadExerciseWorkbook(): ExerciseWorkbookRow[] {
     'extracted-sheets',
     'Futu BCI Exercises to Date.xlsx',
   );
-  const workbook = XLSX.readFile(workbookPath);
+  const workbook = readSeedWorkbook(workbookPath);
   const sheet = workbook.Sheets['Futu BCI Exercises to Date'];
   if (!sheet) throw new Error(`Missing Futu BCI Exercises to Date sheet in ${workbookPath}`);
 
@@ -153,7 +159,7 @@ export function loadExerciseWorkbook(): ExerciseWorkbookRow[] {
 
 export function loadSoldSharesWorkbook(): SoldSharesWorkbookRow[] {
   const workbookPath = path.join(config.rootDir, 'database', 'extracted-sheets', 'Futu sold shares.xlsx');
-  const workbook = XLSX.readFile(workbookPath);
+  const workbook = readSeedWorkbook(workbookPath);
   const sheet = workbook.Sheets['Futu sold shares'];
   if (!sheet) throw new Error(`Missing Futu sold shares sheet in ${workbookPath}`);
 
@@ -191,7 +197,7 @@ export function loadTransferPlanWorkbook(
     '2025 BC Subplan Transfer.xlsx',
   ),
 ): TransferPlanWorkbookData {
-  const workbook = XLSX.readFile(workbookPath);
+  const workbook = readSeedWorkbook(workbookPath);
   const sheet = workbook.Sheets['2025 BC Subplan Transfer'];
   if (!sheet) throw new Error(`Missing 2025 BC Subplan Transfer sheet in ${workbookPath}`);
 

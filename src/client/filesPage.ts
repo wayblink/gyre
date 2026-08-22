@@ -117,6 +117,10 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     return text[key][lang()] ?? text[key]['zh-CN'];
   }
 
+  function isFilesPageActive(): boolean {
+    return el('page-files').classList.contains('active');
+  }
+
   bindFilesViewModeControls();
 
   async function init() {
@@ -196,6 +200,12 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     }
 
     const targetId = selectedId ?? selectedProductFileId ?? currentProductFileDetail?.file.id ?? productFiles[0]?.id;
+    if (!isFilesPageActive()) {
+      if (targetId) selectedProductFileId = targetId;
+      renderProductFilesList();
+      updateFileActionState();
+      return;
+    }
     renderProductFilesList();
     updateFileActionState();
     if (targetId) {

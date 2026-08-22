@@ -14,19 +14,21 @@
 | `PORT` | `60628` | 服务端口 |
 | `DATABASE_URL` | — | Postgres 连接串 |
 | `STORAGE_DRIVER` | `minio` | 设 `local` 用本地磁盘存储（免 MinIO），文件落在 `/app/data` |
+| `AUTH_BOOTSTRAP_SECRET` | 必填 | 空库创建首个管理员所需强口令；生产 compose 缺失时拒绝启动 |
+| `SESSION_COOKIE_SECURE` | 生产为 `true` | 仅通过 HTTPS 发送会话 Cookie；本地纯 HTTP 调试可显式设为 `false` |
 
 > 登录开关是纯配置项，改 `AUTH_DISABLED` 后重启容器即生效，无需改代码。启用登录（`false`）后首次需通过 `/api/auth/bootstrap` 创建管理员账号。
 
 ## 二、单机快速起（app + Postgres）
 
 ```bash
-# 在项目目录（含 Dockerfile）执行
-docker compose -f docker-compose.prod.yml up -d --build
+# 在项目目录（含 Dockerfile）执行；请替换为独立强口令
+AUTH_BOOTSTRAP_SECRET='<strong-random-secret>' docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 - 应用发布在 `127.0.0.1:60628`（仅回环，供反代转发）。
 - Postgres、上传文件分别持久化在命名卷 `pgdata`、`appdata`。
-- 想启用登录 / 空库启动：`AUTH_DISABLED=false DEMO_SEED_ON_INIT=false docker compose -f docker-compose.prod.yml up -d --build`。
+- 登录默认启用；空库启动后使用同一个 `AUTH_BOOTSTRAP_SECRET` 完成首次管理员创建。
 - 想加载演示业务数据：额外设置 `DEMO_SEED_ON_INIT=true`。
 
 只构建镜像（不带 compose）：

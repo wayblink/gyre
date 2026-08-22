@@ -355,8 +355,8 @@ export async function updateMonthlyRunInstanceExecutionState(
     [
       current.id,
       params.status ?? current.status,
-      params.latestWorkflowRunId ?? current.latestWorkflowRunId,
-      params.latestOutputFileId ?? current.latestOutputFileId,
+      params.latestWorkflowRunId === undefined ? current.latestWorkflowRunId : params.latestWorkflowRunId,
+      params.latestOutputFileId === undefined ? current.latestOutputFileId : params.latestOutputFileId,
       params.latestErrorMessage === undefined ? current.latestErrorMessage : params.latestErrorMessage,
       params.lastTriggeredAt === undefined ? current.lastTriggeredAt : params.lastTriggeredAt,
       params.lastFinishedAt === undefined ? current.lastFinishedAt : params.lastFinishedAt,
@@ -382,8 +382,7 @@ export async function deleteMonthlyRunInstance(db: MonthlyRunDb, id: number): Pr
 export async function deleteMonthlyRunPlan(
   db: MonthlyRunDb,
   id: number,
-  removeStoredFile: (filePath: string) => Promise<void>,
-): Promise<MonthlyRunPlanDeleteResult | null> {
+): Promise<(MonthlyRunPlanDeleteResult & { deletedFilePaths: string[] }) | null> {
   const instance = await db.queryOne<Record<string, unknown>>(
     `select i.id, i.month_id, i.month_key
        from monthly_run_instances i
@@ -406,9 +405,11 @@ export async function deleteMonthlyRunPlan(
   );
 
   const deletedOutputFileIds: number[] = [];
+  const deletedFilePaths: string[] = [];
   for (const row of historyRows) {
-    const deleted = await deleteMonthlyRunHistory(db, Number(row.id), removeStoredFile);
+    const deleted = await deleteMonthlyRunHistory(db, Number(row.id));
     if (deleted?.deletedOutputFileId != null) deletedOutputFileIds.push(deleted.deletedOutputFileId);
+    if (deleted?.deletedOutputFilePath) deletedFilePaths.push(deleted.deletedOutputFilePath);
   }
 
   // The trailing slash scopes this to the month's own folder, so it never matches a sibling month
@@ -436,10 +437,8 @@ export async function deleteMonthlyRunPlan(
     }
 
     await db.execute('delete from product_files where id = any($1::int[])', [inputFileIds]);
-    // Storage removal is not transactional: a rollback after this point leaves the row restored but
-    // the object gone. Same exposure the run-history delete path already accepts.
     for (const file of inputFiles) {
-      await removeStoredFile(String(file.file_path));
+      deletedFilePaths.push(String(file.file_path));
     }
   }
 
@@ -451,6 +450,7 @@ export async function deleteMonthlyRunPlan(
     deletedHistoryCount: historyRows.length,
     deletedInputFileCount: inputFiles.length,
     deletedOutputFileIds,
+    deletedFilePaths,
   };
 }
 

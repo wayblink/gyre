@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   calculateSessionExpiry,
+  createBootstrapAdmin,
   createSessionToken,
   getPublicAccount,
   hashPassword,
@@ -11,7 +12,28 @@ import {
   updateAccountProfile,
   updateAccountPassword,
   verifyPassword,
+  bootstrapSecretMatches,
 } from './auth.js';
+
+test('bootstrap secret is mandatory and must match exactly', () => {
+  assert.equal(bootstrapSecretMatches('', ''), false);
+  assert.equal(bootstrapSecretMatches('', 'anything'), false);
+  assert.equal(bootstrapSecretMatches('configured-secret', ''), false);
+  assert.equal(bootstrapSecretMatches('configured-secret', 'wrong'), false);
+  assert.equal(bootstrapSecretMatches('configured-secret', 'configured-secret'), true);
+});
+
+test('bootstrap admin creation locks and creates only one first user', async () => {
+  const db = new FakeBootstrapDb();
+  const [first, second] = await Promise.all([
+    createBootstrapAdmin(db, { username: 'first', passwordHash: 'hash-1', displayName: 'First' }),
+    createBootstrapAdmin(db, { username: 'second', passwordHash: 'hash-2', displayName: 'Second' }),
+  ]);
+
+  assert.equal([first, second].filter(Boolean).length, 1);
+  assert.equal(db.users.length, 1);
+  assert.match(db.queries[0] ?? '', /pg_advisory_xact_lock/);
+});
 
 test('hashPassword and verifyPassword validate the original password only', async () => {
   const passwordHash = await hashPassword('Admin#2026');
@@ -39,6 +61,16 @@ test('cookie helpers round-trip auth cookie values', () => {
   const parsed = parseCookies(`${cookie}; theme=teal`);
   assert.equal(parsed.captable_session, 'token-value');
   assert.equal(parsed.theme, 'teal');
+});
+
+test('secure session cookies carry the Secure attribute', () => {
+  const cookie = serializeCookie('captable_session', 'token-value', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax',
+    path: '/',
+  });
+  assert.match(cookie, /; Secure$/);
 });
 
 test('calculateSessionExpiry adds ttl in hours', () => {
@@ -146,5 +178,43 @@ class FakeAccountDb {
       email: this.user.email,
       phone: this.user.phone,
     };
+  }
+}
+
+class FakeBootstrapDb {
+  users: Array<Record<string, unknown>> = [];
+  queries: string[] = [];
+  private pending = Promise.resolve();
+
+  async transaction<T>(fn: (client: { query: FakeBootstrapDb['query'] }) => Promise<T>): Promise<T> {
+    const previous = this.pending;
+    let release!: () => void;
+    this.pending = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      return await fn({ query: this.query.bind(this) });
+    } finally {
+      release();
+    }
+  }
+
+  async query<T>(text: string, params: unknown[] = []): Promise<T[]> {
+    this.queries.push(text);
+    if (text.includes('pg_advisory_xact_lock')) return [];
+    if (text.includes('count(*)')) return [{ count: this.users.length } as T];
+    if (text.includes('insert into app_users')) {
+      const user = {
+        id: this.users.length + 1,
+        username: String(params[0]),
+        password_hash: String(params[1]),
+        display_name: String(params[2]),
+        role: String(params[3]),
+        is_active: true,
+        last_login_at: null,
+      };
+      this.users.push(user);
+      return [user as T];
+    }
+    throw new Error(`Unexpected bootstrap query: ${text}`);
   }
 }

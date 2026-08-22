@@ -93,6 +93,14 @@ test('captable is the renamed Summary page and new product pages have matching s
   assert.doesNotMatch(html, /id="page-summary"/);
 });
 
+test('files page defers workbook mounting until the page is visible', () => {
+  assert.match(filesPageSource, /function isFilesPageActive\(\)/);
+  assert.match(
+    filesPageSource,
+    /if \(!isFilesPageActive\(\)\) \{[\s\S]*?selectedProductFileId = targetId;[\s\S]*?return;/,
+  );
+});
+
 test('capitalization summary shows month-over-month change beside each value', () => {
   const capitalizationHead = html.match(/id="capitalizationTable"[\s\S]*?<\/thead>/)?.[0] ?? '';
 

@@ -126,6 +126,28 @@ export async function hasAnyUsers(db: Queryable): Promise<boolean> {
   return Number(row[0]?.count ?? 0) > 0;
 }
 
+export function bootstrapSecretMatches(configuredSecret: string, suppliedSecret: string | undefined): boolean {
+  if (!configuredSecret || !suppliedSecret) return false;
+  const configured = Buffer.from(configuredSecret);
+  const supplied = Buffer.from(suppliedSecret);
+  return configured.length === supplied.length && crypto.timingSafeEqual(configured, supplied);
+}
+
+type BootstrapDb = {
+  transaction<T>(fn: (client: Queryable) => Promise<T>): Promise<T>;
+};
+
+export async function createBootstrapAdmin(
+  db: BootstrapDb,
+  params: { username: string; passwordHash: string; displayName: string },
+): Promise<AuthUserRecord | null> {
+  return db.transaction(async (client) => {
+    await client.query('select pg_advisory_xact_lock(hashtext($1))', ['gyre-auth-bootstrap']);
+    if (await hasAnyUsers(client)) return null;
+    return createUser(client, { ...params, role: 'admin' });
+  });
+}
+
 export async function createUser(db: Queryable, params: {
   username: string;
   passwordHash: string;

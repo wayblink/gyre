@@ -59,6 +59,7 @@ import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './tr
 import { buildLinkedBadge } from './linkedBadge.js';
 import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
 import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
+import { csvRow } from './csv.js';
 import '../../css/style.css';
 import '@univerjs/design/lib/index.css';
 import '@univerjs/ui/lib/index.css';
@@ -4044,12 +4045,12 @@ function exportData() {
     return;
   }
   let csv = '\ufeff';
-  csv += `CapTable 股权数据 - ${formatMonthCN(currentMonth)}\n\n`;
-  csv += '【流通股份对账】\n项目,截至日期,上月末,本月新增,本月末\n';
-  csv += `${currentSummary.reconciliation.item},${currentSummary.eomDate},${currentSummary.reconciliation.lastMonth},${currentSummary.reconciliation.newShares},${currentSummary.reconciliation.eomBalance}\n\n`;
-  csv += '【资本结构】\nDescription,股份,占比\n';
+  csv += `${csvRow([`CapTable 股权数据 - ${formatMonthCN(currentMonth)}`])}\n\n`;
+  csv += `${csvRow(['【流通股份对账】'])}\n${csvRow(['项目', '截至日期', '上月末', '本月新增', '本月末'])}\n`;
+  csv += `${csvRow([currentSummary.reconciliation.item, currentSummary.eomDate, currentSummary.reconciliation.lastMonth, currentSummary.reconciliation.newShares, currentSummary.reconciliation.eomBalance])}\n\n`;
+  csv += `${csvRow(['【资本结构】'])}\n${csvRow(['Description', '股份', '占比'])}\n`;
   currentSummary.capitalization.forEach((item) => {
-    csv += `"${item.description}",${item.shares ?? ''},${item.percent ?? ''}\n`;
+    csv += `${csvRow([item.description, item.shares, item.percent])}\n`;
   });
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');

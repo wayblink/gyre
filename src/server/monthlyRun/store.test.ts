@@ -370,17 +370,16 @@ test('deleteMonthlyRunHistory removes the output file and falls back to the prev
     },
   };
 
-  const result = await deleteMonthlyRunHistory(db, 7, async (filePath) => {
-    removedPaths.push(filePath);
-  });
+  const result = await deleteMonthlyRunHistory(db, 7);
 
   assert.deepEqual(result, {
     historyId: 7,
     deletedOutputFileId: 88,
     deletedOutputFileName: 'latest.xlsx',
     fallbackOutputFileId: 77,
+    deletedOutputFilePath: 'product/2026-06/latest.xlsx',
   });
-  assert.deepEqual(removedPaths, ['product/2026-06/latest.xlsx']);
+  assert.deepEqual(removedPaths, []);
   assert.ok(executed.some((call) => /delete from monthly_run_history/i.test(call.sql) && call.params[0] === 7));
   assert.ok(executed.some((call) => /update months/i.test(call.sql) && call.params[0] === 77 && call.params[2] === 11));
   assert.ok(executed.some((call) => /update monthly_run_instances/i.test(call.sql) && call.params[2] === 77));
@@ -410,7 +409,7 @@ test('deleteMonthlyRunHistory rejects a running record before deleting anything'
   };
 
   await assert.rejects(
-    () => deleteMonthlyRunHistory(db, 8, async () => assert.fail('running history must not remove files')),
+    () => deleteMonthlyRunHistory(db, 8),
     /运行中或待审批的历史不能删除/,
   );
 });

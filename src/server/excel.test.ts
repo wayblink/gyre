@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as XLSX from 'xlsx';
 import type { WorkflowDataFrame } from '../shared/types.js';
-import { dataFrameToWorkbookBuffer, extractSheetRangeAsDataFrame, rowsToDataFrame } from './excel.js';
+import {
+  dataFrameToWorkbookBuffer,
+  extractSheetRangeAsDataFrame,
+  rowsToDataFrame,
+  summarizeValidatedWorkbook,
+  summarizeValidatedWorkbookAsync,
+} from './excel.js';
 
 function dataframeFixture(): WorkflowDataFrame {
   return {
@@ -67,6 +73,39 @@ test('dataframe workbook export writes typed numeric columns as numbers and pres
   assert.equal(worksheet.D2?.z, '0.00%');
   assert.equal(worksheet.E2?.t, 's');
   assert.equal(worksheet.E2?.v, 'source note');
+});
+
+test('uploaded workbook validation rejects text disguised as xlsx', () => {
+  assert.throws(
+    () => summarizeValidatedWorkbook(Buffer.from('not a workbook'), 'fake.xlsx'),
+    /Invalid XLSX file signature/,
+  );
+  assert.throws(
+    () => summarizeValidatedWorkbook(Buffer.alloc(0), 'empty.xlsx'),
+    /empty/i,
+  );
+});
+
+test('uploaded workbook validation accepts real xlsx and non-empty csv', () => {
+  const worksheet = XLSX.utils.aoa_to_sheet([['Name', 'Value'], ['A', 1]]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+  assert.equal(summarizeValidatedWorkbook(buffer, 'valid.xlsx').sheetCount, 1);
+  assert.equal(summarizeValidatedWorkbook(Buffer.from('Name,Value\nA,1\n'), 'valid.csv').sheetCount, 1);
+  assert.throws(() => summarizeValidatedWorkbook(Buffer.from([0, 1, 2]), 'binary.csv'), /Invalid CSV/);
+});
+
+test('uploaded workbook parsing can run in the resource-limited worker', async () => {
+  const worksheet = XLSX.utils.aoa_to_sheet([['Name', 'Value'], ['A', 1]]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+  const summary = await summarizeValidatedWorkbookAsync(buffer, 'valid.xlsx');
+  assert.equal(summary.sheetCount, 1);
+  assert.equal(summary.totalRowCount, 1);
 });
 
 test('rowsToDataFrame normalizes inferable numeric values and keeps ambiguous strings', () => {

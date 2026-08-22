@@ -212,12 +212,12 @@ export type MonthlyRunHistoryDeleteResult = {
   deletedOutputFileId: number | null;
   deletedOutputFileName: string | null;
   fallbackOutputFileId: number | null;
+  deletedOutputFilePath: string | null;
 };
 
 export async function deleteMonthlyRunHistory(
   db: MonthlyRunDb,
   historyId: number,
-  removeStoredFile: (filePath: string) => Promise<void>,
 ): Promise<MonthlyRunHistoryDeleteResult | null> {
   const history = await db.queryOne<Record<string, unknown>>(
     `select h.*,
@@ -317,7 +317,6 @@ export async function deleteMonthlyRunHistory(
 
   if (outputFileId) {
     await db.execute('delete from product_files where id = $1', [outputFileId]);
-    if (outputFilePath) await removeStoredFile(outputFilePath);
   }
 
   return {
@@ -325,6 +324,7 @@ export async function deleteMonthlyRunHistory(
     deletedOutputFileId: outputFileId,
     deletedOutputFileName: outputFileName,
     fallbackOutputFileId,
+    deletedOutputFilePath: outputFilePath,
   };
 }
 

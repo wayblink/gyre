@@ -21,6 +21,7 @@ export const config = {
   minioBucket: process.env.MINIO_BUCKET ?? 'captable-files',
   sessionCookieName: process.env.SESSION_COOKIE_NAME ?? 'captable_session',
   sessionTtlHours: Number(process.env.SESSION_TTL_HOURS ?? 24 * 7),
+  sessionCookieSecure: (process.env.SESSION_COOKIE_SECURE ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true',
   authBootstrapSecret: process.env.AUTH_BOOTSTRAP_SECRET ?? '',
   // Login is temporarily disabled during development. Set AUTH_DISABLED=false to re-enable
   // authentication once the product is mature.

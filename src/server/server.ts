@@ -14,9 +14,9 @@ import {
   calculateSessionExpiry,
   countActiveAdmins,
   createManagedUser,
+  createBootstrapAdmin,
   createSession,
   createSessionToken,
-  createUser,
   deleteManagedUser,
   deleteSessionByHash,
   findSessionUserByTokenHash,
@@ -36,6 +36,7 @@ import {
   updateAccountProfile,
   updateManagedUser,
   verifyPassword,
+  bootstrapSecretMatches,
 } from './auth.js';
 import {
   dataFrameToWorkbookBuffer,
@@ -44,7 +45,9 @@ import {
   previewWorkbookSheet,
   rowsToDataFrame,
   summarizeWorkbook,
+  summarizeValidatedWorkbookAsync,
 } from './excel.js';
+import { requiresAdminRole } from './authorization.js';
 import {
   parseCapitalizationWorkbook,
   parseCapitalizationSummarySheet,
@@ -440,7 +443,7 @@ function sessionCookieOptions(maxAgeSeconds: number) {
     maxAgeSeconds,
     path: '/',
     sameSite: 'Lax' as const,
-    secure: false,
+    secure: config.sessionCookieSecure,
   };
 }
 
@@ -1772,10 +1775,15 @@ async function saveProductWorkbook(params: {
     error.existingFile = existing;
     throw error;
   }
+  let summary;
+  try {
+    summary = await summarizeValidatedWorkbookAsync(params.buffer, originalName);
+  } catch (error) {
+    throw badRequest(error instanceof Error ? error.message : 'Invalid workbook');
+  }
   const stored = await fileStorage.save('product', storedName, params.buffer, {
     prefix: folderPrefix,
   });
-  const summary = summarizeWorkbook(params.buffer);
 
   if (existing) {
     const row = await db.queryOne<Record<string, unknown>>(
@@ -1881,7 +1889,12 @@ async function updateProductWorkbook(params: {
   const ext = path.extname(originalName).toLowerCase() || '.xlsx';
   const storedName = originalName;
   const existingDirectory = productFileRelativeStoragePath(existing).split('/').slice(0, -1).join('/');
-  const summary = summarizeWorkbook(params.buffer);
+  let summary;
+  try {
+    summary = await summarizeValidatedWorkbookAsync(params.buffer, originalName);
+  } catch (error) {
+    throw badRequest(error instanceof Error ? error.message : 'Invalid workbook');
+  }
 
   const stored = await fileStorage.save('product', storedName, params.buffer, {
     prefix: existingDirectory,
@@ -2035,43 +2048,59 @@ const workflowRunExecutor = new WorkflowRunExecutor(workflowRunStore, workflowOp
   onRunFinalized: (run) => applyMonthlyRunPostProcessing(db, run),
 });
 
+async function removeStoredFilesAfterCommit(filePaths: string[]): Promise<void> {
+  for (const filePath of [...new Set(filePaths)]) {
+    try {
+      await fileStorage.remove(filePath);
+    } catch (error) {
+      app.log.error({ error, filePath }, 'Post-commit file cleanup failed');
+    }
+  }
+}
+
 async function registerRoutes() {
   await app.register(cors, { origin: true });
-  await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 
   app.addHook('preHandler', async (request, reply) => {
     const url = request.raw.url ?? '';
     if (!url.startsWith('/api/')) return;
     if (url === '/api/health') return;
     if (url.startsWith('/api/auth/')) return;
-    return requireAuth(request as typeof request & RequestWithAuth, reply);
+    await requireAuth(request as typeof request & RequestWithAuth, reply);
+    if (reply.sent) return;
+    if (requiresAdminRole(request.method, url)) {
+      requireAdminUser(request as typeof request & RequestWithAuth, reply);
+    }
   });
 
   app.get('/api/health', async () => ({
     ok: true,
     service: 'gyre-captable',
     database: maskDatabaseUrl(config.databaseUrl),
-    excel: 'xlsx@0.18.x',
+    excel: 'xlsx@0.20.3',
   }));
 
   app.get('/api/auth/status', async (request) => currentAuthStatus(request));
 
   app.post('/api/auth/bootstrap', async (request, reply) => {
     const body = authBootstrapSchema.parse(request.body ?? {});
-    const bootstrapRequired = !(await hasAnyUsers(db));
-    if (!bootstrapRequired) {
-      return reply.code(409).send({ error: 'Bootstrap already completed' });
+    if (!config.authBootstrapSecret) {
+      return reply.code(503).send({
+        error: 'Administrator bootstrap is disabled until AUTH_BOOTSTRAP_SECRET is configured',
+        code: 'BOOTSTRAP_SECRET_REQUIRED',
+      });
     }
-    if (config.authBootstrapSecret && body.bootstrapSecret !== config.authBootstrapSecret) {
+    if (!bootstrapSecretMatches(config.authBootstrapSecret, body.bootstrapSecret)) {
       return reply.code(403).send({ error: 'Invalid bootstrap secret' });
     }
 
-    const user = await createUser(db, {
+    const user = await createBootstrapAdmin(db, {
       username: body.username,
       passwordHash: await hashPassword(body.password),
       displayName: body.displayName?.trim() || body.username,
-      role: 'admin',
     });
+    if (!user) return reply.code(409).send({ error: 'Bootstrap already completed' });
     const sessionToken = createSessionToken();
     await createSession(db, {
       userId: user.id,
@@ -2312,10 +2341,10 @@ async function registerRoutes() {
   app.delete('/api/monthly-runs/instances/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const deleted = await db.transaction((tx) =>
-        deleteMonthlyRunPlan(tx, Number(id), (filePath) => fileStorage.remove(filePath)),
-      );
-      if (!deleted) throw notFound('Monthly run instance not found');
+      const operation = await db.transaction((tx) => deleteMonthlyRunPlan(tx, Number(id)));
+      if (!operation) throw notFound('Monthly run instance not found');
+      const { deletedFilePaths, ...deleted } = operation;
+      await removeStoredFilesAfterCommit(deletedFilePaths);
       return reply.send({ deleted });
     } catch (error) {
       if (error instanceof MonthlyRunHistoryDeleteConflictError) {
@@ -2463,8 +2492,10 @@ async function registerRoutes() {
   app.delete('/api/monthly-runs/:id', async (request, reply) => {
     const historyId = Number((request.params as { id: string }).id);
     try {
-      const deleted = await db.transaction((tx) => deleteMonthlyRunHistory(tx, historyId, (filePath) => fileStorage.remove(filePath)));
-      if (!deleted) throw notFound('Monthly run not found');
+      const operation = await db.transaction((tx) => deleteMonthlyRunHistory(tx, historyId));
+      if (!operation) throw notFound('Monthly run not found');
+      const { deletedOutputFilePath, ...deleted } = operation;
+      if (deletedOutputFilePath) await removeStoredFilesAfterCommit([deletedOutputFilePath]);
       return reply.send({ deleted });
     } catch (error) {
       if (error instanceof MonthlyRunHistoryDeleteConflictError) {
@@ -2504,6 +2535,9 @@ async function registerRoutes() {
     if (!uploaded) return reply.code(400).send({ error: 'No file uploaded' });
     if (!/\.(xlsx|xls|csv)$/i.test(uploaded.fileName)) {
       return reply.code(400).send({ error: 'Only .xlsx, .xls, and .csv files are supported' });
+    }
+    if (conflictPolicy === 'overwrite' && !requireAdminUser(request as typeof request & RequestWithAuth, reply)) {
+      return;
     }
 
     let saved;
