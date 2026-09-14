@@ -3,7 +3,7 @@
   "name": "EQ Control Book Incremental Merge",
   "description": "将上一次完整 EQ Control Book base 与本次增量按自然键幂等合并，仅输出新的 EQ Control Book base Sheet。",
   "status": "active",
-  "version": 3,
+  "version": 4,
   "tasks": [
     {
       "x": 48,
@@ -165,55 +165,6 @@
         ],
         "fileName": "EQ_Control_Book_Base.xlsx",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/control-book",
-        "conflictPolicy": "overwrite",
-        "fileNamePrefix": "",
-        "versionedOutput": false
-      },
-      "dependsOn": [],
-      "description": "仅输出合并后的 EQ Control Book Sheet，作为下一次运行的 base。",
-      "operatorCode": "workbook.persist.excel",
-      "operatorVersion": "1.0.0"
-    },
-    {
-      "x": 1000,
-      "y": 456,
-      "id": "persist_control_book_base_dated",
-      "name": "Persist Dated Control Book Base",
-      "inputs": {
-        "control_book": {
-          "from": "merge_control_book",
-          "slot": "dataframe",
-          "guards": [
-            {
-              "id": "guard_assert_control_book_dated_output_schema",
-              "name": "Assert Control Book Output Schema",
-              "type": "dataframe.schema.assert",
-              "params": {
-                "mode": "exact",
-                "failureMessage": "Control Book base output schema changed",
-                "expectedColumns": "Security ID, Security, As of Date, Process Date, Trans. Type, Trans. No., Broker No., Shares Issued, Shares Retired, Issued & Outstanding, Comment, Net Shares issued in Period",
-                "failureStrategy": "block"
-              },
-              "enabled": true
-            }
-          ]
-        }
-      },
-      "params": {
-        "sheets": [
-          {
-            "headerRow": 9,
-            "inputSlot": "control_book",
-            "sheetName": "EQ Control Book",
-            "columnFormats": {
-              "As of Date": "dd\\-mmm\\-yyyy",
-              "Process Date": "dd\\-mmm\\-yyyy"
-            }
-          }
-        ],
-        "fileName": "EQ_Control_Book_Base.xlsx",
-        "uploadedBy": "Workflow",
         "folderPrefix": "control_book",
         "conflictPolicy": "overwrite",
         "fileNamePrefix": "",
@@ -223,7 +174,7 @@
         "versionedOutput": false
       },
       "dependsOn": [],
-      "description": "额外落一份带产出月后缀的完整 EQ Control Book base 到独立 control_book/ 目录，文件名 EQ_Control_Book_Base_<yyyy_MM>.xlsx。",
+      "description": "输出合并后的 EQ Control Book Sheet 到专有目录 control_book/，带业务月后缀（yyyy_MM）按月留存；下月由月度触发流程按月份自动定位为本源。",
       "operatorCode": "workbook.persist.excel",
       "operatorVersion": "1.0.0"
     }
@@ -264,7 +215,7 @@
   "runtimeParamsDefaults": {
     "fileRefs": {
       "base_control_book": {
-        "key": "input/2026-05/EQ Control Book.xlsx",
+        "key": "control_book/EQ_Control_Book_Base_2026_06.xlsx",
         "sheet": "EQ Control Book",
         "provider": "product-files"
       },

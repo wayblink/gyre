@@ -1,0 +1,351 @@
+{
+  "code": "futu-exercises-incremental-merge",
+  "name": "Futu Exercises Incremental Merge",
+  "description": "Futu 行权记录 base + 富途明细增量按行权订单编号幂等合并：base 是上月完整 to-date（含留空的历史订单号列），增量是富途平台导出的行权明细；按业务月截断后幂等合并，产出当月完整 base 供下游求和，并落盘固定路径供下月链式。",
+  "status": "active",
+  "version": 3,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_base_futu_exercises",
+      "name": "Extract Base Futu Exercises",
+      "inputs": {},
+      "params": {
+        "range": "A1:N",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Futu Exercises Latest workbook",
+          "$default": {
+            "sheet": "Futu BCI Exercises"
+          },
+          "$fromRuntime": "fileRefs.base_futu_exercises"
+        },
+        "headerRow": 1,
+        "sheetName": {
+          "$type": "string",
+          "$label": "Base sheet",
+          "$default": "Futu BCI Exercises",
+          "$fromRuntime": "fileRefs.base_futu_exercises.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "读取上月 Futu BCI Exercises base（14 列，第 1 行表头），输出文件保持相同契约，可跨月链式使用。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 300,
+      "id": "extract_increment_futu_exercises",
+      "name": "Extract Futu Exercise Increment",
+      "inputs": {},
+      "params": {
+        "range": "A1:BG",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Futu Exercise Monthly Update workbook",
+          "$default": {
+            "sheet": "行权明细数据"
+          },
+          "$fromRuntime": "fileRefs.incremental_futu_exercises"
+        },
+        "headerRow": 1,
+        "sheetName": {
+          "$type": "string",
+          "$label": "Increment sheet",
+          "$default": "行权明细数据",
+          "$fromRuntime": "fileRefs.incremental_futu_exercises.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "读取富途平台导出的员工行权记录『行权明细数据』sheet（59 列中文，第 1 行表头）。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 320,
+      "y": 300,
+      "id": "project_futu_exercises_increment",
+      "name": "Project Futu Increment to Base Contract",
+      "inputs": {
+        "increment": {
+          "from": "extract_increment_futu_exercises",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_futu_increment_schema",
+              "name": "Assert Futu Increment Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Futu increment schema changed: 缺少幂等键或行权日期列",
+                "expectedColumns": "行权订单编号, 姓名, 工号, 牛牛号, 用户ID, 授予编号, 授予日期, 授予价(USD), 行权日期, 行权下单数量, 行权成功数量, 行权成本(USD), 扣除/卖出数量, 成交数量",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  nullif(trim(cast(coalesce([行权订单编号], '') as string)), '') as [Exercise Order No.],\n  nullif(trim(cast(coalesce([姓名], '') as string)), '') as [Name],\n  nullif(trim(cast(coalesce([工号], '') as string)), '') as [Employee No.],\n  nullif(trim(cast(coalesce([牛牛号], '') as string)), '') as [Futubull ID],\n  nullif(trim(cast(coalesce([用户ID], '') as string)), '') as [User ID],\n  nullif(trim(cast(coalesce([授予编号], '') as string)), '') as [Grant No.],\n  nullif(trim(cast(coalesce([授予日期], '') as string)), '') as [Grant Date],\n  nullif(trim(cast(coalesce([授予价(USD)], '') as string)), '') as [Grant Price(USD)],\n  nullif(trim(cast(coalesce([行权日期], '') as string)), '') as [Exercise Date],\n  case when cast(coalesce([行权下单数量], 0) as string) in ('--','','null') then 0 else cast([行权下单数量] as number) end as [Ordered Qty],\n  case when cast(coalesce([行权成功数量], 0) as string) in ('--','','null') then 0 else cast([行权成功数量] as number) end as [Exercised Qty],\n  case when cast(coalesce([行权成本(USD)], 0) as string) in ('--','','null') then 0 else cast([行权成本(USD)] as number) end as [Exercise Cost(USD)],\n  case when cast(coalesce([扣除/卖出数量], 0) as string) in ('--','','null') then 0 else cast([扣除/卖出数量] as number) end as [Deduction/Selling Qty.],\n  case when cast(coalesce([成交数量], 0) as string) in ('--','','null') then 0 else cast([成交数量] as number) end as [Dealt Qty.]\nfrom {increment}\nwhere wf_month_key([行权日期]) is not null\n  and wf_month_key([行权日期]) <= {constants.workflowMonth}\norder by [行权日期], [行权订单编号]\n",
+        "constants": {
+          "workflowMonth": {
+            "$type": "string",
+            "$label": "Workflow Month",
+            "$fromRuntime": "month"
+          }
+        },
+        "tableBindings": [
+          {
+            "inputSlot": "increment",
+            "tableName": "increment"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "把富途 59 列明细投影成 base 的 14 列（中文→英文映射），\"--\" 空值归一为 0，并按 workflow 业务月截断行权日期。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 620,
+      "y": 174,
+      "id": "retain_base_futu_exercises",
+      "name": "Retain Base Rows Not Covered by Increment",
+      "inputs": {
+        "base": {
+          "from": "extract_base_futu_exercises",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_futu_base_schema",
+              "name": "Assert Base Futu Exercises Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Futu base schema changed: 缺少合并键或数量列",
+                "expectedColumns": "Exercise Order No., Name, Employee No., Futubull ID, User ID, Grant No., Grant Date, Grant Price(USD), Exercise Date, Ordered Qty, Exercised Qty, Exercise Cost(USD), Deduction/Selling Qty., Dealt Qty.",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        "increment": {
+          "from": "project_futu_exercises_increment",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "\nselect [Exercise Order No.], [Name], [Employee No.], [Futubull ID], [User ID], [Grant No.],\n  [Grant Date], [Grant Price(USD)], [Exercise Date], [Ordered Qty], [Exercised Qty],\n  [Exercise Cost(USD)], [Deduction/Selling Qty.], [Dealt Qty.]\nfrom {base} b\nwhere trim(cast(coalesce(b.[Exercise Order No.], '') as string)) <> ''\n   or not exists (\n     select 1 from {projected_increment} i\n      where upper(trim(cast(coalesce(i.[Grant No.], '') as string))) = upper(trim(cast(coalesce(b.[Grant No.], '') as string)))\n        and trim(cast(coalesce(i.[Exercise Date], '') as string)) = trim(cast(coalesce(b.[Exercise Date], '') as string))\n   )\n",
+        "tableBindings": [
+          {
+            "inputSlot": "base",
+            "tableName": "base"
+          },
+          {
+            "inputSlot": "increment",
+            "tableName": "projected_increment"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "保留 base 中未被富途增量取代的行：已带行权订单编号的行永久保留；空订单号的 legacy 行若增量里已有同 (Grant No., Exercise Date) 则视为被富途明细取代而丢弃，避免重复计算。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 900,
+      "y": 174,
+      "id": "merge_futu_exercises",
+      "name": "Merge Base and Increment Idempotently",
+      "inputs": {
+        "base": {
+          "from": "retain_base_futu_exercises",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_futu_retained_base_schema",
+              "name": "Assert Retained Base Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Retained Futu base is missing a merge key column",
+                "expectedColumns": "Exercise Order No., Grant No., Exercise Date, Exercised Qty",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        "increment": {
+          "from": "project_futu_exercises_increment",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_futu_increment_order_no_present",
+              "name": "Assert Futu Increment Has Order No",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select count(*) as actual from {increment} where [Exercise Order No.] is null or trim(cast([Exercise Order No.] as string)) = ''",
+                "operator": "=",
+                "expectedValue": 0,
+                "tableBindings": [
+                  {
+                    "inputSlot": "increment",
+                    "tableName": "increment"
+                  }
+                ],
+                "failureMessage": "Futu increment has rows without 行权订单编号; 幂等键不成立",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            },
+            {
+              "id": "guard_assert_futu_increment_order_no_unique",
+              "name": "Assert Futu Increment Order No Unique",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select count(*) as actual from {increment} i where (select count(*) from {increment} d where d.[Exercise Order No.] = i.[Exercise Order No.]) > 1",
+                "operator": "=",
+                "expectedValue": 0,
+                "tableBindings": [
+                  {
+                    "inputSlot": "increment",
+                    "tableName": "increment"
+                  }
+                ],
+                "failureMessage": "Futu increment has duplicate 行权订单编号; 去重口径不明确",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  case when i.[Exercise Order No.] is not null and trim(cast(i.[Exercise Order No.] as string)) <> '' then i.[Exercise Order No.] else b.[Exercise Order No.] end as [Exercise Order No.],\n  case when i.[Name] is not null and trim(cast(i.[Name] as string)) <> '' then i.[Name] else b.[Name] end as [Name],\n  case when i.[Employee No.] is not null and trim(cast(i.[Employee No.] as string)) <> '' then i.[Employee No.] else b.[Employee No.] end as [Employee No.],\n  case when i.[Futubull ID] is not null and trim(cast(i.[Futubull ID] as string)) <> '' then i.[Futubull ID] else b.[Futubull ID] end as [Futubull ID],\n  case when i.[User ID] is not null and trim(cast(i.[User ID] as string)) <> '' then i.[User ID] else b.[User ID] end as [User ID],\n  case when i.[Grant No.] is not null and trim(cast(i.[Grant No.] as string)) <> '' then i.[Grant No.] else b.[Grant No.] end as [Grant No.],\n  case when i.[Grant Date] is not null and trim(cast(i.[Grant Date] as string)) <> '' then i.[Grant Date] else b.[Grant Date] end as [Grant Date],\n  case when i.[Grant Price(USD)] is not null and trim(cast(i.[Grant Price(USD)] as string)) <> '' then i.[Grant Price(USD)] else b.[Grant Price(USD)] end as [Grant Price(USD)],\n  case when i.[Exercise Date] is not null and trim(cast(i.[Exercise Date] as string)) <> '' then i.[Exercise Date] else b.[Exercise Date] end as [Exercise Date],\n  case when i.[Ordered Qty] is not null then i.[Ordered Qty] else b.[Ordered Qty] end as [Ordered Qty],\n  case when i.[Exercised Qty] is not null then i.[Exercised Qty] else b.[Exercised Qty] end as [Exercised Qty],\n  case when i.[Exercise Cost(USD)] is not null then i.[Exercise Cost(USD)] else b.[Exercise Cost(USD)] end as [Exercise Cost(USD)],\n  case when i.[Deduction/Selling Qty.] is not null then i.[Deduction/Selling Qty.] else b.[Deduction/Selling Qty.] end as [Deduction/Selling Qty.],\n  case when i.[Dealt Qty.] is not null then i.[Dealt Qty.] else b.[Dealt Qty.] end as [Dealt Qty.]\nfrom {retained_base} b\nfull outer join {projected_increment} i\n  on upper(trim(cast(coalesce(b.[Exercise Order No.], '') as string))) = upper(trim(cast(coalesce(i.[Exercise Order No.], '') as string)))\norder by coalesce(b.[Exercise Date], i.[Exercise Date]),\n         coalesce(b.[Employee No.], i.[Employee No.]),\n         coalesce(b.[__workflow_row_number], 1000000 + i.[__workflow_row_number])\n",
+        "tableBindings": [
+          {
+            "inputSlot": "base",
+            "tableName": "retained_base"
+          },
+          {
+            "inputSlot": "increment",
+            "tableName": "projected_increment"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "按行权订单编号 full outer join 幂等合并 retained base 与投影后的增量：同订单号去重（增量非空覆盖），空订单号的 legacy 行保留，按 Exercise Date / Employee No. 升序输出 14 列。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1200,
+      "y": 100,
+      "id": "persist_futu_exercises_base",
+      "name": "Persist Merged Futu Exercises Base",
+      "inputs": {
+        "futu_exercises": {
+          "from": "merge_futu_exercises",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_futu_output_schema",
+              "name": "Assert Futu Output Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "exact",
+                "failureMessage": "Futu base output schema changed",
+                "expectedColumns": "Exercise Order No., Name, Employee No., Futubull ID, User ID, Grant No., Grant Date, Grant Price(USD), Exercise Date, Ordered Qty, Exercised Qty, Exercise Cost(USD), Deduction/Selling Qty., Dealt Qty.",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sheets": [
+          {
+            "headerRow": 1,
+            "inputSlot": "futu_exercises",
+            "sheetName": "Futu BCI Exercises"
+          }
+        ],
+        "fileName": "Futu_Exercises_Base.xlsx",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "futu_exercises",
+        "conflictPolicy": "overwrite",
+        "fileNamePrefix": "",
+        "fileNameSuffix": {
+          "$fromRuntime": "monthUnderscore"
+        },
+        "versionedOutput": false
+      },
+      "dependsOn": [],
+      "description": "输出合并后的 Futu BCI Exercises Sheet 到专有目录 futu_exercises/，带业务月后缀（yyyy_MM）按月留存；下月由月度触发流程按月份自动定位为本源。",
+      "operatorCode": "workbook.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "month": {
+      "type": "string",
+      "label": "Month"
+    },
+    "fileRefs": {
+      "type": "object",
+      "label": "fileRefs",
+      "properties": {
+        "base_futu_exercises": {
+          "type": "object",
+          "label": "Futu Exercises Latest workbook",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Base sheet"
+            }
+          }
+        },
+        "incremental_futu_exercises": {
+          "type": "object",
+          "label": "Futu Exercise Monthly Update workbook",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Increment sheet"
+            }
+          }
+        }
+      }
+    },
+    "monthUnderscore": {
+      "type": "string",
+      "label": "Month (underscore)",
+      "description": "产出月下划线形式（yyyy_MM）。"
+    }
+  },
+  "runtimeParamsDefaults": {
+    "month": "2026-08",
+    "fileRefs": {
+      "base_futu_exercises": {
+        "key": "futu_exercises/Futu_Exercises_Base_2026_09.xlsx",
+        "sheet": "Futu BCI Exercises",
+        "provider": "product-files"
+      },
+      "incremental_futu_exercises": {
+        "key": "input/2026-08/Gyre Therapeutics员工行权记录.xlsx",
+        "sheet": "行权明细数据",
+        "provider": "product-files"
+      }
+    },
+    "monthUnderscore": "2026_08"
+  }
+}

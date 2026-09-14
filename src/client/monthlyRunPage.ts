@@ -44,6 +44,7 @@ type SourceSheetSummaryState = {
 
 const sourceFileNameMatchers: Record<string, string[]> = {
   base_control_book: ['eq control book'],
+  base_futu_exercises: ['futu exercises'],
   incremental_control_book: ['control books detail', 'control_books_detail', 'detail data', '27591'],
   option_plans_summary: ['option plans summary', 'gyre option plans summary sl', 'gyre cap table', 'cap table'],
   options_os_detail_by_plan: ['options os detail by plan', 'options os detail'],
@@ -119,14 +120,17 @@ export function getMonthlyRunFileCandidatesForSource<T extends Pick<ProductFileR
   currentFileKey?: string | null,
   month?: string | null,
 ): T[] {
-  // Control Book Summary (base_control_book) reuses prior months' merged base, kept under the
-  // dedicated control_book/ root; every other source is scoped to the current month's input folder.
+  // Control Book Summary (base_control_book) and Futu BCI Exercises base (base_futu_exercises)
+  // reuse the prior month's dated base, kept under their dedicated folders (control_book/ and
+  // futu_exercises/). Every other source is scoped to the current month's input folder.
   const folderPrefix =
     sourceKey === 'base_control_book'
       ? 'control_book/'
-      : month && /^\d{4}-\d{2}$/.test(month)
-        ? `input/${month}/`
-        : null;
+      : sourceKey === 'base_futu_exercises'
+        ? 'futu_exercises/'
+        : month && /^\d{4}-\d{2}$/.test(month)
+          ? `input/${month}/`
+          : null;
   const scoped = folderPrefix
     ? files.filter((file) => normalizedFileKey(file.logicalPath).startsWith(folderPrefix))
     : [...files];

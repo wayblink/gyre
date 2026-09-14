@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: captable
       POSTGRES_PASSWORD: captable
     ports:
-      - "127.0.0.1:55432:5432"
+      - "127.0.0.1:55433:5432"
     volumes:
       - gyre-captable-postgres:/var/lib/postgresql/data
     healthcheck:
@@ -31,6 +31,8 @@ services:
 
 volumes:
   gyre-captable-postgres:
-    name: captable-0618_gyre-captable-postgres
+    name: gyre_gyre-captable-postgres
     external: true
   gyre-captable-minio:
+    name: gyre_gyre-captable-minio
+    external: true

@@ -47,6 +47,7 @@ function rowSearchText(row: MonthlyRunInputUsageRow): string {
 
 const workflowFileRuntimeMatchers: Record<string, string[]> = {
   base_control_book: ['eq control book'],
+  base_futu_exercises: ['futu exercises'],
   incremental_control_book: ['control_books_detail', 'control books detail', '27591'],
   futu_exercises: ['futu bci exercises', 'futu bci exercises to date'],
   option_plans_summary: ['option plans summary', 'gyre option plans summary sl'],

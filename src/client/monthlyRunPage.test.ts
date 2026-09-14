@@ -74,6 +74,21 @@ test('Control Book Summary candidates come from the control_book folder, not the
   );
 });
 
+test('Base Futu BCI Exercises candidates come from futu_exercises dated archives, not output/ or the month input folder', () => {
+  const files = [
+    { id: 10, originalName: 'Futu_Exercises_Base.xlsx', displayName: '', logicalPath: 'output/futu-exercises/Futu_Exercises_Base.xlsx' },
+    { id: 11, originalName: 'Futu_Exercises_Base_2026_08.xlsx', displayName: '', logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_08.xlsx' },
+    { id: 12, originalName: 'Futu_Exercises_Base_2026_09.xlsx', displayName: '', logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_09.xlsx' },
+    { id: 13, originalName: 'Control_Books_Detail_Data.xlsx', displayName: '', logicalPath: 'input/2026-09/Control_Books_Detail_Data.xlsx' },
+    { id: 14, originalName: 'Gyre Therapeutics员工行权记录.xlsx', displayName: '', logicalPath: 'input/2026-09/Gyre Therapeutics员工行权记录.xlsx' },
+  ] as const;
+
+  assert.deepEqual(
+    getMonthlyRunFileCandidatesForSource('base_futu_exercises', files, null, null, '2026-09').map((file) => file.id),
+    [11, 12],
+  );
+});
+
 test('monthly source candidates always keep the configured file even from a historical month', () => {
   const files = [
     { id: 2, originalName: 'Control_Books_Detail_Data.xlsx', displayName: '', logicalPath: 'input/2026-02/Control_Books_Detail_Data.xlsx' },

@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary V2",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算 v2：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 2,
+  "version": 8,
   "tasks": [
     {
       "x": 48,
@@ -68,30 +68,38 @@
     {
       "x": 48,
       "y": 650,
-      "id": "extract_futu_exercises",
-      "name": "Extract Futu BCI Exercises",
+      "id": "invoke_futu_exercises_merge",
+      "name": "Invoke Futu Exercises Incremental Merge",
       "inputs": {},
       "params": {
-        "range": "A1:M424",
-        "fileRef": {
-          "$type": "object",
-          "$label": "Futu exercises workbook",
-          "$default": {
-            "sheet": "Futu BCI Exercises to Date"
-          },
-          "$fromRuntime": "fileRefs.futu_exercises"
+        "outputTaskId": "merge_futu_exercises",
+        "workflowCode": "futu-exercises-incremental-merge",
+        "inputMappings": [],
+        "runtimeParameters": {
+          "fileRefs": {
+            "base_futu_exercises": {
+              "$type": "object",
+              "$label": "Futu Exercises Latest workbook",
+              "$default": {
+                "sheet": "Futu BCI Exercises"
+              },
+              "$fromRuntime": "fileRefs.base_futu_exercises"
+            },
+            "incremental_futu_exercises": {
+              "$type": "object",
+              "$label": "Futu Exercise Monthly Update workbook",
+              "$default": {
+                "sheet": "行权明细数据"
+              },
+              "$fromRuntime": "fileRefs.incremental_futu_exercises"
+            }
+          }
         },
-        "headerRow": 1,
-        "sheetName": {
-          "$type": "string",
-          "$label": "Sheet",
-          "$default": "Futu BCI Exercises to Date",
-          "$fromRuntime": "fileRefs.futu_exercises.sheet"
-        }
+        "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "提取 Futu BCI Exercises to Date 明细，用于汇总已行权数量。",
-      "operatorCode": "sheet.range.extract",
+      "description": "调用 Futu Exercises Incremental Merge 子工作流：上月 base + 本月富途行权明细按行权订单编号幂等合并出当月完整 to-date（14 列），供 calc_futu_metrics 求和；子工作流同时落盘固定路径 workbook 作为下月 base。",
+      "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
     {
@@ -150,29 +158,6 @@
       "dependsOn": [],
       "description": "从用户明确选择的 workbook 和 Sheet 提取 2025 BC Subplan transfer 数据；第 4 行为字段表头，不做隐式 fallback。",
       "operatorCode": "sheet.range.extract",
-      "operatorVersion": "1.0.0"
-    },
-    {
-      "x": 48,
-      "y": 1399,
-      "id": "extract_options_os_detail_by_plan",
-      "name": "Extract Options OS Detail by Plan",
-      "inputs": {},
-      "params": {
-        "range": "A2:BZ",
-        "fileRef": {
-          "$type": "object",
-          "$label": "Options OS Detail by Plan workbook",
-          "$default": {},
-          "$fromRuntime": "fileRefs.options_os_detail_by_plan"
-        },
-        "headerRow": 2,
-        "sheetName": "Options OS Detail",
-        "dropTrailingEmptyRows": true
-      },
-      "dependsOn": [],
-      "description": "可选抽取设计文档中的 Options_OS_Detail_by_Plan 明细；未配置文件时输出空 dataframe，不参与当前 Summary 公式。",
-      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {
@@ -254,7 +239,7 @@
       "name": "Calc Futu Exercise Metrics",
       "inputs": {
         "futu": {
-          "from": "extract_futu_exercises",
+          "from": "invoke_futu_exercises_merge",
           "slot": "dataframe",
           "guards": [
             {
@@ -264,7 +249,7 @@
               "params": {
                 "mode": "contains",
                 "failureMessage": "Assert Futu Exercise Schema failed",
-                "expectedColumns": "Exercised Qty",
+                "expectedColumns": "Exercise Order No., Employee No., Exercised Qty",
                 "failureStrategy": "block"
               },
               "enabled": true
@@ -278,7 +263,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  sum(f.[Exercised Qty]) as futu_exercised_qty,\n  max(c.gyre_2023_china_subplan_total) - sum(f.[Exercised Qty]) as bci_shares_held_by_futu\nfrom {futu} f, {control_metrics} c",
+        "sql": "\nselect\n  sum(f.[Exercised Qty]) as futu_exercised_qty,\n  max(c.gyre_2023_china_subplan_total) - sum(f.[Exercised Qty]) as bci_shares_held_by_futu\nfrom (\n  select * from {futu}\n  where trim(concat('', coalesce([Employee No.], ''))) <> ''\n    and trim(concat('', coalesce([Employee No.], ''))) <> '员工编号'\n) f, {control_metrics} c\n",
         "tableBindings": [
           {
             "inputSlot": "futu",
@@ -907,8 +892,9 @@
           "type": "object",
           "label": "Futu BCI Exercises",
           "order": 8,
-          "taskId": "extract_futu_exercises",
-          "required": true,
+          "hidden": true,
+          "taskId": "",
+          "required": false,
           "properties": {
             "sheet": {
               "type": "string",
@@ -925,7 +911,7 @@
           "label": "Control Book Summary",
           "order": 1,
           "taskId": "invoke_control_book_merge",
-          "required": true,
+          "required": false,
           "properties": {
             "sheet": {
               "type": "string",
@@ -935,6 +921,23 @@
           "description": "上月完整 EQ Control Book，作为增量合并的 base；输出可作为下月 base 链式使用。",
           "sourceGroup": "shareworks",
           "defaultSheetName": "EQ Control Book",
+          "allowSheetNameOverride": true
+        },
+        "base_futu_exercises": {
+          "type": "object",
+          "label": "Futu Exercises Latest",
+          "order": 3,
+          "taskId": "invoke_futu_exercises_merge",
+          "required": false,
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Base sheet"
+            }
+          },
+          "description": "上月完整 Futu BCI Exercises base，作为增量合并的 base；输出可作为下月 base 链式使用（固定路径 output/futu-exercises/）。",
+          "sourceGroup": "futu",
+          "defaultSheetName": "Futu BCI Exercises",
           "allowSheetNameOverride": true
         },
         "bc_subplan_transfer": {
@@ -988,21 +991,27 @@
           "defaultSheetName": "27591",
           "allowSheetNameOverride": true
         },
-        "options_os_detail_by_plan": {
+        "incremental_futu_exercises": {
           "type": "object",
-          "label": "Options OS Detail by Plan",
-          "order": 7,
-          "hidden": true,
-          "taskId": "extract_options_os_detail_by_plan",
-          "required": false,
-          "description": "设计文档中的 Options_OS_Detail_by_Plan：Shareworks 按计划/员工维度的 options outstanding 明细，用作可选复核输入。",
-          "sourceGroup": "shareworks",
-          "defaultSheetName": "Options OS Detail"
+          "label": "Futu Exercise Monthly Update",
+          "order": 4,
+          "taskId": "invoke_futu_exercises_merge",
+          "required": true,
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Increment sheet"
+            }
+          },
+          "description": "本月富途平台导出的员工行权记录『行权明细数据』，与 base 按行权订单编号幂等合并。",
+          "sourceGroup": "futu",
+          "defaultSheetName": "行权明细数据",
+          "allowSheetNameOverride": true
         },
         "previous_capitalization_summary": {
           "type": "object",
           "label": "Previous Capitalization Summary",
-          "order": 3,
+          "order": 7,
           "hidden": true,
           "taskId": "extract_previous_capitalization_summary",
           "required": false,
@@ -1053,6 +1062,11 @@
         "sheet": "EQ Control Book",
         "provider": "product-files"
       },
+      "base_futu_exercises": {
+        "key": "output/futu-exercises/Futu_Exercises_Base.xlsx",
+        "sheet": "Futu BCI Exercises",
+        "provider": "product-files"
+      },
       "bc_subplan_transfer": {
         "sheet": "Vesting Schedule"
       },
@@ -1062,7 +1076,11 @@
         "sheet": "27591",
         "provider": "product-files"
       },
-      "options_os_detail_by_plan": {},
+      "incremental_futu_exercises": {
+        "key": "input/2026-08/Gyre Therapeutics员工行权记录.xlsx",
+        "sheet": "行权明细数据",
+        "provider": "product-files"
+      },
       "previous_capitalization_summary": {}
     },
     "fixedValues": {
