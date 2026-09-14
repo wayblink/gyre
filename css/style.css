@@ -9682,9 +9682,35 @@ textarea.form-input {
 
 .workflow-update-source-card__controls {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-2);
     align-items: center;
+}
+
+.workflow-update-source-card__pick {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+    font-weight: var(--font-normal);
+    color: var(--text-secondary);
+    overflow: hidden;
+}
+
+.workflow-update-source-card__pick:hover {
+    color: var(--text-primary);
+}
+
+.workflow-update-source-card__pick .workbook-tree__folder-icon {
+    flex: none;
+}
+
+.workflow-update-source-card__pick-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .workflow-update-progress {

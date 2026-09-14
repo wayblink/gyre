@@ -35,6 +35,7 @@ import type {
 } from '../shared/types.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import { createFilesPage } from './filesPage.js';
+import { createFilePickerModal } from './filePickerModal.js';
 import { createMonthlyRunPage } from './monthlyRunPage.js';
 import {
   applyThemeSelection,
@@ -58,7 +59,7 @@ import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage
 import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './transferPlanPage.js';
 import { buildLinkedBadge } from './linkedBadge.js';
 import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
-import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
+import { uploadFormDataWithProgress } from './uploadProgress.js';
 import { csvRow } from './csv.js';
 import '../../css/style.css';
 import '@univerjs/design/lib/index.css';
@@ -203,6 +204,20 @@ const filesPage = createFilesPage({
   escapeHtml,
   formatDateTime,
   formatFileSize,
+  notify,
+  confirmAction,
+  getLanguage: () => currentLanguage,
+});
+
+// Shared tree file picker (folder-grouped, expandable) reused by the workflow update modal so the
+// source-file selection matches the Files Center navigator instead of a flat native <select>.
+const filePicker = createFilePickerModal({
+  el,
+  api,
+  escapeHtml,
+  formatFileSize,
+  getProductFiles: () => filesPage.getProductFiles(),
+  refreshProductFiles: () => filesPage.refreshProductFiles(),
   notify,
   confirmAction,
   getLanguage: () => currentLanguage,
@@ -358,16 +373,6 @@ function workflowUpdateBindingFor(page: WorkflowUpdatePageKey, sourceKey: string
   return workflowSourceBindingsByPage[page]?.find((binding) => binding.sourceKey === sourceKey) ?? null;
 }
 
-function workflowUpdateFileOptions(selectedFileId: number | null) {
-  return [
-    `<option value="">No file selected</option>`,
-    ...filesPage.getProductFiles().map((file) => {
-      const selected = file.id === selectedFileId ? ' selected' : '';
-      return `<option value="${file.id}"${selected}>${escapeHtml(productFileDisplayName(file))} (#${file.id})</option>`;
-    }),
-  ].join('');
-}
-
 function renderWorkflowUpdateModalSources() {
   const page = activeWorkflowUpdatePage;
   if (!page) return;
@@ -376,6 +381,14 @@ function renderWorkflowUpdateModalSources() {
     .map((source) => {
       const selectedFileId = workflowUpdateSelectedFiles[source.sourceKey] ?? null;
       const previous = workflowUpdateBindingFor(page, source.sourceKey);
+      const selected = selectedFileId
+        ? filesPage.getProductFiles().find((file) => file.id === selectedFileId)
+        : null;
+      const pickLabel = selected
+        ? productFileDisplayName(selected)
+        : currentLanguage === 'zh-CN'
+          ? '选择文件…'
+          : 'Select file…';
       return `
         <div class="workflow-update-source-card" data-workflow-update-source="${escapeHtml(source.sourceKey)}">
           <div class="workflow-update-source-card__main">
@@ -384,35 +397,54 @@ function renderWorkflowUpdateModalSources() {
             <div class="workflow-update-source-card__meta">Previous: ${escapeHtml(previous?.fileName ?? 'Not set')}</div>
           </div>
           <div class="workflow-update-source-card__controls">
-            <select class="form-input" data-workflow-update-file-select="${escapeHtml(source.sourceKey)}">
-              ${workflowUpdateFileOptions(selectedFileId)}
-            </select>
-            <button class="btn btn-secondary btn-sm" type="button" data-workflow-update-upload="${escapeHtml(source.sourceKey)}">Upload</button>
+            <button
+              class="btn btn-secondary workflow-update-source-card__pick"
+              type="button"
+              data-workflow-update-file-pick="${escapeHtml(source.sourceKey)}"
+              aria-haspopup="dialog"
+              title="${currentLanguage === 'zh-CN' ? '从文件中心选择' : 'Choose from the Files Center'}"
+            >
+              <span class="workbook-tree__folder-icon" aria-hidden="true"></span>
+              <span class="workflow-update-source-card__pick-label">${escapeHtml(pickLabel)}</span>
+            </button>
           </div>
         </div>`;
     })
     .join('');
 
   el('workflowUpdateSourceList')
-    .querySelectorAll<HTMLSelectElement>('[data-workflow-update-file-select]')
-    .forEach((select) => {
-      select.addEventListener('change', () => {
-        const sourceKey = select.dataset.workflowUpdateFileSelect;
-        if (!sourceKey) return;
-        const fileId = Number(select.value);
-        workflowUpdateSelectedFiles[sourceKey] = Number.isInteger(fileId) && fileId > 0 ? fileId : null;
-      });
-    });
-
-  el('workflowUpdateSourceList')
-    .querySelectorAll<HTMLButtonElement>('[data-workflow-update-upload]')
+    .querySelectorAll<HTMLButtonElement>('[data-workflow-update-file-pick]')
     .forEach((button) => {
       button.addEventListener('click', () => {
-        const sourceKey = button.dataset.workflowUpdateUpload;
+        const sourceKey = button.dataset.workflowUpdateFilePick;
         if (!sourceKey) return;
-        void uploadWorkflowUpdateSourceFile(sourceKey);
+        void openWorkflowUpdateFilePicker(sourceKey);
       });
     });
+}
+
+/**
+ * Opens the shared folder-grouped tree picker (same UI as the Files Center / Workflow page) so the
+ * ESOP update modal no longer relies on a flat native <select>. Uploads and moves happen inside the
+ * picker; here we only write the chosen file id back into the selection state and re-render.
+ */
+async function openWorkflowUpdateFilePicker(sourceKey: string) {
+  const currentFileId = workflowUpdateSelectedFiles[sourceKey] ?? null;
+  const result = await filePicker.open({
+    titleKey: 'fileSourceTitle',
+    currentFileId,
+    allowClear: true,
+    uploadFolderPrefix: 'input',
+  });
+  if (!result) return;
+  workflowUpdateSelectedFiles[sourceKey] = result.action === 'pick' ? result.fileId : null;
+  renderWorkflowUpdateModalSources();
+  if (result.action === 'pick') {
+    const file = filesPage.getProductFiles().find((item) => item.id === result.fileId);
+    if (file) {
+      el('workflowUpdateStatus').textContent = `${currentLanguage === 'zh-CN' ? '已选择' : 'Selected'}: ${productFileDisplayName(file)}`;
+    }
+  }
 }
 
 function workflowUpdateStatusMessage(key: 'idle' | 'starting' | 'running' | 'completed' | 'completedWithWarnings' | 'failed', detail?: string): string {
@@ -553,50 +585,6 @@ function closeWorkflowUpdateModal() {
 function forceCloseWorkflowUpdateModal() {
   workflowUpdateModalCloseLocked = false;
   closeWorkflowUpdateModal();
-}
-
-async function uploadWorkflowUpdateSourceFile(sourceKey: string) {
-  const page = activeWorkflowUpdatePage;
-  if (!page) return;
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.xlsx,.xls,.csv';
-  input.addEventListener('change', async () => {
-    const file = input.files?.[0];
-    if (!file) return;
-    try {
-      el('workflowUpdateStatus').textContent = 'Uploading file...';
-      const upload = (overwrite = false) => {
-        const form = new FormData();
-        form.append('file', file);
-        form.append('uploadedBy', `Workflow Update · ${page} · ${sourceKey}`);
-        if (overwrite) form.append('conflictPolicy', 'overwrite');
-        return uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
-          fileName: file.name,
-          title: { 'zh-CN': '正在上传 Workflow 输入文件', 'en-US': 'Uploading workflow input' },
-        });
-      };
-      let data;
-      try {
-        data = await upload();
-      } catch (error) {
-        if (!(error instanceof UploadHttpError) || error.status !== 409) throw error;
-        const confirmed = await confirmAction(`当前文件夹中已存在“${file.name}”，是否覆盖？`, {
-          title: '文件已存在', confirmText: '覆盖', tone: 'danger',
-        });
-        if (!confirmed) return;
-        data = await upload(true);
-      }
-      await filesPage.refreshProductFiles(data.file.id);
-      workflowUpdateSelectedFiles[sourceKey] = data.file.id;
-      renderWorkflowUpdateModalSources();
-      el('workflowUpdateStatus').textContent = `Uploaded ${productFileDisplayName(data.file)}.`;
-    } catch (error) {
-      notify((error as Error).message, { type: 'error' });
-      el('workflowUpdateStatus').textContent = 'Upload failed.';
-    }
-  });
-  input.click();
 }
 
 async function pollWorkflowUpdateRunUntilFinished(runId: number, onProgress?: (run: WorkflowRunRecord) => void): Promise<WorkflowRunRecord> {

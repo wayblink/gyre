@@ -10,6 +10,7 @@ const monthlyRunPageSource = readFileSync(new URL('./monthlyRunPage.ts', import.
 const uploadProgressSource = readFileSync(new URL('./uploadProgress.ts', import.meta.url), 'utf8');
 const workbookViewerSource = readFileSync(new URL('./univer/createWorkbookViewer.ts', import.meta.url), 'utf8');
 const docsPageSource = readFileSync(new URL('./docsPage.ts', import.meta.url), 'utf8');
+const filePickerSource = readFileSync(new URL('./filePickerModal.ts', import.meta.url), 'utf8');
 
 function pageLabel(page: string): string {
   const match = html.match(new RegExp(`<div class="nav-item[^"]*" data-page="${page}"[\\s\\S]*?<span class="nav-text">([^<]+)</span>`));
@@ -240,7 +241,7 @@ test('file uploads use a shared visible progress dialog', () => {
   assert.match(uploadProgressSource, /xhr\.upload\.onprogress/);
   assert.match(filesPageSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
   assert.match(filesPageSource, /uploadFormDataWithProgress\(`\/api\/files\/\$\{currentProductFileDetail\.file\.id\}\/content`, form,/);
-  assert.match(mainSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
+  assert.match(filePickerSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
   assert.match(mainSource, /uploadFormDataWithProgress\('\/api\/transfer-plan\/import'/);
   assert.match(monthlyRunPageSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
   assert.match(monthlyRunPageSource, /renderUploadedFileCell\(file\)/);
@@ -418,6 +419,29 @@ test('workflow-backed product pages expose update actions and shared update moda
   assert.match(html, /id="workflowUpdateProgressBar"[^>]*role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"/);
   assert.match(html, /id="btnCancelWorkflowUpdateModal"/);
   assert.match(html, /id="btnConfirmWorkflowUpdate"/);
+});
+
+test('workflow update modal picks input files through the shared tree file picker', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+
+  // main.ts must instantiate the shared tree picker (same component the Files Center / Workflow page use).
+  assert.match(mainSource, /createFilePickerModal\(\{/);
+  assert.match(mainSource, /import \{ createFilePickerModal \} from ['"]\.\/filePickerModal\.js['"]/);
+
+  // The source card must render a trigger that opens the tree picker, not a native <select>.
+  assert.match(mainSource, /data-workflow-update-file-pick=/);
+  assert.doesNotMatch(mainSource, /data-workflow-update-file-select=/);
+  assert.doesNotMatch(mainSource, /function workflowUpdateFileOptions\(/);
+
+  // Opening the picker and writing the result back into the selection state.
+  assert.match(mainSource, /function openWorkflowUpdateFilePicker\(sourceKey: string\)/);
+  assert.match(mainSource, /filePicker\.open\(\{/);
+  assert.match(mainSource, /workflowUpdateSelectedFiles\[sourceKey\] = /);
+  assert.match(mainSource, /renderWorkflowUpdateModalSources\(\)/);
+
+  // Sanity: the shared picker really is a folder-grouped, expandable tree.
+  assert.match(filePickerSource, /buildProductFilesTree\(/);
+  assert.match(filePickerSource, /workbook-tree__dir/);
 });
 
 test('workflow update modal renders run progress while polling workflow status', () => {
