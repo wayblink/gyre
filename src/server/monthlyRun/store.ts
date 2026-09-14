@@ -19,6 +19,16 @@ const MONTHLY_RUN_INPUT_LABELS: Record<string, string> = {
   bc_subplan_transfer: '2025 BC Subplan Transfer',
 };
 
+/**
+ * Run history snapshots the input files a run consumed, keyed by the workflow's fileRefs key. The
+ * live label comes from the workflow definition's fileRefs.properties (DB-owned; see CLAUDE.md),
+ * so `sourceLabels` is passed in by the caller. Keys recorded by older workflow versions that no
+ * longer exist in the definition fall back to the legacy table above, then to the raw key.
+ */
+function monthlyRunInputLabel(sourceKey: string, sourceLabels?: Record<string, string>): string {
+  return sourceLabels?.[sourceKey] ?? MONTHLY_RUN_INPUT_LABELS[sourceKey] ?? sourceKey;
+}
+
 export type MonthlyRunDb = {
   query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<T[]>;
   queryOne<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<T | undefined>;
@@ -111,6 +121,7 @@ export function toMonthlyRunHistoryRecord(row: Record<string, unknown>): Monthly
 async function attachInputFiles(
   db: MonthlyRunDb,
   rows: Array<Record<string, unknown>>,
+  sourceLabels?: Record<string, string>,
 ): Promise<Array<Record<string, unknown>>> {
   if (!rows.length) return rows;
   const fileIds = new Set<number>();
@@ -146,7 +157,7 @@ async function attachInputFiles(
       const keyedFile = fileKey ? fileByKey.get(fileKey.toLowerCase()) : undefined;
       return {
         sourceKey,
-        label: MONTHLY_RUN_INPUT_LABELS[sourceKey] ?? sourceKey,
+        label: monthlyRunInputLabel(sourceKey, sourceLabels),
         fileId: fileId ?? (keyedFile ? Number(keyedFile.id) : null),
         fileName: fileId ? (fileNameById.get(fileId) ?? null) : keyedFile?.original_name ?? null,
       };
@@ -157,7 +168,7 @@ async function attachInputFiles(
 
 export async function listMonthlyRuns(
   db: MonthlyRunDb,
-  params: { month?: string; limit?: number } = {},
+  params: { month?: string; limit?: number; sourceLabels?: Record<string, string> } = {},
 ): Promise<MonthlyRunHistoryRecord[]> {
   const limit = Math.max(1, Math.min(params.limit ?? 20, 100));
   const rows = params.month
@@ -185,10 +196,14 @@ export async function listMonthlyRuns(
         [limit],
       );
   await reconcileMonthlyRunStatuses(db, rows);
-  return (await attachInputFiles(db, rows)).map(toMonthlyRunHistoryRecord);
+  return (await attachInputFiles(db, rows, params.sourceLabels)).map(toMonthlyRunHistoryRecord);
 }
 
-export async function getMonthlyRun(db: MonthlyRunDb, id: number): Promise<MonthlyRunHistoryRecord | null> {
+export async function getMonthlyRun(
+  db: MonthlyRunDb,
+  id: number,
+  params: { sourceLabels?: Record<string, string> } = {},
+): Promise<MonthlyRunHistoryRecord | null> {
   const row = await db.queryOne<Record<string, unknown>>(
     `select h.*,
             source.original_name as source_file_name,
@@ -201,7 +216,7 @@ export async function getMonthlyRun(db: MonthlyRunDb, id: number): Promise<Month
   );
   if (!row) return null;
   await reconcileMonthlyRunStatuses(db, [row]);
-  const [enriched] = await attachInputFiles(db, [row]);
+  const [enriched] = await attachInputFiles(db, [row], params.sourceLabels);
   return enriched ? toMonthlyRunHistoryRecord(enriched) : null;
 }
 

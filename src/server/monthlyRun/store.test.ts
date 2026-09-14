@@ -6,6 +6,7 @@ import {
   createMonthlyRunHistory,
   deleteMonthlyRunHistory,
   getMonthlyRun,
+  listMonthlyRuns,
   planStatusForWorkflowRunStatus,
   toMonthlyRunHistoryRecord,
 } from './store.js';
@@ -86,6 +87,7 @@ class FakeMonthlyDb {
     runtime_parameters_json: { month: '2026-06', fileIds: { control_book: 7, futu_exercises: 8, option_plans: 9 } },
   };
   workflowRows: Array<Record<string, unknown>> = [];
+  productFiles: Array<{ id: number; original_name: string; logical_path: string }> = [];
   monthUpdates: Array<{ monthId: number; fileId: number; sheetName: string | null }> = [];
   historyUpdates: Array<Record<string, unknown>> = [];
   planUpdates: Array<Record<string, unknown>> = [];
@@ -126,7 +128,8 @@ class FakeMonthlyDb {
 
   async query<T>(sql: string, _params?: unknown[]): Promise<T[]> {
     if (/from workflow_runs/i.test(sql)) return this.workflowRows as T[];
-    if (/from product_files/i.test(sql)) return [] as T[];
+    if (/from product_files/i.test(sql)) return this.productFiles as T[];
+    if (/from monthly_run_history/i.test(sql)) return (this.history ? [this.history] : []) as T[];
     return [];
   }
 
@@ -265,6 +268,39 @@ test('toMonthlyRunHistoryRecord maps nullable files and runtime parameters', () 
     runtimeParameters: { month: '2026-06', fileIds: { control_book: 7, futu_exercises: 8, option_plans: 9 } },
     inputFiles: [],
   });
+});
+
+test('run history labels input files from the workflow definition, falling back to the raw key', async () => {
+  const db = new FakeMonthlyDb();
+  db.history = {
+    ...db.history,
+    runtime_parameters_json: {
+      month: '2026-06',
+      fileRefs: { base_futu_exercises: 10, incremental_futu_exercises: 11, legacy_control_book: 12 },
+    },
+  };
+  db.productFiles = [
+    { id: 10, original_name: 'Futu_Exercises_Base.xlsx', logical_path: 'output/futu-exercises/Futu_Exercises_Base.xlsx' },
+    { id: 11, original_name: '员工行权记录.xlsx', logical_path: 'input/2026-06/员工行权记录.xlsx' },
+    { id: 12, original_name: 'EQ Control Book.xlsx', logical_path: 'input/2026-06/EQ Control Book.xlsx' },
+  ];
+
+  const runs = await listMonthlyRuns(db, {
+    sourceLabels: {
+      base_futu_exercises: 'Futu Exercises Latest',
+      incremental_futu_exercises: 'Futu Exercise Monthly Update',
+    },
+  });
+
+  assert.deepEqual(
+    runs[0]?.inputFiles.map((input) => [input.sourceKey, input.label]),
+    [
+      ['base_futu_exercises', 'Futu Exercises Latest'],
+      ['incremental_futu_exercises', 'Futu Exercise Monthly Update'],
+      // Not in the workflow definition any more — the raw key is the honest label.
+      ['legacy_control_book', 'legacy_control_book'],
+    ],
+  );
 });
 
 test('applyMonthlyRunPostProcessing mirrors success and points the month summary source to the produced workbook', async () => {

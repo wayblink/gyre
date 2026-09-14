@@ -79,6 +79,7 @@ import {
   updateMonthlyRunInstanceExecutionState,
 } from './monthlyRun/instanceStore.js';
 import { monthlyWorkflowSelectionLabel, resolveMonthlyWorkflowDefinition } from './monthlyRun/workflowSelection.js';
+import { monthlySourcesFromSchema } from './monthlyRun/sourceSchema.js';
 import {
   buildPlanSummary,
   mergeFutuGrant,
@@ -964,39 +965,20 @@ function sourcesFromWorkflowSchemaJson(schemaJson: unknown): WorkflowPageSourceD
   }));
 }
 
-// Monthly page's rich source definitions, derived from the DB workflow's fileRefs.properties
-// metadata (workflow definitions are DB-owned; see CLAUDE.md). jsonb does not preserve key order,
-// so entries carry an explicit `order` used to sort them back into display order.
-function monthlySourcesFromSchema(schemaJson: unknown): MonthlyRunSourceDefinition[] {
-  const schema = parseJson<Record<string, unknown>>(schemaJson, {});
-  const fileRefs = isRecord(schema.fileRefs) ? schema.fileRefs : {};
-  const properties = isRecord(fileRefs.properties) ? (fileRefs.properties as Record<string, unknown>) : {};
-  return Object.entries(properties)
-    .map(([sourceKey, raw]) => {
-      const field = isRecord(raw) ? raw : {};
-      return {
-        sourceKey,
-        sourceGroup: field.sourceGroup === 'futu' ? ('futu' as const) : ('shareworks' as const),
-        taskId: typeof field.taskId === 'string' ? field.taskId : '',
-        label: typeof field.label === 'string' ? field.label : sourceKey,
-        description: typeof field.description === 'string' ? field.description : '',
-        defaultSheetName: typeof field.defaultSheetName === 'string' ? field.defaultSheetName : null,
-        allowSheetNameOverride: field.allowSheetNameOverride === true,
-        required: field.required === true,
-        hidden: field.hidden === true,
-        order: typeof field.order === 'number' ? field.order : 0,
-      };
-    })
-    .sort((left, right) => left.order - right.order)
-    .map(({ order: _order, ...source }): MonthlyRunSourceDefinition => source);
-}
-
 async function monthlySourceDescriptors(): Promise<MonthlyRunSourceDefinition[]> {
   const row = await db.queryOne<Record<string, unknown>>(
     "select runtime_params_schema_json from workflow_definitions where code = $1 and status = 'active' limit 1",
     [MONTHLY_WORKFLOW_CODE],
   );
   return monthlySourcesFromSchema(row?.runtime_params_schema_json);
+}
+
+// Run history shows the input files a past run consumed. Their labels come from the same
+// DB-owned fileRefs metadata the Input Configuration table uses, so a rename there propagates
+// here too. Sources recorded by an older workflow version fall back to the raw key.
+async function monthlyRunInputSourceLabels(): Promise<Record<string, string>> {
+  const sources = await monthlySourceDescriptors();
+  return Object.fromEntries(sources.map((source) => [source.sourceKey, source.label]));
 }
 
 // Page input-source lists are derived from the DB workflow's runtime_params_schema.fileRefs
@@ -2323,7 +2305,7 @@ async function registerRoutes() {
 
   app.get('/api/monthly-runs', async (request) => {
     const query = monthlyRunListQuerySchema.parse(request.query);
-    return { items: await listMonthlyRuns(db, query) };
+    return { items: await listMonthlyRuns(db, { ...query, sourceLabels: await monthlyRunInputSourceLabels() }) };
   });
 
   app.get('/api/monthly-runs/instances', async (request): Promise<{ items: MonthlyRunInstanceRecord[] }> => {
@@ -2388,7 +2370,7 @@ async function registerRoutes() {
 
   app.get('/api/monthly-runs/:id', async (request) => {
     const runId = Number((request.params as { id: string }).id);
-    const history = await getMonthlyRun(db, runId);
+    const history = await getMonthlyRun(db, runId, { sourceLabels: await monthlyRunInputSourceLabels() });
     if (!history) throw notFound('Monthly run not found');
     return history;
   });
@@ -2477,7 +2459,7 @@ async function registerRoutes() {
 
   app.post('/api/monthly-runs/:id/approvals', async (request) => {
     const historyId = Number((request.params as { id: string }).id);
-    const history = await getMonthlyRun(db, historyId);
+    const history = await getMonthlyRun(db, historyId, { sourceLabels: await monthlyRunInputSourceLabels() });
     if (!history) throw notFound('Monthly run not found');
     if (!history.workflowRunId) throw new Error('Monthly run has no workflow run attached');
     const body = workflowApprovalBodySchema.parse(request.body ?? {});
