@@ -238,7 +238,10 @@ const workflowRunRetryBodySchema = z.object({
 const esopPageKeySchema = z.enum(['grant-record', 'exercise-record', 'sold-shares', 'transfer-plan']);
 
 const esopWorkflowRunBodySchema = z.object({
-  sources: z.record(z.string(), z.object({ fileId: z.number().int().positive() })),
+  sources: z.record(z.string(), z.object({
+    fileId: z.number().int().positive(),
+    sheet: z.string().trim().min(1).max(255).optional(),
+  })),
 });
 
 const transferPlanEditBodySchema = z.object({
@@ -898,8 +901,8 @@ function sourceFilesFromArtifacts(...artifacts: Array<LatestWorkflowDataFrameArt
   return [...new Set(artifacts.map((artifact) => artifact?.filePath?.trim() || artifact?.fileName?.trim()).filter(Boolean) as string[])];
 }
 
-type WorkflowPageSourceDescriptor = { sourceKey: string; label: string };
-type WorkflowPageSourceBindingResponse = WorkflowPageSourceDescriptor & { fileId: number | null; fileName: string | null };
+type WorkflowPageSourceDescriptor = { sourceKey: string; label: string; sheet?: string | null };
+type WorkflowPageSourceBindingResponse = WorkflowPageSourceDescriptor & { fileId: number | null; fileName: string | null; sheet?: string | null };
 type WorkflowResultFileBindingResponse = { fileId: number; fileName: string };
 
 function resultFilesFromArtifacts(...artifacts: Array<LatestWorkflowDataFrameArtifact | null | undefined>): WorkflowResultFileBindingResponse[] {
@@ -959,11 +962,15 @@ function sourcesFromWorkflowSchemaJson(schemaJson: unknown): WorkflowPageSourceD
   const schema = parseJson<Record<string, unknown>>(schemaJson, {});
   const fileRefs = isRecord(schema.fileRefs) ? schema.fileRefs : {};
   const properties = isRecord(fileRefs.properties) ? (fileRefs.properties as Record<string, unknown>) : {};
-  return Object.entries(properties).map(([sourceKey, field]) => ({
-    sourceKey,
-    label:
-      isRecord(field) && typeof field.label === 'string' && field.label.trim() ? field.label.trim() : sourceKey,
-  }));
+  return Object.entries(properties).map(([sourceKey, field]) => {
+    const nested = isRecord(field) && isRecord(field.properties) ? field.properties : {};
+    const sheet = isRecord(nested.sheet) ? String(nested.sheet.default ?? '').trim() : '';
+    return {
+      sourceKey,
+      label: isRecord(field) && typeof field.label === 'string' && field.label.trim() ? field.label.trim() : sourceKey,
+      ...(sheet ? { sheet } : {}),
+    };
+  });
 }
 
 async function monthlySourceDescriptors(): Promise<MonthlyRunSourceDefinition[]> {
@@ -1053,11 +1060,16 @@ async function latestWorkflowInputSourceBindings(
     const fileKey = productFileKeyAtRuntimePath(runtimeParameters, runtimePath);
     const keyedFile = fileKey ? fileByKey.get(fileKey.toLowerCase()) : undefined;
     const fileId = productFileIdAtRuntimePath(runtimeParameters, runtimePath) ?? (keyedFile ? Number(keyedFile.id) : null);
+    const runtimeFileRef = isRecord(runtimeParameters) && isRecord(runtimeParameters.fileRefs)
+      ? runtimeParameters.fileRefs[source.sourceKey]
+      : undefined;
+    const selectedSheet = isRecord(runtimeFileRef) ? String(runtimeFileRef.sheet ?? '').trim() : '';
     return {
       sourceKey: source.sourceKey,
       label: source.label,
       fileId,
       fileName: fileId ? nameById.get(fileId)?.trim() || null : null,
+      sheet: selectedSheet || source.sheet || null,
     };
   });
 }
@@ -4075,7 +4087,6 @@ async function registerRoutes() {
       resultFiles: sourceFilesFromArtifacts(artifact),
       ...buildPlanSummary((artifact?.rows ?? []).map((row) => ({
       plan_name: row.plan_name === undefined || row.plan_name === null ? null : String(row.plan_name),
-      grant_count: row.grant_count === undefined || row.grant_count === null ? null : Number(row.grant_count),
       granted: row.granted === undefined || row.granted === null ? null : Number(row.granted),
       exercised: row.exercised === undefined || row.exercised === null ? null : Number(row.exercised),
       cancelled: row.cancelled === undefined || row.cancelled === null ? null : Number(row.cancelled),
@@ -4469,7 +4480,14 @@ async function registerRoutes() {
     for (const source of sourceDescriptors) {
       const fileId = sources[source.sourceKey]?.fileId;
       if (!fileId) throw new Error(`Missing data management workflow source: ${source.sourceKey}`);
-      await getProductFileOrThrow(fileId);
+      const file = await getProductFileOrThrow(fileId);
+      if (pageKey === 'plan-summary' && source.sourceKey === 'option_plans_summary') {
+        const originalName = String(file.original_name ?? file.originalName ?? '').toLowerCase();
+        const normalizedName = originalName.replace(/[_-]+/g, ' ');
+        if (!normalizedName.includes('option plans summary sl')) {
+          throw new Error('Plan Summary 输入文件必须匹配 Gyre_Option_Plans_Summary_SL 文件名模式');
+        }
+      }
     }
     const run = await startDataManagementWorkflow(
       db, workflowRunStore, workflowRunExecutor, pageKey, sources,

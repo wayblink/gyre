@@ -32,12 +32,17 @@ export function productFileRef(key: string): WorkflowFileReference {
  * runtime_params_schema.fileRefs); this does not depend on any hardcoded source list.
  */
 export function buildFileRefsFromBindings(
-  sources: Record<string, { fileKey?: string } | undefined>,
+  sources: Record<string, { fileKey?: string; sheet?: string } | undefined>,
 ): { fileRefs: Record<string, WorkflowFileReference> } {
   const fileRefs: Record<string, WorkflowFileReference> = {};
   for (const [sourceKey, binding] of Object.entries(sources)) {
     const fileKey = String(binding?.fileKey ?? '').trim();
-    if (fileKey) fileRefs[sourceKey] = productFileRef(fileKey);
+    if (fileKey) {
+      const ref = productFileRef(fileKey) as WorkflowFileReference & { sheet?: string };
+      const sheet = String(binding?.sheet ?? '').trim();
+      if (sheet) ref.sheet = sheet;
+      fileRefs[sourceKey] = ref;
+    }
   }
   return { fileRefs };
 }

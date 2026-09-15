@@ -38,7 +38,6 @@ export type MergedExerciseRow = {
 
 export type PlanSummarySourceRow = {
   plan_name: string | null;
-  grant_count: number | string | null;
   granted: number | string | null;
   exercised: number | string | null;
   cancelled: number | string | null;
@@ -70,7 +69,6 @@ export type TransferPlanPeriodResponseRow = {
 
 export type PlanSummaryRow = {
   planName: string;
-  grantCount: number;
   granted: number;
   exercised: number;
   cancelled: number;
@@ -81,7 +79,6 @@ export type PlanSummaryResponse = {
   items: PlanSummaryRow[];
   totals: {
     planCount: number;
-    grantCount: number;
     granted: number;
     exercised: number;
     cancelled: number;
@@ -369,7 +366,6 @@ function toBoolean(value: unknown): boolean {
 export function buildPlanSummary(rows: PlanSummarySourceRow[]): PlanSummaryResponse {
   const items = rows.map((row) => ({
     planName: String(row.plan_name || 'Unassigned Plan'),
-    grantCount: toNumber(row.grant_count),
     granted: toNumber(row.granted),
     exercised: toNumber(row.exercised),
     cancelled: toNumber(row.cancelled),
@@ -381,13 +377,12 @@ export function buildPlanSummary(rows: PlanSummarySourceRow[]): PlanSummaryRespo
     totals: items.reduce(
       (acc, item) => ({
         planCount: acc.planCount + 1,
-        grantCount: acc.grantCount + item.grantCount,
         granted: acc.granted + item.granted,
         exercised: acc.exercised + item.exercised,
         cancelled: acc.cancelled + item.cancelled,
         outstanding: acc.outstanding + item.outstanding,
       }),
-      { planCount: 0, grantCount: 0, granted: 0, exercised: 0, cancelled: 0, outstanding: 0 },
+      { planCount: 0, granted: 0, exercised: 0, cancelled: 0, outstanding: 0 },
     ),
   };
 }
@@ -686,4 +681,3 @@ export function mergeShareworksExercise(row: ShareworksExerciseMergeSourceRow): 
     sharesOutstanding: row.sharesOutstanding,
   };
 }
-

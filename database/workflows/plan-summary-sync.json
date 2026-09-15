@@ -1,54 +1,60 @@
 {
   "code": "plan-summary-sync",
   "name": "Plan Summary Sync",
-  "description": "独立读取 Shareworks Options OS Detail，按计划聚合并更新 Plan Summary 展示数据。",
+  "description": "读取 Gyre Option Plans Summary SL，按计划聚合并更新 Plan Summary 展示数据，仅保留 Outstanding 不为 0 的计划。",
   "status": "active",
   "version": 1,
   "tasks": [
     {
-      "x": 48,
+      "x": 420,
       "y": 80,
-      "id": "extract_shareworks_grants",
-      "name": "Extract Shareworks Options OS Detail",
+      "id": "invoke_option_plans_summary",
+      "name": "Normalize Option Plans Summary",
       "inputs": {},
       "params": {
-        "range": "A2:BZ",
-        "fileRef": {
-          "$type": "object",
-          "$label": "Shareworks Options OS Detail",
-          "$fromRuntime": "fileRefs.shareworks_grants"
+        "outputTaskId": "enrich_option_plans_summary_plan_name",
+        "workflowCode": "option-plans-summary-values",
+        "runtimeParameters": {
+          "fileRefs": {
+            "option_plans_summary": {
+              "$type": "object",
+              "$label": "Gyre Option Plans Summary SL workbook",
+              "$default": {
+                "sheet": "!Option Plans Summary (Post-Gyr"
+              },
+              "$fromRuntime": "fileRefs.option_plans_summary"
+            }
+          }
         },
-        "headerRow": 2,
-        "sheetName": "Options OS Detail",
-        "dropTrailingEmptyRows": true
+        "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "从独立业务输入读取 Options OS Detail，表头位于第 2 行。",
-      "operatorCode": "sheet.range.extract",
+      "description": "复用 Option Plans Summary workflow，按 Category for Grouping 标准化出计划名和指标值。",
+      "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
     {
-      "x": 420,
+      "x": 620,
       "y": 80,
       "id": "aggregate_plan_summary",
       "name": "Aggregate Plan Summary",
       "inputs": {
         "input1": {
-          "from": "extract_shareworks_grants",
+          "from": "invoke_option_plans_summary",
           "slot": "dataframe"
         }
       },
       "params": {
-        "sql": "\nselect\n  trim(concat('', [Plan Name])) as plan_name,\n  count(*) as grant_count,\n  sum(coalesce([No. of Shares Granted], 0)) as granted,\n  sum(coalesce([Shares Exercised / Released], 0)) as exercised,\n  sum(coalesce([Shares Cancelled/Expired], 0)) as cancelled,\n  sum(coalesce([Shares Outstanding], 0)) as outstanding\nfrom {grants}\nwhere trim(concat('', coalesce([Plan Name], ''))) <> ''\ngroup by trim(concat('', [Plan Name]))",
+        "sql": "\nselect\n  plan_name,\n  sum(case when [key] = 'Granted' then coalesce([value], 0) else 0 end) as granted,\n  sum(case when [key] = 'Exercised' then coalesce([value], 0) else 0 end) as exercised,\n  sum(case when [key] = 'Cancelled' then coalesce([value], 0) else 0 end) as cancelled,\n  sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) as outstanding\nfrom {plans}\nwhere trim(concat('', coalesce(plan_name, ''))) <> ''\ngroup by plan_name\nhaving sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) <> 0\norder by plan_name",
         "tableBindings": [
           {
             "inputSlot": "input1",
-            "tableName": "grants"
+            "tableName": "plans"
           }
         ]
       },
       "dependsOn": [],
-      "description": "按 Plan Name 聚合授予、行权、取消及 outstanding 数量。",
+      "description": "按标准化计划名汇总 Granted、Exercised、Cancelled 和 Awards Outstanding，并过滤 Outstanding 为 0 的计划。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -80,12 +86,25 @@
       "type": "object",
       "label": "File References",
       "properties": {
-        "shareworks_grants": {
+        "option_plans_summary": {
           "type": "object",
-          "label": "Shareworks Options OS Detail"
+          "label": "Gyre Option Plans Summary SL workbook",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Sheet",
+              "default": "!Option Plans Summary (Post-Gyr"
+            }
+          }
         }
       }
     }
   },
-  "runtimeParamsDefaults": {}
+  "runtimeParamsDefaults": {
+    "fileRefs": {
+      "option_plans_summary": {
+        "sheet": "!Option Plans Summary (Post-Gyr"
+      }
+    }
+  }
 }

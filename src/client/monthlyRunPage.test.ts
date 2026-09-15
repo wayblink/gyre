@@ -379,6 +379,18 @@ test('monthly constants are rendered on the main Monthly Update page and saved t
   assert.match(save, /Number\.isFinite\(parsed\)/);
   assert.match(save, /saveInstance\(\{ fixedValues: next \}\)/);
 
+  // Inputs and the save action stay in the centered editing column shown in the UI.
+  const stylesheet = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
+  const rowMainStyles = stylesheet.match(/\.monthly-run-constants__row-main\s*\{[\s\S]*?\}/)?.[0] ?? '';
+  const footerStyles = stylesheet.match(/\.monthly-run-constants__footer\s*\{[\s\S]*?\}/)?.[0] ?? '';
+  assert.match(rowMainStyles, /display:\s*grid/);
+  assert.match(rowMainStyles, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+180px\s+minmax\(0,\s*1fr\)/);
+  const inputStyles = stylesheet.match(/\.monthly-run-constants__input\s*\{[\s\S]*?\}/)?.[0] ?? '';
+  assert.match(inputStyles, /grid-column:\s*2/);
+  assert.match(inputStyles, /justify-self:\s*center/);
+  assert.match(footerStyles, /justify-content:\s*center/);
+  assert.match(inputStyles, /font-size:\s*var\(--text-md\)/);
+
   // The UI key set must stay in sync with the server's per-month columns: each camelCase UI key
   // is one monthly_run_instances column, so a drift here would silently drop a constant on save.
   const store = readFileSync(new URL('../server/monthlyRun/instanceStore.ts', import.meta.url), 'utf8');

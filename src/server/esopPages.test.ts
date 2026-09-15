@@ -128,7 +128,6 @@ test('buildPlanSummary aggregates plan rows into totals', () => {
   const result = buildPlanSummary([
     {
       plan_name: 'GYRE 2023 Omnibus Incentive Plan',
-      grant_count: '2',
       granted: '300',
       exercised: '20',
       cancelled: '5',
@@ -136,7 +135,6 @@ test('buildPlanSummary aggregates plan rows into totals', () => {
     },
     {
       plan_name: 'GYRE 2025 BC Subplan',
-      grant_count: 1,
       granted: 100,
       exercised: 0,
       cancelled: 10,
@@ -147,7 +145,6 @@ test('buildPlanSummary aggregates plan rows into totals', () => {
   assert.equal(result.items.length, 2);
   assert.deepEqual(result.totals, {
     planCount: 2,
-    grantCount: 3,
     granted: 400,
     exercised: 20,
     cancelled: 15,

@@ -359,7 +359,7 @@ The interface has three parts: the left menu, the top bar, and the main content 
 The left menu is the main navigation, from top to bottom:
 
 - **CapTable / Monthly Updates**: monthly runs and final results.
-- **ESOP Detail**: the Grant Record, Exercise to Date, Sold Shares, and 2025 Transfer to Futu pages.
+- **ESOP Detail**: the Grant Record, Exercise Record, Sold Shares, and 2025 Transfer to Futu pages.
 - **Employee Management / Plan Summary**: employee master data and by-plan rollups.
 - **5% Holders**: shareholders above the 5% threshold, maintained by the 5% Holders data workflow.
 
@@ -461,7 +461,7 @@ The page defaults to the latest successful run for the selected month; if the mo
 | Page | Content |
 | --- | --- |
 | Grant Record | Grant details, with Futu, Shareworks, and Merge (normalized) views |
-| Exercise to Date | Futu exercise records |
+| Exercise Record | Futu exercise records |
 | Sold Shares | Futu sold-share records |
 | 2025 Transfer to Futu | Transfer data summarized by month |
 

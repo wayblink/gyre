@@ -9,21 +9,19 @@ test('business service resolves Plan Summary by stable code and starts a run', a
     id: 51,
     code: 'plan-summary-sync',
     name: 'Plan Summary Sync',
-    tasks_json: JSON.stringify([{
-      id: 'extract_shareworks_grants', name: 'Extract', operatorCode: 'sheet.range.extract', operatorVersion: '1.0.0',
-      params: { fileRef: { $fromRuntime: 'fileRefs.shareworks_grants' }, sheetName: 'Options OS Detail', range: 'A2:BZ', headerRow: 2 },
-      inputs: {}, dependsOn: [], x: 0, y: 0,
-    }]),
+    tasks_json: JSON.stringify([]),
     runtime_params_schema_json: JSON.stringify({
-      fileRefs: { type: 'object', properties: { shareworks_grants: { type: 'object' } } },
+      fileRefs: { type: 'object', properties: { option_plans_summary: { type: 'object', properties: { sheet: { type: 'string' } } } } },
     }),
-    runtime_params_defaults_json: '{}',
+    runtime_params_defaults_json: JSON.stringify({
+      fileRefs: { option_plans_summary: { sheet: '!Option Plans Summary (Post-Gyr' } },
+    }),
   };
   const fakeRun = { id: 91 } as never;
   const result = await startDataManagementWorkflow(
     {
       async queryOne(_sql, params) {
-        if (_sql.includes('logical_path')) return { logical_path: 'input/2026-05/shareworks.xlsx' };
+        if (_sql.includes('logical_path')) return { logical_path: 'input/2026-05/option-plans-summary.xlsx' };
         assert.deepEqual(params, ['plan-summary-sync']);
         return workflow;
       },
@@ -36,11 +34,17 @@ test('business service resolves Plan Summary by stable code and starts a run', a
     },
     { startAsync(runId) { assert.equal(runId, 91); } },
     'plan-summary',
-    { shareworks_grants: { fileId: 4 } },
+    { option_plans_summary: { fileId: 4 } },
   );
   assert.equal(result, fakeRun);
   assert.deepEqual(calls[0]?.runtimeParameters, {
-    fileRefs: { shareworks_grants: { provider: 'product-files', key: 'input/2026-05/shareworks.xlsx' } },
+    fileRefs: {
+      option_plans_summary: {
+        provider: 'product-files',
+        key: 'input/2026-05/option-plans-summary.xlsx',
+        sheet: '!Option Plans Summary (Post-Gyr',
+      },
+    },
   });
 });
 

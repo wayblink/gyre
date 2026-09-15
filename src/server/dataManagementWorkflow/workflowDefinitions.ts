@@ -1,5 +1,5 @@
 export type DataManagementPageKey = 'employee' | 'plan-summary' | 'five-percent-holders';
-export type DataManagementSourceBindings = Record<string, { fileId?: number; fileKey?: string } | undefined>;
+export type DataManagementSourceBindings = Record<string, { fileId?: number; fileKey?: string; sheet?: string } | undefined>;
 
 /**
  * 数据归集页面 → 工作流 code 路由。

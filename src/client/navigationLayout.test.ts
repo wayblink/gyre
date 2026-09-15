@@ -49,7 +49,7 @@ test('primary navigation follows the product menu layout before dev tools', () =
       '月度更新',
       'ESOP Detail',
       'Grant Record',
-      'Exercise to Date',
+      'Exercise Record',
       'Sold Shares',
       '2025 Transfer to Futu',
       'Employee Management',
@@ -329,7 +329,7 @@ test('Exercise and Sold Shares employee tag filters are wired through label ids'
   assert.match(serverSource, /const employeeNumber = textValue\(row\['工号'\]\) \?\? '';/);
 });
 
-test('Exercise to Date exposes file-backed filters, table, and pagination', () => {
+test('Exercise Record exposes file-backed filters, table, and pagination', () => {
   const exercisePage = html.match(/id="page-exercise-record"[\s\S]*?id="page-sold-shares"/)?.[0] ?? '';
 
   assert.match(exercisePage, /id="searchExercises"/);
@@ -348,7 +348,7 @@ test('Exercise to Date exposes file-backed filters, table, and pagination', () =
   assert.match(exercisePage, /id="btnExercisesLastPage"/);
 });
 
-test('Exercise to Date exposes Futu / Shareworks / Merge source tabs like Grant Record', () => {
+test('Exercise Record exposes Futu / Shareworks / Merge source tabs like Grant Record', () => {
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
   const exercisePage = html.match(/id="page-exercise-record"[\s\S]*?id="page-sold-shares"/)?.[0] ?? '';
@@ -484,6 +484,30 @@ test('workflow update modal picks input files through the shared tree file picke
   // Sanity: the shared picker really is a folder-grouped, expandable tree.
   assert.match(filePickerSource, /buildProductFilesTree\(/);
   assert.match(filePickerSource, /workbook-tree__dir/);
+});
+
+test('workflow update modal gives the sheet input the shared form-control structure', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  const cssSource = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
+
+  assert.match(mainSource, /workflow-update-source-card__sheet-label/);
+  assert.match(mainSource, /workflow-update-source-card__sheet-input/);
+  assert.match(cssSource, /\.workflow-update-source-card__sheet-input\s*\{/);
+  assert.match(cssSource, /\.workflow-update-source-card__sheet-input:focus\s*\{/);
+});
+
+test('plan summary update modal explains the non-zero Outstanding filter', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  const workflowSource = readFileSync(new URL('../../database/workflows/plan-summary-sync.json', import.meta.url), 'utf8');
+  const optionSummarySource = readFileSync(new URL('../../database/workflows/option-plans-summary-values.json', import.meta.url), 'utf8');
+
+  assert.match(mainSource, /only plans with non-zero Outstanding are shown/);
+  assert.match(mainSource, /仅显示 Outstanding 不为 0 的计划/);
+  assert.match(workflowSource, /having sum\(case when \[key\] = 'Awards Outstanding'/);
+  assert.match(workflowSource, /Outstanding 不为 0/);
+  assert.match(optionSummarySource, /coalesce\(lookup\.sorting,.*coalesce\(base\.sorting/);
+  assert.match(optionSummarySource, /lookup\.\[key\] not in/);
+  assert.doesNotMatch(optionSummarySource, /limit 1 offset 1/);
 });
 
 test('workflow update modal renders run progress while polling workflow status', () => {

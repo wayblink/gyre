@@ -64,7 +64,10 @@ export async function startDataManagementWorkflow(
   const resolvedSources: DataManagementSourceBindings = {};
   for (const [sourceKey, source] of Object.entries(sources)) {
     const file = source?.fileId ? await db.queryOne('select logical_path from product_files where id = $1', [source.fileId]) : null;
-    if (file?.logical_path) resolvedSources[sourceKey] = { fileKey: String(file.logical_path) };
+    if (file?.logical_path) {
+      const sheet = String(source?.sheet ?? '').trim();
+      resolvedSources[sourceKey] = { fileKey: String(file.logical_path), ...(sheet ? { sheet } : {}) };
+    }
   }
   const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
     tasks: parseJson<WorkflowTask[]>(workflow.tasks_json, []),

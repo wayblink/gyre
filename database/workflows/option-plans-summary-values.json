@@ -95,7 +95,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  base.category_for_grouping,\n  (\n    select lookup.[key]\n    from {option_plans_summary_values} as lookup\n    where lookup.category_for_grouping = base.category_for_grouping\n    order by coalesce(lookup.sorting, 999999999), lookup.[key]\n    limit 1 offset 1\n  ) as plan_name,\n  base.[key],\n  base.[value]\nfrom {option_plans_summary_values} as base\nwhere [key] in (\n    'Granted',\n    'Exercised',\n    'Repurchased',\n    'Cancelled',\n    'Awards Outstanding',\n    'Shares Remaining For Issuance',\n    'Awards Outstanding + Shares Remaining for Issuance'\n  )\norder by category_for_grouping, sorting, [key]",
+        "sql": "\nselect\n  base.category_for_grouping,\n  (\n    select lookup.[key]\n    from {option_plans_summary_values} as lookup\n    where lookup.category_for_grouping = base.category_for_grouping\n      and coalesce(lookup.sorting, 999999999) <= coalesce(base.sorting, 999999999)\n      and lookup.[key] not in (\n        'Granted',\n        'Exercised',\n        'Repurchased',\n        'Cancelled',\n        'Awards Outstanding',\n        'Shares Remaining For Issuance',\n        'Awards Outstanding + Shares Remaining for Issuance'\n      )\n      and trim(concat('', coalesce(lookup.[key], ''))) <> ''\n    order by coalesce(lookup.sorting, 999999999) desc, lookup.[key] desc\n    limit 1\n  ) as plan_name,\n  base.[key],\n  base.[value]\nfrom {option_plans_summary_values} as base\nwhere [key] in (\n    'Granted',\n    'Exercised',\n    'Repurchased',\n    'Cancelled',\n    'Awards Outstanding',\n    'Shares Remaining For Issuance',\n    'Awards Outstanding + Shares Remaining for Issuance'\n  )\norder by category_for_grouping, sorting, [key]",
         "tableBindings": [
           {
             "inputSlot": "option_plans_summary_values",
@@ -104,7 +104,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "按 Category for Grouping 分组并按 sorting 排序，取每组第 2 行 key 作为 plan_name 写回组内所有行。",
+      "description": "按 Category for Grouping 和 Sorting 顺序，将每条指标归属到其前面最近的实际计划名称；同一分类下存在多个计划时分别保留，避免把多个计划合并。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     }

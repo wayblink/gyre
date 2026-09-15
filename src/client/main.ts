@@ -177,6 +177,7 @@ const workflowResultFilesByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowR
 let workflowUpdateConfigs: Partial<Record<WorkflowUpdatePageKey, WorkflowPageConfig>> = {};
 let activeWorkflowUpdatePage: WorkflowUpdatePageKey | null = null;
 let workflowUpdateSelectedFiles: Record<string, number | null> = {};
+let workflowUpdateSelectedSheets: Record<string, string> = {};
 let workflowUpdateModalCloseLocked = false;
 const workflowUpdateReachedStepStatuses = new Set<WorkflowExecutionTaskState>([
   'completed',
@@ -393,12 +394,18 @@ function renderWorkflowUpdateModalSources() {
         : currentLanguage === 'zh-CN'
           ? '选择文件…'
           : 'Select file…';
+      const ruleNote = page === 'plan-summary'
+        ? currentLanguage === 'zh-CN'
+          ? '说明：仅显示 Outstanding 不为 0 的计划。'
+          : 'Note: only plans with non-zero Outstanding are shown.'
+        : '';
       return `
         <div class="workflow-update-source-card" data-workflow-update-source="${escapeHtml(source.sourceKey)}">
           <div class="workflow-update-source-card__main">
             <div class="workflow-update-source-card__title">${escapeHtml(source.label)}</div>
             <div class="workflow-update-source-card__meta">Source key: ${escapeHtml(source.sourceKey)}</div>
             <div class="workflow-update-source-card__meta">Previous: ${escapeHtml(previous?.fileName ?? 'Not set')}</div>
+            ${ruleNote ? `<div class="workflow-update-source-card__note">${escapeHtml(ruleNote)}</div>` : ''}
           </div>
           <div class="workflow-update-source-card__controls">
             <button
@@ -411,6 +418,12 @@ function renderWorkflowUpdateModalSources() {
               <span class="workbook-tree__folder-icon" aria-hidden="true"></span>
               <span class="workflow-update-source-card__pick-label">${escapeHtml(pickLabel)}</span>
             </button>
+            ${source.sheet !== undefined || previous?.sheet
+              ? `<label class="workflow-update-source-card__sheet">
+                  <span class="workflow-update-source-card__sheet-label">Sheet</span>
+                  <input class="workflow-update-source-card__sheet-input" type="text" data-workflow-update-sheet="${escapeHtml(source.sourceKey)}" value="${escapeHtml(workflowUpdateSelectedSheets[source.sourceKey] ?? previous?.sheet ?? source.sheet ?? '')}" />
+                </label>`
+              : ''}
           </div>
         </div>`;
     })
@@ -423,6 +436,14 @@ function renderWorkflowUpdateModalSources() {
         const sourceKey = button.dataset.workflowUpdateFilePick;
         if (!sourceKey) return;
         void openWorkflowUpdateFilePicker(sourceKey);
+      });
+    });
+  el('workflowUpdateSourceList')
+    .querySelectorAll<HTMLInputElement>('[data-workflow-update-sheet]')
+    .forEach((input) => {
+      input.addEventListener('input', () => {
+        const sourceKey = input.dataset.workflowUpdateSheet;
+        if (sourceKey) workflowUpdateSelectedSheets[sourceKey] = input.value;
       });
     });
 }
@@ -546,6 +567,9 @@ async function openWorkflowUpdateModal(page: WorkflowUpdatePageKey) {
       workflowUpdateBindingFor(page, source.sourceKey)?.fileId ?? null,
     ]),
   );
+  workflowUpdateSelectedSheets = Object.fromEntries(
+    config.sources.map((source) => [source.sourceKey, workflowUpdateBindingFor(page, source.sourceKey)?.sheet ?? source.sheet ?? '']),
+  );
   el('workflowUpdateModalTitle').textContent = `Update ${config.workflowName}`;
   el('workflowUpdateModalSubtitle').textContent = config.description;
   el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage('idle');
@@ -561,6 +585,7 @@ async function openWorkflowUpdateModal(page: WorkflowUpdatePageKey) {
 function openWorkflowRunProgressModal(title: string, subtitle: string) {
   activeWorkflowUpdatePage = null;
   workflowUpdateSelectedFiles = {};
+  workflowUpdateSelectedSheets = {};
   workflowUpdateModalCloseLocked = true;
   el('workflowUpdateModalTitle').textContent = title;
   el('workflowUpdateModalSubtitle').textContent = subtitle;
@@ -640,7 +665,12 @@ async function confirmWorkflowUpdate() {
   el('workflowUpdateProgress').classList.remove('hidden');
   try {
     const sources = Object.fromEntries(
-      config.sources.map((source) => [source.sourceKey, { fileId: workflowUpdateSelectedFiles[source.sourceKey] }]),
+      config.sources.map((source) => [source.sourceKey, {
+        fileId: workflowUpdateSelectedFiles[source.sourceKey],
+        ...(workflowUpdateSelectedSheets[source.sourceKey]?.trim()
+          ? { sheet: workflowUpdateSelectedSheets[source.sourceKey].trim() }
+          : {}),
+      }]),
     );
     const result = await api<WorkflowExecutionResult>(workflowUpdateRunEndpoint(page), {
       method: 'POST',
@@ -718,7 +748,7 @@ const pageTitleTranslations: Record<PageKey, Record<AppLanguage, string>> = {
   monthlyrun: { 'zh-CN': '月度运行', 'en-US': 'Monthly Run' },
   'esop-detail': { 'zh-CN': 'ESOP 明细', 'en-US': 'ESOP Detail' },
   'grant-record': { 'zh-CN': '授予记录', 'en-US': 'Grant Record' },
-  'exercise-record': { 'zh-CN': '行权记录', 'en-US': 'Exercise to Date' },
+  'exercise-record': { 'zh-CN': '行权记录', 'en-US': 'Exercise Record' },
   'sold-shares': { 'zh-CN': '卖出记录', 'en-US': 'Sold Shares' },
   'transfer-plan': { 'zh-CN': '2025 转仓至 Futu', 'en-US': '2025 Transfer to Futu' },
   'employee-management': { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
@@ -3608,7 +3638,7 @@ async function renderPlanSummaryPage() {
   el('planSummaryOutstanding').textContent = formatNumber(data.totals.outstanding);
 
   if (data.items.length === 0) {
-    el('planSummaryBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无计划汇总数据</td></tr>';
+    el('planSummaryBody').innerHTML = '<tr><td colspan="5" class="table-empty-cell">暂无计划汇总数据</td></tr>';
     localizeAppDom();
     return;
   }
@@ -3618,7 +3648,6 @@ async function renderPlanSummaryPage() {
       (item) => `
       <tr>
         <td style="text-align:left; font-weight:600;">${escapeHtml(item.planName)}</td>
-        <td class="col-number">${formatNumber(item.grantCount)}</td>
         <td class="col-number">${formatNumber(item.granted)}</td>
         <td class="col-number">${formatNumber(item.exercised)}</td>
         <td class="col-number">${formatNumber(item.cancelled)}</td>

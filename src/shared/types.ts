@@ -423,7 +423,6 @@ export type ShareholderTag = {
 
 export type PlanSummaryItem = {
   planName: string;
-  grantCount: number;
   granted: number;
   exercised: number;
   cancelled: number;
@@ -439,7 +438,6 @@ export type PlanSummaryResponse = {
   items: PlanSummaryItem[];
   totals: {
     planCount: number;
-    grantCount: number;
     granted: number;
     exercised: number;
     cancelled: number;
@@ -654,6 +652,7 @@ export type WorkflowPageSourceBinding = {
   label: string;
   fileId: number | null;
   fileName: string | null;
+  sheet?: string | null;
 };
 
 export type WorkflowResultFileBinding = {
@@ -666,7 +665,7 @@ export type WorkflowPageConfig = {
   workflowCode: string;
   workflowName: string;
   description: string;
-  sources: Array<{ sourceKey: string; label: string }>;
+  sources: Array<{ sourceKey: string; label: string; sheet?: string | null }>;
 };
 
 export type WorkflowOperatorSlot = {
