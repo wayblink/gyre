@@ -141,9 +141,7 @@
         "fileRef": {
           "$type": "object",
           "$label": "2025 BC Subplan Transfer 输入源",
-          "$default": {
-            "sheet": "2025 BC Subplan Transfer"
-          },
+          "$default": {},
           "$fromRuntime": "fileRefs.bc_subplan_transfer"
         },
         "headerRow": 4,
@@ -157,7 +155,7 @@
       },
       "dependsOn": [],
       "description": "从用户明确选择的 workbook 和 Sheet 提取 2025 BC Subplan transfer 数据；第 4 行为字段表头，不做隐式 fallback。",
-      "operatorCode": "sheet.range.extract",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {
@@ -298,7 +296,7 @@
                 "mode": "contains",
                 "failureMessage": "2025 BC Subplan Transfer input must contain 行标签 and 总计 columns",
                 "expectedColumns": "行标签, 总计",
-                "failureStrategy": "block"
+                "failureStrategy": "warning"
               },
               "enabled": true
             }
@@ -945,14 +943,14 @@
           "label": "2025 BC Subplan Transfer",
           "order": 6,
           "taskId": "extract_bc_subplan_transfer",
-          "required": true,
+          "required": false,
           "properties": {
             "sheet": {
               "type": "string",
               "label": "Sheet"
             }
           },
-          "description": "必选：用户明确选择合并表或单独 workbook，并指定包含 2025 BC Subplan transfer/vesting 数据的 Sheet。",
+          "description": "可选：用户可以选择合并表或单独 workbook，并指定包含 2025 BC Subplan transfer/vesting 数据的 Sheet；未提供时通过 warning 复核，并跳过该修正。",
           "sourceGroup": "shareworks",
           "defaultSheetName": "2025 BC Subplan Transfer",
           "allowSheetNameOverride": true

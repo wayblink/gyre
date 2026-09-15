@@ -37,3 +37,22 @@ test('monthly Futu input sources are labelled for the monthly update flow', () =
   assert.equal(byKey.get('base_futu_exercises'), 'Futu Exercises Latest');
   assert.equal(byKey.get('incremental_futu_exercises'), 'Futu Exercise Monthly Update');
 });
+
+test('2025 BC Subplan Transfer is optional and its extract schema check is a warning', () => {
+  const sources = monthlySourcesFromSchemaOrdered(monthlyWorkflowSchema());
+  const transfer = sources.find((source) => source.sourceKey === 'bc_subplan_transfer');
+  assert.ok(transfer);
+  assert.equal(transfer.required, false);
+
+  const workflow = JSON.parse(readFileSync(
+    path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'),
+    'utf8',
+  )) as { tasks: Array<Record<string, unknown>> };
+  const task = workflow.tasks.find((candidate) => candidate.id === 'extract_bc_subplan_transfer');
+  assert.equal(task?.operatorCode, 'sheet.optional-range.extract');
+
+  const transferCalculation = workflow.tasks.find((candidate) => candidate.id === 'calc_bc_subplan_cancelled');
+  const transferInput = (transferCalculation?.inputs as Record<string, unknown>)?.transfer as Record<string, unknown> | undefined;
+  const guards = transferInput?.guards as Array<Record<string, unknown>> | undefined;
+  assert.equal(guards?.[0]?.params && (guards[0].params as Record<string, unknown>).failureStrategy, 'warning');
+});
