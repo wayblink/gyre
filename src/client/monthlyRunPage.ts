@@ -52,12 +52,51 @@ const sourceFileNameMatchers: Record<string, string[]> = {
 
 // The 5 monthly fixed values, maintained per-month (each month inherits the prior month's values).
 // Labels mirror the workflow constants so the monthly config modal and workflow stay in sync.
-export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{ key: string; label: { 'zh-CN': string; 'en-US': string } }> = [
-  { key: 'optionsOutstandingCullgen', label: { 'zh-CN': 'Options Outstanding - Cullgen', 'en-US': 'Options Outstanding - Cullgen' } },
-  { key: 'optionsAvailableCullgen', label: { 'zh-CN': 'Options Available - Cullgen', 'en-US': 'Options Available - Cullgen' } },
-  { key: 'warrantsConvertiblePreferred', label: { 'zh-CN': 'Warrants for Convertible Preferred Stock', 'en-US': 'Warrants for Convertible Preferred Stock' } },
-  { key: 'cullgenCommonStock', label: { 'zh-CN': 'Cullgen Common Stock', 'en-US': 'Cullgen Common Stock' } },
-  { key: 'gyre2023ChinaSubplanTotal', label: { 'zh-CN': 'Gyre 2023 China SubPlan Total', 'en-US': 'Gyre 2023 China SubPlan Total' } },
+export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
+  key: string;
+  label: { 'zh-CN': string; 'en-US': string };
+  description: { 'zh-CN': string; 'en-US': string };
+}> = [
+  {
+    key: 'optionsOutstandingCullgen',
+    label: { 'zh-CN': 'Options Outstanding - Cullgen', 'en-US': 'Options Outstanding - Cullgen' },
+    description: {
+      'zh-CN': 'Cullgen 授予且已发行、尚未行权的期权数，作为固定项计入 Total Fully Diluted。',
+      'en-US': 'Granted and issued Cullgen options not yet exercised; added as a fixed term into Total Fully Diluted.',
+    },
+  },
+  {
+    key: 'optionsAvailableCullgen',
+    label: { 'zh-CN': 'Options Available - Cullgen', 'en-US': 'Options Available - Cullgen' },
+    description: {
+      'zh-CN': 'Cullgen 计划池中仍可供未来授予的期权额度，作为固定项计入 Total Fully Diluted。',
+      'en-US': 'Remaining Cullgen pool capacity available for future grants; added as a fixed term into Total Fully Diluted.',
+    },
+  },
+  {
+    key: 'warrantsConvertiblePreferred',
+    label: { 'zh-CN': 'Warrants for Convertible Preferred Stock', 'en-US': 'Warrants for Convertible Preferred Stock' },
+    description: {
+      'zh-CN': '与可转换优先股对应的认股权证数，作为固定项计入 Total Fully Diluted。',
+      'en-US': 'Warrants attached to convertible preferred stock; added as a fixed term into Total Fully Diluted.',
+    },
+  },
+  {
+    key: 'cullgenCommonStock',
+    label: { 'zh-CN': 'Cullgen Common Stock', 'en-US': 'Cullgen Common Stock' },
+    description: {
+      'zh-CN': 'Cullgen 已发行普通股总数的对账基准值。运行时会校验 EQ Control Book 算出的该列必须等于此值，否则阻塞。',
+      'en-US': 'Reconciliation baseline for total Cullgen common stock outstanding. The run asserts the EQ Control Book column equals this value, and blocks otherwise.',
+    },
+  },
+  {
+    key: 'gyre2023ChinaSubplanTotal',
+    label: { 'zh-CN': 'Gyre 2023 China SubPlan Total', 'en-US': 'Gyre 2023 China SubPlan Total' },
+    description: {
+      'zh-CN': 'Gyre 2023 中国子计划期权总数的对账基准值。运行时会校验 EQ Control Book 算出的该列必须等于此值，否则阻塞。',
+      'en-US': 'Reconciliation baseline for the Gyre 2023 China sub-plan option total. The run asserts the EQ Control Book column equals this value, and blocks otherwise.',
+    },
+  },
 ];
 
 function normalizeCandidateText(value: unknown): string {
@@ -560,13 +599,16 @@ export function createMonthlyRunPage({
         </div>
         <button class="btn btn-primary btn-sm" id="btnSaveMonthlyConstants" type="button">${escapeHtml(tt('saveMonthlyConstants'))}</button>
       </div>
-      <div class="monthly-run-constants__grid">
+      <div class="monthly-run-constants__list">
         ${MONTHLY_FIXED_VALUE_DEFS.map((def) => `
-          <label class="monthly-run-constants__field">
-            <span>${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span>
-            <input class="search-input" type="text" inputmode="decimal" data-const-key="${escapeHtml(def.key)}"
-              value="${fv[def.key] === undefined ? '' : escapeHtml(String(fv[def.key]))}">
-          </label>`).join('')}
+          <div class="monthly-run-constants__row">
+            <div class="monthly-run-constants__row-main">
+              <span class="monthly-run-constants__label">${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span>
+              <input class="search-input monthly-run-constants__input" type="text" inputmode="decimal" data-const-key="${escapeHtml(def.key)}"
+                value="${fv[def.key] === undefined ? '' : escapeHtml(String(fv[def.key]))}">
+            </div>
+            <p class="monthly-run-constants__desc">${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}</p>
+          </div>`).join('')}
       </div>`;
 
     el('btnSaveMonthlyConstants')?.addEventListener('click', () => {
@@ -980,10 +1022,13 @@ export function createMonthlyRunPage({
           ${MONTHLY_FIXED_VALUE_DEFS.map((def) => {
             const value = draftFixedValues[def.key];
             return `
-              <div class="monthly-run-source-card__current">
-                <span>${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span>
-                <input class="search-input" type="text" inputmode="decimal" data-fixed-value="${escapeHtml(def.key)}"
-                  value="${value === undefined ? '' : escapeHtml(String(value))}" style="max-width:220px;text-align:right;">
+              <div class="monthly-run-source-card__current" style="flex-direction:column;align-items:stretch;gap:4px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+                  <span>${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span>
+                  <input class="search-input" type="text" inputmode="decimal" data-fixed-value="${escapeHtml(def.key)}"
+                    value="${value === undefined ? '' : escapeHtml(String(value))}" style="max-width:220px;text-align:right;">
+                </div>
+                <p style="margin:0;font-size:12px;opacity:.75;">${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}</p>
               </div>`;
           }).join('')}
         </div>`;

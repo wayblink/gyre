@@ -354,6 +354,19 @@ test('monthly constants are rendered on the main Monthly Update page and saved t
   assert.match(block, /MONTHLY_FIXED_VALUE_DEFS\.map\(/);
   assert.match(block, /fv\[def\.key\]/);
 
+  // Laid out as a vertical list (one variable per row), not a horizontal grid.
+  assert.match(block, /monthly-run-constants__list/);
+  assert.match(block, /monthly-run-constants__row/);
+  assert.doesNotMatch(block, /monthly-run-constants__grid/);
+
+  // Each variable carries a bilingual business explanation rendered under it.
+  assert.match(block, /def\.description\[lang\(\)\]/);
+  assert.match(block, /monthly-run-constants__desc/);
+  for (const def of MONTHLY_FIXED_VALUE_DEFS) {
+    assert.ok(def.description['zh-CN'].length > 0, `${def.key} missing zh-CN description`);
+    assert.ok(def.description['en-US'].length > 0, `${def.key} missing en-US description`);
+  }
+
   // One save button PUTs every parsed value as fixedValues; blank/non-numeric inputs are skipped
   // so an untouched field never overwrites the stored value with NaN.
   const save = block.match(/el\('btnSaveMonthlyConstants'\)\?\.addEventListener\('click', \(\) => \{[\s\S]*?saveInstance\(\{ fixedValues: next \}\)/)?.[0] ?? '';
