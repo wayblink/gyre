@@ -21,6 +21,9 @@ import { productFileRef } from '../workflow/fileSources.js';
 // definition (workflow definitions are DB-owned; see CLAUDE.md).
 const DEFAULT_OPTIONS_OUTSTANDING_CULLGEN = 4_156_815;
 const DEFAULT_OPTIONS_AVAILABLE_CULLGEN = 10_994;
+const DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED = 540_666;
+const DEFAULT_CULLGEN_COMMON_STOCK = 14_450_527;
+const DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL = 7_815_396;
 
 type MonthlyRunInstanceRow = Record<string, unknown>;
 
@@ -114,6 +117,9 @@ function monthlyRunInstanceToRecord(
     fixedValues: {
       optionsOutstandingCullgen: toNumber(row.options_outstanding_cullgen, DEFAULT_OPTIONS_OUTSTANDING_CULLGEN),
       optionsAvailableCullgen: toNumber(row.options_available_cullgen, DEFAULT_OPTIONS_AVAILABLE_CULLGEN),
+      warrantsConvertiblePreferred: toNumber(row.warrants_convertible_preferred, DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED),
+      cullgenCommonStock: toNumber(row.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK),
+      gyre2023ChinaSubplanTotal: toNumber(row.gyre_2023_china_subplan_total, DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL),
     },
     latestWorkflowRunId: toNullableNumber(row.latest_workflow_run_id),
     latestOutputFileId: toNullableNumber(row.latest_output_file_id),
@@ -204,20 +210,66 @@ export async function getMonthlyRunOutputForMonth(
   return { fileId: Number(row.latest_output_file_id), logicalPath: String(row.logical_path) };
 }
 
+// Monthly fixed values are now per-instance (no longer a single global set). When a new month's
+// instance is created, inherit the 5 fixed values from the most recent prior month; the very
+// first month (no prior instance) falls back to the code defaults (which mirror the historical
+// global_parameters values).
+async function inheritMonthlyFixedValues(
+  db: MonthlyRunDb,
+  monthKey: string,
+): Promise<{
+  optionsOutstandingCullgen: number;
+  optionsAvailableCullgen: number;
+  warrantsConvertiblePreferred: number;
+  cullgenCommonStock: number;
+  gyre2023ChinaSubplanTotal: number;
+}> {
+  const prior = await db.queryOne<{
+    options_outstanding_cullgen: number | null;
+    options_available_cullgen: number | null;
+    warrants_convertible_preferred: number | null;
+    cullgen_common_stock: number | null;
+    gyre_2023_china_subplan_total: number | null;
+  }>(
+    `select options_outstanding_cullgen, options_available_cullgen, warrants_convertible_preferred,
+            cullgen_common_stock, gyre_2023_china_subplan_total
+       from monthly_run_instances
+      where month_key < $1
+      order by month_key desc
+      limit 1`,
+    [monthKey],
+  );
+  return {
+    optionsOutstandingCullgen: prior ? toNumber(prior.options_outstanding_cullgen, DEFAULT_OPTIONS_OUTSTANDING_CULLGEN) : DEFAULT_OPTIONS_OUTSTANDING_CULLGEN,
+    optionsAvailableCullgen: prior ? toNumber(prior.options_available_cullgen, DEFAULT_OPTIONS_AVAILABLE_CULLGEN) : DEFAULT_OPTIONS_AVAILABLE_CULLGEN,
+    warrantsConvertiblePreferred: prior ? toNumber(prior.warrants_convertible_preferred, DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED) : DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
+    cullgenCommonStock: prior ? toNumber(prior.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK) : DEFAULT_CULLGEN_COMMON_STOCK,
+    gyre2023ChinaSubplanTotal: prior ? toNumber(prior.gyre_2023_china_subplan_total, DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL) : DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL,
+  };
+}
+
 export async function ensureMonthlyRunInstance(db: MonthlyRunDb, monthKey: string): Promise<MonthlyRunInstanceRecord> {
   const existing = await getMonthlyRunInstance(db, monthKey);
   if (existing) return existing;
   const month = await getMonthRow(db, monthKey);
   if (!month) throw new Error(`Month ${monthKey} not found`);
 
+  // Inherit fixed values from the prior month (or defaults for the very first month).
+  const fixed = await inheritMonthlyFixedValues(db, monthKey);
+
   await db.execute(
     `insert into monthly_run_instances (
        month_id, month_key, workflow_code, operator, status,
-       options_outstanding_cullgen, options_available_cullgen
+       options_outstanding_cullgen, options_available_cullgen,
+       warrants_convertible_preferred, cullgen_common_stock, gyre_2023_china_subplan_total
      )
-     values ($1, $2, $3, 'Administrator', 'draft', $4, $5)
+     values ($1, $2, $3, 'Administrator', 'draft', $4, $5, $6, $7, $8)
      on conflict (month_key) do update set updated_at = current_timestamp`,
-    [month.id, month.month_key, MONTHLY_WORKFLOW_CODE, DEFAULT_OPTIONS_OUTSTANDING_CULLGEN, DEFAULT_OPTIONS_AVAILABLE_CULLGEN],
+    [
+      month.id, month.month_key, MONTHLY_WORKFLOW_CODE,
+      fixed.optionsOutstandingCullgen, fixed.optionsAvailableCullgen,
+      fixed.warrantsConvertiblePreferred, fixed.cullgenCommonStock, fixed.gyre2023ChinaSubplanTotal,
+    ],
   );
   const created = await getMonthlyRunInstance(db, monthKey);
   if (!created) throw new Error(`Failed to create monthly run instance for ${monthKey}`);
@@ -244,15 +296,34 @@ export async function upsertMonthlyRunInstance(
       params.fixedValues?.optionsAvailableCullgen ??
       existing.fixedValues.optionsAvailableCullgen ??
       DEFAULT_OPTIONS_AVAILABLE_CULLGEN,
+    warrantsConvertiblePreferred:
+      params.fixedValues?.warrantsConvertiblePreferred ??
+      existing.fixedValues.warrantsConvertiblePreferred ??
+      DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
+    cullgenCommonStock:
+      params.fixedValues?.cullgenCommonStock ??
+      existing.fixedValues.cullgenCommonStock ??
+      DEFAULT_CULLGEN_COMMON_STOCK,
+    gyre2023ChinaSubplanTotal:
+      params.fixedValues?.gyre2023ChinaSubplanTotal ??
+      existing.fixedValues.gyre2023ChinaSubplanTotal ??
+      DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL,
   };
   await db.execute(
     `update monthly_run_instances
         set operator = $2,
             options_outstanding_cullgen = $3,
             options_available_cullgen = $4,
+            warrants_convertible_preferred = $5,
+            cullgen_common_stock = $6,
+            gyre_2023_china_subplan_total = $7,
             updated_at = current_timestamp
       where month_key = $1`,
-    [monthKey, params.operator ?? existing.operator, nextFixedValues.optionsOutstandingCullgen, nextFixedValues.optionsAvailableCullgen],
+    [
+      monthKey, params.operator ?? existing.operator,
+      nextFixedValues.optionsOutstandingCullgen, nextFixedValues.optionsAvailableCullgen,
+      nextFixedValues.warrantsConvertiblePreferred, nextFixedValues.cullgenCommonStock, nextFixedValues.gyre2023ChinaSubplanTotal,
+    ],
   );
 
   // Input sources are written to the generic child table (source_key -> file/sheet). Only the keys

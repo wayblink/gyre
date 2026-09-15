@@ -50,6 +50,16 @@ const sourceFileNameMatchers: Record<string, string[]> = {
   options_os_detail_by_plan: ['options os detail by plan', 'options os detail'],
 };
 
+// The 5 monthly fixed values, maintained per-month (each month inherits the prior month's values).
+// Labels mirror the workflow constants so the monthly config modal and workflow stay in sync.
+export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{ key: string; label: { 'zh-CN': string; 'en-US': string } }> = [
+  { key: 'optionsOutstandingCullgen', label: { 'zh-CN': 'Options Outstanding - Cullgen', 'en-US': 'Options Outstanding - Cullgen' } },
+  { key: 'optionsAvailableCullgen', label: { 'zh-CN': 'Options Available - Cullgen', 'en-US': 'Options Available - Cullgen' } },
+  { key: 'warrantsConvertiblePreferred', label: { 'zh-CN': 'Warrants for Convertible Preferred Stock', 'en-US': 'Warrants for Convertible Preferred Stock' } },
+  { key: 'cullgenCommonStock', label: { 'zh-CN': 'Cullgen Common Stock', 'en-US': 'Cullgen Common Stock' } },
+  { key: 'gyre2023ChinaSubplanTotal', label: { 'zh-CN': 'Gyre 2023 China SubPlan Total', 'en-US': 'Gyre 2023 China SubPlan Total' } },
+];
+
 function normalizeCandidateText(value: unknown): string {
   return String(value ?? '')
     .trim()
@@ -303,6 +313,7 @@ export function createMonthlyRunPage({
   let currentInstance: MonthlyRunInstanceRecord | null = null;
   let selectedSources: Record<string, MonthlyRunSourceBinding> = {};
   let draftSources: SourceDraftBindings = {};
+  let draftFixedValues: Record<string, number> = {};
   let activeSourceModalKey: string | null = null;
   const sourceSheetSummariesByFileId = new Map<number, SourceSheetSummaryState>();
   let activeHistoryId: number | null = null;
@@ -323,6 +334,10 @@ export function createMonthlyRunPage({
     chooseUploadedFile: { 'zh-CN': '选择已上传文件', 'en-US': 'Choose uploaded file' },
     currentFile: { 'zh-CN': '当前文件', 'en-US': 'Current file' },
     uploadNewFile: { 'zh-CN': '上传新文件', 'en-US': 'Upload new file' },
+    monthlyConstantsTitle: { 'zh-CN': '月度常量', 'en-US': 'Monthly Constants' },
+    monthlyConstantsHint: { 'zh-CN': '每月独立维护，新建月份默认延用上月的值，可修改。', 'en-US': 'Maintained per month; a new month inherits the prior month by default, editable here.' },
+    saveMonthlyConstants: { 'zh-CN': '保存常量', 'en-US': 'Save constants' },
+    monthlyConstantsSaved: { 'zh-CN': '月度常量已保存', 'en-US': 'Monthly constants saved' },
     selectSourceFile: { 'zh-CN': '选择', 'en-US': 'Select' },
     defaultSheet: { 'zh-CN': '默认 Sheet', 'en-US': 'Default Sheet' },
     sheetName: { 'zh-CN': 'Sheet 名称', 'en-US': 'Sheet name' },
@@ -526,6 +541,51 @@ export function createMonthlyRunPage({
         void copySourceFileName(fileName);
       });
     });
+
+    renderMonthlyConstants();
+  }
+
+  // Monthly fixed values rendered on the main Monthly Update page (below the source table),
+  // so admins can review and edit them without opening the source modal. Saved together via
+  // a single "Save constants" button that PUTs all 5 values.
+  function renderMonthlyConstants() {
+    const host = el('monthlyRunConstantsBlock');
+    if (!host) return;
+    const fv = currentInstance?.fixedValues ?? {};
+    host.innerHTML = `
+      <div class="monthly-run-constants__header">
+        <div>
+          <h4 class="monthly-run-constants__title">${escapeHtml(tt('monthlyConstantsTitle'))}</h4>
+          <p class="monthly-run-constants__hint">${escapeHtml(tt('monthlyConstantsHint'))}</p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btnSaveMonthlyConstants" type="button">${escapeHtml(tt('saveMonthlyConstants'))}</button>
+      </div>
+      <div class="monthly-run-constants__grid">
+        ${MONTHLY_FIXED_VALUE_DEFS.map((def) => `
+          <label class="monthly-run-constants__field">
+            <span>${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span>
+            <input class="search-input" type="text" inputmode="decimal" data-const-key="${escapeHtml(def.key)}"
+              value="${fv[def.key] === undefined ? '' : escapeHtml(String(fv[def.key]))}">
+          </label>`).join('')}
+      </div>`;
+
+    el('btnSaveMonthlyConstants')?.addEventListener('click', () => {
+      const next: Record<string, number> = {};
+      host.querySelectorAll<HTMLInputElement>('[data-const-key]').forEach((input) => {
+        const key = input.dataset.constKey;
+        if (!key) return;
+        const parsed = Number(input.value.replace(/[, ]/g, ''));
+        if (input.value.trim() !== '' && Number.isFinite(parsed)) next[key] = parsed;
+      });
+      void (async () => {
+        try {
+          await saveInstance({ fixedValues: next });
+          notify(tt('monthlyConstantsSaved'), { type: 'success' });
+        } catch (error) {
+          notify(error instanceof Error ? error.message : String(error), { type: 'error' });
+        }
+      })();
+    });
   }
 
   function renderUploadedFileCell(file: ProductFileRecord) {
@@ -726,6 +786,7 @@ export function createMonthlyRunPage({
     draftSources = Object.fromEntries(
       sourceDefinitions.map((source) => [source.sourceKey, selectedSources[source.sourceKey] ?? null]),
     );
+    draftFixedValues = { ...(currentInstance?.fixedValues ?? {}) };
     renderSourceModal();
     el('monthlyRunSourceModal').classList.remove('hidden');
     if (focusSourceKey) {
@@ -903,6 +964,42 @@ export function createMonthlyRunPage({
         void uploadSourceFileFor(sourceKey);
       });
     });
+
+    // Monthly fixed values: per-month constants, inherited from the prior month by default and
+    // editable here. Rendered below the source list; saved together with the sources.
+    const constantsBlock = el('monthlyRunSourceConstantsBlock');
+    if (constantsBlock) {
+      constantsBlock.innerHTML = `
+        <div class="monthly-run-source-modal__meta" style="margin-top:16px;">
+          <div>
+            <h4 style="margin:0 0 4px;">${escapeHtml(tt('monthlyConstantsTitle'))}</h4>
+            <p style="margin:0;font-size:12px;opacity:.75;">${escapeHtml(tt('monthlyConstantsHint'))}</p>
+          </div>
+        </div>
+        <div class="monthly-run-source-list" id="monthlyRunSourceConstants">
+          ${MONTHLY_FIXED_VALUE_DEFS.map((def) => {
+            const value = draftFixedValues[def.key];
+            return `
+              <div class="monthly-run-source-card__current">
+                <span>${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span>
+                <input class="search-input" type="text" inputmode="decimal" data-fixed-value="${escapeHtml(def.key)}"
+                  value="${value === undefined ? '' : escapeHtml(String(value))}" style="max-width:220px;text-align:right;">
+              </div>`;
+          }).join('')}
+        </div>`;
+      constantsBlock.querySelectorAll<HTMLInputElement>('[data-fixed-value]').forEach((input) => {
+        input.addEventListener('input', () => {
+          const key = input.dataset.fixedValue;
+          if (!key) return;
+          const parsed = Number(input.value.replace(/[, ]/g, ''));
+          if (input.value.trim() === '' || !Number.isFinite(parsed)) {
+            delete draftFixedValues[key];
+          } else {
+            draftFixedValues[key] = parsed;
+          }
+        });
+      });
+    }
   }
 
   async function uploadSourceFileFor(sourceKey: string) {
@@ -989,7 +1086,10 @@ export function createMonthlyRunPage({
       return;
     }
     const missingSheet = modalSources.find(
-      (source) => source.allowSheetNameOverride && !draftSources[source.sourceKey]?.sheetName?.trim(),
+      (source) =>
+        source.allowSheetNameOverride &&
+        draftSources[source.sourceKey]?.fileId &&
+        !draftSources[source.sourceKey]?.sheetName?.trim(),
     );
     if (missingSheet) {
       notify(`${tt('sheetNameRequired')}: ${missingSheet.label}`, { type: 'warning' });
@@ -1010,6 +1110,9 @@ export function createMonthlyRunPage({
         sources: Object.fromEntries(
           modalSources.map((source) => [source.sourceKey, nextSources[source.sourceKey] ?? null]),
         ),
+        // Only send the fixed values that were actually filled in the modal; blanks fall back to
+        // the instance's existing value server-side (upsertMonthlyRunInstance ?? existing).
+        fixedValues: Object.keys(draftFixedValues).length ? { ...draftFixedValues } : undefined,
       });
       renderSourceInfo();
       renderBusinessDefinedInputConfiguration();

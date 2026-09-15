@@ -11,9 +11,12 @@ import {
   getMonthlyRunSheetNameOptions,
   getMonthlyRunWarningTaskIds,
   isRunPanelStaleForMonth,
+  MONTHLY_FIXED_VALUE_DEFS,
   resolveMonthlyRunPreviewFileId,
   retainAvailableSourceBindings,
 } from './monthlyRunPage.js';
+
+const MONTHLY_FIXED_VALUE_KEYS = MONTHLY_FIXED_VALUE_DEFS.map((def) => def.key);
 
 test('monthly source file candidates prefer files matching the configured input source', () => {
   const files = [
@@ -326,5 +329,51 @@ test('input configuration renders one flat source list: hidden dropped, group ig
     'option_plans_summary',
     'bc_subplan_transfer',
     'futu_exercises',
+  ]);
+});
+
+test('monthly constants are rendered on the main Monthly Update page and saved through one button', () => {
+  const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+
+  // The host block lives on the Monthly Update page itself, below the source table, so admins
+  // can review the 5 monthly constants without opening the source modal.
+  assert.match(html, /<div class="monthly-run-constants" id="monthlyRunConstantsBlock">/);
+  assert.match(source, /function renderMonthlyConstants\(\)/);
+
+  // Rendering must happen after the instance is loaded: renderBusinessDefinedInputConfiguration
+  // is the shared repaint path (called by refreshInstance once currentInstance is set).
+  const render = source.match(/function renderBusinessDefinedInputConfiguration\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  assert.match(render, /renderMonthlyConstants\(\);/);
+
+  // All 5 keys get their own input, addressed by data-const-key, prefilled from the instance.
+  const block = source.match(/function renderMonthlyConstants\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  for (const key of MONTHLY_FIXED_VALUE_KEYS) {
+    assert.match(block, new RegExp(`data-const-key="\\$\\{escapeHtml\\(def\\.key\\)\\}"`));
+  }
+  assert.match(block, /MONTHLY_FIXED_VALUE_DEFS\.map\(/);
+  assert.match(block, /fv\[def\.key\]/);
+
+  // One save button PUTs every parsed value as fixedValues; blank/non-numeric inputs are skipped
+  // so an untouched field never overwrites the stored value with NaN.
+  const save = block.match(/el\('btnSaveMonthlyConstants'\)\?\.addEventListener\('click', \(\) => \{[\s\S]*?saveInstance\(\{ fixedValues: next \}\)/)?.[0] ?? '';
+  assert.match(save, /data-const-key\]/);
+  assert.match(save, /Number\.isFinite\(parsed\)/);
+  assert.match(save, /saveInstance\(\{ fixedValues: next \}\)/);
+
+  // The UI key set must stay in sync with the server's per-month columns: each camelCase UI key
+  // is one monthly_run_instances column, so a drift here would silently drop a constant on save.
+  const store = readFileSync(new URL('../server/monthlyRun/instanceStore.ts', import.meta.url), 'utf8');
+  const storeKeys = store.match(/const MONTHLY_RUNTIME_FIXED_VALUE_KEYS = \{[\s\S]*?\} as const;/)?.[0] ?? '';
+  const storeColumnKeys = [...storeKeys.matchAll(/^\s+\w+: '([a-z0-9_]+)',$/gm)].map((match) => match[1]);
+  assert.equal(storeColumnKeys.length, MONTHLY_FIXED_VALUE_KEYS.length);
+  // camelCase -> column is not a mechanical transform (gyre2023ChinaSubplanTotal ->
+  // gyre_2023_china_subplan_total), so only the set is compared, not the order.
+  assert.deepEqual([...storeColumnKeys].sort(), [
+    'cullgen_common_stock',
+    'gyre_2023_china_subplan_total',
+    'options_available_cullgen',
+    'options_outstanding_cullgen',
+    'warrants_convertible_preferred',
   ]);
 });

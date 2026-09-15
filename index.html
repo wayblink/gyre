@@ -130,23 +130,11 @@
                     </span>
                     <span class="nav-text">Plan Summary</span>
                 </div>
-                <div class="nav-item" data-page="data-management">
-                    <span class="nav-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
-                    </span>
-                    <span class="nav-text">Data Management</span>
-                </div>
-                <div class="nav-item nav-item--child" data-page="five-percent-holders">
+                <div class="nav-item" data-page="five-percent-holders">
                     <span class="nav-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5 5 19"/><circle cx="7" cy="7" r="2"/><circle cx="17" cy="17" r="2"/></svg>
                     </span>
                     <span class="nav-text">5% Holders</span>
-                </div>
-                <div class="nav-item nav-item--child" data-page="fixed-value">
-                    <span class="nav-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M3 12h18"/><path d="M5 5l14 14"/><path d="m19 5-14 14"/></svg>
-                    </span>
-                    <span class="nav-text">Global Parameter</span>
                 </div>
                 <div class="nav-dev-tools hidden">
                     <div class="nav-section-label">Admin Only</div>
@@ -414,20 +402,26 @@
                             </button>
                         </div>
                     </div>
-                    <div class="card">
-                        <div class="card-header">
+                        <div class="sub-tabs exercise-view-tabs" role="tablist" aria-label="Exercise data source">
+                            <button class="sub-tab active" id="exerciseTab-futu" type="button" role="tab" aria-selected="true" aria-controls="exercisePanel-futu" data-exercise-view="futu">Futu</button>
+                            <button class="sub-tab" id="exerciseTab-shareworks" type="button" role="tab" aria-selected="false" aria-controls="exercisePanel-shareworks" data-exercise-view="shareworks">Shareworks</button>
+                            <button class="sub-tab" id="exerciseTab-merge" type="button" role="tab" aria-selected="false" aria-controls="exercisePanel-merge" data-exercise-view="merge">Merge</button>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
                             <h3 class="card-title">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
-                                Futu Exercise Records
+                                <span id="exerciseViewTitle">Futu Exercise Records</span>
                             </h3>
-                            <span class="card-subtitle">Futu BCI Exercises to Date.xlsx</span>
+                            <span class="card-subtitle" id="exerciseViewSubtitle">Futu BCI Exercises to Date.xlsx</span>
                             <div class="card-header-actions product-table-actions">
                                 <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="exercise-record"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
                                 <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="exercise-record"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
                             </div>
                         </div>
                         <div class="card-body card-body--with-pagination">
-                            <div class="table-scroll">
+                            <div class="grant-panel" id="exercisePanel-futu" role="tabpanel" aria-labelledby="exerciseTab-futu">
+                                <div class="table-scroll">
                                 <table class="data-table table-exercises" id="exerciseTable">
                                     <thead><tr>
                                         <th>No.</th>
@@ -447,6 +441,46 @@
                                     </tr></thead>
                                     <tbody id="exerciseBody"></tbody>
                                 </table>
+                                </div>
+                            </div>
+                            <div class="grant-panel hidden" id="exercisePanel-shareworks" role="tabpanel" aria-labelledby="exerciseTab-shareworks">
+                                <div class="table-scroll">
+                                <table class="data-table table-holdings" id="shareworksExerciseTable">
+                                    <thead><tr>
+                                        <th>No.</th>
+                                        <th>Last Name</th><th>First Name</th><th>Middle Name</th><th>Plan Name</th>
+                                        <th>Grant Type</th><th>Employee Grant Number</th><th>Grant Date</th>
+                                        <th class="col-number">No. of Shares Granted</th><th class="col-number">Exercise Price per Share</th>
+                                        <th>Vesting Schedule</th><th>Vesting Start Date</th><th>Original VCD (assumed grants)</th>
+                                        <th>Expire Date</th><th>Early Exercise Allowed</th>
+                                        <th class="col-number">No. of Shares Vested</th><th class="col-number">No. of Shares Unvested</th>
+                                        <th class="col-number">Shares Exercised / Released</th><th class="col-number">Shares Subject To Repurchase</th>
+                                        <th class="col-number">Shares Cancelled/Expired</th><th class="col-number">Shares Outstanding</th>
+                                        <th class="col-number">Outstanding Vested/Exercisable</th><th class="col-number">Outstanding Unvested</th>
+                                    </tr></thead>
+                                    <tbody id="shareworksExerciseBody"></tbody>
+                                </table>
+                                </div>
+                            </div>
+                            <div class="grant-panel hidden" id="exercisePanel-merge" role="tabpanel" aria-labelledby="exerciseTab-merge">
+                                <div class="table-scroll">
+                                <table class="data-table table-holdings" id="mergedExerciseTable">
+                                    <thead><tr>
+                                        <th>No.</th><th>Employee Name</th><th>Grant No.</th><th>Employee No.</th>
+                                        <th>Data Source</th>
+                                        <th>Grant Date</th><th class="col-number">Grant Price (USD)</th>
+                                        <th>Exercise Date</th><th class="col-number">Ordered Qty</th>
+                                        <th class="col-number">Exercised Qty</th><th class="col-number">Exercise Cost (USD)</th>
+                                        <th class="col-number">Deduction/Selling Qty.</th><th class="col-number">Dealt Qty.</th>
+                                        <th>Plan Name</th><th>Grant Type</th><th>Vesting Schedule</th><th>Vesting Start</th>
+                                        <th>Expire Date</th><th class="col-number">No. of Shares Granted</th>
+                                        <th class="col-number">Exercise Price per Share</th>
+                                        <th class="col-number">No. of Shares Vested</th><th class="col-number">No. of Shares Unvested</th>
+                                        <th class="col-number">Shares Exercised / Released</th><th class="col-number">Shares Outstanding</th>
+                                    </tr></thead>
+                                    <tbody id="mergedExerciseBody"></tbody>
+                                </table>
+                                </div>
                             </div>
                             <div class="table-pagination">
                                 <div class="pagination-summary" id="exercisePaginationSummary">-</div>
@@ -846,24 +880,6 @@
                     </div>
                 </section>
 
-                <section class="page-section" id="page-data-management">
-                    <div class="product-page-hero">
-                        <div>
-                            <div class="product-page-hero__eyebrow">数据管理</div>
-                            <h2>Data Management</h2>
-                            <p>数据管理业务入口，维护 5% 股东与全局参数等可由管理员调整的数据。</p>
-                        </div>
-                    </div>
-                    <div class="product-grid">
-                        <a class="product-card product-card--link" href="/five-percent-holders" aria-label="进入 5% 股东页面">
-                            <div class="product-card__label">5% Holders</div><h3>5% 股东</h3><p>由全局参数手工维护的 5% holder 数字与 Capitalization Summary 分母计算生成。</p>
-                        </a>
-                        <a class="product-card product-card--link" href="/fixed-value" aria-label="进入全局参数页面">
-                            <div class="product-card__label">Global Parameter</div><h3>全局参数</h3><p>管理月度流程中可由管理员调整的业务常量。</p>
-                        </a>
-                    </div>
-                </section>
-
                 <section class="page-section" id="page-five-percent-holders">
                     <div class="product-page-hero">
                         <div>
@@ -1235,6 +1251,7 @@
                                     <tbody id="monthlyRunSourcesBody"></tbody>
                                 </table>
                             </div>
+                            <div class="monthly-run-constants" id="monthlyRunConstantsBlock"></div>
                         </div>
                     </div>
 
@@ -1308,6 +1325,7 @@
                                 <p>各输入源只能选择当前月份目录内的文件；Control Book Summary 从 control_book 目录选择。</p>
                             </div>
                             <div class="monthly-run-source-list" id="monthlyRunSourceList"></div>
+                            <div id="monthlyRunSourceConstantsBlock"></div>
                         </div>
                         <div class="modal-footer">
                             <button class="btn btn-secondary" id="btnCancelMonthlyRunSourceModal" type="button">取消</button>

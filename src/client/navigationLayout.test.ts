@@ -39,9 +39,7 @@ test('primary navigation follows the product menu layout before dev tools', () =
     'transfer-plan',
     'employee-management',
     'plan-summary',
-    'data-management',
     'five-percent-holders',
-    'fixed-value',
   ];
 
   assert.deepEqual(
@@ -56,9 +54,7 @@ test('primary navigation follows the product menu layout before dev tools', () =
       '2025 Transfer to Futu',
       'Employee Management',
       'Plan Summary',
-      'Data Management',
       '5% Holders',
-      'Global Parameter',
     ],
   );
 
@@ -82,7 +78,6 @@ test('captable is the renamed Summary page and new product pages have matching s
     'transfer-plan',
     'employee-management',
     'plan-summary',
-    'data-management',
     'five-percent-holders',
     'fixed-value',
   ].forEach((page) => {
@@ -351,6 +346,53 @@ test('Exercise to Date exposes file-backed filters, table, and pagination', () =
   assert.match(exercisePage, /id="btnExercisesPrevPage"/);
   assert.match(exercisePage, /id="btnExercisesNextPage"/);
   assert.match(exercisePage, /id="btnExercisesLastPage"/);
+});
+
+test('Exercise to Date exposes Futu / Shareworks / Merge source tabs like Grant Record', () => {
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+  const exercisePage = html.match(/id="page-exercise-record"[\s\S]*?id="page-sold-shares"/)?.[0] ?? '';
+
+  // DOM: three sub-tabs + three panels, each with its own table body.
+  assert.match(exercisePage, /exercise-view-tabs/);
+  assert.match(exercisePage, /data-exercise-view="futu"/);
+  assert.match(exercisePage, /data-exercise-view="shareworks"/);
+  assert.match(exercisePage, /data-exercise-view="merge"/);
+  assert.match(exercisePage, /id="exercisePanel-futu"/);
+  assert.match(exercisePage, /id="exercisePanel-shareworks"/);
+  assert.match(exercisePage, /id="exercisePanel-merge"/);
+  assert.match(exercisePage, /id="exerciseTable"/); // futu panel keeps the existing table
+  assert.match(exercisePage, /id="shareworksExerciseBody"/);
+  assert.match(exercisePage, /id="mergedExerciseBody"/);
+  // Shareworks tab shows the full 22-column Exec Option OS contract.
+  assert.match(exercisePage, /Shares Exercised \/ Released/);
+  assert.match(exercisePage, /Outstanding Vested\/Exercisable/);
+  // Merge tab carries a data-source badge column.
+  assert.match(exercisePage, /Data Source/);
+
+  // main.ts: view state, dispatcher, per-view renderers, tab binding.
+  assert.match(mainSource, /activeExerciseView/);
+  assert.match(mainSource, /function applyExerciseView\(\)/);
+  assert.match(mainSource, /function renderShareworksExercises\(/);
+  assert.match(mainSource, /function renderMergedExercises\(/);
+  assert.match(mainSource, /data-exercise-view/);
+  assert.match(mainSource, /\/api\/exercises\/shareworks\?/);
+  assert.match(mainSource, /\/api\/exercises\/merge\?/);
+  assert.match(mainSource, /grant-source-badge--\$\{item\.source\.toLowerCase\(\)\}/);
+
+  // server.ts: two new routes + the Shareworks exercise row mapper + name→工号 lookup.
+  assert.match(serverSource, /app\.get\('\/api\/exercises\/shareworks'/);
+  assert.match(serverSource, /app\.get\('\/api\/exercises\/merge'/);
+  assert.match(serverSource, /function shareworksExerciseFromWorkflowRow\(/);
+  assert.match(serverSource, /function employeeNumberByName\(/);
+  assert.match(serverSource, /taskId: 'persist_exercise_record_shareworks_file'/);
+
+  // Workflow definition (DB-owned, exported to seed JSON) carries the Shareworks source + tasks.
+  const exerciseSeed = readFileSync(new URL('../../database/workflows/esop-exercise-record-sync.json', import.meta.url), 'utf8');
+  assert.match(exerciseSeed, /"shareworks_exercises"/);
+  assert.match(exerciseSeed, /"extract_shareworks_exec"/);
+  assert.match(exerciseSeed, /"persist_exercise_record_shareworks_file"/);
+  assert.match(exerciseSeed, /"Executive Awards OS Only"/);
 });
 
 test('Sold Shares exposes file-backed filters, nineteen-column table, and pagination', () => {

@@ -42,7 +42,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 
 - 每月更新一次股权数据，得到最新的股本对账与 Capitalization Summary。
 - 查看授予、行权、卖出、转仓等 ESOP 明细台账。
-- 维护员工主数据、计划汇总、5% 股东与全局参数。
+- 维护员工主数据、计划汇总与 5% 股东。
 - 上传、预览和管理所有来源与产出的 Excel 文件。
 
 ## 数据是怎么流动的
@@ -73,7 +73,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 - **股权汇总 / 月度更新**：每月更新与最终结果。
 - **ESOP 明细**：授予记录、行权记录、卖出记录、2025 转仓至 Futu 四个明细页。
 - **员工管理 / 计划汇总**：员工主数据与按计划的汇总。
-- **Data Management**：数据管理入口，点进去是概览页，下含 **5% 股东** 与 **全局参数（Global Parameter）** 两个子页。
+- **5% 股东**：按 EDGAR SC13 口径展示持股 5% 以上的股东，其数字由数据管理工作流手工维护。
 
 如果你是管理员，左侧菜单底部还会出现 **Admin Only** 分区（文件中心、工作流、用户管理），普通用户看不到这些入口。
 
@@ -214,12 +214,12 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
   },
   {
     id: 'plan-holders-parameters',
-    title: '计划汇总、5% 股东与全局参数',
+    title: '计划汇总与 5% 股东',
     group: '数据页面',
-    summary: '按计划看、按大股东看，以及可调参数',
-    body: `# 计划汇总、5% 股东与全局参数
+    summary: '按计划看、按大股东看',
+    body: `# 计划汇总与 5% 股东
 
-这三个页面分别回答「按计划看」「按大股东看」和「可调整的参数」三类问题。其中 **5% 股东** 与 **全局参数** 归在左侧 **Data Management** 菜单下。
+这两个页面分别回答「按计划看」和「按大股东看」两类问题。
 
 ## 计划汇总
 
@@ -230,17 +230,10 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 
 ## 5% 股东
 
-按 EDGAR SC13 的口径展示持股 5% 以上的股东。它读取 Capitalization Summary 的分母，并结合全局参数（Global Parameter）中维护的数字，计算 Common Stock、Total CSEs、% of Class 和 % Fully Diluted。
+按 EDGAR SC13 的口径展示持股 5% 以上的股东。它读取 Capitalization Summary 的分母，并结合 5% 股东数据工作流维护的数字，计算 Common Stock、Total CSEs、% of Class 和 % Fully Diluted。
 
 ![5% 股东页](/guide/five-percent-holders.png)
 *5% 股东：按 EDGAR SC13 口径展示主要股东*
-
-## 全局参数（Global Parameter）
-
-维护可由管理员调整的业务常量，例如 Cullgen common stock、各类期权数量等。每个参数都有 Key、数值、生效月份和维护人。
-
-![Global Parameter 页](/guide/global-parameter.png)
-*Global Parameter：管理员可维护的全局业务常量*
 
 计划汇总和 5% 股东都是结果页：改动来源文件或参数后，用页面上的 **Update** 重新生成即可。`,
   },
@@ -368,7 +361,7 @@ The left menu is the main navigation, from top to bottom:
 - **CapTable / Monthly Updates**: monthly runs and final results.
 - **ESOP Detail**: the Grant Record, Exercise to Date, Sold Shares, and 2025 Transfer to Futu pages.
 - **Employee Management / Plan Summary**: employee master data and by-plan rollups.
-- **Data Management**: a hub page whose children are **5% Holders** and **Global Parameter**.
+- **5% Holders**: shareholders above the 5% threshold, maintained by the 5% Holders data workflow.
 
 If you are an administrator, an **Admin Only** section (Files, Workflow, User Management) also appears at the bottom of the left menu; regular users don't see these entries.
 
@@ -509,12 +502,12 @@ The transfer page summarizes totals, cancellations/forfeitures, transfers to Fut
   },
   {
     id: 'plan-holders-parameters',
-    title: 'Plan Summary, 5% Holders, and Global Parameter',
+    title: 'Plan Summary and 5% Holders',
     group: 'Data Pages',
-    summary: 'By plan, by major holder, and adjustable parameters',
-    body: `# Plan Summary, 5% Holders, and Global Parameter
+    summary: 'By plan, by major holder',
+    body: `# Plan Summary and 5% Holders
 
-These three pages answer three questions: "by plan," "by major holder," and "which parameters can be adjusted." **5% Holders** and **Global Parameter** live under the **Data Management** menu.
+These two pages answer two questions: "by plan" and "by major holder."
 
 ## Plan Summary
 
@@ -525,17 +518,10 @@ Aggregates grants, exercises, cancellations, and outstanding quantities by Plan 
 
 ## 5% Holders
 
-Shows shareholders above the 5% threshold in EDGAR SC13 style. It reads denominators from the Capitalization Summary and combines them with the numbers maintained in Global Parameter to compute Common Stock, Total CSEs, % of Class, and % Fully Diluted.
+Shows shareholders above the 5% threshold in EDGAR SC13 style. It reads denominators from the Capitalization Summary and combines them with the numbers maintained by the 5% Holders data workflow to compute Common Stock, Total CSEs, % of Class, and % Fully Diluted.
 
 ![The 5% Holders page](/guide/en/five-percent-holders.png)
 *5% Holders: major shareholders in EDGAR SC13 style*
-
-## Global Parameter
-
-Maintains admin-adjustable business constants, such as Cullgen common stock and various option counts. Each parameter has a Key, value, effective month, and the person who maintained it.
-
-![The Global Parameter page](/guide/en/global-parameter.png)
-*Global Parameter: global business constants that admins can maintain*
 
 Plan Summary and 5% Holders are result pages: after changing source files or parameters, use **Update** on the page to regenerate.`,
   },
