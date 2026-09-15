@@ -291,6 +291,77 @@ export type MergedGrant = {
 
 export type EmployeeSource = 'futu' | 'shareworks' | 'manual';
 
+// Shareworks Exec Option OS ("Executive Awards OS Only"): a per-grant outstanding-awards report
+// (22 columns), keyed by name + Employee Grant Number — no Employee Number, and not a per-transaction
+// exercise log. Mirrors the raw columns of the standalone !GYRE_Exec_Option_OS.xlsx export.
+export type ShareworksExercise = {
+  id: number;
+  employeeNumber: string;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
+  tags: string[];
+  linkedIdentities?: LinkedEmployeeIdentity[];
+  lastName: string | null;
+  firstName: string | null;
+  middleName: string | null;
+  planName: string | null;
+  grantType: string | null;
+  employeeGrantNumber: string | null;
+  grantDate: string | null;
+  sharesGranted: number | null;
+  exercisePricePerShare: number | null;
+  vestingSchedule: string | null;
+  vestingStartDate: string | null;
+  originalVestingStartDate: string | null;
+  expireDate: string | null;
+  earlyExerciseAllowed: string | null;
+  sharesVested: number | null;
+  sharesUnvested: number | null;
+  sharesExercisedReleased: number | null;
+  sharesSubjectToRepurchase: number | null;
+  sharesCancelledExpired: number | null;
+  sharesOutstanding: number | null;
+  outstandingVestedExercisable: number | null;
+  outstandingUnvested: number | null;
+};
+
+// Loose concatenation of the Futu per-transaction exercise rows and the Shareworks per-grant
+// outstanding rows, each keeping its own raw columns, tagged by source. Not column-normalized.
+export type MergedExercise = {
+  id: string;
+  source: 'Futu' | 'Shareworks';
+  employeeName: string;
+  employeeNumber: string;
+  grantNumber: string;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
+  tags: string[];
+  linkedIdentities?: LinkedEmployeeIdentity[];
+  // Futu per-transaction fields (null on Shareworks rows).
+  futubullId: string | null;
+  userId: string | null;
+  grantDate: string | null;
+  grantPriceUsd: number | null;
+  exerciseDate: string | null;
+  orderedQuantity: number | null;
+  exercisedQuantity: number | null;
+  exerciseCostUsd: number | null;
+  deductionSellingQuantity: number | null;
+  dealtQuantity: number | null;
+  // Shareworks per-grant fields (null on Futu rows).
+  planName: string | null;
+  grantType: string | null;
+  vestingSchedule: string | null;
+  vestingStartDate: string | null;
+  expireDate: string | null;
+  sharesGranted: number | null;
+  exercisePricePerShare: number | null;
+  sharesVested: number | null;
+  sharesUnvested: number | null;
+  sharesExercisedReleased: number | null;
+  sharesOutstanding: number | null;
+};
+
 export type LinkedEmployeeIdentity = {
   id: number;
   employeeId: string;

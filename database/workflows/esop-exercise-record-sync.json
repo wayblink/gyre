@@ -3,7 +3,7 @@
   "name": "ESOP / Exercise to Date Sync",
   "description": "读取 Futu BCI Exercises to Date 明细并替换 Exercise to Date 展示数据。",
   "status": "active",
-  "version": 1,
+  "version": 2,
   "tasks": [
     {
       "x": 48,
@@ -74,6 +74,51 @@
       "description": "将 Futu BCI Exercises to Date dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 245,
+      "id": "extract_shareworks_exec",
+      "name": "Extract Shareworks Exec Option OS",
+      "inputs": {},
+      "params": {
+        "range": "A2:V",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Shareworks Exec Option OS",
+          "$fromRuntime": "fileRefs.shareworks_exercises"
+        },
+        "headerRow": 2,
+        "sheetName": "Executive Awards OS Only",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从独立业务输入 Shareworks Exec Option OS 提取 Executive Awards OS Only（逐授予的期权存量，含累计已行权/释放数量）。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 284,
+      "y": 245,
+      "id": "persist_exercise_record_shareworks_file",
+      "name": "Persist Shareworks Exec Option OS File",
+      "inputs": {
+        "input1": {
+          "from": "extract_shareworks_exec",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "fileName": "exercise_record_shareworks.xlsx",
+        "sheetName": "Shareworks Exec Option OS",
+        "sourceKey": "shareworks_exercises",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/exercise-record"
+      },
+      "dependsOn": [],
+      "description": "将 Shareworks Exec Option OS dataframe 原样输出为 Excel 文件（保留全部 22 列），展示层读取最新成功执行的输出文件。",
+      "operatorCode": "dataframe.persist.excel",
+      "operatorVersion": "1.0.0"
     }
   ],
   "runtimeParamsSchema": {
@@ -84,6 +129,10 @@
         "futu_exercises": {
           "type": "object",
           "label": "Futu BCI Exercises to Date"
+        },
+        "shareworks_exercises": {
+          "type": "object",
+          "label": "Shareworks Exec Option OS"
         }
       }
     }

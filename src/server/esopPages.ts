@@ -1,4 +1,40 @@
 import { assembleShareworksName } from './employees.js';
+import type { EmployeeLabelRef, LinkedEmployeeIdentity } from '../shared/types.js';
+
+export type MergedExerciseRow = {
+  id: string;
+  source: 'Futu' | 'Shareworks';
+  employeeName: string;
+  employeeNumber: string;
+  grantNumber: string;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
+  tags: string[];
+  linkedIdentities?: LinkedEmployeeIdentity[];
+  // Futu per-transaction fields (null on Shareworks rows).
+  futubullId: string | null;
+  userId: string | null;
+  grantDate: string | null;
+  grantPriceUsd: number | null;
+  exerciseDate: string | null;
+  orderedQuantity: number | null;
+  exercisedQuantity: number | null;
+  exerciseCostUsd: number | null;
+  deductionSellingQuantity: number | null;
+  dealtQuantity: number | null;
+  // Shareworks per-grant fields (null on Futu rows).
+  planName: string | null;
+  grantType: string | null;
+  vestingSchedule: string | null;
+  vestingStartDate: string | null;
+  expireDate: string | null;
+  sharesGranted: number | null;
+  exercisePricePerShare: number | null;
+  sharesVested: number | null;
+  sharesUnvested: number | null;
+  sharesExercisedReleased: number | null;
+  sharesOutstanding: number | null;
+};
 
 export type PlanSummarySourceRow = {
   plan_name: string | null;
@@ -531,3 +567,123 @@ export function mergeShareworksGrant(row: ShareworksMergeSourceRow): MergedGrant
     sharesOutstanding: row.sharesOutstanding,
   };
 }
+
+// Exercise-page merge helpers. Unlike grants (where both sources are grant-level and normalize to a
+// shared contract), the exercise page concatenates a Futu per-transaction row and a Shareworks
+// per-grant row into one MergedExercise, each keeping its own raw columns and tagged by source.
+export type FutuExerciseMergeSourceRow = {
+  id: number;
+  name: string;
+  employeeNumber: string;
+  grantNumber: string;
+  grantDate: string;
+  grantPriceUsd: number;
+  exerciseDate: string;
+  orderedQuantity: number;
+  exercisedQuantity: number;
+  exerciseCostUsd: number;
+  deductionSellingQuantity: number;
+  dealtQuantity: number;
+  futubullId: string;
+  userId: string;
+  labelIds?: number[];
+  labels?: EmployeeLabelRef[];
+  tags?: string[];
+  linkedIdentities?: LinkedEmployeeIdentity[];
+};
+
+export type ShareworksExerciseMergeSourceRow = {
+  id: number;
+  employeeNumber: string;
+  lastName: string | null;
+  firstName: string | null;
+  middleName: string | null;
+  planName: string | null;
+  grantType: string | null;
+  employeeGrantNumber: string | null;
+  grantDate: string | null;
+  sharesGranted: number | null;
+  exercisePricePerShare: number | null;
+  vestingSchedule: string | null;
+  vestingStartDate: string | null;
+  expireDate: string | null;
+  sharesVested: number | null;
+  sharesUnvested: number | null;
+  sharesExercisedReleased: number | null;
+  sharesOutstanding: number | null;
+  labelIds?: number[];
+  labels?: EmployeeLabelRef[];
+  tags?: string[];
+  linkedIdentities?: LinkedEmployeeIdentity[];
+};
+
+export function mergeFutuExercise(row: FutuExerciseMergeSourceRow): MergedExerciseRow {
+  return {
+    id: `futu-${row.id}`,
+    source: 'Futu',
+    employeeName: row.name,
+    employeeNumber: row.employeeNumber,
+    grantNumber: row.grantNumber,
+    labelIds: row.labelIds ?? [],
+    labels: row.labels ?? [],
+    tags: row.tags ?? [],
+    linkedIdentities: row.linkedIdentities,
+    futubullId: row.futubullId,
+    userId: row.userId,
+    grantDate: row.grantDate,
+    grantPriceUsd: row.grantPriceUsd,
+    exerciseDate: row.exerciseDate,
+    orderedQuantity: row.orderedQuantity,
+    exercisedQuantity: row.exercisedQuantity,
+    exerciseCostUsd: row.exerciseCostUsd,
+    deductionSellingQuantity: row.deductionSellingQuantity,
+    dealtQuantity: row.dealtQuantity,
+    planName: null,
+    grantType: null,
+    vestingSchedule: null,
+    vestingStartDate: null,
+    expireDate: null,
+    sharesGranted: null,
+    exercisePricePerShare: null,
+    sharesVested: null,
+    sharesUnvested: null,
+    sharesExercisedReleased: null,
+    sharesOutstanding: null,
+  };
+}
+
+export function mergeShareworksExercise(row: ShareworksExerciseMergeSourceRow): MergedExerciseRow {
+  return {
+    id: `shareworks-${row.id}`,
+    source: 'Shareworks',
+    employeeName: assembleShareworksName(row.lastName, row.firstName, row.middleName),
+    employeeNumber: row.employeeNumber,
+    grantNumber: row.employeeGrantNumber ?? '',
+    labelIds: row.labelIds ?? [],
+    labels: row.labels ?? [],
+    tags: row.tags ?? [],
+    linkedIdentities: row.linkedIdentities,
+    futubullId: null,
+    userId: null,
+    grantDate: row.grantDate,
+    grantPriceUsd: null,
+    exerciseDate: null,
+    orderedQuantity: null,
+    exercisedQuantity: null,
+    exerciseCostUsd: null,
+    deductionSellingQuantity: null,
+    dealtQuantity: null,
+    planName: row.planName,
+    grantType: row.grantType,
+    vestingSchedule: row.vestingSchedule,
+    vestingStartDate: row.vestingStartDate,
+    expireDate: row.expireDate,
+    sharesGranted: row.sharesGranted,
+    exercisePricePerShare: row.exercisePricePerShare,
+    sharesVested: row.sharesVested,
+    sharesUnvested: row.sharesUnvested,
+    sharesExercisedReleased: row.sharesExercisedReleased,
+    sharesOutstanding: row.sharesOutstanding,
+  };
+}
+

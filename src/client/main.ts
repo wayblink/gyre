@@ -12,6 +12,7 @@ import type {
   LinkDetail,
   LatestMonthlyRunOutput,
   ManagedUser,
+  MergedExercise,
   MergedGrant,
   MonthlyRunInstanceRecord,
   MonthlyRunPlanDeleteResult,
@@ -31,6 +32,7 @@ import type {
   WorkflowResultFileBinding,
   WorkflowPageSourceBinding,
   WorkflowRunRecord,
+  ShareworksExercise,
   ShareworksGrant,
 } from '../shared/types.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
@@ -82,6 +84,8 @@ let holdingsTotal = 0;
 let holdingsPageSize = 20;
 type GrantView = 'futu' | 'shareworks' | 'merge';
 let activeGrantView: GrantView = 'futu';
+type ExerciseView = 'futu' | 'shareworks' | 'merge';
+let activeExerciseView: ExerciseView = 'futu';
 let exercisePage = 1;
 let exerciseTotal = 0;
 let exercisePageSize = 20;
@@ -993,10 +997,7 @@ function applyLanguage() {
   setPageHero('transfer-plan', 'transferHeroText');
   setPageHero('employee-management', 'employeeHeroText');
   setPageHero('plan-summary', 'planHeroText');
-  setPageHero('data-management', 'dataManagementHeroText');
   setPageHero('five-percent-holders', 'holdersHeroText');
-  setPageHero('fixed-value', 'fixedHeroText');
-  setText('#page-fixed-value h2', pageTitleFor('fixed-value'));
   setPageHero('docs', 'docsHeroText');
   setPageHero('captable', 'captableHeroText');
 
@@ -1564,10 +1565,6 @@ async function activatePage(page: PageKey) {
       await renderFivePercentHoldersPage();
     }
 
-    if (page === 'fixed-value') {
-      await renderFixedValuePage();
-    }
-
     if (page === 'account') {
       await loadAccountPage();
     }
@@ -2059,6 +2056,17 @@ async function initHoldingsPage() {
     });
   });
   applyGrantView();
+  document.querySelectorAll<HTMLButtonElement>('[data-exercise-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const view = button.dataset.exerciseView as ExerciseView;
+      if (view === activeExerciseView) return;
+      activeExerciseView = view;
+      exercisePage = 1;
+      applyExerciseView();
+      void renderExerciseRecords();
+    });
+  });
+  applyExerciseView();
 }
 
 function initWorkflowUpdateModal() {
@@ -2590,6 +2598,27 @@ function applyGrantView() {
   localizeAppDom();
 }
 
+function applyExerciseView() {
+  const viewCopy: Record<ExerciseView, { title: string; subtitle: string }> = {
+    futu: { title: 'Futu Exercise Records', subtitle: currentLanguage === 'zh-CN' ? 'Futu BCI Exercises to Date 原始格式' : 'Raw Futu BCI Exercises to Date' },
+    shareworks: { title: 'Shareworks Exec Option OS', subtitle: currentLanguage === 'zh-CN' ? 'Executive Awards OS Only 原始格式（逐授予）' : 'Raw Executive Awards OS Only (per grant)' },
+    merge: { title: 'Merged Exercise Records', subtitle: currentLanguage === 'zh-CN' ? 'Futu 行权流水 + Shareworks 逐授予拼接' : 'Futu exercise transactions + Shareworks per-grant rows' },
+  };
+  document.querySelectorAll<HTMLButtonElement>('[data-exercise-view]').forEach((button) => {
+    const active = button.dataset.exerciseView === activeExerciseView;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  (['futu', 'shareworks', 'merge'] as ExerciseView[]).forEach((view) => {
+    el(`exercisePanel-${view}`).classList.toggle('hidden', view !== activeExerciseView);
+  });
+  el('exerciseViewTitle').textContent = viewCopy[activeExerciseView].title;
+  el('exerciseViewSubtitle').textContent = viewCopy[activeExerciseView].subtitle;
+  // Grant Year filter is Futu-only (Shareworks/merge rows have no per-transaction exercise semantics).
+  el<HTMLSelectElement>('filterExerciseGrantYear').disabled = activeExerciseView !== 'futu';
+  localizeAppDom();
+}
+
 function changeHoldingsPage(delta: number) {
   const currentPage = holdingsPage;
   const maxPage = pageCountOf(holdingsTotal, holdingsPageSize);
@@ -2816,6 +2845,14 @@ function renderMergedGrants(items: MergedGrant[], data: PaginatedResult<MergedGr
 async function renderExerciseRecords() {
   const query = el<HTMLInputElement>('searchExercises').value.trim();
   const tagId = el<HTMLSelectElement>('filterExerciseTag').value;
+  if (activeExerciseView === 'shareworks') {
+    await renderShareworksExercises(query, tagId);
+    return;
+  }
+  if (activeExerciseView === 'merge') {
+    await renderMergedExercises(query, tagId);
+    return;
+  }
   const grantYear = el<HTMLSelectElement>('filterExerciseGrantYear').value;
   renderSortIndicators('#exerciseTable', exerciseSort);
   const data = await api<PaginatedResult<ExerciseRecord>>(
@@ -2851,6 +2888,103 @@ async function renderExerciseRecords() {
         <td class="col-number">$${item.exerciseCostUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         <td class="col-number">${formatNumber(item.deductionSellingQuantity)}</td>
         <td class="col-number">${formatNumber(item.dealtQuantity)}</td>
+      </tr>`,
+    )
+    .join('');
+  localizeAppDom();
+}
+
+async function renderShareworksExercises(query: string, tagId: string) {
+  const data = await api<PaginatedResult<ShareworksExercise>>(
+    `/api/exercises/shareworks?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${exercisePage}&pageSize=${exercisePageSize}`,
+  );
+  setWorkflowPageFiles('exercise-record', data);
+  const items = data.items ?? [];
+  exercisePage = data.page;
+  exerciseTotal = data.total;
+  renderExercisePagination(data.page, data.totalPages, data.total);
+  const tbody = el('shareworksExerciseBody');
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="23" class="table-empty-cell">暂无符合条件的 Shareworks 记录</td></tr>';
+    localizeAppDom();
+    return;
+  }
+  tbody.innerHTML = items
+    .map(
+      (item, index) => `
+      <tr>
+        <td>${(data.page - 1) * data.pageSize + index + 1}</td>
+        <td>${escapeHtml(item.lastName)}${linkedBadge(item)}</td>
+        <td>${escapeHtml(item.firstName)}</td>
+        <td>${escapeHtml(item.middleName)}</td>
+        <td style="text-align:left;">${escapeHtml(item.planName)}</td>
+        <td>${escapeHtml(item.grantType)}</td>
+        <td>${escapeHtml(item.employeeGrantNumber)}</td>
+        <td>${escapeHtml(item.grantDate)}</td>
+        <td class="col-number">${formatNumber(item.sharesGranted)}</td>
+        <td class="col-number">${item.exercisePricePerShare === null ? '-' : `$${Number(item.exercisePricePerShare).toFixed(2)}`}</td>
+        <td>${escapeHtml(item.vestingSchedule)}</td>
+        <td>${escapeHtml(item.vestingStartDate)}</td>
+        <td>${escapeHtml(item.originalVestingStartDate)}</td>
+        <td>${escapeHtml(item.expireDate)}</td>
+        <td>${escapeHtml(item.earlyExerciseAllowed)}</td>
+        <td class="col-number">${formatNumber(item.sharesVested)}</td>
+        <td class="col-number">${formatNumber(item.sharesUnvested)}</td>
+        <td class="col-number">${formatNumber(item.sharesExercisedReleased)}</td>
+        <td class="col-number">${formatNumber(item.sharesSubjectToRepurchase)}</td>
+        <td class="col-number">${formatNumber(item.sharesCancelledExpired)}</td>
+        <td class="col-number">${formatNumber(item.sharesOutstanding)}</td>
+        <td class="col-number">${formatNumber(item.outstandingVestedExercisable)}</td>
+        <td class="col-number">${formatNumber(item.outstandingUnvested)}</td>
+      </tr>`,
+    )
+    .join('');
+  localizeAppDom();
+}
+
+async function renderMergedExercises(query: string, tagId: string) {
+  const data = await api<PaginatedResult<MergedExercise>>(
+    `/api/exercises/merge?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${exercisePage}&pageSize=${exercisePageSize}`,
+  );
+  setWorkflowPageFiles('exercise-record', data);
+  const items = data.items ?? [];
+  exercisePage = data.page;
+  exerciseTotal = data.total;
+  renderExercisePagination(data.page, data.totalPages, data.total);
+  const tbody = el('mergedExerciseBody');
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="23" class="table-empty-cell">暂无符合条件的合并记录</td></tr>';
+    localizeAppDom();
+    return;
+  }
+  tbody.innerHTML = items
+    .map(
+      (item, index) => `
+      <tr>
+        <td>${(data.page - 1) * data.pageSize + index + 1}</td>
+        <td style="text-align:left; font-weight:var(--font-semibold);">${escapeHtml(item.employeeName)}${linkedBadge(item)}</td>
+        <td>${escapeHtml(item.grantNumber)}</td>
+        <td>${escapeHtml(item.employeeNumber)}</td>
+        <td><span class="grant-source-badge grant-source-badge--${item.source.toLowerCase()}">${escapeHtml(item.source)}</span></td>
+        <td>${escapeHtml(item.grantDate)}</td>
+        <td class="col-number">${item.grantPriceUsd === null ? '-' : `$${Number(item.grantPriceUsd).toFixed(5)}`}</td>
+        <td>${escapeHtml(item.exerciseDate)}</td>
+        <td class="col-number">${formatNumber(item.orderedQuantity)}</td>
+        <td class="col-number">${formatNumber(item.exercisedQuantity)}</td>
+        <td class="col-number">${item.exerciseCostUsd === null ? '-' : `$${Number(item.exerciseCostUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</td>
+        <td class="col-number">${formatNumber(item.deductionSellingQuantity)}</td>
+        <td class="col-number">${formatNumber(item.dealtQuantity)}</td>
+        <td style="text-align:left;">${escapeHtml(item.planName)}</td>
+        <td>${escapeHtml(item.grantType)}</td>
+        <td>${escapeHtml(item.vestingSchedule)}</td>
+        <td>${escapeHtml(item.vestingStartDate)}</td>
+        <td>${escapeHtml(item.expireDate)}</td>
+        <td class="col-number">${formatNumber(item.sharesGranted)}</td>
+        <td class="col-number">${item.exercisePricePerShare === null ? '-' : `$${Number(item.exercisePricePerShare).toFixed(2)}`}</td>
+        <td class="col-number">${formatNumber(item.sharesVested)}</td>
+        <td class="col-number">${formatNumber(item.sharesUnvested)}</td>
+        <td class="col-number">${formatNumber(item.sharesExercisedReleased)}</td>
+        <td class="col-number">${formatNumber(item.sharesOutstanding)}</td>
       </tr>`,
     )
     .join('');
@@ -3685,6 +3819,7 @@ async function cancelFivePercentHoldersEdit() {
   await renderFivePercentHoldersPage();
 }
 
+// The 5 monthly-workflow fixed values now live per-month on monthly_run_instances (inherited from
 async function renderFixedValuePage() {
   const data = await api<{ items: FixedValueRecord[] }>('/api/global-parameters');
   if (data.items.length === 0) {

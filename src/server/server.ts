@@ -73,7 +73,6 @@ import {
   getMonthlyRunInstance,
   getMonthlyRunOutputForMonth,
   listMonthlyRunInstances,
-  loadMonthlyRunRuntimeFixedValues,
   monthlyRunInstanceToRuntimeParameters,
   upsertMonthlyRunInstance,
   updateMonthlyRunInstanceExecutionState,
@@ -82,7 +81,9 @@ import { monthlyWorkflowSelectionLabel, resolveMonthlyWorkflowDefinition } from 
 import { monthlySourcesFromSchema } from './monthlyRun/sourceSchema.js';
 import {
   buildPlanSummary,
+  mergeFutuExercise,
   mergeFutuGrant,
+  mergeShareworksExercise,
   mergeShareworksGrant,
   toFixedValue,
   toTransferPlanPeriod,
@@ -101,7 +102,7 @@ import {
   type DataManagementPageKey,
 } from './dataManagementWorkflow/workflowDefinitions.js';
 import { upsertTableRows } from './workflow/tableUpsert.js';
-import { normalizeEmployeeSourceFilter, normalizeExternalNumber } from './employees.js';
+import { assembleShareworksName, normalizeEmployeeSourceFilter, normalizeExternalNumber } from './employees.js';
 import { expandByLinkedGroup } from './employeeLinkExpansion.js';
 import { executeWorkflowDefinition, executeWorkflowTaskPreview } from './workflow/engine.js';
 import { selectWorkflowPreviewTasks } from './workflow/previewTask.js';
@@ -1256,6 +1257,30 @@ async function employeeLinkGroupByNumber(): Promise<Map<string, Array<{ id: numb
   return new Map(rows.map((row) => [String(row.employee_id ?? ''), parseLinkedIdentities(row.linked)]));
 }
 
+// Map each employee display name → 工号. Shareworks Exec Option OS rows carry only a name
+// (Last/First/Middle, no Employee Number), so we fold the name the same way assembleShareworksName
+// emits it ("First Middle Last") and match it against employees.employee_name to reuse the existing
+// label/link lookups that are keyed by 工号. Names are normalized (trim + collapse spaces + case).
+function normalizeEmployeeName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+async function employeeNumberByName(): Promise<Map<string, string>> {
+  const rows = await db.query<{ employee_id: string; employee_name: string }>(
+    `select employee_id, employee_name
+       from employees
+      where btrim(coalesce(employee_id, '')) <> ''
+        and btrim(coalesce(employee_name, '')) <> ''`,
+  );
+  const byName = new Map<string, string>();
+  for (const row of rows) {
+    const key = normalizeEmployeeName(String(row.employee_name ?? ''));
+    if (!key || byName.has(key)) continue;
+    byName.set(key, String(row.employee_id ?? ''));
+  }
+  return byName;
+}
+
 function employeeLabelIds(labels: EmployeeLabelRef[]): number[] {
   return labels.map((label) => label.id);
 }
@@ -1372,8 +1397,42 @@ function exerciseFromWorkflowRow(row: Record<string, unknown>, index: number, la
   };
 }
 
-function soldShareFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
+// Shareworks Exec Option OS ("Executive Awards OS Only" sheet): 22 raw columns, per-grant
+// outstanding awards. Note the Exec export labels the vesting column "Original VCD (assumed grants)"
+// (vs the Options OS Detail variant's "(migrated grants)"), and has no Employee Number column.
+function shareworksExerciseFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
   return {
+    id: index + 1,
+    employeeNumber: '',
+    labelIds: employeeLabelIds(labels),
+    labels,
+    tags: employeeLabelNames(labels),
+    lastName: textValue(row['Last Name']),
+    firstName: textValue(row['First Name']),
+    middleName: textValue(row['Middle Name']),
+    planName: textValue(row['Plan Name']),
+    grantType: textValue(row['Grant Type']),
+    employeeGrantNumber: textValue(row['Employee Grant Number']),
+    grantDate: dateTextValue(row['Grant Date']),
+    sharesGranted: nullableNumberValue(row['No. of Shares Granted']),
+    exercisePricePerShare: nullableNumberValue(row['Exercise Price per Share']),
+    vestingSchedule: textValue(row['Vesting Schedule']),
+    vestingStartDate: dateTextValue(row['Vesting Start Date']),
+    originalVestingStartDate: dateTextValue(row['Original VCD (assumed grants)']),
+    expireDate: dateTextValue(row['Expire Date']),
+    earlyExerciseAllowed: textValue(row['Early Exercise Allowed']),
+    sharesVested: nullableNumberValue(row['No. of Shares Vested']),
+    sharesUnvested: nullableNumberValue(row['No. of Shares Unvested']),
+    sharesExercisedReleased: nullableNumberValue(row['Shares Exercised / Released']),
+    sharesSubjectToRepurchase: nullableNumberValue(row['Shares Subject To Repurchase']),
+    sharesCancelledExpired: nullableNumberValue(row['Shares Cancelled/Expired']),
+    sharesOutstanding: nullableNumberValue(row['Shares Outstanding']),
+    outstandingVestedExercisable: nullableNumberValue(row['Outstanding Vested/Exercisable']),
+    outstandingUnvested: nullableNumberValue(row['Outstanding Unvested']),
+  };
+}
+
+function soldShareFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {  return {
     id: index + 1,
     name: textValue(row['姓名']) ?? '',
     employeeNumber: textValue(row['工号']) ?? '',
@@ -2382,11 +2441,10 @@ async function registerRoutes() {
     const monthlyRunInstance = (await getMonthlyRunInstance(db, body.month)) ?? (await ensureMonthlyRunInstance(db, body.month));
 
     await assertMonthlyRunInstanceReady(monthlyRunInstance);
+    // fixedValues are now per-month, sourced from the instance (monthlyRunInstanceToRuntimeParameters
+    // already carries all 5). New months inherit the prior month's values; the very first month was
+    // seeded from global_parameters. We no longer overwrite them from the global table here.
     const resolvedRuntimeParameters: WorkflowRuntimeParameters = monthlyRunInstanceToRuntimeParameters(monthlyRunInstance);
-    resolvedRuntimeParameters.fixedValues = {
-      ...(resolvedRuntimeParameters.fixedValues as Record<string, number> | undefined),
-      ...(await loadMonthlyRunRuntimeFixedValues(db)),
-    };
 
     // Previous Capitalization Summary 由业务自动引入：若上一个月的月度执行已产出汇总表，则用它作为
     // 本源（用于校验本月 EQ Control Book 的 Last Month）；无则置空、跳过对账校验。该源在 UI 隐藏。
@@ -3245,11 +3303,189 @@ async function registerRoutes() {
     };
   });
 
+  // Shareworks Exec Option OS view of the exercise page: per-grant outstanding awards (22 raw
+  // columns), not per-transaction like Futu. Keyed by name (no Employee Number), so labels are
+  // joined by folding the name back to a 工号 via employeeNumberByName.
+  app.get('/api/exercises/shareworks', async (request) => {
+    const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const { query = '', tagId = '', tag = '' } = request.query as {
+      query?: string;
+      tagId?: string;
+      tag?: string;
+    };
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedLabelId = Number(tagId);
+    const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
+    const normalizedTag = tag.trim();
+    const [artifact, inputSourceBindings, labelsByEmployee, numberByName, canonicalByNumber, linkGroup] = await Promise.all([
+      readLatestWorkflowDataFrameArtifact({
+        workflowCode: 'esop-exercise-record-sync',
+        taskId: 'persist_exercise_record_shareworks_file',
+        fallbackSheetName: 'Shareworks Exec Option OS',
+      }),
+      latestWorkflowInputSourceBindings('esop-exercise-record-sync'),
+      employeeLabelsByNumber(),
+      employeeNumberByName(),
+      employeeCanonicalByNumber(),
+      employeeLinkGroupByNumber(),
+    ]);
+    const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
+    const rows = expandByLinkedGroup(
+      (artifact?.rows ?? [])
+        .map((row, index) => {
+          const name = assembleShareworksName(
+            textValue(row['Last Name']),
+            textValue(row['First Name']),
+            textValue(row['Middle Name']),
+          );
+          const employeeNumber = numberByName.get(normalizeEmployeeName(name)) ?? '';
+          const base = shareworksExerciseFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+          return { ...base, employeeNumber, linkedIdentities: linkGroup.get(employeeNumber) ?? [] };
+        })
+        .filter((row) => Boolean(row.employeeGrantNumber))
+        .filter((row) => {
+          if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+          if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+          return true;
+        }),
+      normalizedQuery,
+      canonicalByNumber,
+      (row) =>
+        [row.lastName, row.firstName, row.middleName, row.employeeGrantNumber, row.planName, row.grantType]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery),
+    ).sort(
+      (left, right) =>
+        String(left.lastName ?? '').localeCompare(String(right.lastName ?? '')) ||
+        String(left.firstName ?? '').localeCompare(String(right.firstName ?? '')) ||
+        String(left.employeeGrantNumber ?? '').localeCompare(String(right.employeeGrantNumber ?? '')),
+    );
+    const sortedRows = sortRowsByNameOrEmpNo(
+      rows,
+      readNameEmpNoSort(request.query),
+      (row) => `${row.lastName ?? ''} ${row.firstName ?? ''}`.trim(),
+      (row) => String(row.employeeNumber ?? ''),
+    );
+    const paginated = paginateItems(sortedRows, page, pageSize);
+    return {
+      items: paginated.items,
+      sourceFiles: inputSourceFiles,
+      workflowSourceBindings: inputSourceBindings,
+      resultFileName: artifact?.fileName ?? null,
+      workflowResultFiles: resultFilesFromArtifacts(artifact),
+      resultFiles: sourceFilesFromArtifacts(artifact),
+      total: paginated.total,
+      page: paginated.page,
+      pageSize: paginated.pageSize,
+      totalPages: paginated.totalPages,
+    };
+  });
+
+  // Merge view of the exercise page: loose concatenation of the Futu per-transaction rows and the
+  // Shareworks per-grant rows, each keeping its own raw columns, tagged by source. Not normalized.
+  app.get('/api/exercises/merge', async (request) => {
+    const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const { query = '', tagId = '', tag = '' } = request.query as {
+      query?: string;
+      tagId?: string;
+      tag?: string;
+    };
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedLabelId = Number(tagId);
+    const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
+    const normalizedTag = tag.trim();
+    const [futuArtifact, shareworksArtifact, inputSourceBindings, labelsByEmployee, numberByName, canonicalByNumber, linkGroup] =
+      await Promise.all([
+        readLatestWorkflowDataFrameArtifact({
+          workflowCode: 'esop-exercise-record-sync',
+          taskId: 'persist_exercise_record_file',
+          fallbackSheetName: 'Futu BCI Exercises to Date',
+        }),
+        readLatestWorkflowDataFrameArtifact({
+          workflowCode: 'esop-exercise-record-sync',
+          taskId: 'persist_exercise_record_shareworks_file',
+          fallbackSheetName: 'Shareworks Exec Option OS',
+        }),
+        latestWorkflowInputSourceBindings('esop-exercise-record-sync'),
+        employeeLabelsByNumber(),
+        employeeNumberByName(),
+        employeeCanonicalByNumber(),
+        employeeLinkGroupByNumber(),
+      ]);
+    const futuRows = (futuArtifact?.rows ?? [])
+      .map((row, index) => {
+        const employeeNumber = textValue(row['Employee No.']) ?? '';
+        return {
+          ...exerciseFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
+          linkedIdentities: linkGroup.get(employeeNumber) ?? [],
+        };
+      })
+      .filter((row) => {
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        return true;
+      })
+      .map((row) => mergeFutuExercise(row));
+    const shareworksRows = (shareworksArtifact?.rows ?? [])
+      .map((row, index) => {
+        const name = assembleShareworksName(
+          textValue(row['Last Name']),
+          textValue(row['First Name']),
+          textValue(row['Middle Name']),
+        );
+        const employeeNumber = numberByName.get(normalizeEmployeeName(name)) ?? '';
+        const base = shareworksExerciseFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []);
+        return { ...base, employeeNumber, linkedIdentities: linkGroup.get(employeeNumber) ?? [] };
+      })
+      .filter((row) => Boolean(row.employeeGrantNumber))
+      .filter((row) => {
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        return true;
+      })
+      .map((row) => mergeShareworksExercise(row));
+    const items = expandByLinkedGroup(
+      [...futuRows, ...shareworksRows],
+      normalizedQuery,
+      canonicalByNumber,
+      (row) =>
+        [row.employeeName, row.employeeNumber, row.grantNumber, row.source]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery),
+    ).sort(
+      (left, right) =>
+        left.employeeNumber.localeCompare(right.employeeNumber) ||
+        String(left.grantDate ?? '').localeCompare(String(right.grantDate ?? '')) ||
+        left.grantNumber.localeCompare(right.grantNumber),
+    );
+    const sortedItems = sortRowsByNameOrEmpNo(
+      items,
+      readNameEmpNoSort(request.query),
+      (row) => row.employeeName ?? '',
+      (row) => row.employeeNumber ?? '',
+    );
+    const total = sortedItems.length;
+    const offset = (page - 1) * pageSize;
+    const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
+    return {
+      items: sortedItems.slice(offset, offset + pageSize),
+      sourceFiles: inputSourceFiles,
+      workflowSourceBindings: inputSourceBindings,
+      workflowResultFiles: resultFilesFromArtifacts(futuArtifact, shareworksArtifact),
+      resultFiles: sourceFilesFromArtifacts(futuArtifact, shareworksArtifact),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  });
+
   app.get('/api/sold-shares', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
     const { query = '', employmentStatus = '', tagId = '', tag = '' } = request.query as {
-      query?: string;
-      employmentStatus?: string;
+      query?: string;      employmentStatus?: string;
       tagId?: string;
       tag?: string;
     };
