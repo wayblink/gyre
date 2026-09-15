@@ -302,9 +302,9 @@ export class WorkflowRunStore implements WorkflowRunRepository {
     }
 
     const [steps, artifacts, events, approvals] = await Promise.all([
-      this.listSteps(runId),
-      this.listArtifacts(runId),
-      this.listEvents(runId),
+      opts?.light ? this.listStepsLight(runId) : this.listSteps(runId),
+      opts?.light ? this.listArtifactsLight(runId) : this.listArtifacts(runId),
+      opts?.light ? this.listEventsLight(runId) : this.listEvents(runId),
       this.listApprovals(runId),
     ]);
     const record = toWorkflowRunRecord(runRow, steps, artifacts, events, approvals);
@@ -346,9 +346,74 @@ export class WorkflowRunStore implements WorkflowRunRepository {
     return rows.map(toWorkflowRunArtifactRecord);
   }
 
+  /**
+   * Light variant of listSteps for the display/polling path: Postgres rebuilds each step's dataFrame
+   * to shape + the first LIGHT_SAMPLE_ROW_COUNT rows and drops cells, so the multi-MB rows/cells/matrix
+   * are never shipped from the DB nor parsed by the pg driver. Mirrors projectDataFrameLight exactly
+   * (6 keys); keeping `result_json || ...` preserves the kind/assertion/file/fileName/sheetName top-level
+   * keys for every result kind. Output is identical to the JS projection, so callers still run through
+   * projectRunRecordLight defensively.
+   */
+  async listStepsLight(runId: number): Promise<WorkflowRunStepRecord[]> {
+    const rows = await this.db.query<Record<string, unknown>>(
+      `select id, run_id, task_id, task_name, operator_code, status, task_snapshot_json,
+              lock_token, locked_at, attempt_count, error_message, started_at, finished_at, duration_ms,
+              case
+                when result_json is null then null
+                when result_json->'dataFrame' is null then result_json
+                else result_json || jsonb_build_object('dataFrame', jsonb_build_object(
+                  'columns', result_json->'dataFrame'->'columns',
+                  'range',   result_json->'dataFrame'->'range',
+                  'schema',  result_json->'dataFrame'->'schema',
+                  'matrix',  '[]'::jsonb,
+                  'rows',  coalesce((select jsonb_agg(e order by o) from jsonb_array_elements(result_json->'dataFrame'->'rows')  with ordinality t(e, o) where o <= $2), '[]'::jsonb),
+                  'index', coalesce((select jsonb_agg(e order by o) from jsonb_array_elements(result_json->'dataFrame'->'index') with ordinality t(e, o) where o <= $2), '[]'::jsonb)
+                ))
+              end as result_json
+         from workflow_run_steps
+        where run_id = $1
+        order by id asc`,
+      [runId, LIGHT_SAMPLE_ROW_COUNT],
+    );
+    return rows.map(toWorkflowRunStepRecord);
+  }
+
+  /** Light variant of listArtifacts: drop the legacy dataframe blob in metadata_json at the DB layer. */
+  async listArtifactsLight(runId: number): Promise<WorkflowRunArtifactRecord[]> {
+    const rows = await this.db.query<Record<string, unknown>>(
+      `select id, run_id, step_id, task_id, artifact_type, file_id, name,
+              metadata_json - 'dataframe' as metadata_json, created_at
+         from workflow_run_artifacts
+        where run_id = $1
+        order by id asc`,
+      [runId],
+    );
+    return rows.map(toWorkflowRunArtifactRecord);
+  }
+
   async listEvents(runId: number): Promise<WorkflowRunEventRecord[]> {
     const rows = await this.db.query<Record<string, unknown>>(
       'select * from workflow_run_events where run_id = $1 order by created_at asc, id asc',
+      [runId],
+    );
+    return rows.map(toWorkflowRunEventRecord);
+  }
+
+  /**
+   * Light variant of listEvents: strip the heavy blobs from `payload_json` at the DB layer. The
+   * display fields the UI reads (eventType / taskId / message / level / createdAt) are all columns;
+   * only `payload` comes from JSON, and no light consumer reads it. On historical runs the
+   * `artifact_created` events each mirror the full artifact dataframe under `payload.metadata`
+   * (measured as the dominant cost — multiple MB per run), so drop `metadata`/`dataframe`/`result`.
+   */
+  async listEventsLight(runId: number): Promise<WorkflowRunEventRecord[]> {
+    const rows = await this.db.query<Record<string, unknown>>(
+      `select id, run_id, step_id, task_id, event_type, level, message,
+              payload_json - 'metadata' - 'dataframe' - 'result' as payload_json,
+              created_at
+         from workflow_run_events
+        where run_id = $1
+        order by created_at asc, id asc`,
       [runId],
     );
     return rows.map(toWorkflowRunEventRecord);

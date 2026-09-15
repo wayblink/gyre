@@ -107,6 +107,8 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     deleteConfirmSuffix: { 'zh-CN': '吗？', 'en-US': '?' },
     emptyFileName: { 'zh-CN': '文件名不能为空', 'en-US': 'File name cannot be empty' },
     renameFailed: { 'zh-CN': '修改文件名失败', 'en-US': 'Failed to rename file' },
+    updatedAt: { 'zh-CN': '更新时间', 'en-US': 'Updated' },
+    createdAt: { 'zh-CN': '创建时间', 'en-US': 'Created' },
   } satisfies Record<string, Record<AppLanguage, string>>;
 
   function lang(): AppLanguage {
@@ -307,7 +309,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
               : `<div class="workbook-item__name">${escapeHtml(getProductFileDisplayName(file))}</div>`
           }
           <div class="workbook-item__path">${escapeHtml(displayPath)}</div>
-          <div class="workbook-item__meta">${formatFileSize(file.fileSizeBytes)} · ${file.workbookSheetCount} sheets · ${escapeHtml(formatDateTime(file.createdAt))}</div>
+          <div class="workbook-item__meta">${formatFileSize(file.fileSizeBytes)} · ${file.workbookSheetCount} sheets · ${tt('updatedAt')} ${escapeHtml(formatDateTime(file.createdAt))}</div>
           ${
             productFileLoadError && selectedProductFileId === file.id
               ? `<div class="workbook-item__status workbook-item__status--error">${escapeHtml(productFileLoadError)}</div>`
@@ -659,7 +661,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
         </button>
         <div class="workbook-tree__file-name">${escapeHtml(getProductFileDisplayName(file))}</div>
         <div class="workbook-tree__file-path">${escapeHtml(displayPath)}</div>
-        <div class="workbook-tree__file-meta">${formatFileSize(file.fileSizeBytes)} · ${file.workbookSheetCount} sheets</div>
+        <div class="workbook-tree__file-meta">${formatFileSize(file.fileSizeBytes)} · ${file.workbookSheetCount} sheets · ${tt('updatedAt')} ${escapeHtml(formatDateTime(file.createdAt))}</div>
         ${
           productFileLoadError && selectedProductFileId === file.id
             ? `<div class="workbook-item__status workbook-item__status--error">${escapeHtml(productFileLoadError)}</div>`
