@@ -359,6 +359,11 @@ test('monthly constants are rendered on the main Monthly Update page and saved t
   assert.match(block, /monthly-run-constants__row/);
   assert.doesNotMatch(block, /monthly-run-constants__grid/);
 
+  // The save button sits in a footer below the list, not in the header.
+  assert.match(block, /monthly-run-constants__footer/);
+  const header = block.match(/monthly-run-constants__header[\s\S]*?<\/div>/)?.[0] ?? '';
+  assert.doesNotMatch(header, /btnSaveMonthlyConstants/);
+
   // Each variable carries a bilingual business explanation rendered under it.
   assert.match(block, /def\.description\[lang\(\)\]/);
   assert.match(block, /monthly-run-constants__desc/);

@@ -597,7 +597,6 @@ export function createMonthlyRunPage({
           <h4 class="monthly-run-constants__title">${escapeHtml(tt('monthlyConstantsTitle'))}</h4>
           <p class="monthly-run-constants__hint">${escapeHtml(tt('monthlyConstantsHint'))}</p>
         </div>
-        <button class="btn btn-primary btn-sm" id="btnSaveMonthlyConstants" type="button">${escapeHtml(tt('saveMonthlyConstants'))}</button>
       </div>
       <div class="monthly-run-constants__list">
         ${MONTHLY_FIXED_VALUE_DEFS.map((def) => `
@@ -609,6 +608,9 @@ export function createMonthlyRunPage({
             </div>
             <p class="monthly-run-constants__desc">${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}</p>
           </div>`).join('')}
+      </div>
+      <div class="monthly-run-constants__footer">
+        <button class="btn btn-primary btn-sm" id="btnSaveMonthlyConstants" type="button">${escapeHtml(tt('saveMonthlyConstants'))}</button>
       </div>`;
 
     el('btnSaveMonthlyConstants')?.addEventListener('click', () => {
