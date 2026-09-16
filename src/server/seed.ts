@@ -310,6 +310,7 @@ const GLOBAL_PARAMETER_SEEDS: Array<[string, string, number]> = [
   ['cullgen_common_stock', 'Cullgen common stock（母公司普通股，固定值可修改）', 14_450_527],
   ['gyre_2023_china_subplan_total', 'Gyre 2023 China SubPlan Total（Futu 侧已归属总数，固定值可修改）', 7_815_396],
   ['warrants_convertible_preferred', 'Warrants for Convertible Preferred Stock（固定值，可修改）', 540_666],
+  ['series_b_preferred_stock', 'Series B Preferred Stock（固定值，可修改）', 18_486_180],
   ['options_outstanding_cullgen', 'Options Outstanding - Cullgen（母公司口径固定值）', 4_156_815],
   ['options_available_cullgen', 'Options Available - Cullgen（母公司口径固定值）', 10_994],
   // 5% Holders holder counts default to 0; admins maintain them from the 5% Holders page.

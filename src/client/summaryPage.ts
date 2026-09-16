@@ -1,5 +1,60 @@
 import type { CapitalizationRow, LatestMonthlyRunOutput } from '../shared/types.js';
 
+const SERIES_B_DESCRIPTION = 'Series B Preferred Stock';
+const TOTAL_FULLY_DILUTED_PREFIX = 'total fully diluted shares outstand';
+
+function isSeriesBRow(row: CapitalizationRow): boolean {
+  return row.description.trim().toLowerCase() === SERIES_B_DESCRIPTION.toLowerCase();
+}
+
+function isTotalFullyDilutedRow(row: CapitalizationRow): boolean {
+  return row.description.trim().toLowerCase().startsWith(TOTAL_FULLY_DILUTED_PREFIX);
+}
+
+/**
+ * Keeps older monthly snapshots compatible with the sixth Captable fixed value.
+ * New workflow output already contains this row and is returned unchanged.
+ */
+export function normalizeCapitalizationRows(
+  rows: ReadonlyArray<CapitalizationRow>,
+  seriesBPreferredStock: number | null | undefined,
+): CapitalizationRow[] {
+  const normalized = rows.map((row) => ({ ...row }));
+  if (normalized.some(isSeriesBRow)) return normalized;
+  const value = Number(seriesBPreferredStock);
+  if (!Number.isFinite(value) || value <= 0) return normalized;
+
+  const totalIndex = normalized.findIndex(isTotalFullyDilutedRow);
+  const oldTotal = totalIndex >= 0 ? Number(normalized[totalIndex].shares) : NaN;
+  const newTotal = Number.isFinite(oldTotal) ? oldTotal + value : null;
+  const insertAt = normalized.findIndex((row) => /options outstanding\s*-?\s*gyre/i.test(row.description));
+  const row: CapitalizationRow = {
+    type: 'data',
+    number: '6',
+    description: SERIES_B_DESCRIPTION,
+    shares: value,
+    percent: newTotal ? value / newTotal : null,
+  };
+  const result = (insertAt >= 0 ? [...normalized.slice(0, insertAt), row, ...normalized.slice(insertAt)] : [...normalized, row]);
+
+  for (const item of result) {
+    if (item === row) continue;
+    const number = Number(item.number);
+    if (Number.isInteger(number) && number >= 6) item.number = String(number + 1);
+    if (newTotal && item.shares !== undefined && item.type === 'data' && !isTotalFullyDilutedRow(item)) {
+      item.percent = item.shares / newTotal;
+    }
+  }
+  if (newTotal !== null) {
+    const total = result.find(isTotalFullyDilutedRow);
+    if (total) {
+      total.shares = newTotal;
+      total.percent = 1;
+    }
+  }
+  return result;
+}
+
 export function resolveDefaultSummaryMonth(
   availableMonths: string[],
   latestOutput: LatestMonthlyRunOutput | null,

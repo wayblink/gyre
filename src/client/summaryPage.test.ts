@@ -8,9 +8,31 @@ import {
   findComparableRow,
   indexCapitalizationRows,
   normalizeDisplayPercent,
+  normalizeCapitalizationRows,
   resolveBaselineMonth,
   resolveDefaultSummaryMonth,
 } from './summaryPage.js';
+
+test('legacy Captable snapshots receive the configured Series B row and updated totals', () => {
+  const rows: CapitalizationRow[] = [
+    { type: 'data', number: '1', description: 'Common Shares OS', shares: 90, percent: 0.9 },
+    { type: 'data', number: '6', description: 'Options Outstanding- Gyre', shares: 10, percent: 0.1 },
+    { type: 'data', number: '7', description: 'Options Available- Gyre', shares: 0, percent: 0 },
+    { type: 'data', description: 'Total Fully Diluted Shares Outstand', shares: 100, percent: 1 },
+  ];
+  const result = normalizeCapitalizationRows(rows, 20);
+  const seriesB = result.find((row) => row.description === 'Series B Preferred Stock');
+  const total = result.find((row) => row.description.startsWith('Total Fully Diluted'));
+  assert.deepEqual(seriesB, { type: 'data', number: '6', description: 'Series B Preferred Stock', shares: 20, percent: 20 / 120 });
+  assert.equal(result.find((row) => row.description === 'Options Outstanding- Gyre')?.number, '7');
+  assert.equal(total?.shares, 120);
+  assert.equal(result.find((row) => row.description === 'Common Shares OS')?.percent, 90 / 120);
+});
+
+test('new Captable snapshots do not duplicate Series B', () => {
+  const rows: CapitalizationRow[] = [{ type: 'data', number: '6', description: 'Series B Preferred Stock', shares: 20, percent: 1 }];
+  assert.deepEqual(normalizeCapitalizationRows(rows, 18_486_180), rows);
+});
 
 test('CapTable defaults to the month of the latest successful monthly output', () => {
   assert.equal(

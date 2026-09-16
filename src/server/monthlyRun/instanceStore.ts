@@ -22,6 +22,7 @@ import { productFileRef } from '../workflow/fileSources.js';
 const DEFAULT_OPTIONS_OUTSTANDING_CULLGEN = 4_156_815;
 const DEFAULT_OPTIONS_AVAILABLE_CULLGEN = 10_994;
 const DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED = 540_666;
+const DEFAULT_SERIES_B_PREFERRED_STOCK = 18_486_180;
 const DEFAULT_CULLGEN_COMMON_STOCK = 14_450_527;
 const DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL = 7_815_396;
 
@@ -118,6 +119,7 @@ function monthlyRunInstanceToRecord(
       optionsOutstandingCullgen: toNumber(row.options_outstanding_cullgen, DEFAULT_OPTIONS_OUTSTANDING_CULLGEN),
       optionsAvailableCullgen: toNumber(row.options_available_cullgen, DEFAULT_OPTIONS_AVAILABLE_CULLGEN),
       warrantsConvertiblePreferred: toNumber(row.warrants_convertible_preferred, DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED),
+      seriesBPreferredStock: toNumber(row.series_b_preferred_stock, DEFAULT_SERIES_B_PREFERRED_STOCK),
       cullgenCommonStock: toNumber(row.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK),
       gyre2023ChinaSubplanTotal: toNumber(row.gyre_2023_china_subplan_total, DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL),
     },
@@ -221,6 +223,7 @@ async function inheritMonthlyFixedValues(
   optionsOutstandingCullgen: number;
   optionsAvailableCullgen: number;
   warrantsConvertiblePreferred: number;
+  seriesBPreferredStock: number;
   cullgenCommonStock: number;
   gyre2023ChinaSubplanTotal: number;
 }> {
@@ -228,11 +231,12 @@ async function inheritMonthlyFixedValues(
     options_outstanding_cullgen: number | null;
     options_available_cullgen: number | null;
     warrants_convertible_preferred: number | null;
+    series_b_preferred_stock: number | null;
     cullgen_common_stock: number | null;
     gyre_2023_china_subplan_total: number | null;
   }>(
     `select options_outstanding_cullgen, options_available_cullgen, warrants_convertible_preferred,
-            cullgen_common_stock, gyre_2023_china_subplan_total
+            series_b_preferred_stock, cullgen_common_stock, gyre_2023_china_subplan_total
        from monthly_run_instances
       where month_key < $1
       order by month_key desc
@@ -243,6 +247,7 @@ async function inheritMonthlyFixedValues(
     optionsOutstandingCullgen: prior ? toNumber(prior.options_outstanding_cullgen, DEFAULT_OPTIONS_OUTSTANDING_CULLGEN) : DEFAULT_OPTIONS_OUTSTANDING_CULLGEN,
     optionsAvailableCullgen: prior ? toNumber(prior.options_available_cullgen, DEFAULT_OPTIONS_AVAILABLE_CULLGEN) : DEFAULT_OPTIONS_AVAILABLE_CULLGEN,
     warrantsConvertiblePreferred: prior ? toNumber(prior.warrants_convertible_preferred, DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED) : DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
+    seriesBPreferredStock: prior ? toNumber(prior.series_b_preferred_stock, DEFAULT_SERIES_B_PREFERRED_STOCK) : DEFAULT_SERIES_B_PREFERRED_STOCK,
     cullgenCommonStock: prior ? toNumber(prior.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK) : DEFAULT_CULLGEN_COMMON_STOCK,
     gyre2023ChinaSubplanTotal: prior ? toNumber(prior.gyre_2023_china_subplan_total, DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL) : DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL,
   };
@@ -261,14 +266,14 @@ export async function ensureMonthlyRunInstance(db: MonthlyRunDb, monthKey: strin
     `insert into monthly_run_instances (
        month_id, month_key, workflow_code, operator, status,
        options_outstanding_cullgen, options_available_cullgen,
-       warrants_convertible_preferred, cullgen_common_stock, gyre_2023_china_subplan_total
+       warrants_convertible_preferred, series_b_preferred_stock, cullgen_common_stock, gyre_2023_china_subplan_total
      )
-     values ($1, $2, $3, 'Administrator', 'draft', $4, $5, $6, $7, $8)
+     values ($1, $2, $3, 'Administrator', 'draft', $4, $5, $6, $7, $8, $9)
      on conflict (month_key) do update set updated_at = current_timestamp`,
     [
       month.id, month.month_key, MONTHLY_WORKFLOW_CODE,
       fixed.optionsOutstandingCullgen, fixed.optionsAvailableCullgen,
-      fixed.warrantsConvertiblePreferred, fixed.cullgenCommonStock, fixed.gyre2023ChinaSubplanTotal,
+      fixed.warrantsConvertiblePreferred, fixed.seriesBPreferredStock, fixed.cullgenCommonStock, fixed.gyre2023ChinaSubplanTotal,
     ],
   );
   const created = await getMonthlyRunInstance(db, monthKey);
@@ -300,6 +305,10 @@ export async function upsertMonthlyRunInstance(
       params.fixedValues?.warrantsConvertiblePreferred ??
       existing.fixedValues.warrantsConvertiblePreferred ??
       DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
+    seriesBPreferredStock:
+      params.fixedValues?.seriesBPreferredStock ??
+      existing.fixedValues.seriesBPreferredStock ??
+      DEFAULT_SERIES_B_PREFERRED_STOCK,
     cullgenCommonStock:
       params.fixedValues?.cullgenCommonStock ??
       existing.fixedValues.cullgenCommonStock ??
@@ -315,14 +324,15 @@ export async function upsertMonthlyRunInstance(
             options_outstanding_cullgen = $3,
             options_available_cullgen = $4,
             warrants_convertible_preferred = $5,
-            cullgen_common_stock = $6,
-            gyre_2023_china_subplan_total = $7,
+            series_b_preferred_stock = $6,
+            cullgen_common_stock = $7,
+            gyre_2023_china_subplan_total = $8,
             updated_at = current_timestamp
       where month_key = $1`,
     [
       monthKey, params.operator ?? existing.operator,
       nextFixedValues.optionsOutstandingCullgen, nextFixedValues.optionsAvailableCullgen,
-      nextFixedValues.warrantsConvertiblePreferred, nextFixedValues.cullgenCommonStock, nextFixedValues.gyre2023ChinaSubplanTotal,
+      nextFixedValues.warrantsConvertiblePreferred, nextFixedValues.seriesBPreferredStock, nextFixedValues.cullgenCommonStock, nextFixedValues.gyre2023ChinaSubplanTotal,
     ],
   );
 
@@ -374,6 +384,7 @@ const MONTHLY_RUNTIME_FIXED_VALUE_KEYS = {
   optionsOutstandingCullgen: 'options_outstanding_cullgen',
   optionsAvailableCullgen: 'options_available_cullgen',
   warrantsConvertiblePreferred: 'warrants_convertible_preferred',
+  seriesBPreferredStock: 'series_b_preferred_stock',
   cullgenCommonStock: 'cullgen_common_stock',
   gyre2023ChinaSubplanTotal: 'gyre_2023_china_subplan_total',
 } as const;
@@ -395,6 +406,7 @@ export async function loadMonthlyRunRuntimeFixedValues(db: MonthlyRunDb): Promis
     optionsOutstandingCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsOutstandingCullgen)),
     optionsAvailableCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsAvailableCullgen)),
     warrantsConvertiblePreferred: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.warrantsConvertiblePreferred)),
+    seriesBPreferredStock: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.seriesBPreferredStock)),
     cullgenCommonStock: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.cullgenCommonStock)),
     gyre2023ChinaSubplanTotal: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.gyre2023ChinaSubplanTotal)),
   };

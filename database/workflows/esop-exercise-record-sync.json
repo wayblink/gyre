@@ -1,37 +1,37 @@
 {
   "code": "esop-exercise-record-sync",
   "name": "ESOP / Exercise to Date Sync",
-  "description": "读取 Futu BCI Exercises to Date 明细并替换 Exercise to Date 展示数据。",
+  "description": "读取 Futu 员工行权记录源工作簿的行权汇总数据，并替换 Exercise Record 展示数据。",
   "status": "active",
-  "version": 2,
+  "version": 3,
   "tasks": [
     {
       "x": 48,
       "y": 48,
       "id": "extract_exercises",
-      "name": "Extract Futu BCI Exercises to Date",
+      "name": "Extract Futu Exercise Summary",
       "inputs": {},
       "params": {
         "range": "A1:M",
         "fileRef": {
           "$type": "object",
-          "$label": "Futu BCI Exercises to Date",
+          "$label": "Futu employee exercise source workbook",
           "$fromRuntime": "fileRefs.futu_exercises"
         },
         "headerRow": 1,
-        "sheetName": "Futu BCI Exercises to Date",
+        "sheetName": "行权汇总数据",
         "dropTrailingEmptyRows": true
       },
       "dependsOn": [],
-      "description": "从独立业务输入 Futu BCI Exercises to Date 提取 Futu BCI Exercises to Date。",
+      "description": "从 Futu 员工行权记录源工作簿提取行权汇总数据（行权汇总数据 Sheet）。",
       "operatorCode": "sheet.range.extract",
       "operatorVersion": "1.0.0"
     },
     {
       "x": 284,
       "y": 48,
-      "id": "filter_exercise_rows",
-      "name": "Filter Exercise Rows",
+      "id": "project_futu_exercise_summary",
+      "name": "Project Futu Exercise Summary",
       "inputs": {
         "input1": {
           "from": "extract_exercises",
@@ -39,7 +39,7 @@
         }
       },
       "params": {
-        "sql": "select *\nfrom {exercises}\nwhere trim(concat('', coalesce([Employee No.], ''))) <> ''\n  and trim(concat('', coalesce([Employee No.], ''))) <> '员工编号'",
+        "sql": "select\n  nullif(trim(cast(coalesce([姓名], '') as string)), '') as [Name],\n  nullif(trim(cast(coalesce([工号], '') as string)), '') as [Employee No.],\n  nullif(trim(cast(coalesce([牛牛号], '') as string)), '') as [Futubull ID],\n  nullif(trim(cast(coalesce([用户ID], '') as string)), '') as [User ID],\n  nullif(trim(cast(coalesce([授予编号], '') as string)), '') as [Grant No.],\n  nullif(trim(cast(coalesce([授予日期], '') as string)), '') as [Grant Date],\n  nullif(trim(cast(coalesce([授予价(USD)], '') as string)), '') as [Grant Price(USD)],\n  nullif(trim(cast(coalesce([行权日期], '') as string)), '') as [Exercise Date],\n  case when cast(coalesce([行权下单数量], 0) as string) in ('--','','null') then 0 else cast([行权下单数量] as number) end as [Ordered Qty],\n  case when cast(coalesce([行权成功数量], 0) as string) in ('--','','null') then 0 else cast([行权成功数量] as number) end as [Exercised Qty],\n  case when cast(coalesce([行权成本(USD)], 0) as string) in ('--','','null') then 0 else cast([行权成本(USD)] as number) end as [Exercise Cost(USD)],\n  case when cast(coalesce([扣除/卖出数量], 0) as string) in ('--','','null') then 0 else cast([扣除/卖出数量] as number) end as [Deduction/Selling Qty.],\n  case when cast(coalesce([成交数量], 0) as string) in ('--','','null') then 0 else cast([成交数量] as number) end as [Dealt Qty.]\nfrom {exercises}\nwhere trim(concat('', coalesce([工号], ''))) <> ''\n  and trim(cast(coalesce([工号], '') as string)) <> '工号'",
         "tableBindings": [
           {
             "inputSlot": "input1",
@@ -48,7 +48,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "过滤 Futu BCI Exercises 顶部中文表头/说明行，只保留有员工编号的业务明细。",
+      "description": "将 Futu 行权汇总数据的中文字段映射为 Exercise Record 的 13 列标准契约，并过滤空工号行。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -59,7 +59,7 @@
       "name": "Persist Futu BCI Exercises to Date File",
       "inputs": {
         "input1": {
-          "from": "filter_exercise_rows",
+          "from": "project_futu_exercise_summary",
           "slot": "dataframe"
         }
       },
@@ -71,7 +71,7 @@
         "folderPrefix": "output/exercise-record"
       },
       "dependsOn": [],
-      "description": "将 Futu BCI Exercises to Date dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "description": "将标准化后的 Futu 行权汇总数据输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     },
@@ -128,7 +128,7 @@
       "properties": {
         "futu_exercises": {
           "type": "object",
-          "label": "Futu BCI Exercises to Date"
+          "label": "Futu employee exercise source workbook"
         },
         "shareworks_exercises": {
           "type": "object",

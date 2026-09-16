@@ -53,6 +53,7 @@ import {
   computeCapitalizationRowDeltas,
   findComparableRow,
   indexCapitalizationRows,
+  normalizeCapitalizationRows,
   resolveBaselineMonth,
   resolveDefaultSummaryMonth,
   type CapitalizationDelta,
@@ -64,9 +65,6 @@ import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppL
 import { uploadFormDataWithProgress } from './uploadProgress.js';
 import { csvRow } from './csv.js';
 import '../../css/style.css';
-import '@univerjs/design/lib/index.css';
-import '@univerjs/ui/lib/index.css';
-import '@univerjs/sheets-ui/lib/index.css';
 
 let currentMonth = '';
 let currentSummary: SummarySnapshot | null = null;
@@ -1820,7 +1818,8 @@ async function renderSummaryPage(month: string) {
       api<SummarySnapshot>(`/api/months/${month}/summary`),
       loadBaselineSummary(resolveBaselineMonth(availableMonths, month)),
     ]);
-    currentSummary = data;
+    const capitalization = normalizeCapitalizationRows(data.capitalization, data.fixedValues?.seriesBPreferredStock);
+    currentSummary = { ...data, capitalization };
     setPageSourceFiles('captable', data.capitalizationSource?.fileName ?? t('defaultSnapshot'));
     getCurrentMonthTextNode().textContent = formatMonthCN(month);
     el('eomDate').textContent = data.eomDate || getEOMDate(month);
@@ -1833,9 +1832,12 @@ async function renderSummaryPage(month: string) {
         <td class="highlight-number">${formatNumber(data.reconciliation.eomBalance)}</td>
       </tr>`;
 
-    const baselineIndex = indexCapitalizationRows(baselineSummary?.capitalization ?? []);
+    const baselineIndex = indexCapitalizationRows(normalizeCapitalizationRows(
+      baselineSummary?.capitalization ?? [],
+      baselineSummary?.fixedValues?.seriesBPreferredStock,
+    ));
     const capBody = el('capitalizationBody');
-    capBody.innerHTML = data.capitalization
+    capBody.innerHTML = capitalization
       .map((item) => {
         if (item.type === 'cat-header-blue' || item.type === 'cat-header-gray') {
           return `<tr class="cat-header-blue"><td></td><td colspan="5" style="text-align:left;">${escapeHtml(item.description)}</td></tr>`;

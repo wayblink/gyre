@@ -2,6 +2,9 @@ import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
 import * as XLSX from 'xlsx';
+import '@univerjs/design/lib/index.css';
+import '@univerjs/ui/lib/index.css';
+import '@univerjs/sheets-ui/lib/index.css';
 
 type CreateWorkbookViewerOptions = {
   container: HTMLElement;

@@ -94,7 +94,9 @@ export function createFilePickerModal({
   let searchTimer: number | null = null;
   let moveTargetFolder: string | null = null;
   let bound = false;
-  const collapsedFolders = new Set<string>();
+  // The picker opens with the full tree collapsed. Only folders explicitly opened by the
+  // user are tracked, while an active search expands the tree so matching files remain visible.
+  const expandedFolders = new Set<string>();
 
   function overlay() {
     return el('workflowFilePickerModal');
@@ -107,7 +109,7 @@ export function createFilePickerModal({
     highlightedFileId = nextOptions.currentFileId ?? null;
     searchQuery = '';
     moveTargetFolder = null;
-    collapsedFolders.clear();
+    expandedFolders.clear();
     el<HTMLInputElement>('workflowFilePickerSearch').value = '';
     applyStaticLabels();
     closeMovePanel();
@@ -187,7 +189,7 @@ export function createFilePickerModal({
   }
 
   function renderDirectory(node: FileTreeNode, depth: number): string {
-    const collapsed = collapsedFolders.has(node.path);
+    const collapsed = !searchQuery && !expandedFolders.has(node.path);
     const children = collapsed
       ? ''
       : [
@@ -251,8 +253,8 @@ export function createFilePickerModal({
       button.addEventListener('click', () => {
         const path = button.dataset.pickerDirPath ?? '';
         if (!path) return;
-        if (collapsedFolders.has(path)) collapsedFolders.delete(path);
-        else collapsedFolders.add(path);
+        if (expandedFolders.has(path)) expandedFolders.delete(path);
+        else expandedFolders.add(path);
         render();
       });
     });

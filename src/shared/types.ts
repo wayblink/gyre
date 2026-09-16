@@ -33,6 +33,9 @@ export type SummarySnapshot = {
   formulaTrace: Record<string, unknown>;
   notes: Note[];
   capitalizationSource?: SummaryCapitalizationSource | null;
+  fixedValues?: {
+    seriesBPreferredStock?: number;
+  };
 };
 
 export type SummaryCapitalizationSource = {

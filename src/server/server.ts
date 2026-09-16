@@ -2454,7 +2454,7 @@ async function registerRoutes() {
 
     await assertMonthlyRunInstanceReady(monthlyRunInstance);
     // fixedValues are now per-month, sourced from the instance (monthlyRunInstanceToRuntimeParameters
-    // already carries all 5). New months inherit the prior month's values; the very first month was
+    // already carries all 6). New months inherit the prior month's values; the very first month was
     // seeded from global_parameters. We no longer overwrite them from the global table here.
     const resolvedRuntimeParameters: WorkflowRuntimeParameters = monthlyRunInstanceToRuntimeParameters(monthlyRunInstance);
 
@@ -2838,6 +2838,7 @@ async function registerRoutes() {
       [monthRow.id],
     );
     const summary = parseJson<Record<string, unknown>>(snapshot?.summary_json, {});
+    const monthlyRunInstance = await getMonthlyRunInstance(db, month);
     let sourceFile: Record<string, unknown> | undefined;
     let capitalizationOverride: Partial<Pick<SummarySnapshot, 'capitalization' | 'totalFullyDiluted' | 'reconciliation'>> | null = null;
 
@@ -2888,6 +2889,9 @@ async function registerRoutes() {
       formulaTrace: parseJson(snapshot?.formula_trace_json, {}),
       notes,
       capitalizationSource: buildCapitalizationSource(monthRow, sourceFile),
+      fixedValues: {
+        seriesBPreferredStock: monthlyRunInstance?.fixedValues.seriesBPreferredStock,
+      },
     };
 
     return responseSummary;
@@ -4768,7 +4772,20 @@ async function registerRoutes() {
   });
 
   if (fs.existsSync(config.clientDistDir)) {
-    await app.register(fastifyStatic, { root: config.clientDistDir });
+    await app.register(fastifyStatic, {
+      root: config.clientDistDir,
+      setHeaders: (reply, filePath) => {
+        // Vite asset names contain content hashes; cache them aggressively while
+        // keeping index.html revalidated so new deployments become visible.
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          reply.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          return;
+        }
+        if (/\.(?:png|svg|ico|webp|woff2?)$/i.test(filePath)) {
+          reply.setHeader('Cache-Control', 'public, max-age=86400');
+        }
+      },
+    });
     const spaPages = [
       'summary',
       'captable',

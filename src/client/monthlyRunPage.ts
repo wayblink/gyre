@@ -50,8 +50,8 @@ const sourceFileNameMatchers: Record<string, string[]> = {
   options_os_detail_by_plan: ['options os detail by plan', 'options os detail'],
 };
 
-// The 5 monthly fixed values, maintained per-month (each month inherits the prior month's values).
-// Labels mirror the workflow constants so the monthly config modal and workflow stay in sync.
+// The 6 monthly fixed values, maintained per-month (each month inherits the prior month's values).
+// Labels mirror the workflow constants so the Monthly Update page and workflow stay in sync.
 export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
   key: string;
   label: { 'zh-CN': string; 'en-US': string };
@@ -95,6 +95,14 @@ export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
     description: {
       'zh-CN': 'Gyre 2023 中国子计划期权总数的对账基准值。运行时会校验 EQ Control Book 算出的该列必须等于此值，否则阻塞。',
       'en-US': 'Reconciliation baseline for the Gyre 2023 China sub-plan option total. The run asserts the EQ Control Book column equals this value, and blocks otherwise.',
+    },
+  },
+  {
+    key: 'seriesBPreferredStock',
+    label: { 'zh-CN': 'Series B Preferred Stock', 'en-US': 'Series B Preferred Stock' },
+    description: {
+      'zh-CN': 'Series B 优先股按转换为普通股后的股数，作为固定项计入 Total Fully Diluted，并显示在 CapTable 汇总中。',
+      'en-US': 'Series B preferred stock on an as-converted-to-common basis; added to Total Fully Diluted and shown in the CapTable summary.',
     },
   },
 ];
@@ -260,17 +268,6 @@ export function getMonthlyRunWarningTaskIds(run: Pick<WorkflowRunRecord, 'steps'
   return run.steps.filter((step) => step.status === 'warning').map((step) => step.taskId);
 }
 
-export function getBcSubplanCancelledAdjustmentInfo(run: Pick<WorkflowRunRecord, 'id' | 'steps'>): { key: string; message: string } | null {
-  const step = run.steps.find((item) => item.taskId === 'calc_option_metrics');
-  if (step?.status !== 'completed' || step.result?.kind !== 'dataframe') return null;
-  const adjustment = Number(step.result.dataFrame.rows[0]?.bc_subplan_cancelled_adjustment ?? 0);
-  if (!Number.isFinite(adjustment) || Math.abs(adjustment) <= 0) return null;
-  return {
-    key: `${run.id}:${step.taskId}:bc-subplan-cancelled-adjustment`,
-    message: `GYRE 2025 BC Subplan 的 Cancelled 为 0，已使用 2025 BC Subplan Transfer 补充 cancel 数据：${adjustment}`,
-  };
-}
-
 function statusLabel(status: string, language: AppLanguage = 'zh-CN'): string {
   if (language === 'zh-CN') {
     if (status === 'completed') return '已完成';
@@ -352,7 +349,6 @@ export function createMonthlyRunPage({
   let currentInstance: MonthlyRunInstanceRecord | null = null;
   let selectedSources: Record<string, MonthlyRunSourceBinding> = {};
   let draftSources: SourceDraftBindings = {};
-  let draftFixedValues: Record<string, number> = {};
   let activeSourceModalKey: string | null = null;
   const sourceSheetSummariesByFileId = new Map<number, SourceSheetSummaryState>();
   let activeHistoryId: number | null = null;
@@ -362,7 +358,6 @@ export function createMonthlyRunPage({
   let isRunning = false;
   let isSavingSources = false;
   const expandedWarningTaskIds = new Set<string>();
-  const shownRunInfoNoticeKeys = new Set<string>();
   const text = {
     selectMonth: { 'zh-CN': '请选择月份', 'en-US': 'Please select a month' },
     codeDefined: { 'zh-CN': '代码定义', 'en-US': 'Code defined' },
@@ -370,6 +365,12 @@ export function createMonthlyRunPage({
     loadingSourceConfig: { 'zh-CN': '正在加载 source 配置…', 'en-US': 'Loading source configuration…' },
     configureSourcesHint: { 'zh-CN': '请先配置每个 workflow 输入节点需要使用的源文件。', 'en-US': 'Configure the source files required by each workflow input node first.' },
     notConfigured: { 'zh-CN': '未配置', 'en-US': 'Not configured' },
+    notUploaded: { 'zh-CN': '未上传', 'en-US': 'Not uploaded' },
+    optionalNotConfigured: { 'zh-CN': '未配置（可选）', 'en-US': 'Not configured (optional)' },
+    optionalSourceHint: {
+      'zh-CN': '可选输入：未提供时运行会产生 warning，批准后跳过该输入对应的修正。',
+      'en-US': 'Optional input: if omitted, the run raises a warning and skips the adjustment associated with this input after approval.',
+    },
     chooseUploadedFile: { 'zh-CN': '选择已上传文件', 'en-US': 'Choose uploaded file' },
     currentFile: { 'zh-CN': '当前文件', 'en-US': 'Current file' },
     uploadNewFile: { 'zh-CN': '上传新文件', 'en-US': 'Upload new file' },
@@ -586,7 +587,7 @@ export function createMonthlyRunPage({
 
   // Monthly fixed values rendered on the main Monthly Update page (below the source table),
   // so admins can review and edit them without opening the source modal. Saved together via
-  // a single "Save constants" button that PUTs all 5 values.
+  // a single "Save constants" button that PUTs all 6 values.
   function renderMonthlyConstants() {
     const host = el('monthlyRunConstantsBlock');
     if (!host) return;
@@ -721,7 +722,7 @@ export function createMonthlyRunPage({
         const file = getFileForBinding(binding);
         const uploaded = file
           ? `${renderUploadedFileCell(file)}${renderBusinessSourceSheetControl(source, binding)}`
-          : '<span class="source-not-uploaded">Not uploaded</span>';
+          : `<span class="source-not-uploaded">${escapeHtml(source.required ? tt('notUploaded') : tt('optionalNotConfigured'))}</span>`;
         const uploadedTime = file ? formatUploadedTimestamp(file.createdAt) : '-';
         const actions = file
           ? `<div class="source-file-action-group">
@@ -810,17 +811,18 @@ export function createMonthlyRunPage({
     }
 
     const configured = sourceDefinitions.filter((source) => selectedSources[source.sourceKey]?.fileId);
-    if (!configured.length) {
-      info.innerHTML = `<span>${escapeHtml(tt('configureSourcesHint'))}</span>`;
-      return;
-    }
-
-    info.innerHTML = configured
+    const optionalSources = sourceDefinitions.filter((source) => !source.required);
+    const hints = [
+      configured.length ? '' : tt('configureSourcesHint'),
+      ...optionalSources.map((source) => `${source.label}: ${tt('optionalSourceHint')}`),
+    ].filter(Boolean);
+    const configuredPills = configured
       .map((source) => {
         const file = getFileForBinding(selectedSources[source.sourceKey] ?? null);
-        return `<span class="monthly-run-source-pill"><strong>${escapeHtml(source.label)}</strong>${file ? escapeHtml(getFileDisplayName(file)) : escapeHtml(tt('notConfigured'))}</span>`;
+        return `<span class="monthly-run-source-pill"><strong>${escapeHtml(source.label)}</strong>${file ? escapeHtml(getFileDisplayName(file)) : escapeHtml(source.required ? tt('notConfigured') : tt('optionalNotConfigured'))}</span>`;
       })
       .join('');
+    info.innerHTML = `${hints.map((hint) => `<span>${escapeHtml(hint)}</span>`).join('')}${configuredPills}`;
   }
 
   function openSourceModal(focusSourceKey?: string) {
@@ -830,7 +832,6 @@ export function createMonthlyRunPage({
     draftSources = Object.fromEntries(
       sourceDefinitions.map((source) => [source.sourceKey, selectedSources[source.sourceKey] ?? null]),
     );
-    draftFixedValues = { ...(currentInstance?.fixedValues ?? {}) };
     renderSourceModal();
     el('monthlyRunSourceModal').classList.remove('hidden');
     if (focusSourceKey) {
@@ -945,12 +946,13 @@ export function createMonthlyRunPage({
               <div>
                 <h4>${escapeHtml(source.label)}</h4>
                 <p>${escapeHtml(source.description)}</p>
+                ${!source.required ? `<p class="monthly-run-source-card__optional-hint">${escapeHtml(tt('optionalSourceHint'))}</p>` : ''}
               </div>
               <span class="monthly-run-source-card__task">${escapeHtml(source.taskId)}</span>
             </div>
             <div class="monthly-run-source-card__current">
               <span>${escapeHtml(tt('currentFile'))}</span>
-              <strong>${file ? escapeHtml(getFileDisplayName(file)) : escapeHtml(tt('notConfigured'))}</strong>
+              <strong>${file ? escapeHtml(getFileDisplayName(file)) : escapeHtml(source.required ? tt('notConfigured') : tt('optionalNotConfigured'))}</strong>
             </div>
             <div class="monthly-run-source-card__controls">
               <select class="search-input monthly-run-source-card__select" data-source-select="${escapeHtml(source.sourceKey)}">
@@ -1009,44 +1011,6 @@ export function createMonthlyRunPage({
       });
     });
 
-    // Monthly fixed values: per-month constants, inherited from the prior month by default and
-    // editable here. Rendered below the source list; saved together with the sources.
-    const constantsBlock = el('monthlyRunSourceConstantsBlock');
-    if (constantsBlock) {
-      constantsBlock.innerHTML = `
-        <div class="monthly-run-source-modal__meta" style="margin-top:16px;">
-          <div>
-            <h4 style="margin:0 0 4px;">${escapeHtml(tt('monthlyConstantsTitle'))}</h4>
-            <p style="margin:0;font-size:12px;opacity:.75;">${escapeHtml(tt('monthlyConstantsHint'))}</p>
-          </div>
-        </div>
-        <div class="monthly-run-source-list" id="monthlyRunSourceConstants">
-          ${MONTHLY_FIXED_VALUE_DEFS.map((def) => {
-            const value = draftFixedValues[def.key];
-            return `
-              <div class="monthly-run-source-card__current" style="flex-direction:column;align-items:stretch;gap:4px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
-                  <span>${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span>
-                  <input class="search-input" type="text" inputmode="decimal" data-fixed-value="${escapeHtml(def.key)}"
-                    value="${value === undefined ? '' : escapeHtml(String(value))}" style="max-width:220px;text-align:right;">
-                </div>
-                <p style="margin:0;font-size:12px;opacity:.75;">${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}</p>
-              </div>`;
-          }).join('')}
-        </div>`;
-      constantsBlock.querySelectorAll<HTMLInputElement>('[data-fixed-value]').forEach((input) => {
-        input.addEventListener('input', () => {
-          const key = input.dataset.fixedValue;
-          if (!key) return;
-          const parsed = Number(input.value.replace(/[, ]/g, ''));
-          if (input.value.trim() === '' || !Number.isFinite(parsed)) {
-            delete draftFixedValues[key];
-          } else {
-            draftFixedValues[key] = parsed;
-          }
-        });
-      });
-    }
   }
 
   async function uploadSourceFileFor(sourceKey: string) {
@@ -1157,9 +1121,6 @@ export function createMonthlyRunPage({
         sources: Object.fromEntries(
           modalSources.map((source) => [source.sourceKey, nextSources[source.sourceKey] ?? null]),
         ),
-        // Only send the fixed values that were actually filled in the modal; blanks fall back to
-        // the instance's existing value server-side (upsertMonthlyRunInstance ?? existing).
-        fixedValues: Object.keys(draftFixedValues).length ? { ...draftFixedValues } : undefined,
       });
       renderSourceInfo();
       renderBusinessDefinedInputConfiguration();
@@ -1214,7 +1175,6 @@ export function createMonthlyRunPage({
           onUpdate: (run) => {
             if (activeRunMonth !== month) return;
             activeRun = run;
-            notifyBcSubplanCancelledAdjustmentIfNeeded(run);
             renderRunPanel();
           },
         });
@@ -1251,7 +1211,6 @@ export function createMonthlyRunPage({
       onUpdate: (run) => {
         if (activeRunMonth !== month) return;
         activeRun = run;
-        notifyBcSubplanCancelledAdjustmentIfNeeded(run);
         renderRunPanel();
       },
     });
@@ -1265,15 +1224,7 @@ export function createMonthlyRunPage({
   async function refreshActiveRun() {
     if (!activeRun) return;
     activeRun = await runClient.getRun(activeRun.id, { light: true });
-    notifyBcSubplanCancelledAdjustmentIfNeeded(activeRun);
     renderRunPanel();
-  }
-
-  function notifyBcSubplanCancelledAdjustmentIfNeeded(run: WorkflowRunRecord) {
-    const info = getBcSubplanCancelledAdjustmentInfo(run);
-    if (!info || shownRunInfoNoticeKeys.has(info.key)) return;
-    shownRunInfoNoticeKeys.add(info.key);
-    notify(info.message, { type: 'info' });
   }
 
   function getWarningMessageForTask(run: WorkflowRunRecord, taskId: string): string | null {

@@ -1,7 +1,5 @@
 import type { ProductFileDetail, ProductFileRecord } from '../shared/types.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
-import { createWorkbookViewer } from './univer/createWorkbookViewer.js';
-import { bufferToUniverWorkbook } from './univer/xlsxToUniver.js';
 import type { AppLanguage } from './i18n.js';
 import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
 import { createFileMoveDialog } from './fileMoveDialog.js';
@@ -13,7 +11,6 @@ import {
   productFileTreePath,
   type FileTreeNode,
 } from './fileTree.js';
-import * as XLSX from 'xlsx';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
@@ -37,6 +34,11 @@ const FILES_MOBILE_MEDIA = '(max-width: 768px)';
 
 type FilesViewMode = 'list' | 'tree';
 
+type WorkbookViewer = {
+  dispose: () => void;
+  exportXlsxBlob: () => Blob | null;
+};
+
 export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime, formatFileSize, notify, confirmAction, getLanguage }: FilesPageDeps) {
   const fileMoveDialog = createFileMoveDialog({
     el,
@@ -49,7 +51,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   let productFiles: ProductFileRecord[] = [];
   let currentProductFileDetail: ProductFileDetail | null = null;
   let currentWorkbookBuffer: ArrayBuffer | null = null;
-  let workbookViewer: { dispose: () => void; exportXlsxBlob: () => Blob | null } | null = null;
+  let workbookViewer: WorkbookViewer | null = null;
   let selectedProductFileId: number | null = null;
   let productFileLoadError: string | null = null;
   let productFileLoading = false;
@@ -77,6 +79,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     switchToListView: { 'zh-CN': '切换到列表视图', 'en-US': 'Switch to list view' },
     switchToTreeView: { 'zh-CN': '切换到树状视图', 'en-US': 'Switch to tree view' },
     editFileName: { 'zh-CN': '编辑文件名', 'en-US': 'Edit file name' },
+    downloadFile: { 'zh-CN': '下载文件', 'en-US': 'Download file' },
     deleteFile: { 'zh-CN': '删除文件', 'en-US': 'Delete file' },
     deleteSelectedFiles: { 'zh-CN': '批量删除', 'en-US': 'Delete selected' },
     moveFile: { 'zh-CN': '移动到其他目录', 'en-US': 'Move to another folder' },
@@ -216,6 +219,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   }
 
   async function createProductFile() {
+    const XLSX = await import('xlsx');
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([[]]);
     XLSX.utils.book_append_sheet(workbook, sheet, 'Sheet1');
@@ -274,6 +278,13 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
               <path d="M3 7h5l2 2h11v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"></path>
               <path d="M12 12v6"></path>
               <path d="m9.5 14.5 2.5-2.5 2.5 2.5"></path>
+            </svg>
+          </button>
+          <button class="workbook-item__download" data-download-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('downloadFile'))}" title="${escapeHtml(tt('downloadFile'))}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12"></path>
+              <path d="m7 10 5 5 5-5"></path>
+              <path d="M5 21h14"></path>
             </svg>
           </button>
           <button class="workbook-item__delete" data-delete-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('deleteFile'))}" title="${escapeHtml(tt('deleteFile'))}">
@@ -410,6 +421,14 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
         event.preventDefault();
         event.stopPropagation();
         void moveProductFiles([Number(button.dataset.moveFileId)]);
+      });
+    });
+
+    container.querySelectorAll<HTMLElement>('[data-download-file-id]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        downloadProductFile(Number(button.dataset.downloadFileId));
       });
     });
 
@@ -554,6 +573,18 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     return file.displayName || file.originalName;
   }
 
+  function downloadProductFile(fileId: number) {
+    const file = productFiles.find((item) => item.id === fileId);
+    if (!file) return;
+    const link = document.createElement('a');
+    link.href = `/api/files/${fileId}/content`;
+    link.download = getProductFileDisplayName(file);
+    link.rel = 'noopener';
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+
   function getFilteredProductFiles() {
     if (!filesSearchQuery) return [...productFiles];
     return productFiles.filter((file) => {
@@ -650,6 +681,13 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
               <path d="m9.5 14.5 2.5-2.5 2.5 2.5"></path>
             </svg>
         </button>
+        <button class="workbook-tree__download" data-download-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('downloadFile'))}" title="${escapeHtml(tt('downloadFile'))}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12"></path>
+            <path d="m7 10 5 5 5-5"></path>
+            <path d="M5 21h14"></path>
+          </svg>
+        </button>
         <button class="workbook-tree__delete" data-delete-file-id="${file.id}" type="button" aria-label="${escapeHtml(tt('deleteFile'))}" title="${escapeHtml(tt('deleteFile'))}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 6h18"></path>
@@ -710,7 +748,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       renderProductFilesList();
       updateFileActionState();
       renderProductFileDetail();
-      renderWorkbookViewer(workbookBuffer, detail);
+      await renderWorkbookViewer(workbookBuffer, detail);
     } catch (error) {
       if (requestId !== openProductFileRequestId) return;
 
@@ -734,8 +772,14 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     el('productWorkbookViewer').classList.remove('hidden');
   }
 
-  function renderWorkbookViewer(workbookBuffer: ArrayBuffer, detail: ProductFileDetail) {
+  async function renderWorkbookViewer(workbookBuffer: ArrayBuffer, detail: ProductFileDetail) {
     disposeWorkbookViewer();
+
+    // Excel parsing and Univer are only needed after a file is opened.
+    const [{ bufferToUniverWorkbook }, { createWorkbookViewer }] = await Promise.all([
+      import('./univer/xlsxToUniver.js'),
+      import('./univer/createWorkbookViewer.js'),
+    ]);
 
     const workbookData = bufferToUniverWorkbook(workbookBuffer, detail.file.originalName);
     const host = el('productWorkbookViewer');
@@ -753,11 +797,11 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     updateFileActionState();
   }
 
-  function enterProductFileEditing() {
+  async function enterProductFileEditing() {
     if (!currentProductFileDetail || !currentWorkbookBuffer || productFileEditing) return;
     if (productFileLoading || productFileSaving) return;
     productFileEditing = true;
-    renderWorkbookViewer(currentWorkbookBuffer, currentProductFileDetail);
+    await renderWorkbookViewer(currentWorkbookBuffer, currentProductFileDetail);
   }
 
   function confirmDiscardEditing() {
@@ -776,7 +820,7 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
       updateFileActionState();
       return;
     }
-    renderWorkbookViewer(currentWorkbookBuffer, currentProductFileDetail);
+    await renderWorkbookViewer(currentWorkbookBuffer, currentProductFileDetail);
   }
 
   async function saveCurrentProductFile() {

@@ -44,6 +44,7 @@ function monthlyRunRow(overrides: Record<string, unknown> = {}): Record<string, 
     status: 'draft',
     options_outstanding_cullgen: 4_156_815,
     options_available_cullgen: 10_994,
+    series_b_preferred_stock: 18_486_180,
     latest_workflow_run_id: null,
     latest_output_file_id: null,
     latest_output_file_name: null,
@@ -65,7 +66,7 @@ function instanceRecord(sources: MonthlyRunInstanceRecord['sources']): MonthlyRu
     operator: 'Administrator',
     status: 'draft',
     sources,
-    fixedValues: { optionsOutstandingCullgen: 4_156_815, optionsAvailableCullgen: 10_994 },
+    fixedValues: { optionsOutstandingCullgen: 4_156_815, optionsAvailableCullgen: 10_994, seriesBPreferredStock: 18_486_180 },
     latestWorkflowRunId: null,
     latestOutputFileId: null,
     latestOutputFileName: null,
@@ -94,7 +95,7 @@ test('runtime parameters build fileRefs from instance sources, adding sheet only
     futu_exercises: { provider: 'product-files', key: 'input/2026-06/futu.xlsx' },
     option_plans_summary: { provider: 'product-files', key: 'input/2026-06/options.xlsx', sheet: 'Custom Sheet' },
   });
-  assert.deepEqual(runtime.fixedValues, { optionsOutstandingCullgen: 4_156_815, optionsAvailableCullgen: 10_994 });
+  assert.deepEqual(runtime.fixedValues, { optionsOutstandingCullgen: 4_156_815, optionsAvailableCullgen: 10_994, seriesBPreferredStock: 18_486_180 });
 });
 
 test('latest monthly output selects the newest successful execution with an existing result file', async () => {
@@ -140,6 +141,7 @@ test('monthly runtime fixed values are loaded from latest global parameters', as
         { key: 'options_outstanding_cullgen', value: 123 },
         { key: 'options_available_cullgen', value: 456 },
         { key: 'warrants_convertible_preferred', value: 789 },
+        { key: 'series_b_preferred_stock', value: 987 },
         { key: 'cullgen_common_stock', value: 111 },
         { key: 'gyre_2023_china_subplan_total', value: 222 },
       ] as unknown as T[];
@@ -156,6 +158,7 @@ test('monthly runtime fixed values are loaded from latest global parameters', as
     optionsOutstandingCullgen: 123,
     optionsAvailableCullgen: 456,
     warrantsConvertiblePreferred: 789,
+    seriesBPreferredStock: 987,
     cullgenCommonStock: 111,
     gyre2023ChinaSubplanTotal: 222,
   });

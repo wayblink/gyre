@@ -674,6 +674,10 @@ create table if not exists monthly_run_instances (
   bc_subplan_transfer_sheet_name text not null default 'Vesting Schedule',
   options_outstanding_cullgen double precision not null default 4156815,
   options_available_cullgen double precision not null default 10994,
+  warrants_convertible_preferred double precision not null default 540666,
+  series_b_preferred_stock double precision not null default 18486180,
+  cullgen_common_stock double precision not null default 14450527,
+  gyre_2023_china_subplan_total double precision not null default 7815396,
   latest_workflow_run_id integer references workflow_runs(id) on delete set null,
   latest_output_file_id integer references product_files(id) on delete set null,
   latest_error_message text,
@@ -698,6 +702,10 @@ alter table monthly_run_instances add column if not exists bc_subplan_transfer_f
 alter table monthly_run_instances add column if not exists bc_subplan_transfer_sheet_name text not null default 'Vesting Schedule';
 alter table monthly_run_instances add column if not exists options_outstanding_cullgen double precision not null default 4156815;
 alter table monthly_run_instances add column if not exists options_available_cullgen double precision not null default 10994;
+alter table monthly_run_instances add column if not exists warrants_convertible_preferred double precision not null default 540666;
+alter table monthly_run_instances add column if not exists series_b_preferred_stock double precision not null default 18486180;
+alter table monthly_run_instances add column if not exists cullgen_common_stock double precision not null default 14450527;
+alter table monthly_run_instances add column if not exists gyre_2023_china_subplan_total double precision not null default 7815396;
 alter table monthly_run_instances add column if not exists latest_workflow_run_id integer references workflow_runs(id) on delete set null;
 alter table monthly_run_instances add column if not exists latest_output_file_id integer references product_files(id) on delete set null;
 alter table monthly_run_instances add column if not exists latest_error_message text;

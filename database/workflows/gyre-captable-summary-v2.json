@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary V2",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算 v2：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 8,
+  "version": 11,
   "tasks": [
     {
       "x": 48,
@@ -436,8 +436,14 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(c.bc_subplan_transfer_control_book) as bc_subplan_transfer_selected,\n  'control_book' as bc_subplan_transfer_selection_source,\n  {constants.warrantsConvertiblePreferred} as warrants_for_convertible_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  round(max(c.eom_eq_balance_os) + max(o.total_options_outstanding) + {constants.warrantsConvertiblePreferred} - max(c.bc_subplan_transfer_control_book) + max(o.total_options_available) + {constants.optionsOutstandingCullgen} + {constants.optionsAvailableCullgen}, 0) as total_fully_diluted\nfrom {control_metrics} c, {option_metrics} o",
+        "sql": "\nselect\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(c.bc_subplan_transfer_control_book) as bc_subplan_transfer_selected,\n  'control_book' as bc_subplan_transfer_selection_source,\n  {constants.warrantsConvertiblePreferred} as warrants_for_convertible_preferred_stock,\n  {constants.seriesBPreferredStock} as series_b_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  round(max(c.eom_eq_balance_os) + max(o.total_options_outstanding) + {constants.warrantsConvertiblePreferred} + {constants.seriesBPreferredStock} - max(c.bc_subplan_transfer_control_book) + max(o.total_options_available) + {constants.optionsOutstandingCullgen} + {constants.optionsAvailableCullgen}, 0) as total_fully_diluted\nfrom {control_metrics} c, {option_metrics} o",
         "constants": {
+          "seriesBPreferredStock": {
+            "$type": "number",
+            "$label": "Series B Preferred Stock",
+            "$default": 18486180,
+            "$fromRuntime": "fixedValues.seriesBPreferredStock"
+          },
           "optionsAvailableCullgen": {
             "$type": "number",
             "$label": "Options Available - Cullgen",
@@ -469,7 +475,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "汇总 Summary 计算所需业务输入；各类固定值来自 global parameters，Gyre option totals 由 raw option plans workbook 与 cancellation 调整计算。",
+      "description": "汇总 Summary 计算所需业务输入；六类固定值来自 global parameters，Gyre option totals 由 raw option plans workbook 与 cancellation 调整计算。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -708,7 +714,7 @@
         }
       },
       "params": {
-        "sql": "\nselect '' as Number, 'Issued Shares -Equity Asset Class' as Description,\n  null as [Common Shares Equivalent],\n  null as [% of fully diluted]\nfrom {business_inputs}\nunion all select '' as Number, 'Asset Class Summary: EOM' as Description,\n  b.eom_eq_balance_os as [Common Shares Equivalent],\n  null as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '1' as Number, 'Common Shares OS' as Description,\n  b.eom_eq_balance_os - b.cullgen_common_stock - f.bci_shares_held_by_futu - b.bc_subplan_transfer_selected as [Common Shares Equivalent],\n  (b.eom_eq_balance_os - b.cullgen_common_stock - f.bci_shares_held_by_futu - b.bc_subplan_transfer_selected) / b.total_fully_diluted as [% of fully diluted]\nfrom {futu_metrics} f, {business_inputs} b\nunion all select '2' as Number, 'Cullgen common stock' as Description,\n  b.cullgen_common_stock as [Common Shares Equivalent],\n  b.cullgen_common_stock / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '3' as Number, 'BCI Shares Held by Futu' as Description,\n  f.bci_shares_held_by_futu as [Common Shares Equivalent],\n  f.bci_shares_held_by_futu / b.total_fully_diluted as [% of fully diluted]\nfrom {futu_metrics} f, {business_inputs} b\nunion all select '4' as Number, '2025 BC Subplan shares transferred to Futu' as Description,\n  b.bc_subplan_transfer_selected as [Common Shares Equivalent],\n  b.bc_subplan_transfer_selected / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '' as Number, 'Derivative Equity Incentives' as Description,\n  null as [Common Shares Equivalent],\n  null as [% of fully diluted]\nfrom {business_inputs}\nunion all select '5' as Number, 'Warrants for Convertible Preferred Stock' as Description,\n  b.warrants_for_convertible_preferred_stock as [Common Shares Equivalent],\n  b.warrants_for_convertible_preferred_stock / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '6' as Number, 'Options Outstanding- Gyre' as Description,\n  o.total_options_outstanding - b.bc_subplan_transfer_selected as [Common Shares Equivalent],\n  (o.total_options_outstanding - b.bc_subplan_transfer_selected) / b.total_fully_diluted as [% of fully diluted]\nfrom {option_metrics} o, {business_inputs} b\nunion all select '7' as Number, 'Options Available- Gyre' as Description,\n  o.total_options_available as [Common Shares Equivalent],\n  o.total_options_available / b.total_fully_diluted as [% of fully diluted]\nfrom {option_metrics} o, {business_inputs} b\nunion all select '8' as Number, 'Options Outstanding- Cullgen' as Description,\n  b.options_outstanding_cullgen as [Common Shares Equivalent],\n  b.options_outstanding_cullgen / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '9' as Number, 'Options Available- Cullgen' as Description,\n  b.options_available_cullgen as [Common Shares Equivalent],\n  b.options_available_cullgen / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '' as Number, 'Total Fully Diluted Shares Outstand' as Description,\n  b.total_fully_diluted as [Common Shares Equivalent],\n  1 as [% of fully diluted]\nfrom {business_inputs} b",
+        "sql": "\nselect '' as Number, 'Issued Shares -Equity Asset Class' as Description,\n  null as [Common Shares Equivalent],\n  null as [% of fully diluted]\nfrom {business_inputs}\nunion all select '' as Number, 'Asset Class Summary: EOM' as Description,\n  b.eom_eq_balance_os as [Common Shares Equivalent],\n  null as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '1' as Number, 'Common Shares OS' as Description,\n  b.eom_eq_balance_os - b.cullgen_common_stock - f.bci_shares_held_by_futu - b.bc_subplan_transfer_selected as [Common Shares Equivalent],\n  (b.eom_eq_balance_os - b.cullgen_common_stock - f.bci_shares_held_by_futu - b.bc_subplan_transfer_selected) / b.total_fully_diluted as [% of fully diluted]\nfrom {futu_metrics} f, {business_inputs} b\nunion all select '2' as Number, 'Cullgen common stock' as Description,\n  b.cullgen_common_stock as [Common Shares Equivalent],\n  b.cullgen_common_stock / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '3' as Number, 'BCI Shares Held by Futu' as Description,\n  f.bci_shares_held_by_futu as [Common Shares Equivalent],\n  f.bci_shares_held_by_futu / b.total_fully_diluted as [% of fully diluted]\nfrom {futu_metrics} f, {business_inputs} b\nunion all select '4' as Number, '2025 BC Subplan shares transferred to Futu' as Description,\n  b.bc_subplan_transfer_selected as [Common Shares Equivalent],\n  b.bc_subplan_transfer_selected / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '' as Number, 'Derivative Equity Incentives' as Description,\n  null as [Common Shares Equivalent],\n  null as [% of fully diluted]\nfrom {business_inputs}\nunion all select '5' as Number, 'Warrants for Convertible Preferred Stock' as Description,\n  b.warrants_for_convertible_preferred_stock as [Common Shares Equivalent],\n  b.warrants_for_convertible_preferred_stock / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '6' as Number, 'Series B Preferred Stock' as Description,\n  b.series_b_preferred_stock as [Common Shares Equivalent],\n  b.series_b_preferred_stock / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '7' as Number, 'Options Outstanding- Gyre' as Description,\n  o.total_options_outstanding - b.bc_subplan_transfer_selected as [Common Shares Equivalent],\n  (o.total_options_outstanding - b.bc_subplan_transfer_selected) / b.total_fully_diluted as [% of fully diluted]\nfrom {option_metrics} o, {business_inputs} b\nunion all select '8' as Number, 'Options Available- Gyre' as Description,\n  o.total_options_available as [Common Shares Equivalent],\n  o.total_options_available / b.total_fully_diluted as [% of fully diluted]\nfrom {option_metrics} o, {business_inputs} b\nunion all select '9' as Number, 'Options Outstanding- Cullgen' as Description,\n  b.options_outstanding_cullgen as [Common Shares Equivalent],\n  b.options_outstanding_cullgen / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '10' as Number, 'Options Available- Cullgen' as Description,\n  b.options_available_cullgen as [Common Shares Equivalent],\n  b.options_available_cullgen / b.total_fully_diluted as [% of fully diluted]\nfrom {business_inputs} b\nunion all select '' as Number, 'Total Fully Diluted Shares Outstand' as Description,\n  b.total_fully_diluted as [Common Shares Equivalent],\n  1 as [% of fully diluted]\nfrom {business_inputs} b",
         "tableBindings": [
           {
             "inputSlot": "control_metrics",
@@ -729,7 +735,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "按需求文档生成 Capitalization Table (Summary View) 数据行；输出对齐 file15-before.xlsx 的 section/header/detail/total 结构。",
+      "description": "按需求文档生成 Capitalization Table (Summary View) 数据行；包含可配置的 Series B Preferred Stock，并输出 section/header/detail/total 结构。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -807,7 +813,7 @@
               "params": {
                 "sql": "select count(*) as actual from {summary}",
                 "operator": "=",
-                "expectedValue": 13,
+                "expectedValue": 14,
                 "tableBindings": [
                   {
                     "inputSlot": "summary",
@@ -1027,6 +1033,10 @@
           "type": "number",
           "label": "Cullgen Common Stock"
         },
+        "seriesBPreferredStock": {
+          "type": "number",
+          "label": "Series B Preferred Stock"
+        },
         "optionsAvailableCullgen": {
           "type": "number",
           "label": "Options Available - Cullgen"
@@ -1083,6 +1093,7 @@
     },
     "fixedValues": {
       "cullgenCommonStock": 14450527,
+      "seriesBPreferredStock": 18486180,
       "optionsAvailableCullgen": 10994,
       "gyre2023ChinaSubplanTotal": 7815396,
       "optionsOutstandingCullgen": 4156815,

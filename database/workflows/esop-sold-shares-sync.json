@@ -1,29 +1,29 @@
 {
   "code": "esop-sold-shares-sync",
   "name": "ESOP / Sold Shares Sync",
-  "description": "读取 Futu sold shares 明细并替换 Sold Shares 展示数据。",
+  "description": "读取 Futu 员工出售记录源工作簿的出售汇总数据，并替换 Sold Shares 展示数据。",
   "status": "active",
-  "version": 1,
+  "version": 2,
   "tasks": [
     {
       "x": 48,
       "y": 48,
       "id": "extract_sold_shares",
-      "name": "Extract Futu Sold Shares",
+      "name": "Extract Futu Sold Share Summary",
       "inputs": {},
       "params": {
         "range": "A1:S",
         "fileRef": {
           "$type": "object",
-          "$label": "Futu Sold Shares",
+          "$label": "Futu employee sold-share source workbook",
           "$fromRuntime": "fileRefs.futu_sold_shares"
         },
         "headerRow": 1,
-        "sheetName": "Futu sold shares",
+        "sheetName": "出售汇总数据",
         "dropTrailingEmptyRows": true
       },
       "dependsOn": [],
-      "description": "从独立业务输入 Futu Sold Shares 提取 Futu sold shares。",
+      "description": "从 Futu 员工出售记录源工作簿提取出售汇总数据（出售汇总数据 Sheet）。",
       "operatorCode": "sheet.range.extract",
       "operatorVersion": "1.0.0"
     },
@@ -48,7 +48,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "过滤 Futu sold shares 顶部空行、说明行和表头噪音，只保留有员工工号和姓名的业务明细。",
+      "description": "过滤 Futu 出售汇总数据顶部空行、说明行和表头噪音，只保留有员工工号和姓名的汇总记录。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -71,7 +71,7 @@
         "folderPrefix": "output/sold-shares"
       },
       "dependsOn": [],
-      "description": "将 Futu Sold Shares dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "description": "将 Futu 出售汇总数据输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     }
@@ -83,7 +83,7 @@
       "properties": {
         "futu_sold_shares": {
           "type": "object",
-          "label": "Futu Sold Shares"
+          "label": "Futu employee sold-share source workbook"
         }
       }
     }

@@ -5,7 +5,6 @@ import test from 'node:test';
 import {
   getMonthlyRunFileCandidatesForSource,
   getMonthlyRunModalSourceDefinitions,
-  getBcSubplanCancelledAdjustmentInfo,
   getMonthlyRunSourceSheetControlModel,
   getMonthlyRunVisibleSources,
   getMonthlyRunSheetNameOptions,
@@ -32,10 +31,6 @@ test('monthly source file candidates prefer files matching the configured input 
   assert.deepEqual(
     getMonthlyRunFileCandidatesForSource('option_plans_summary', files, 63).map((file) => file.id),
     [61, 64, 63],
-  );
-  assert.deepEqual(
-    getMonthlyRunFileCandidatesForSource('bc_subplan_transfer', files, null).map((file) => file.id),
-    [63, 61, 64],
   );
 });
 
@@ -114,7 +109,6 @@ test('monthly source update modal can be scoped to a single input source', () =>
   const sources = [
     { sourceGroup: 'shareworks', sourceKey: 'control_book', taskId: 'extract_control_book', label: 'EQ Control Book', description: '', required: true },
     { sourceGroup: 'shareworks', sourceKey: 'option_plans_summary', taskId: 'extract_option_plans', label: 'Gyre Option Plans Summary SL', description: '', required: true },
-    { sourceGroup: 'shareworks', sourceKey: 'bc_subplan_transfer', taskId: 'extract_bc_subplan_transfer', label: '2025 BC Subplan Transfer', description: '', required: true },
   ] as const;
 
   assert.deepEqual(
@@ -123,7 +117,7 @@ test('monthly source update modal can be scoped to a single input source', () =>
   );
   assert.deepEqual(
     getMonthlyRunModalSourceDefinitions(sources).map((source) => source.sourceKey),
-    ['control_book', 'option_plans_summary', 'bc_subplan_transfer'],
+    ['control_book', 'option_plans_summary'],
   );
 });
 
@@ -167,23 +161,6 @@ test('monthly input bindings survive while the product file list is still loadin
   assert.deepEqual(retainAvailableSourceBindings(bindings, []), bindings);
 });
 
-test('monthly run sheet override options come from the selected workbook sheets', () => {
-  assert.deepEqual(
-    getMonthlyRunSheetNameOptions({
-      bindingSheetName: '2025 BC Subplan Transfer',
-      defaultSheetName: 'Vesting Schedule',
-      sheets: [
-        { sheetName: 'Summary', rowCount: 10, columns: [] },
-        { sheetName: '2025 BC Subplan Transfer', rowCount: 30, columns: ['行标签', '总计'] },
-      ],
-    }),
-    {
-      selectedSheetName: '2025 BC Subplan Transfer',
-      options: ['Summary', '2025 BC Subplan Transfer'],
-    },
-  );
-});
-
 test('monthly run warning task ids are derived from warning steps', () => {
   assert.deepEqual(
     getMonthlyRunWarningTaskIds({
@@ -194,57 +171,6 @@ test('monthly run warning task ids are derived from warning steps', () => {
       ] as never,
     }),
     ['guard'],
-  );
-});
-
-test('monthly run detects BC Subplan cancelled adjustment info from option metrics output', () => {
-  const info = getBcSubplanCancelledAdjustmentInfo({
-    id: 42,
-    steps: [
-      {
-        taskId: 'calc_option_metrics',
-        status: 'completed',
-        result: {
-          kind: 'dataframe',
-          dataFrame: {
-            columns: ['total_options_outstanding', 'bc_subplan_cancelled_adjustment'],
-            rows: [{ total_options_outstanding: 14_386_058, bc_subplan_cancelled_adjustment: 28_170 }],
-            index: [0],
-            matrix: [[14_386_058, 28_170]],
-            range: { sheetName: 'Calc Option Plan Metrics', a1Range: 'A1:B2' },
-          },
-        },
-      },
-    ] as never,
-  });
-
-  assert.equal(info?.key, '42:calc_option_metrics:bc-subplan-cancelled-adjustment');
-  assert.match(info?.message ?? '', /GYRE 2025 BC Subplan 的 Cancelled 为 0/);
-  assert.match(info?.message ?? '', /2025 BC Subplan Transfer/);
-});
-
-test('monthly run does not show BC Subplan adjustment info when no transfer adjustment is used', () => {
-  assert.equal(
-    getBcSubplanCancelledAdjustmentInfo({
-      id: 42,
-      steps: [
-        {
-          taskId: 'calc_option_metrics',
-          status: 'completed',
-          result: {
-            kind: 'dataframe',
-            dataFrame: {
-              columns: ['bc_subplan_cancelled_adjustment'],
-              rows: [{ bc_subplan_cancelled_adjustment: 0 }],
-              index: [0],
-              matrix: [[0]],
-              range: { sheetName: 'Calc Option Plan Metrics', a1Range: 'A1:A2' },
-            },
-          },
-        },
-      ] as never,
-    }),
-    null,
   );
 });
 
@@ -318,7 +244,6 @@ test('input configuration renders one flat source list: hidden dropped, group ig
     { sourceKey: 'incremental_control_book', sourceGroup: 'shareworks', hidden: false },
     { sourceKey: 'previous_capitalization_summary', sourceGroup: 'shareworks', hidden: true },
     { sourceKey: 'option_plans_summary', sourceGroup: 'shareworks', hidden: false },
-    { sourceKey: 'bc_subplan_transfer', sourceGroup: 'shareworks', hidden: false },
     { sourceKey: 'futu_exercises', sourceGroup: 'futu', hidden: false },
     { sourceKey: 'options_os_detail_by_plan', sourceGroup: 'shareworks', hidden: true },
   ] as const;
@@ -327,9 +252,20 @@ test('input configuration renders one flat source list: hidden dropped, group ig
     'base_control_book',
     'incremental_control_book',
     'option_plans_summary',
-    'bc_subplan_transfer',
     'futu_exercises',
   ]);
+});
+
+test('monthly update treats optional sources as non-blocking and explains warning behavior', () => {
+  const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+
+  // Required checks remain data-driven: an optional source can be absent while required
+  // sources still block saving and running.
+  assert.match(source, /source\.required && !draftSources\[source\.sourceKey\]\?\.fileId/);
+  assert.match(source, /if \(source\.required && !binding\?\.fileId\) return false/);
+  assert.match(source, /optionalNotConfigured/);
+  assert.match(source, /optionalSourceHint/);
+  assert.match(source, /未提供时运行会产生 warning/);
 });
 
 test('monthly constants are rendered on the main Monthly Update page and saved through one button', () => {
@@ -339,12 +275,16 @@ test('monthly constants are rendered on the main Monthly Update page and saved t
   // The host block lives on the Monthly Update page itself, below the source table, so admins
   // can review the 5 monthly constants without opening the source modal.
   assert.match(html, /<div class="monthly-run-constants" id="monthlyRunConstantsBlock">/);
+  assert.doesNotMatch(html, /id="monthlyRunSourceConstantsBlock"/);
   assert.match(source, /function renderMonthlyConstants\(\)/);
 
   // Rendering must happen after the instance is loaded: renderBusinessDefinedInputConfiguration
   // is the shared repaint path (called by refreshInstance once currentInstance is set).
   const render = source.match(/function renderBusinessDefinedInputConfiguration\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
   assert.match(render, /renderMonthlyConstants\(\);/);
+
+  const sourceModal = source.match(/function renderSourceModal\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  assert.doesNotMatch(sourceModal, /monthlyRunSourceConstantsBlock|data-fixed-value/);
 
   // All 5 keys get their own input, addressed by data-const-key, prefilled from the instance.
   const block = source.match(/function renderMonthlyConstants\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
@@ -404,6 +344,10 @@ test('monthly constants are rendered on the main Monthly Update page and saved t
     'gyre_2023_china_subplan_total',
     'options_available_cullgen',
     'options_outstanding_cullgen',
+    'series_b_preferred_stock',
     'warrants_convertible_preferred',
   ]);
+
+  assert.equal(MONTHLY_FIXED_VALUE_DEFS.length, 6);
+  assert.ok(MONTHLY_FIXED_VALUE_DEFS.some((definition) => definition.key === 'seriesBPreferredStock'));
 });

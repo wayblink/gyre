@@ -166,15 +166,21 @@ test('files browser can move single files and selections to another folder', () 
 
   assert.match(filesPageSourceLocal, /createFileMoveDialog\(/);
   assert.match(filesPageSourceLocal, /data-move-file-id="\$\{file\.id\}"/);
+  assert.match(filesPageSourceLocal, /data-download-file-id="\$\{file\.id\}"/);
   assert.match(filesPageSourceLocal, /workbook-tree__move/);
+  assert.match(filesPageSourceLocal, /workbook-tree__download/);
+  assert.match(filesPageSourceLocal, /downloadProductFile\(Number\(button\.dataset\.downloadFileId\)\)/);
+  assert.match(filesPageSourceLocal, /\/api\/files\/\$\{fileId\}\/content/);
   assert.match(filesPageSourceLocal, /moveProductFiles\(\[\.\.\.selectedProductFileIds\]\)/);
   assert.match(moveDialogSource, /\/api\/files\/\$\{file\.id\}\/move/);
 
-  // The three row icons sit side by side instead of stacking on top of each other.
+  // The row icons sit side by side instead of stacking on top of each other.
   assert.match(css, /\.workbook-item__delete\s*\{[\s\S]*?right: 8px;/);
   assert.match(css, /\.workbook-item__edit\s*\{[\s\S]*?right: 34px;/);
   assert.match(css, /\.workbook-item__move\s*\{[\s\S]*?right: 60px;/);
+  assert.match(css, /\.workbook-item__download\s*\{[\s\S]*?right: 86px;/);
   assert.match(css, /\.workbook-tree__move\s*\{[\s\S]*?right: 34px;/);
+  assert.match(css, /\.workbook-tree__download\s*\{[\s\S]*?right: 60px;/);
 });
 
 test('moving a product file repoints workflow references stored by logical path', () => {
@@ -456,11 +462,11 @@ test('Transfer to Futu exposes file-backed monthly summary, cancellation editing
   assert.match(transferPage, /id="transferPlanSummaryTable"/);
   assert.match(transferPage, /id="transferPlanSummaryHead"/);
   assert.match(transferPage, /id="transferPlanSummaryBody"/);
-  assert.match(transferPage, /Options cancelled\/forfeited/);
-  assert.match(transferPage, /data-transfer-cancelled/);
   assert.match(transferPage, /id="btnEditTransferPlan"/);
   assert.match(transferPage, /id="btnSaveTransferPlanEdit"[\s\S]*Confirm &amp; Run/);
   assert.match(transferPage, /id="btnCancelTransferPlanEdit"/);
+  assert.match(transferPage, /Options cancelled\/forfeited/);
+  assert.match(transferPage, /data-transfer-cancelled/);
   assert.doesNotMatch(transferPage, /id="btnImportTransferPlan"/);
   assert.doesNotMatch(transferPage, /id="btnExportTransferPlan"/);
   assert.doesNotMatch(transferPage, /id="transferPlanFileInput"/);
