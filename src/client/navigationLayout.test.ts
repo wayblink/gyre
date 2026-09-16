@@ -622,10 +622,14 @@ test('CapTable ownership summary exposes an Update button that links to Monthly 
 
 test('workflow editor toolbar exposes export alongside execute save and delete', () => {
   const workflowPage = html.slice(html.indexOf('id="page-workflow"'));
+  const workflowSource = readFileSync(new URL('./workflowPage.ts', import.meta.url), 'utf8');
   assert.match(workflowPage, /id="btnExecuteWorkflow"/);
   assert.match(workflowPage, /id="btnExportWorkflow"[\s\S]*<svg[\s\S]*?<span>Export<\/span>/);
   assert.match(workflowPage, /id="btnSaveWorkflow"/);
   assert.match(workflowPage, /id="btnDeleteWorkflow"/);
+  assert.match(workflowPage, /id="workflowVersionBadge"[\s\S]*aria-label="工作流版本"/);
+  assert.match(workflowSource, /v\$\{escapeHtml\(workflow\.version\)\}/);
+  assert.match(workflowSource, /workflowVersionBadge\.textContent = workflow \? `v\$\{workflow\.version\}` : '';/);
 });
 
 test('workflow task editor exposes a taller SQL editor with normalization controls', () => {

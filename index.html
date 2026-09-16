@@ -1510,7 +1510,10 @@
                             <header class="workflow-toolbar">
                                 <div class="workflow-toolbar__meta">
                                     <div class="workflow-toolbar__identity">
-                                        <input id="workflowNameInput" class="search-input workflow-input workflow-input--title" placeholder="工作流名称">
+                                        <div class="workflow-toolbar__title-row">
+                                            <input id="workflowNameInput" class="search-input workflow-input workflow-input--title" placeholder="工作流名称">
+                                            <span class="workflow-version-badge hidden" id="workflowVersionBadge" aria-label="工作流版本"></span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="workflow-toolbar__actions">

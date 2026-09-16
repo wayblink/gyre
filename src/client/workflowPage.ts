@@ -924,7 +924,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
         (workflow) => `
         <div class="workflow-list__item ${workflow.id === activeWorkflowId ? 'is-active' : ''}" data-id="${workflow.id}">
           <div class="workflow-list__main" data-role="select" data-id="${workflow.id}" role="button" tabindex="0">
-            <div class="workflow-list__name">${escapeHtml(workflow.name)}</div>
+            <div class="workflow-list__title-row">
+              <div class="workflow-list__name">${escapeHtml(workflow.name)}</div>
+              <span class="workflow-version-badge">v${escapeHtml(workflow.version)}</span>
+            </div>
             <div class="workflow-list__desc">${escapeHtml(workflow.description || '暂无描述')}</div>
             <div class="workflow-list__meta">${workflow.tasks.length} 个节点</div>
           </div>
@@ -2262,6 +2265,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     renderWorkflowZoomControls();
     const workflow = getActiveWorkflow();
     el<HTMLInputElement>('workflowNameInput').value = workflow?.name ?? '';
+    const workflowVersionBadge = el('workflowVersionBadge');
+    workflowVersionBadge.textContent = workflow ? `v${workflow.version}` : '';
+    workflowVersionBadge.classList.toggle('hidden', !workflow);
     const descriptionText = el('workflowDescriptionText');
     const descriptionDisplayRow = el('workflowDescriptionDisplayRow');
     const descriptionInput = el<HTMLTextAreaElement>('workflowDescriptionInput');
