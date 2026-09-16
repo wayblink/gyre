@@ -14,7 +14,8 @@
     "build": "tsc -p tsconfig.json && vite build",
     "start": "WORKFLOW_SEED_ON_INIT=true node dist/src/server/server.js",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "workflow:publish-seed": "tsx src/server/workflow/publishWorkflowSeed.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
