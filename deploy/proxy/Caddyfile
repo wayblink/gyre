@@ -5,6 +5,11 @@
 
 # captable-merge（对外名 gyre）—— 别名 gyre-app、内部端口 60628（见 docker-compose.prod.yml）
 gyre.yushi.hk {
+	encode zstd gzip
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
 	reverse_proxy gyre-app:60628
 }
 
