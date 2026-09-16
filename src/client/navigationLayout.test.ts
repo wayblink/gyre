@@ -11,6 +11,12 @@ const uploadProgressSource = readFileSync(new URL('./uploadProgress.ts', import.
 const workbookViewerSource = readFileSync(new URL('./univer/createWorkbookViewer.ts', import.meta.url), 'utf8');
 const docsPageSource = readFileSync(new URL('./docsPage.ts', import.meta.url), 'utf8');
 const filePickerSource = readFileSync(new URL('./filePickerModal.ts', import.meta.url), 'utf8');
+const grantRecordWorkflow = JSON.parse(readFileSync(new URL('../../database/workflows/esop-grant-record-sync.json', import.meta.url), 'utf8')) as {
+  version: number;
+  tasks: Array<{ id: string; params?: { sheetName?: string; headerRow?: number }; inputs?: Record<string, { guards?: Array<{ type?: string; params?: { expectedColumns?: string } }> }>; }>;
+  runtimeParamsSchema: { fileRefs: { properties: Record<string, { label?: string }> } };
+  runtimeParamsDefaults: { fileRefs: { shareworks_grants: { key: string } } };
+};
 
 function pageLabel(page: string): string {
   const match = html.match(new RegExp(`<div class="nav-item[^"]*" data-page="${page}"[\\s\\S]*?<span class="nav-text">([^<]+)</span>`));
@@ -292,6 +298,20 @@ test('Grant Record exposes Futu, Shareworks, and Merge tabs with source-specific
   assert.match(grantPage, /id="btnHoldingsLastPage"/);
 });
 
+test('Grant Record workflow uses the Shareworks source workbook contract', () => {
+  const extract = grantRecordWorkflow.tasks.find((task) => task.id === 'extract_shareworks_grants');
+  const project = grantRecordWorkflow.tasks.find((task) => task.id === 'project_shareworks_grants_columns');
+  const schemaGuard = project?.inputs?.input1?.guards?.find((guard) => guard.type === 'dataframe.schema.assert');
+
+  assert.equal(grantRecordWorkflow.version, 2);
+  assert.equal(extract?.params?.sheetName, 'Personnel Summary (Options OS D');
+  assert.equal(extract?.params?.headerRow, 2);
+  assert.match(schemaGuard?.params?.expectedColumns ?? '', /Employee Number/);
+  assert.match(schemaGuard?.params?.expectedColumns ?? '', /Shares Outstanding/);
+  assert.match(grantRecordWorkflow.runtimeParamsSchema.fileRefs.properties.shareworks_grants.label ?? '', /source workbook/i);
+  assert.match(grantRecordWorkflow.runtimeParamsDefaults.fileRefs.shareworks_grants.key, /2026\/06-26\//);
+});
+
 test('Grant Record employee tag filter is wired through label ids for every grant source', () => {
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
@@ -393,6 +413,10 @@ test('Exercise Record exposes Futu / Shareworks / Merge source tabs like Grant R
   assert.match(exerciseSeed, /"extract_shareworks_exec"/);
   assert.match(exerciseSeed, /"persist_exercise_record_shareworks_file"/);
   assert.match(exerciseSeed, /"Executive Awards OS Only"/);
+  assert.match(exerciseSeed, /"sheetName": "行权汇总数据"/);
+  assert.match(exerciseSeed, /"id": "project_futu_exercise_summary"/);
+  assert.match(exerciseSeed, /\[行权成功数量\]/);
+  assert.match(exerciseSeed, /as \[Exercised Qty\]/);
 });
 
 test('Sold Shares exposes file-backed filters, nineteen-column table, and pagination', () => {
@@ -413,6 +437,16 @@ test('Sold Shares exposes file-backed filters, nineteen-column table, and pagina
   assert.match(soldSharesPage, /id="btnSoldSharesPrevPage"/);
   assert.match(soldSharesPage, /id="btnSoldSharesNextPage"/);
   assert.match(soldSharesPage, /id="btnSoldSharesLastPage"/);
+});
+
+test('Sold Shares workflow reads the Futu source workbook summary sheet', () => {
+  const soldSharesWorkflow = readFileSync(new URL('../../database/workflows/esop-sold-shares-sync.json', import.meta.url), 'utf8');
+
+  assert.match(soldSharesWorkflow, /"version": 2/);
+  assert.match(soldSharesWorkflow, /"sheetName": "出售汇总数据"/);
+  assert.match(soldSharesWorkflow, /Futu employee sold-share source workbook/);
+  assert.match(soldSharesWorkflow, /出售汇总数据 Sheet/);
+  assert.match(soldSharesWorkflow, /"sourceKey": "futu_sold_shares"/);
 });
 
 test('Transfer to Futu exposes file-backed monthly summary, cancellation editing, and workbook actions', () => {
@@ -484,6 +518,9 @@ test('workflow update modal picks input files through the shared tree file picke
   // Sanity: the shared picker really is a folder-grouped, expandable tree.
   assert.match(filePickerSource, /buildProductFilesTree\(/);
   assert.match(filePickerSource, /workbook-tree__dir/);
+  assert.match(filePickerSource, /const expandedFolders = new Set<string>\(\)/);
+  assert.match(filePickerSource, /!searchQuery && !expandedFolders\.has\(node\.path\)/);
+  assert.match(filePickerSource, /expandedFolders\.clear\(\)/);
 });
 
 test('workflow update modal gives the sheet input the shared form-control structure', () => {
