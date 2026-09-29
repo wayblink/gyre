@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary V2",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算 v2：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 11,
+  "version": 17,
   "tasks": [
     {
       "x": 48,
@@ -127,6 +127,50 @@
       },
       "dependsOn": [],
       "description": "调用可复用的 Option Plans Summary workflow，输出标准化的 category_for_grouping/plan_name/key/value dataframe。",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 260,
+      "y": 863,
+      "id": "invoke_plan_summary_sync",
+      "name": "Invoke Plan Summary Sync",
+      "inputs": {},
+      "params": {
+        "outputTaskId": "persist_plan_summary_file",
+        "workflowCode": "plan-summary-sync",
+        "runtimeParameters": {
+          "fileRefs": {
+            "option_plans_summary": {
+              "$type": "object",
+              "$label": "Gyre Option Plans Summary SL workbook",
+              "$default": {
+                "sheet": "!Option Plans Summary (Post-Gyr"
+              },
+              "$fromRuntime": "fileRefs.option_plans_summary"
+            },
+            "base_cancel_restore_report": {
+              "$type": "object",
+              "$label": "Cancel & Restore Summary",
+              "$default": {
+                "sheet": "取消与恢复明细"
+              },
+              "$fromRuntime": "fileRefs.base_cancel_restore_report"
+            },
+            "incremental_cancel_restore_report": {
+              "$type": "object",
+            "$label": "Cancel & Restore Detail",
+              "$default": {
+                "sheet": "取消与恢复明细"
+              },
+              "$fromRuntime": "fileRefs.incremental_cancel_restore_report"
+            }
+          }
+        },
+        "inheritRuntimeParameters": true
+      },
+      "dependsOn": [],
+      "description": "调用独立 Plan Summary Sync 子工作流，按本次月度运行的月份生成 Plan Summary 输出文件。",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -433,17 +477,16 @@
               "enabled": true
             }
           ]
+        },
+        "series_b_metrics": {
+          "from": "calculate_series_b_preferred_stock",
+          "slot": "dataframe",
+          "guards": []
         }
       },
       "params": {
-        "sql": "\nselect\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(c.bc_subplan_transfer_control_book) as bc_subplan_transfer_selected,\n  'control_book' as bc_subplan_transfer_selection_source,\n  {constants.warrantsConvertiblePreferred} as warrants_for_convertible_preferred_stock,\n  {constants.seriesBPreferredStock} as series_b_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  round(max(c.eom_eq_balance_os) + max(o.total_options_outstanding) + {constants.warrantsConvertiblePreferred} + {constants.seriesBPreferredStock} - max(c.bc_subplan_transfer_control_book) + max(o.total_options_available) + {constants.optionsOutstandingCullgen} + {constants.optionsAvailableCullgen}, 0) as total_fully_diluted\nfrom {control_metrics} c, {option_metrics} o",
+        "sql": "\nselect\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(c.bc_subplan_transfer_control_book) as bc_subplan_transfer_selected,\n  'control_book' as bc_subplan_transfer_selection_source,\n  {constants.warrantsConvertiblePreferred} as warrants_for_convertible_preferred_stock,\n  max(s.series_b_preferred_stock) as series_b_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  round(max(c.eom_eq_balance_os) + max(o.total_options_outstanding) + {constants.warrantsConvertiblePreferred} + max(s.series_b_preferred_stock) - max(c.bc_subplan_transfer_control_book) + max(o.total_options_available) + {constants.optionsOutstandingCullgen} + {constants.optionsAvailableCullgen}, 0) as total_fully_diluted\nfrom {control_metrics} c, {option_metrics} o, {series_b_metrics} s",
         "constants": {
-          "seriesBPreferredStock": {
-            "$type": "number",
-            "$label": "Series B Preferred Stock",
-            "$default": 18486180,
-            "$fromRuntime": "fixedValues.seriesBPreferredStock"
-          },
           "optionsAvailableCullgen": {
             "$type": "number",
             "$label": "Options Available - Cullgen",
@@ -471,11 +514,15 @@
           {
             "inputSlot": "option_metrics",
             "tableName": "option_metrics"
+          },
+          {
+            "inputSlot": "series_b_metrics",
+            "tableName": "series_b_metrics"
           }
         ]
       },
       "dependsOn": [],
-      "description": "汇总 Summary 计算所需业务输入；六类固定值来自 global parameters，Gyre option totals 由 raw option plans workbook 与 cancellation 调整计算。",
+      "description": "汇总 Summary 计算所需业务输入；Series B Preferred Stock 来自 Read SERIES B 的 Shares Issued 合计乘以 5，其余固定值来自 global parameters，Gyre option totals 由 raw option plans workbook 与 cancellation 调整计算。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -874,11 +921,71 @@
         "folderPrefix": "output/captable",
         "fileNamePrefix": {
           "$fromRuntime": "month"
+        },
+        "runtimeContext": {
+          "monthUnderscore": {
+            "$fromRuntime": "monthUnderscore"
+          }
         }
       },
       "dependsOn": [],
       "description": "将通过校验后的 Summary View 持久化为 Excel 并写入 Files；百分比列导出为 Excel 百分号格式但保留真实小数值。",
       "operatorCode": "workbook.persist.excel",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 1400,
+      "id": "invoke_read_series_b",
+      "name": "Invoke Read SERIES B",
+      "inputs": {},
+      "params": {
+        "outputTaskId": "sum_series_b_shares_issued",
+        "workflowCode": "read-series-b",
+        "inputMappings": [],
+        "runtimeParameters": {
+          "fileRefs": {
+            "series_b": {
+              "$type": "object",
+              "$label": "SERIES B Control Book",
+              "$default": {
+                "sheet": "43105"
+              },
+              "$fromRuntime": "fileRefs.series_b"
+            }
+          }
+        },
+        "inheritRuntimeParameters": true
+      },
+      "dependsOn": [],
+      "description": "调用 Read SERIES B 子工作流，读取 43105 Sheet 的 Shares Issued 合计值。",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 468,
+      "y": 1400,
+      "id": "calculate_series_b_preferred_stock",
+      "name": "Calculate Series B Preferred Stock",
+      "inputs": {
+        "series_b": {
+          "from": "invoke_read_series_b",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "select max([Shares Issued Total]) * 5 as series_b_preferred_stock from {series_b}",
+        "tableBindings": [
+          {
+            "inputSlot": "series_b",
+            "tableName": "series_b"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "将 Read SERIES B 返回的 Shares Issued 合计乘以 5，得到 Summary 使用的 Series B Preferred Stock 数值。",
+      "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     }
   ],
@@ -892,62 +999,53 @@
       "type": "object",
       "label": "fileRefs",
       "properties": {
-        "futu_exercises": {
+        "series_b": {
           "type": "object",
-          "label": "Futu BCI Exercises",
-          "order": 8,
-          "hidden": true,
-          "taskId": "",
-          "required": false,
+          "label": "SERIES B Control Book",
+          "order": 3,
+          "hidden": false,
+          "taskId": "invoke_read_series_b",
           "properties": {
             "sheet": {
               "type": "string",
-              "label": "Sheet"
+              "label": "SERIES B sheet"
             }
           },
-          "description": "用于汇总 Futu exercises to date 的已行权数量。",
-          "sourceGroup": "futu",
-          "defaultSheetName": "Futu BCI Exercises to Date",
-          "allowSheetNameOverride": true
+          "description": "Read SERIES B 的 Control Books 输入文件。"
         },
         "base_control_book": {
           "type": "object",
           "label": "Control Book Summary",
           "order": 1,
+          "hidden": false,
           "taskId": "invoke_control_book_merge",
-          "required": false,
           "properties": {
             "sheet": {
               "type": "string",
               "label": "Base sheet"
             }
           },
-          "description": "上月完整 EQ Control Book，作为增量合并的 base；输出可作为下月 base 链式使用。",
-          "sourceGroup": "shareworks",
-          "defaultSheetName": "EQ Control Book",
-          "allowSheetNameOverride": true
+          "description": "上月完整 EQ Control Book，作为增量合并的 base；输出可作为下月 base 链式使用。"
         },
         "base_futu_exercises": {
           "type": "object",
-          "label": "Futu Exercises Latest",
-          "order": 3,
+          "label": "Futu Exercises Summary",
+          "order": 5,
+          "hidden": false,
           "taskId": "invoke_futu_exercises_merge",
-          "required": false,
           "properties": {
             "sheet": {
               "type": "string",
               "label": "Base sheet"
             }
           },
-          "description": "上月完整 Futu BCI Exercises base，作为增量合并的 base；输出可作为下月 base 链式使用（固定路径 output/futu-exercises/）。",
-          "sourceGroup": "futu",
-          "defaultSheetName": "Futu BCI Exercises",
-          "allowSheetNameOverride": true
+          "description": "上月完整 Futu BCI Exercises base，作为增量合并的 base；输出可作为下月 base 链式使用（固定路径 output/futu-exercises/）。"
         },
         "bc_subplan_transfer": {
           "type": "object",
           "label": "2025 BC Subplan Transfer",
-          "order": 6,
+          "order": 7,
+          "hidden": false,
           "taskId": "extract_bc_subplan_transfer",
           "required": false,
           "properties": {
@@ -956,72 +1054,87 @@
               "label": "Sheet"
             }
           },
-          "description": "可选：用户可以选择合并表或单独 workbook，并指定包含 2025 BC Subplan transfer/vesting 数据的 Sheet；未提供时通过 warning 复核，并跳过该修正。",
-          "sourceGroup": "shareworks",
-          "defaultSheetName": "2025 BC Subplan Transfer",
-          "allowSheetNameOverride": true
+          "description": "可选：用户可以选择合并表或单独 workbook，并指定包含 2025 BC Subplan transfer/vesting 数据的 Sheet；未提供时通过 warning 复核，并跳过该修正。"
         },
         "option_plans_summary": {
           "type": "object",
           "label": "Gyre Option Plans Summary SL",
-          "order": 5,
+          "order": 4,
+          "hidden": false,
           "taskId": "invoke_option_plans_summary",
-          "required": true,
           "properties": {
             "sheet": {
               "type": "string",
               "label": "Sheet"
             }
           },
-          "description": "用于读取独立 Gyre_Option_Plans_Summary_SL workbook 并汇总各计划 outstanding 与 available shares。",
-          "sourceGroup": "shareworks",
-          "defaultSheetName": "!Option Plans Summary (Post-Gyr",
-          "allowSheetNameOverride": true
+          "description": "用于读取独立 Gyre_Option_Plans_Summary_SL workbook 并汇总各计划 outstanding 与 available shares。"
         },
         "incremental_control_book": {
           "type": "object",
-          "label": "Control Book Detail",
+          "label": "Control Book Detail update",
           "order": 2,
+          "hidden": false,
           "taskId": "invoke_control_book_merge",
-          "required": true,
           "properties": {
             "sheet": {
               "type": "string",
               "label": "Increment sheet"
             }
           },
-          "description": "本月下载的增量 Control Book 明细，与 base 按交易自然键幂等合并。",
-          "sourceGroup": "shareworks",
-          "defaultSheetName": "27591",
-          "allowSheetNameOverride": true
+          "description": "本月下载的增量 Control Book 明细，与 base 按交易自然键幂等合并。"
+        },
+        "base_cancel_restore_report": {
+          "type": "object",
+          "label": "Cancel & Restore Summary",
+          "order": 9,
+          "hidden": false,
+          "taskId": "invoke_plan_summary_sync",
+          "required": false,
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Base sheet"
+            }
+          },
+          "description": "系统维护的上月取消与恢复完整基表；由上一月合并输出自动延续。"
         },
         "incremental_futu_exercises": {
           "type": "object",
           "label": "Futu Exercise Monthly Update",
-          "order": 4,
+          "order": 6,
+          "hidden": false,
           "taskId": "invoke_futu_exercises_merge",
-          "required": true,
           "properties": {
             "sheet": {
               "type": "string",
               "label": "Increment sheet"
             }
           },
-          "description": "本月富途平台导出的员工行权记录『行权明细数据』，与 base 按行权订单编号幂等合并。",
-          "sourceGroup": "futu",
-          "defaultSheetName": "行权明细数据",
-          "allowSheetNameOverride": true
+          "description": "本月富途平台导出的员工行权记录『行权明细数据』，与 base 按行权订单编号幂等合并。"
         },
         "previous_capitalization_summary": {
           "type": "object",
           "label": "Previous Capitalization Summary",
-          "order": 7,
-          "hidden": true,
+          "order": 8,
+          "hidden": false,
           "taskId": "extract_previous_capitalization_summary",
           "required": false,
-          "description": "由业务逻辑自动引入：触发时若存在上一个月的 Capitalization Summary 输出，则自动作为本源用于校验本月 EQ Control Book 的 Last Month；无则置空跳过。UI 不暴露该源。",
-          "sourceGroup": "shareworks",
-          "defaultSheetName": "Capitalization Summary"
+          "description": "由业务逻辑自动引入：触发时若存在上一个月的 Capitalization Summary 输出，则自动作为本源用于校验本月 EQ Control Book 的 Last Month；无则置空跳过。UI 不暴露该源。"
+        },
+        "incremental_cancel_restore_report": {
+          "type": "object",
+          "label": "Cancel & Restore Detail",
+          "order": 10,
+          "hidden": false,
+          "taskId": "invoke_plan_summary_sync",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Increment sheet"
+            }
+          },
+          "description": "本月取消与恢复报表，可为增量或全量导出；按创建编号幂等合并。"
         }
       }
     },
@@ -1032,10 +1145,6 @@
         "cullgenCommonStock": {
           "type": "number",
           "label": "Cullgen Common Stock"
-        },
-        "seriesBPreferredStock": {
-          "type": "number",
-          "label": "Series B Preferred Stock"
         },
         "optionsAvailableCullgen": {
           "type": "number",
@@ -1064,7 +1173,9 @@
   "runtimeParamsDefaults": {
     "month": "2026-05",
     "fileRefs": {
-      "futu_exercises": {},
+      "series_b": {
+        "sheet": "43105"
+      },
       "base_control_book": {
         "key": "input/2026-05/EQ Control Book.xlsx",
         "sheet": "EQ Control Book",
@@ -1084,16 +1195,27 @@
         "sheet": "27591",
         "provider": "product-files"
       },
+      "base_cancel_restore_report": {
+        "id": 206,
+        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
+        "sheet": "取消与恢复明细",
+        "provider": "product-files"
+      },
       "incremental_futu_exercises": {
         "key": "input/2026-08/Gyre Therapeutics员工行权记录.xlsx",
         "sheet": "行权明细数据",
         "provider": "product-files"
       },
-      "previous_capitalization_summary": {}
+      "previous_capitalization_summary": {},
+      "incremental_cancel_restore_report": {
+        "id": 206,
+        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
+        "sheet": "取消与恢复明细",
+        "provider": "product-files"
+      }
     },
     "fixedValues": {
       "cullgenCommonStock": 14450527,
-      "seriesBPreferredStock": 18486180,
       "optionsAvailableCullgen": 10994,
       "gyre2023ChinaSubplanTotal": 7815396,
       "optionsOutstandingCullgen": 4156815,

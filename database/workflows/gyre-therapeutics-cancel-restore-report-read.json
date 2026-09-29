@@ -1,0 +1,71 @@
+{
+  "code": "gyre-therapeutics-cancel-restore-report-read",
+  "name": "Gyre Therapeutics 取消与恢复报表读取",
+  "description": "只读取 Gyre Therapeutics 取消与恢复报表.xlsx 的指定 Sheet，输出原始 dataframe，供其他业务工作流后续调用；当前不做过滤、计算或落盘。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_cancel_restore_report",
+      "name": "读取 Gyre Therapeutics 取消与恢复报表",
+      "inputs": {},
+      "params": {
+        "range": "A1:XFD",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Gyre Therapeutics取消与恢复报表.xlsx",
+          "$fromRuntime": "fileRefs.cancel_restore_report"
+        },
+        "headerRow": {
+          "$type": "number",
+          "$label": "表头行号",
+          "$default": 1,
+          "$fromRuntime": "fileRefs.cancel_restore_report.headerRow"
+        },
+        "sheetName": {
+          "$type": "string",
+          "$label": "Sheet 名称",
+          "$default": "取消与恢复报表",
+          "$fromRuntime": "fileRefs.cancel_restore_report.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从 Gyre Therapeutics 取消与恢复报表.xlsx 读取指定 Sheet 的原始表格数据，不改变字段、不做业务计算。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "fileRefs",
+      "properties": {
+        "cancel_restore_report": {
+          "type": "object",
+          "label": "Gyre Therapeutics取消与恢复报表.xlsx",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Sheet 名称"
+            },
+            "headerRow": {
+              "type": "number",
+              "label": "表头行号"
+            }
+          }
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {
+    "fileRefs": {
+      "cancel_restore_report": {
+        "sheet": "取消与恢复报表",
+        "headerRow": 1
+      }
+    }
+  }
+}

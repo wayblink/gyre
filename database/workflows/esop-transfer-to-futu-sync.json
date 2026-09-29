@@ -35,7 +35,8 @@
       "inputs": {
         "input1": {
           "from": "extract_transfer_plan",
-          "slot": "dataframe"
+          "slot": "dataframe",
+          "guards": []
         }
       },
       "params": {
@@ -54,7 +55,7 @@
   "runtimeParamsSchema": {
     "fileRefs": {
       "type": "object",
-      "label": "File References",
+      "label": "fileRefs",
       "properties": {
         "transfer_plan": {
           "type": "object",

@@ -11,7 +11,20 @@ import {
   normalizeCapitalizationRows,
   resolveBaselineMonth,
   resolveDefaultSummaryMonth,
+  monthAvailabilityLabel,
+  sortAvailableMonths,
 } from './summaryPage.js';
+
+test('month options sort newest first and distinguish months with data', () => {
+  const months = sortAvailableMonths([
+    { month: '2026-04', hasData: false },
+    { month: '2026-06', hasData: true },
+    { month: '2026-05', hasData: true },
+  ]);
+  assert.deepEqual(months.map((item) => item.month), ['2026-06', '2026-05', '2026-04']);
+  assert.equal(monthAvailabilityLabel(months[0]), '2026-06 · 有数据');
+  assert.equal(monthAvailabilityLabel(months[2]), '2026-04 · 暂无数据');
+});
 
 test('legacy Captable snapshots receive the configured Series B row and updated totals', () => {
   const rows: CapitalizationRow[] = [

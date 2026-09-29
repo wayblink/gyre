@@ -1,9 +1,9 @@
 {
   "code": "plan-summary-sync",
   "name": "Plan Summary Sync",
-  "description": "读取 Gyre Option Plans Summary SL，按计划聚合并更新 Plan Summary 展示数据，仅保留 Outstanding 不为 0 的计划。",
+  "description": "读取 Gyre Option Plans Summary SL，并消费取消与恢复报表增量合并后的完整基表；仅在 Plan Summary 指标计算时按变更月份累计 GYRE 2025 BC Subplan 的 Cancelled，保留 Outstanding 不为 0 的计划。",
   "status": "active",
-  "version": 1,
+  "version": 4,
   "tasks": [
     {
       "x": 420,
@@ -34,18 +34,113 @@
       "operatorVersion": "1.0.0"
     },
     {
+      "x": 420,
+      "y": 260,
+      "id": "invoke_cancel_restore_report",
+      "name": "Merge Cancel & Restore Report",
+      "inputs": {},
+      "params": {
+        "outputTaskId": "merge_cancel_restore_report",
+        "workflowCode": "gyre-therapeutics-cancel-restore-incremental-merge",
+        "runtimeParameters": {
+          "fileRefs": {
+            "base_cancel_restore_report": {
+              "$type": "object",
+              "$label": "Base Cancel & Restore Report workbook",
+              "$default": {
+                "sheet": "取消与恢复明细"
+              },
+              "$fromRuntime": "fileRefs.base_cancel_restore_report"
+            },
+            "incremental_cancel_restore_report": {
+              "$type": "object",
+              "$label": "Cancel & Restore Detail",
+              "$default": {
+                "sheet": "取消与恢复明细"
+              },
+              "$fromRuntime": "fileRefs.incremental_cancel_restore_report"
+            }
+          }
+        },
+        "inheritRuntimeParameters": true
+      },
+      "dependsOn": [],
+      "description": "调用取消与恢复报表增量合并 workflow，输出截至业务月份的完整幂等基表。",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 420,
+      "y": 420,
+      "id": "calculate_cancel_restore_cancelled",
+      "name": "Calculate BC Subplan Cancelled",
+      "inputs": {
+        "input1": {
+          "from": "invoke_cancel_restore_report",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "\nselect\n  'cancel_restore' as category_for_grouping,\n  'GYRE 2025 BC Subplan' as plan_name,\n  'Cancelled' as [key],\n  sum(\n    case\n      when wf_month_key([变更日期]) is not null\n       and wf_month_key([变更日期]) <= {constants.workflowMonth}\n      then case\n        when cast(coalesce([数量], 0) as string) in ('--', '', 'null') then 0\n        else cast([数量] as number)\n      end\n      else 0\n    end\n  ) as [value]\nfrom {cancel_restore}",
+        "constants": {
+          "workflowMonth": {
+            "$type": "string",
+            "$label": "Workflow Month",
+            "$fromRuntime": "month"
+          }
+        },
+        "tableBindings": [
+          {
+            "inputSlot": "input1",
+            "tableName": "cancel_restore"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "按变更日期月份不晚于业务月份筛选取消与恢复报表，并合计数量作为 GYRE 2025 BC Subplan Cancelled。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
       "x": 620,
+      "y": 260,
+      "id": "union_plan_summary_inputs",
+      "name": "Union Plan Summary Inputs",
+      "inputs": {
+        "input1": {
+          "from": "invoke_option_plans_summary",
+          "slot": "dataframe",
+          "guards": []
+        },
+        "input2": {
+          "from": "calculate_cancel_restore_cancelled",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "distinct": false
+      },
+      "dependsOn": [],
+      "description": "合并 Option Plans Summary 指标与取消恢复报表生成的 BC Subplan Cancelled 覆盖行。",
+      "operatorCode": "dataframe.union",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 790,
       "y": 80,
       "id": "aggregate_plan_summary",
       "name": "Aggregate Plan Summary",
       "inputs": {
         "input1": {
-          "from": "invoke_option_plans_summary",
-          "slot": "dataframe"
+          "from": "union_plan_summary_inputs",
+          "slot": "dataframe",
+          "guards": []
         }
       },
       "params": {
-        "sql": "\nselect\n  plan_name,\n  sum(case when [key] = 'Granted' then coalesce([value], 0) else 0 end) as granted,\n  sum(case when [key] = 'Exercised' then coalesce([value], 0) else 0 end) as exercised,\n  sum(case when [key] = 'Cancelled' then coalesce([value], 0) else 0 end) as cancelled,\n  sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) as outstanding\nfrom {plans}\nwhere trim(concat('', coalesce(plan_name, ''))) <> ''\ngroup by plan_name\nhaving sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) <> 0\norder by plan_name",
+        "sql": "\nselect\n  plan_name,\n  sum(case when [key] = 'Granted' then coalesce([value], 0) else 0 end) as granted,\n  sum(case when [key] = 'Exercised' then coalesce([value], 0) else 0 end) as exercised,\n  case\n    when plan_name = 'GYRE 2025 BC Subplan'\n      then sum(case when [key] = 'Cancelled' and category_for_grouping = 'cancel_restore' then coalesce([value], 0) else 0 end)\n    else sum(case when [key] = 'Cancelled' and coalesce(category_for_grouping, '') <> 'cancel_restore' then coalesce([value], 0) else 0 end)\n  end as cancelled,\n  sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) as outstanding\nfrom {plans}\nwhere trim(concat('', coalesce(plan_name, ''))) <> ''\ngroup by plan_name\nhaving sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) <> 0\norder by plan_name",
         "tableBindings": [
           {
             "inputSlot": "input1",
@@ -59,21 +154,25 @@
       "operatorVersion": "1.0.0"
     },
     {
-      "x": 790,
+      "x": 960,
       "y": 80,
       "id": "persist_plan_summary_file",
       "name": "Persist Plan Summary File",
       "inputs": {
         "input1": {
           "from": "aggregate_plan_summary",
-          "slot": "dataframe"
+          "slot": "dataframe",
+          "guards": []
         }
       },
       "params": {
         "fileName": "Plan_Summary.xlsx",
         "sheetName": "Plan Summary",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/plan-summary"
+        "folderPrefix": "output/plan-summary",
+        "fileNamePrefix": {
+          "$fromRuntime": "month"
+        }
       },
       "dependsOn": [],
       "description": "将 Plan Summary dataframe 输出为 Excel 文件，业务页面读取最新成功执行的输出文件渲染。",
@@ -82,9 +181,14 @@
     }
   ],
   "runtimeParamsSchema": {
+    "month": {
+      "type": "string",
+      "label": "Month",
+      "description": "用于生成月度输出文件名前缀，例如 2026-05-Capitalization_Table_Summary_View.xlsx。"
+    },
     "fileRefs": {
       "type": "object",
-      "label": "File References",
+      "label": "fileRefs",
       "properties": {
         "option_plans_summary": {
           "type": "object",
@@ -92,19 +196,59 @@
           "properties": {
             "sheet": {
               "type": "string",
-              "label": "Sheet",
-              "default": "!Option Plans Summary (Post-Gyr"
+              "label": "Sheet"
+            }
+          }
+        },
+        "base_cancel_restore_report": {
+          "type": "object",
+          "label": "Base Cancel & Restore Report workbook",
+          "hidden": true,
+          "required": false,
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Base sheet"
+            }
+          }
+        },
+        "incremental_cancel_restore_report": {
+          "type": "object",
+          "label": "Cancel & Restore Detail",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Increment sheet"
             }
           }
         }
       }
+    },
+    "monthUnderscore": {
+      "type": "string",
+      "label": "Month (underscore)",
+      "description": "用于合并基表月度输出文件名。"
     }
   },
   "runtimeParamsDefaults": {
+    "month": "2026-09",
     "fileRefs": {
       "option_plans_summary": {
         "sheet": "!Option Plans Summary (Post-Gyr"
+      },
+      "base_cancel_restore_report": {
+        "id": 206,
+        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
+        "sheet": "取消与恢复明细",
+        "provider": "product-files"
+      },
+      "incremental_cancel_restore_report": {
+        "id": 206,
+        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
+        "sheet": "取消与恢复明细",
+        "provider": "product-files"
       }
-    }
+    },
+    "monthUnderscore": "2026_09"
   }
 }

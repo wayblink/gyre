@@ -95,6 +95,15 @@ test('captable is the renamed Summary page and new product pages have matching s
   assert.doesNotMatch(html, /id="page-summary"/);
 });
 
+test('Plan Summary is a month-scoped monthly output page', () => {
+  const planSummaryPage = pageSection('plan-summary', 'five-percent-holders');
+  assert.match(planSummaryPage, /id="planSummaryMonthPicker"/);
+  assert.match(planSummaryPage, /data-page-file-label="result-file"/);
+  assert.match(mainSource, /function renderPlanSummaryPage\(month: string\)/);
+  assert.match(mainSource, /\/api\/plan-summary\?month=\$\{encodeURIComponent\(month\)\}/);
+  assert.match(mainSource, /planSummaryMonthPicker.*addEventListener\('change'/s);
+});
+
 test('files page defers workbook mounting until the page is visible', () => {
   assert.match(filesPageSource, /function isFilesPageActive\(\)/);
   assert.match(
@@ -483,7 +492,6 @@ test('workflow-backed product pages expose update actions and shared update moda
     'exercise-record',
     'sold-shares',
     'transfer-plan',
-    'plan-summary',
     'five-percent-holders',
   ]) {
     assert.match(html, new RegExp(`data-workflow-update-page="${page}"`));
@@ -582,10 +590,14 @@ test('workflow update and export actions live in table card headers, not hero fi
     const heroMetrics = section.match(/product-page-hero__metrics[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? '';
     assert.doesNotMatch(heroMetrics, new RegExp(`data-workflow-update-page="${page}"`));
     assert.doesNotMatch(heroMetrics, new RegExp(`data-workflow-export-page="${page}"`));
-    assert.match(
-      section,
-      new RegExp(`(?:card-header-actions product-table-actions|transfer-plan-actions)[\\s\\S]*data-workflow-update-page="${page}"[\\s\\S]*data-workflow-export-page="${page}"`),
-    );
+    if (page === 'plan-summary') {
+      assert.match(section, /card-header-actions product-table-actions[\s\S]*id="btnOpenMonthlyUpdateFromPlanSummary"[\s\S]*data-workflow-export-page="plan-summary"/);
+    } else {
+      assert.match(
+        section,
+        new RegExp(`(?:card-header-actions product-table-actions|transfer-plan-actions)[\\s\\S]*data-workflow-update-page="${page}"[\\s\\S]*data-workflow-export-page="${page}"`),
+      );
+    }
   }
 
   const employeeSection = pageSection('employee-management', 'plan-summary');
@@ -793,7 +805,7 @@ test('workflow sidebar includes a search input matching the Files search control
   assert.match(workflowPage, /placeholder="搜索工作流\.\.\."/);
 });
 
-test('ResultFile labels are removed from all visible pages', () => {
+test('result file labels are exposed only for monthly output pages', () => {
   for (const [page, nextPage] of [
     ['grant-record', 'exercise-record'],
     ['exercise-record', 'sold-shares'],
@@ -804,9 +816,13 @@ test('ResultFile labels are removed from all visible pages', () => {
     ['captable', 'monthly'],
   ] as const) {
     const section = pageSection(page, nextPage);
-    assert.doesNotMatch(section, /ResultFile/);
-    assert.doesNotMatch(section, /product-table-result-file/);
-    assert.doesNotMatch(section, /data-page-result-file-name/);
+    if (page === 'plan-summary') {
+      assert.match(section, /data-page-result-file-name/);
+    } else {
+      assert.doesNotMatch(section, /ResultFile/);
+      assert.doesNotMatch(section, /product-table-result-file/);
+      assert.doesNotMatch(section, /data-page-result-file-name/);
+    }
   }
 });
 
@@ -816,7 +832,6 @@ test('workflow update and export actions include svg icons and stable labels', (
     'exercise-record',
     'sold-shares',
     'transfer-plan',
-    'plan-summary',
     'five-percent-holders',
   ]) {
     assert.match(

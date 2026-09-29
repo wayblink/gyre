@@ -1,0 +1,254 @@
+{
+  "code": "gyre-therapeutics-cancel-restore-incremental-merge",
+  "name": "Gyre Therapeutics Cancel & Restore Incremental Merge",
+  "description": "将取消与恢复报表基表与本月增量按创建编号幂等合并，不在合并阶段按日期过滤，输出完整历史基表供下游按业务月份计算。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_base_cancel_restore_report",
+      "name": "Extract Base Cancel & Restore Report",
+      "inputs": {},
+      "params": {
+        "range": "A1:W",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Base Cancel & Restore Report workbook",
+          "$default": {
+            "sheet": "取消与恢复明细"
+          },
+          "$fromRuntime": "fileRefs.base_cancel_restore_report"
+        },
+        "headerRow": 1,
+        "sheetName": {
+          "$type": "string",
+          "$label": "Base sheet",
+          "$default": "取消与恢复明细",
+          "$fromRuntime": "fileRefs.base_cancel_restore_report.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "读取上月合并后的完整取消与恢复基表。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 48,
+      "y": 320,
+      "id": "extract_incremental_cancel_restore_report",
+      "name": "Extract Incremental Cancel & Restore Report",
+      "inputs": {},
+      "params": {
+        "range": "A1:W",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Cancel & Restore Detail",
+          "$default": {
+            "sheet": "取消与恢复明细"
+          },
+          "$fromRuntime": "fileRefs.incremental_cancel_restore_report"
+        },
+        "headerRow": 1,
+        "sheetName": {
+          "$type": "string",
+          "$label": "Increment sheet",
+          "$default": "取消与恢复明细",
+          "$fromRuntime": "fileRefs.incremental_cancel_restore_report.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "读取本月取消与恢复报表；报表可以是增量，也可以是重复导出的全量表。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 420,
+      "y": 320,
+      "id": "project_incremental_cancel_restore_report",
+      "name": "Filter Incremental Rows To Workflow Month",
+      "inputs": {
+        "increment": {
+          "from": "extract_incremental_cancel_restore_report",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "select * from {increment}\nwhere trim(cast(coalesce([创建编号], '') as string)) <> ''\norder by [变更日期], [创建编号]",
+        "constants": {
+          "workflowMonth": {
+            "$type": "string",
+            "$label": "Workflow Month",
+            "$fromRuntime": "month"
+          }
+        },
+        "tableBindings": [
+          {
+            "inputSlot": "increment",
+            "tableName": "increment"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "保留增量报表全部记录，不按日期截断；业务月份过滤只在下游 Plan Summary 指标计算中执行。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 760,
+      "y": 180,
+      "id": "merge_cancel_restore_report",
+      "name": "Merge Base And Increment Idempotently",
+      "inputs": {
+        "base": {
+          "from": "extract_base_cancel_restore_report",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_base_cancel_restore_schema",
+              "name": "Assert Base Cancel & Restore Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Cancel & Restore base 缺少创建编号或变更日期字段",
+                "expectedColumns": "创建编号, 变更日期, 数量",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        },
+        "increment": {
+          "from": "project_incremental_cancel_restore_report",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_increment_cancel_restore_schema",
+              "name": "Assert Increment Cancel & Restore Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Cancel & Restore 增量缺少创建编号或变更日期字段",
+                "expectedColumns": "创建编号, 变更日期, 数量",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
+        }
+      },
+      "params": {
+        "sql": "select\n  case when i.[姓名] is not null and trim(cast(i.[姓名] as string)) <> '' then i.[姓名] else b.[姓名] end as [姓名],\n  case when i.[工号] is not null and trim(cast(i.[工号] as string)) <> '' then i.[工号] else b.[工号] end as [工号],\n  case when i.[牛牛号] is not null and trim(cast(i.[牛牛号] as string)) <> '' then i.[牛牛号] else b.[牛牛号] end as [牛牛号],\n  case when i.[员工邮箱] is not null and trim(cast(i.[员工邮箱] as string)) <> '' then i.[员工邮箱] else b.[员工邮箱] end as [员工邮箱],\n  case when i.[手机号] is not null and trim(cast(i.[手机号] as string)) <> '' then i.[手机号] else b.[手机号] end as [手机号],\n  case when i.[证件号] is not null and trim(cast(i.[证件号] as string)) <> '' then i.[证件号] else b.[证件号] end as [证件号],\n  case when i.[在职状态] is not null and trim(cast(i.[在职状态] as string)) <> '' then i.[在职状态] else b.[在职状态] end as [在职状态],\n  case when i.[授予编号] is not null and trim(cast(i.[授予编号] as string)) <> '' then i.[授予编号] else b.[授予编号] end as [授予编号],\n  case when i.[激励类型] is not null and trim(cast(i.[激励类型] as string)) <> '' then i.[激励类型] else b.[激励类型] end as [激励类型],\n  case when i.[所属计划] is not null and trim(cast(i.[所属计划] as string)) <> '' then i.[所属计划] else b.[所属计划] end as [所属计划],\n  case when i.[授予日期] is not null and trim(cast(i.[授予日期] as string)) <> '' then i.[授予日期] else b.[授予日期] end as [授予日期],\n  case when i.[授予数量] is not null and trim(cast(i.[授予数量] as string)) <> '' then i.[授予数量] else b.[授予数量] end as [授予数量],\n  case when i.[授予价(USD)] is not null and trim(cast(i.[授予价(USD)] as string)) <> '' then i.[授予价(USD)] else b.[授予价(USD)] end as [授予价(USD)],\n  case when i.[创建日期(GMT+8)] is not null and trim(cast(i.[创建日期(GMT+8)] as string)) <> '' then i.[创建日期(GMT+8)] else b.[创建日期(GMT+8)] end as [创建日期(GMT+8)],\n  case when i.[创建编号] is not null and trim(cast(i.[创建编号] as string)) <> '' then i.[创建编号] else b.[创建编号] end as [创建编号],\n  case when i.[归属日期] is not null and trim(cast(i.[归属日期] as string)) <> '' then i.[归属日期] else b.[归属日期] end as [归属日期],\n  case when i.[财务变更日期] is not null and trim(cast(i.[财务变更日期] as string)) <> '' then i.[财务变更日期] else b.[财务变更日期] end as [财务变更日期],\n  case when i.[变更日期] is not null and trim(cast(i.[变更日期] as string)) <> '' then i.[变更日期] else b.[变更日期] end as [变更日期],\n  case when i.[变更类型] is not null and trim(cast(i.[变更类型] as string)) <> '' then i.[变更类型] else b.[变更类型] end as [变更类型],\n  case when i.[取消/恢复原因] is not null and trim(cast(i.[取消/恢复原因] as string)) <> '' then i.[取消/恢复原因] else b.[取消/恢复原因] end as [取消/恢复原因],\n  case when i.[数量] is not null and trim(cast(i.[数量] as string)) <> '' then i.[数量] else b.[数量] end as [数量],\n  case when i.[归属规则] is not null and trim(cast(i.[归属规则] as string)) <> '' then i.[归属规则] else b.[归属规则] end as [归属规则],\n  case when i.[操作人] is not null and trim(cast(i.[操作人] as string)) <> '' then i.[操作人] else b.[操作人] end as [操作人]\nfrom {base} b\nfull outer join {increment} i\n  on upper(trim(cast(coalesce(b.[创建编号], '') as string))) = upper(trim(cast(coalesce(i.[创建编号], '') as string)))\nwhere trim(cast(coalesce(b.[创建编号], i.[创建编号], '') as string)) <> ''\norder by coalesce(b.[变更日期], i.[变更日期]), coalesce(b.[创建编号], i.[创建编号])",
+        "tableBindings": [
+          {
+            "inputSlot": "base",
+            "tableName": "base"
+          },
+          {
+            "inputSlot": "increment",
+            "tableName": "increment"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "按创建编号 full outer join 幂等合并；同一创建编号由增量覆盖，从而重复导入同一全量或增量文件不会重复累计。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 1120,
+      "y": 180,
+      "id": "persist_cancel_restore_base",
+      "name": "Persist Merged Cancel & Restore Base",
+      "inputs": {
+        "cancel_restore": {
+          "from": "merge_cancel_restore_report",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sheets": [
+          {
+            "headerRow": 1,
+            "inputSlot": "cancel_restore",
+            "sheetName": "取消与恢复明细"
+          }
+        ],
+        "fileName": "Gyre_Therapeutics_Cancel_Restore_Base.xlsx",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "cancel_restore",
+        "conflictPolicy": "overwrite",
+        "fileNamePrefix": "",
+        "fileNameSuffix": {
+          "$fromRuntime": "monthUnderscore"
+        },
+        "versionedOutput": false
+      },
+      "dependsOn": [],
+      "description": "输出截至业务月份的完整取消与恢复基表；下月作为 base 继续幂等合并。",
+      "operatorCode": "workbook.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "month": {
+      "type": "string",
+      "label": "Month"
+    },
+    "fileRefs": {
+      "type": "object",
+      "label": "fileRefs",
+      "properties": {
+        "base_cancel_restore_report": {
+          "type": "object",
+          "label": "Base Cancel & Restore Report workbook",
+          "hidden": true,
+          "required": false,
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Base sheet"
+            }
+          }
+        },
+        "incremental_cancel_restore_report": {
+          "type": "object",
+          "label": "Cancel & Restore Detail",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Increment sheet"
+            }
+          }
+        }
+      }
+    },
+    "monthUnderscore": {
+      "type": "string",
+      "label": "Month (underscore)"
+    }
+  },
+  "runtimeParamsDefaults": {
+    "month": "2026-09",
+    "fileRefs": {
+      "base_cancel_restore_report": {
+        "id": 206,
+        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
+        "sheet": "取消与恢复明细",
+        "provider": "product-files"
+      },
+      "incremental_cancel_restore_report": {
+        "id": 206,
+        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
+        "sheet": "取消与恢复明细",
+        "provider": "product-files"
+      }
+    },
+    "monthUnderscore": "2026_09"
+  }
+}

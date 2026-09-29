@@ -56,6 +56,8 @@ import {
   normalizeCapitalizationRows,
   resolveBaselineMonth,
   resolveDefaultSummaryMonth,
+  sortAvailableMonths,
+  type AvailableMonth,
   type CapitalizationDelta,
 } from './summaryPage.js';
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
@@ -67,6 +69,7 @@ import { csvRow } from './csv.js';
 import '../../css/style.css';
 
 let currentMonth = '';
+let availableMonthOptions: AvailableMonth[] = [];
 let currentSummary: SummarySnapshot | null = null;
 let baselineSummaryCache: { month: string; data: SummarySnapshot | null } | null = null;
 let authStatus: AuthStatus | null = null;
@@ -640,7 +643,7 @@ async function refreshWorkflowUpdatePage(page: WorkflowUpdatePageKey) {
   } else if (page === 'employee-management') {
     await loadEmployeesPage();
   } else if (page === 'plan-summary') {
-    await renderPlanSummaryPage();
+    await renderPlanSummaryPage(currentMonth);
   } else if (page === 'five-percent-holders') {
     await renderFivePercentHoldersPage();
   }
@@ -1586,7 +1589,7 @@ async function activatePage(page: PageKey) {
     }
 
     if (page === 'plan-summary') {
-      await renderPlanSummaryPage();
+      if (currentMonth) await renderPlanSummaryPage(currentMonth);
     }
 
     if (page === 'five-percent-holders') {
@@ -1727,8 +1730,9 @@ async function initSummaryPage() {
     fetchAvailableMonths(),
     api<{ output: LatestMonthlyRunOutput | null }>('/api/monthly-runs/latest-output'),
   ]);
-  currentMonth = resolveDefaultSummaryMonth(months, latestOutputResponse.output);
-  el<HTMLInputElement>('monthPicker').value = currentMonth;
+  availableMonthOptions = sortAvailableMonths(months);
+  currentMonth = resolveDefaultSummaryMonth(availableMonthOptions.map((item) => item.month), latestOutputResponse.output);
+  renderMonthPicker('monthPicker', currentMonth, 'hasCapTableData');
   await refreshSummarySourceFileOptions();
   if (months.length === 0) {
     renderEmptySummaryPage('暂无月度业务数据。请先创建 Monthly Update 或导入正式数据。');
@@ -1758,9 +1762,78 @@ async function initSummaryPage() {
   });
 }
 
-async function fetchAvailableMonths() {
-  const data = await api<{ months: Array<{ month: string }> }>('/api/months');
-  return data.months.map((item) => item.month);
+function initPlanSummaryPage() {
+  const picker = el<HTMLInputElement>('planSummaryMonthPicker');
+  renderMonthPicker('planSummaryMonthPicker', currentMonth, 'hasPlanSummaryData');
+  picker.value = currentMonth;
+  picker.addEventListener('change', () => {
+    const month = picker.value;
+    if (!month) {
+      notify('请选择月份', { type: 'warning' });
+      return;
+    }
+    currentMonth = month;
+    renderMonthPicker('planSummaryMonthPicker', month, 'hasPlanSummaryData');
+    void renderPlanSummaryPage(month);
+  });
+  el('btnOpenMonthlyUpdateFromPlanSummary').addEventListener('click', () => {
+    void navigateToPage('monthly');
+  });
+  if (getPageFromLocation() === 'plan-summary' && currentMonth) {
+    void renderPlanSummaryPage(currentMonth);
+  }
+}
+
+async function fetchAvailableMonths(): Promise<AvailableMonth[]> {
+  const data = await api<{ months: AvailableMonth[] }>('/api/months');
+  availableMonthOptions = sortAvailableMonths(data.months);
+  return availableMonthOptions;
+}
+
+function renderMonthPicker(inputId: string, selectedMonth: string, dataKey: 'hasCapTableData' | 'hasPlanSummaryData') {
+  const picker = el<HTMLInputElement>(inputId);
+  const control = picker.closest<HTMLElement>('.month-picker-control');
+  const trigger = control?.querySelector<HTMLButtonElement>('.month-picker-trigger');
+  const label = control?.querySelector<HTMLElement>('.month-picker-trigger span');
+  const panel = control?.querySelector<HTMLElement>('.month-picker-panel');
+  picker.value = selectedMonth;
+  if (!control || !trigger || !label || !panel) return;
+  label.textContent = formatMonthCN(selectedMonth);
+  const selected = availableMonthOptions.find((item) => item.month === selectedMonth);
+  trigger.classList.toggle('month-has-data', Boolean(selected?.[dataKey]));
+  const grouped = new Map<string, AvailableMonth[]>();
+  availableMonthOptions.forEach((item) => {
+    const year = item.month.slice(0, 4);
+    const list = grouped.get(year) ?? [];
+    list.push(item);
+    grouped.set(year, list);
+  });
+  panel.innerHTML = [...grouped.entries()].map(([year, months]) => `
+    <section class="month-picker-year"><strong>${year}</strong><div class="month-picker-grid">
+      ${months.map((item) => {
+        const hasData = Boolean(item[dataKey]);
+        const isSelected = item.month === selectedMonth;
+        return `<button type="button" class="month-picker-option${hasData ? ' has-data' : ''}${isSelected ? ' is-selected' : ''}" data-month-value="${item.month}" aria-pressed="${isSelected}" title="${hasData ? '有可用数据' : '暂无可用数据'}">${Number(item.month.slice(5))}月${hasData ? '<span aria-hidden="true">✓</span>' : ''}</button>`;
+      }).join('')}
+    </div></section>`).join('');
+  if (trigger.dataset.bound !== 'true') {
+    trigger.dataset.bound = 'true';
+    trigger.addEventListener('click', () => {
+      panel.classList.toggle('hidden');
+      trigger.setAttribute('aria-expanded', String(!panel.classList.contains('hidden')));
+    });
+    panel.addEventListener('click', (event) => {
+      const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-month-value]');
+      if (!target) return;
+      const month = target.dataset.monthValue ?? '';
+      panel.classList.add('hidden');
+      trigger.setAttribute('aria-expanded', 'false');
+      if (month) {
+        picker.value = month;
+        picker.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+  }
 }
 
 function renderEmptySummaryPage(message: string) {
@@ -1812,11 +1885,11 @@ async function loadBaselineSummary(baselineMonth: string | null): Promise<Summar
 async function renderSummaryPage(month: string) {
   try {
     currentMonth = month;
-    el<HTMLInputElement>('monthPicker').value = month;
+    renderMonthPicker('monthPicker', month, 'hasCapTableData');
     const availableMonths = await fetchAvailableMonths();
     const [data, baselineSummary] = await Promise.all([
       api<SummarySnapshot>(`/api/months/${month}/summary`),
-      loadBaselineSummary(resolveBaselineMonth(availableMonths, month)),
+      loadBaselineSummary(resolveBaselineMonth(availableMonths.map((item) => item.month), month)),
     ]);
     const capitalization = normalizeCapitalizationRows(data.capitalization, data.fixedValues?.seriesBPreferredStock);
     currentSummary = { ...data, capitalization };
@@ -3631,8 +3704,10 @@ async function submitEmployeesMerge() {
   await loadEmployeesPage();
 }
 
-async function renderPlanSummaryPage() {
-  const data = await api<PlanSummaryResponse>('/api/plan-summary');
+async function renderPlanSummaryPage(month: string) {
+  renderMonthPicker('planSummaryMonthPicker', month, 'hasPlanSummaryData');
+  const picker = el<HTMLInputElement>('planSummaryMonthPicker');
+  const data = await api<PlanSummaryResponse>(`/api/plan-summary?month=${encodeURIComponent(month)}`);
   setWorkflowPageFiles('plan-summary', data);
   el('planSummaryPlanCount').textContent = formatNumber(data.totals.planCount);
   el('planSummaryGranted').textContent = formatNumber(data.totals.granted);
@@ -4252,6 +4327,7 @@ async function initializeApp() {
   initMonthlyRunInputCard();
   initMonthPicker();
   await initSummaryPage();
+  initPlanSummaryPage();
   await initMonthlyPage();
   await monthlyRunPage.init();
   await filesPage.init();

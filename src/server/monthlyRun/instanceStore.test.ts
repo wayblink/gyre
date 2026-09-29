@@ -83,6 +83,7 @@ test('runtime parameters build fileRefs from instance sources, adding sheet only
     base_control_book: { fileId: 1, fileName: 'control.xlsx', logicalPath: 'input/2026-06/control.xlsx', sheetName: 'EQ Control Book' },
     futu_exercises: { fileId: 3, fileName: 'futu.xlsx', logicalPath: 'input/2026-06/futu.xlsx', sheetName: null },
     option_plans_summary: { fileId: 4, fileName: 'options.xlsx', logicalPath: 'input/2026-06/options.xlsx', sheetName: 'Custom Sheet' },
+    cancel_restore_report: { fileId: 6, fileName: 'cancel.xlsx', logicalPath: 'input/2026-06/cancel.xlsx', sheetName: '取消与恢复明细' },
     previous_capitalization_summary: { fileId: null, fileName: null, logicalPath: null, sheetName: null },
   });
 
@@ -94,8 +95,15 @@ test('runtime parameters build fileRefs from instance sources, adding sheet only
     base_control_book: { provider: 'product-files', key: 'input/2026-06/control.xlsx', sheet: 'EQ Control Book' },
     futu_exercises: { provider: 'product-files', key: 'input/2026-06/futu.xlsx' },
     option_plans_summary: { provider: 'product-files', key: 'input/2026-06/options.xlsx', sheet: 'Custom Sheet' },
+    incremental_cancel_restore_report: { provider: 'product-files', key: 'input/2026-06/cancel.xlsx', sheet: '取消与恢复明细' },
   });
-  assert.deepEqual(runtime.fixedValues, { optionsOutstandingCullgen: 4_156_815, optionsAvailableCullgen: 10_994, seriesBPreferredStock: 18_486_180 });
+  assert.deepEqual(runtime.fixedValues, {
+    optionsOutstandingCullgen: 4_156_815,
+    optionsAvailableCullgen: 10_994,
+    warrantsConvertiblePreferred: undefined,
+    cullgenCommonStock: undefined,
+    gyre2023ChinaSubplanTotal: undefined,
+  });
 });
 
 test('latest monthly output selects the newest successful execution with an existing result file', async () => {
@@ -141,7 +149,6 @@ test('monthly runtime fixed values are loaded from latest global parameters', as
         { key: 'options_outstanding_cullgen', value: 123 },
         { key: 'options_available_cullgen', value: 456 },
         { key: 'warrants_convertible_preferred', value: 789 },
-        { key: 'series_b_preferred_stock', value: 987 },
         { key: 'cullgen_common_stock', value: 111 },
         { key: 'gyre_2023_china_subplan_total', value: 222 },
       ] as unknown as T[];
@@ -158,7 +165,6 @@ test('monthly runtime fixed values are loaded from latest global parameters', as
     optionsOutstandingCullgen: 123,
     optionsAvailableCullgen: 456,
     warrantsConvertiblePreferred: 789,
-    seriesBPreferredStock: 987,
     cullgenCommonStock: 111,
     gyre2023ChinaSubplanTotal: 222,
   });

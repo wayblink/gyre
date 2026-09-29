@@ -50,7 +50,24 @@ const sourceFileNameMatchers: Record<string, string[]> = {
   options_os_detail_by_plan: ['options os detail by plan', 'options os detail'],
 };
 
-// The 6 monthly fixed values, maintained per-month (each month inherits the prior month's values).
+const sourcePurposeEnglish: Record<string, string> = {
+  base_control_book: 'The complete EQ Control Book from the prior month. It becomes the base for the incremental merge and can be carried forward to the next month.',
+  incremental_control_book: 'The current month Control Book detail export. It is merged with the base by the transaction natural key without duplicating prior records.',
+  series_b: 'The SERIES B Control Book workbook. Its Shares Issued total is used to calculate Series B Preferred Stock in the capitalization summary.',
+  option_plans_summary: 'The standalone Gyre Option Plans Summary workbook. It supplies each plan’s outstanding and available share totals.',
+  base_futu_exercises: 'The complete Futu BCI Exercises base from the prior month. It becomes the base for the incremental merge and is carried forward month to month.',
+  incremental_futu_exercises: 'The current month Futu exercise detail export. It is merged with the base by exercise order number without duplicating prior records.',
+  bc_subplan_transfer: 'Optional 2025 BC Subplan transfer or vesting data. When omitted, the related adjustment is skipped after warning review.',
+  previous_capitalization_summary: 'Automatically supplied from the prior month’s Capitalization Summary output to validate the current month EQ Control Book Last Month value.',
+  incremental_cancel_restore_report: 'The current month cancel-and-restore report. It supplies the incremental cancellation adjustments used by Plan Summary.',
+};
+
+function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLanguage): string {
+  if (language === 'en-US') return sourcePurposeEnglish[source.sourceKey] ?? source.description;
+  return source.description;
+}
+
+// The 5 remaining monthly fixed values, maintained per-month (each month inherits the prior month's values).
 // Labels mirror the workflow constants so the Monthly Update page and workflow stay in sync.
 export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
   key: string;
@@ -95,14 +112,6 @@ export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
     description: {
       'zh-CN': 'Gyre 2023 中国子计划期权总数的对账基准值。运行时会校验 EQ Control Book 算出的该列必须等于此值，否则阻塞。',
       'en-US': 'Reconciliation baseline for the Gyre 2023 China sub-plan option total. The run asserts the EQ Control Book column equals this value, and blocks otherwise.',
-    },
-  },
-  {
-    key: 'seriesBPreferredStock',
-    label: { 'zh-CN': 'Series B Preferred Stock', 'en-US': 'Series B Preferred Stock' },
-    description: {
-      'zh-CN': 'Series B 优先股按转换为普通股后的股数，作为固定项计入 Total Fully Diluted，并显示在 CapTable 汇总中。',
-      'en-US': 'Series B preferred stock on an as-converted-to-common basis; added to Total Fully Diluted and shown in the CapTable summary.',
     },
   },
 ];
@@ -388,6 +397,8 @@ export function createMonthlyRunPage({
     copy: { 'zh-CN': '复制', 'en-US': 'Copy' },
     copiedFileName: { 'zh-CN': '文件名已复制', 'en-US': 'File name copied' },
     copyFileNameFailed: { 'zh-CN': '复制文件名失败', 'en-US': 'Failed to copy file name' },
+    fileNameHelp: { 'zh-CN': '输入文件用途', 'en-US': 'Input file purpose' },
+    fileNameHelpHint: { 'zh-CN': '点击每个输入项旁的问号，可查看该文件在 Monthly Run 中的用途。', 'en-US': 'Click the question mark beside an input to see how the file is used in Monthly Run.' },
     removeConfigTitle: { 'zh-CN': '删除 Uploaded file 配置', 'en-US': 'Delete Uploaded file configuration' },
     removeConfigConfirm: { 'zh-CN': '确定删除', 'en-US': 'Delete the Uploaded file configuration for' },
     removeConfigSuffix: { 'zh-CN': '的 Uploaded file 配置吗？文件中心里的文件不会被删除。', 'en-US': '? The file in Files will not be deleted.' },
@@ -533,12 +544,32 @@ export function createMonthlyRunPage({
     // One flat table in DB `order`; sources flagged hidden in the workflow definition are dropped
     // (e.g. Previous Capitalization Summary, which the business auto-derives from last month).
     el('monthlyRunSourcesBody').innerHTML = renderBusinessDefinedSourceRows();
+    const headerHelp = document.querySelector<HTMLButtonElement>('[data-source-help-header]');
+    const headerPopover = document.querySelector<HTMLElement>('[data-source-help-header-popover]');
+    if (headerHelp && headerPopover) {
+      headerHelp.setAttribute('aria-label', tt('fileNameHelp'));
+      headerHelp.title = tt('fileNameHelp');
+      headerPopover.textContent = tt('fileNameHelpHint');
+      headerHelp.onclick = () => headerPopover.classList.toggle('hidden');
+    }
 
     document.querySelectorAll<HTMLButtonElement>('[data-business-source-upload]').forEach((button) => {
       button.addEventListener('click', () => {
         const sourceKey = button.dataset.businessSourceUpload;
         if (!sourceKey) return;
         void uploadSourceFileFor(sourceKey);
+      });
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('[data-source-help]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const sourceKey = button.dataset.sourceHelp;
+        if (!sourceKey) return;
+        const popover = document.querySelector<HTMLElement>(`[data-source-help-popover="${CSS.escape(sourceKey)}"]`);
+        if (!popover) return;
+        const wasHidden = popover.classList.contains('hidden');
+        document.querySelectorAll<HTMLElement>('[data-source-help-popover]').forEach((item) => item.classList.add('hidden'));
+        popover.classList.toggle('hidden', !wasHidden);
       });
     });
 
@@ -733,7 +764,18 @@ export function createMonthlyRunPage({
               <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">${escapeHtml(tt('selectSourceFile'))}</button>
             </div>`;
         return `<tr>
-          <td style="text-align:left; font-weight:600;">${escapeHtml(source.label)}</td>
+          <td style="text-align:left; font-weight:600; position:relative;">
+            <div class="monthly-run-source-name">
+              <span>${escapeHtml(source.label)}</span>
+              <button type="button" class="monthly-run-source-help" data-source-help="${escapeHtml(source.sourceKey)}" aria-label="${escapeHtml(tt('fileNameHelp'))}" title="${escapeHtml(tt('fileNameHelp'))}">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.3 2.3 0 1 1 3.8 1.7c-.9.7-1.6 1.1-1.6 2.3"></path><path d="M12 16.5h.01"></path></svg>
+              </button>
+            </div>
+            <div class="monthly-run-source-help-popover hidden" data-source-help-popover="${escapeHtml(source.sourceKey)}">
+              <strong>${escapeHtml(tt('fileNameHelp'))}</strong>
+              <p>${escapeHtml(sourceDescription(source, lang()))}</p>
+            </div>
+          </td>
           <td>${source.required ? '<span class="source-required-badge">Required</span>' : '<span class="source-optional-badge">Optional</span>'}</td>
           <td class="source-uploaded-cell">${uploaded}</td>
           <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>

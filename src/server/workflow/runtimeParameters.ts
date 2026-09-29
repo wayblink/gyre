@@ -213,6 +213,16 @@ export function resolveWorkflowRuntimeConfiguration(params: {
   runtimeParameters?: WorkflowRuntimeParameters;
 }): { runtimeParameters: WorkflowRuntimeParameters; tasks: WorkflowTask[] } {
   const provided = normalizeWorkflowRuntimeParameters(params.runtimeParameters);
+  // Keep monthly runs created before the cancel/restore source split executable. The
+  // old single source is the current incremental input; the merge workflow supplies
+  // the base independently from its configured default/previous output.
+  const providedFileRefs = isRecord(provided.fileRefs) ? provided.fileRefs : null;
+  if (providedFileRefs && providedFileRefs.cancel_restore_report !== undefined) {
+    if (providedFileRefs.incremental_cancel_restore_report === undefined) {
+      providedFileRefs.incremental_cancel_restore_report = cloneJson(providedFileRefs.cancel_restore_report);
+    }
+    delete providedFileRefs.cancel_restore_report;
+  }
   const schema = normalizeWorkflowRuntimeParametersSchema(params.runtimeParamsSchema);
   const defaults = normalizeWorkflowRuntimeParameters(params.runtimeParamsDefaults);
   const mergedRuntimeParameters = mergeRuntimeParameters(defaults, provided);

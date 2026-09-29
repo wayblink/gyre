@@ -1,0 +1,113 @@
+{
+  "code": "read-series-b",
+  "name": "Read SERIES B",
+  "description": "读取 GYRE THERAPEUTICS INC SERIES B 的 43105 Sheet，汇总 Shares Issued 列。",
+  "status": "active",
+  "version": 1,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 96,
+      "id": "extract_series_b_control_book",
+      "name": "Extract SERIES B Control Book",
+      "inputs": {},
+      "params": {
+        "range": "H10:H",
+        "fileRef": {
+          "$type": "object",
+          "$label": "SERIES B Control Book",
+          "$fromRuntime": "fileRefs.series_b"
+        },
+        "headerRow": 10,
+        "sheetName": {
+          "$type": "string",
+          "$label": "SERIES B sheet",
+          "$default": "43105",
+          "$fromRuntime": "fileRefs.series_b.sheet"
+        },
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "读取 SERIES B Control Books 的 43105 Sheet，H 列表头位于第 10 行，数据从第 11 行开始。",
+      "operatorCode": "sheet.range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 480,
+      "y": 96,
+      "id": "assert_series_b_schema",
+      "name": "Assert SERIES B Shares Issued Data Column",
+      "inputs": {
+        "input1": {
+          "from": "extract_series_b_control_book",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "mode": "contains",
+        "failureMessage": "SERIES B input is missing the Shares Issued column",
+        "expectedColumns": "Shares Issued",
+        "failureStrategy": "block"
+      },
+      "dependsOn": [],
+      "description": "确认输入中存在 Shares Issued 列后再计算合计。",
+      "operatorCode": "dataframe.schema.assert",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 900,
+      "y": 96,
+      "id": "sum_series_b_shares_issued",
+      "name": "Sum SERIES B Shares Issued",
+      "inputs": {
+        "series_b": {
+          "from": "assert_series_b_schema",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "sql": "select sum(coalesce([Shares Issued], 0)) as [Shares Issued Total] from {series_b}",
+        "tableBindings": [
+          {
+            "inputSlot": "series_b",
+            "tableName": "series_b"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "计算 43105 Sheet 的 Shares Issued 列合计值。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "fileRefs",
+      "properties": {
+        "series_b": {
+          "type": "object",
+          "label": "SERIES B Control Book",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "SERIES B sheet"
+            }
+          }
+        }
+      }
+    }
+  },
+  "runtimeParamsDefaults": {
+    "fileRefs": {
+      "series_b": {
+        "id": 195,
+        "key": "input/series-b/Control_Books_Detail_Data_16.09.2026_19.31.xlsx",
+        "sheet": "43105",
+        "provider": "product-files"
+      }
+    }
+  }
+}

@@ -287,7 +287,7 @@ test('run history labels input files from the workflow definition, falling back 
 
   const runs = await listMonthlyRuns(db, {
     sourceLabels: {
-      base_futu_exercises: 'Futu Exercises Latest',
+      base_futu_exercises: 'Futu Exercises Summary',
       incremental_futu_exercises: 'Futu Exercise Monthly Update',
     },
   });
@@ -295,7 +295,7 @@ test('run history labels input files from the workflow definition, falling back 
   assert.deepEqual(
     runs[0]?.inputFiles.map((input) => [input.sourceKey, input.label]),
     [
-      ['base_futu_exercises', 'Futu Exercises Latest'],
+      ['base_futu_exercises', 'Futu Exercises Summary'],
       ['incremental_futu_exercises', 'Futu Exercise Monthly Update'],
       // Not in the workflow definition any more — the raw key is the honest label.
       ['legacy_control_book', 'legacy_control_book'],

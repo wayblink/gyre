@@ -1,5 +1,15 @@
 import type { CapitalizationRow, LatestMonthlyRunOutput } from '../shared/types.js';
 
+export type AvailableMonth = { month: string; hasData?: boolean; hasCapTableData?: boolean; hasPlanSummaryData?: boolean };
+
+export function sortAvailableMonths(months: ReadonlyArray<AvailableMonth>): AvailableMonth[] {
+  return [...months].sort((left, right) => right.month.localeCompare(left.month));
+}
+
+export function monthAvailabilityLabel(month: AvailableMonth): string {
+  return month.hasData ? `${month.month} · 有数据` : `${month.month} · 暂无数据`;
+}
+
 const SERIES_B_DESCRIPTION = 'Series B Preferred Stock';
 const TOTAL_FULLY_DILUTED_PREFIX = 'total fully diluted shares outstand';
 

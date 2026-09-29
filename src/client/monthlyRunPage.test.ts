@@ -256,6 +256,14 @@ test('input configuration renders one flat source list: hidden dropped, group ig
   ]);
 });
 
+test('monthly input rows expose an accessible purpose help icon and bilingual source purpose', () => {
+  const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+  assert.match(source, /data-source-help/);
+  assert.match(source, /data-source-help-popover/);
+  assert.match(source, /sourcePurposeEnglish/);
+  assert.match(source, /fileNameHelpHint/);
+});
+
 test('monthly update treats optional sources as non-blocking and explains warning behavior', () => {
   const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
 
@@ -344,10 +352,9 @@ test('monthly constants are rendered on the main Monthly Update page and saved t
     'gyre_2023_china_subplan_total',
     'options_available_cullgen',
     'options_outstanding_cullgen',
-    'series_b_preferred_stock',
     'warrants_convertible_preferred',
   ]);
 
-  assert.equal(MONTHLY_FIXED_VALUE_DEFS.length, 6);
-  assert.ok(MONTHLY_FIXED_VALUE_DEFS.some((definition) => definition.key === 'seriesBPreferredStock'));
+  assert.equal(MONTHLY_FIXED_VALUE_DEFS.length, 5);
+  assert.equal(MONTHLY_FIXED_VALUE_DEFS.some((definition) => definition.key === 'seriesBPreferredStock'), false);
 });

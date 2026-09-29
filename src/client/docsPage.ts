@@ -159,6 +159,157 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 页面默认显示所选月份最新一次成功运行的结果；如果该月还没有成功结果，会自动回退到最近一份可用的结果。`,
   },
   {
+    id: 'workflow-logic',
+    title: '业务工作流与计算逻辑',
+    group: '月度主流程',
+    summary: '每个业务结果从哪里来、如何计算、何时拦截',
+    body: `# 业务工作流与计算逻辑
+
+本页说明业务页面背后的实际工作流。系统先按数据库中的工作流定义读取指定 Excel Sheet，再做字段清洗、合并、聚合和校验，最后把结果写成产品文件供业务页面读取。下面是当前已发布定义的业务口径。
+
+## 一、统一执行规则
+
+1. **选择输入**：按月份为每个 fileRef 指定文件，必要时覆盖 Sheet；必填源缺失会在执行前拦截。
+2. **抽取表格**：按固定起始行和列范围读取 Excel，去掉尾部空行，保留业务字段。
+3. **清洗与计算**：把空值、Excel 的 --、重复标题行和备注行转成稳定字段；合并任务按业务键匹配 base 与 increment。
+4. **校验**：schema 校验检查必需列；SQL assertion 检查月份、上月余额、分母和关键结构。阻断型失败不会生成可用结果，warning 需要在运行页确认后继续。
+5. **写出结果**：结果以带 Sheet 名的 Excel 产品文件保存，运行记录保存输入、步骤、产物和错误。
+
+## 二、CapTable 月度汇总（Gyre Cap Table Summary V2）
+
+### 2.1 Control Book 指标
+
+从 EQ Control Book 读取 Issued & Outstanding、Shares Issued、As of Date、Trans. Type、Comment。月份通过 As of Date 归一为 YYYY-MM。
+
+- **期末余额**：取月份小于等于运行月份、Issued & Outstanding 非空的最后一行。
+- **上月余额**：取月份严格小于运行月份的最后一行 Issued & Outstanding。
+- **输入月份校验**：最后一行月份必须等于运行月份；否则阻断。
+- **BC Subplan 转移量**：Comment 为 Omnibus Inc. Pl 或 Omnibus Inc. Pl. 的 Shares Issued，在运行月份以前求和。
+- **Cullgen common stock**：Trans. Type 为 Agr. & Pl. of Merger 的 Shares Issued 最大值。
+- **GYRE 2023 China Subplan 总量**：Comment 为 Equity Inc.Sub-Pl. Futu Network Technology 的 Shares Issued 最大值。
+
+股本对账公式：
+
+    New Shares = EOM Equity Balance OS - Last Month Equity Balance OS
+    EOM Balance = EOM Equity Balance OS
+
+### 2.2 Futu 行权与 BCI Shares Held by Futu
+
+先排除空员工编号和标题行 员工编号，再使用成功行权数量：
+
+    Futu Exercised Qty = sum(Exercised Qty)
+    BCI Shares Held by Futu = GYRE 2023 China Subplan 总量 - Futu Exercised Qty
+
+这里的 Exercised Qty 是成功行权数量，不是下单数量、扣除/卖出数量或成交数量。
+
+### 2.3 Option Plans 与 BC Subplan 调整
+
+Option Plans 子工作流为每个计划生成 key/value：优先 Outstanding Calc.，否则 Options Outstanding，再否则 Available Shares in Pool，都为空时按 0；空计划名、空分类和 0011PLAN_2018 ESPP (Manual Reserve) 排除。
+
+主汇总使用 Awards Outstanding、Shares Remaining For Issuance、Awards Outstanding + Shares Remaining for Issuance 三类 key。对 GYRE 2025 BC Subplan，如果存在 Awards Outstanding 行且 Cancelled 合计为 0，则把 Transfer Plan 的取消量从 outstanding 挪到 available：
+
+    Options Outstanding = sum(Awards Outstanding) - BC Subplan Cancelled Adjustment
+    Options Available = sum(Shares Remaining For Issuance) + BC Subplan Cancelled Adjustment
+    Outstanding + Available = sum(Awards Outstanding + Shares Remaining for Issuance)
+
+Transfer Plan 的取消量优先取 总计 列负数的绝对值；没有负数时，取 总计 标记行最大值与最小值的差。因此取消调整不会改变 outstanding 与 available 的合计。
+
+### 2.4 Fully Diluted 分母
+
+当前 V2 工作流的 fully diluted 分母是：
+
+    Total Fully Diluted = round(
+      EOM Equity Balance OS + Options Outstanding
+      + Warrants for Convertible Preferred Stock + Series B Preferred Stock
+      - BC Subplan Transfer + Options Available
+      + Options Outstanding - Cullgen + Options Available - Cullgen,
+      0
+    )
+
+Warrants、Series B 和 Cullgen 两类 options 来自全局参数；BC Subplan Transfer 当前选择 Control Book 口径。每行 fully diluted 百分比等于该行 Common Shares Equivalent 除以 Total Fully Diluted。
+
+### 2.5 Capitalization Summary 行项目
+
+结果依次包括：Asset Class Summary: EOM；Common Shares OS；Cullgen common stock；BCI Shares Held by Futu；2025 BC Subplan shares transferred to Futu；Warrants for Convertible Preferred Stock；Series B Preferred Stock；Options Outstanding- Gyre；Options Available- Gyre；Options Outstanding- Cullgen；Options Available- Cullgen；Total Fully Diluted Shares Outstand。
+
+其中核心关系是：
+
+    Common Shares OS = EOM - Cullgen common stock
+                     - BCI Shares Held by Futu - BC Subplan Transfer
+    Options Outstanding- Gyre = Options Outstanding - BC Subplan Transfer
+    Total Fully Diluted Shares Outstand = 上述分母
+
+系统还检查上一份 Capitalization Summary 的 Asset Class Summary:EOM 是否等于本次 Control Book 的上月余额；不一致时阻断，避免月份断档或输入源错配。
+
+## 三、Control Book 与 Futu 的增量合并
+
+### EQ Control Book Incremental Merge
+
+base 从 EQ Control Book 第 9 行读取，increment 从指定月份 Sheet 第 10 行读取。只有 Security ID、As of Date、Process Date、Trans. Type、Trans. No.、Broker No.、Shares Issued、Shares Retired 全部匹配时才视为同一交易；文本键 trim 后转大写，数值空值按 0 比较。合并时 increment 的非空字段覆盖 base，increment 为空则保留 base；单边存在的行保留。结果按 As of Date、Process Date 和原始行号排序，写成下月可继续使用的 control_book base。
+
+### Futu Exercises Incremental Merge
+
+increment 只保留行权日期不晚于运行月份的记录，并把 --、空字符串和 null 数量转成 0。base 中有真实 Exercise Order No. 的行保留；没有订单号的 base 行，如果能以 Grant No. + Exercise Date 被 increment 匹配，则由 increment 替换，否则保留。最终用 increment 的非空字段覆盖 base，输出累计 Futu BCI Exercises 文件，避免同一笔行权重复累加。
+
+## 四、ESOP 明细工作流
+
+### 授予记录
+
+Futu 读取 授予记录 Sheet 并输出 Grant_Record_Futu.xlsx。Shareworks 读取 Personnel Summary Sheet，只投影员工编号、计划、授予、归属、行权、取消、outstanding 等字段并输出 Grant_Record_Shareworks.xlsx。页面 Merge 视图只做字段对齐：Futu 行映射成功行权、取消/过期和 outstanding；Shareworks 行使用 Shares Granted、Shares Exercised / Released、Shares Cancelled/Expired、Shares Outstanding。
+
+### 行权记录
+
+Futu 行权表的 --、空值和 null 数量都按 0；页面展示下单数量、成功行权数量、行权成本、扣除/卖出数量和成交数量。Shareworks 行权表作为独立来源输出，不与 Futu 交易行伪合并。
+
+### 卖出记录
+
+过滤空工号、空姓名、标题行 工号，并排除姓名以 note: 开头的备注行；有效记录输出 sold_shares.xlsx。
+
+### 2025 转仓至 Futu
+
+读取 2025 BC Subplan Transfer 的第 4 行表头和明细，输出转仓文件。页面编辑 Options cancelled/forfeited 后按以下公式即时重算：
+
+    Transfer to Futu = In Total + Cancelled / Forfeited
+
+## 五、计划汇总与员工归集
+
+### 计划汇总
+
+Option Plans 子工作流按分类和排序号向前回溯，给统计行找到最近的计划名标签，排除 Granted、Exercised、Repurchased、Cancelled 等统计行，再按计划聚合：
+
+    Granted = sum(value where key = Granted)
+    Exercised = sum(value where key = Exercised)
+    Cancelled = sum(value where key = Cancelled)
+    Outstanding = sum(value where key = Awards Outstanding)
+
+只保留 Outstanding 不为 0 的计划，输出 Plan_Summary.xlsx。
+
+### 员工归集
+
+Futu 工号 trim 后转大写，姓名 trim，来源标记 futu。Shareworks 排除 Last Name 为 subplan 且计划名或授予名含 subplan 的行；员工编号 trim 后转大写，姓名按 First + Middle + Last 拼接，来源标记 shareworks。两个来源 union 后按 employee_id upsert；冲突时更新姓名和文件证据，不删除历史员工。
+
+## 六、5% 股东
+
+工作流先检查 Capitalization Summary 中存在且唯一的 Common Shares OS、Cullgen common stock、Total Fully Diluted Shares Outstand 分母：
+
+    Common Stock OS = Common Shares OS + Cullgen common stock
+    Fully Diluted = Total Fully Diluted Shares Outstanding
+    % of Class = holder Common Stock / Common Stock OS
+    % Fully Diluted = holder Total CSEs / Fully Diluted
+    Total >5% = GNI Group Ltd. + Songjiang Ma
+
+GNI Group Ltd. 和 Songjiang Ma 的 Common Stock、Total CSEs 来自全局参数；工作流负责按当前 summary 分母计算比例并输出 Five_Percent_Holders.xlsx。分母缺失或重复时阻断。
+
+## 七、结果如何回到业务页面
+
+- **CapTable**：读取 Capitalization_Table_Summary_View.xlsx 的 Shares OS Reconciliation 和 Capitalization Summary 两个 Sheet。
+- **ESOP 明细、计划汇总、5% 股东**：读取各自 output 文件；页面只做展示、筛选、导出和员工关联，不重新改变工作流计算结果。
+- **员工管理**：读取员工归集工作流写入的记录，再叠加人工标签、关联和停用状态。
+- **回退规则**：当前月份没有成功运行时显示最近一份可用成功结果；失败或等待审批的结果不会覆盖最后一份成功产物。
+
+排查一个数字时，应依次检查运行月份、输入文件与 Sheet、workflow run、中间 assertion/SQL 步骤和输出文件 Sheet，而不是只看页面最终单元格。`,
+  },
+  {
     id: 'esop-detail',
     title: 'ESOP 明细',
     group: '数据页面',
@@ -445,6 +596,120 @@ Every run keeps its input files, output files, status, duration, and error messa
 The ownership summary card has two buttons in its top-right: **Update** jumps to the monthly update flow to regenerate results, and **Export** downloads the current summary as Excel.
 
 The page defaults to the latest successful run for the selected month; if the month has no successful result yet, it falls back to the most recent available result.`,
+  },
+  {
+    id: 'workflow-logic',
+    title: 'Business Workflows and Calculations',
+    group: 'Monthly Process',
+    summary: 'Sources, formulas, merges, validations, and outputs',
+    body: `# Business Workflows and Calculations
+
+Business pages read products generated by database-defined workflows. A run selects Excel files and sheets, extracts rows, normalizes values, computes aggregates, validates key assumptions, and writes versioned output workbooks. This page describes the currently published business rules.
+
+## Execution contract
+
+Inputs are selected by month and fileRef. Required inputs stop execution when missing. Extractors use the configured header row and range, remove trailing empty rows, and preserve source business columns. Empty values, Excel -- values, repeated headers, and note rows are normalized before SQL calculations. Blocking assertions produce no usable result; warnings must be confirmed on the run page. A business page never replaces the last successful product with a failed or waiting run.
+
+## CapTable Summary V2
+
+### Control Book metrics
+
+From EQ Control Book, the workflow reads Issued & Outstanding, Shares Issued, As of Date, Trans. Type, and Comment. As of Date is normalized to YYYY-MM.
+
+- EOM Equity Balance OS is the last non-empty Issued & Outstanding at or before the workflow month.
+- Last Month Equity Balance OS is the last non-empty value strictly before the workflow month.
+- The last Control Book month must equal the workflow month.
+- BC Subplan Transfer is the sum of Shares Issued where Comment is Omnibus Inc. Pl or Omnibus Inc. Pl., up to the workflow month.
+- Cullgen common stock is the maximum Shares Issued where Trans. Type is Agr. & Pl. of Merger.
+- The GYRE 2023 China Subplan total is the maximum Shares Issued where Comment is Equity Inc.Sub-Pl. Futu Network Technology.
+
+Shares reconciliation is:
+
+    New Shares = EOM Equity Balance OS - Last Month Equity Balance OS
+    EOM Balance = EOM Equity Balance OS
+
+### Futu exercise position
+
+Rows with an empty employee number or the header 员工编号 are excluded. The workflow uses successful exercise quantity, not order quantity, deduction/selling quantity, or dealt quantity:
+
+    Futu Exercised Qty = sum(Exercised Qty)
+    BCI Shares Held by Futu = China Subplan total - Futu Exercised Qty
+
+### Option plans and BC Subplan adjustment
+
+The option-plan subworkflow chooses Outstanding Calc. first, then Options Outstanding, then Available Shares in Pool, and otherwise zero. Blank plan/category rows and 0011PLAN_2018 ESPP (Manual Reserve) are excluded. The main summary uses Awards Outstanding, Shares Remaining For Issuance, and Awards Outstanding + Shares Remaining for Issuance.
+
+If GYRE 2025 BC Subplan has an Awards Outstanding row and its Cancelled total is zero, the Transfer Plan cancellation amount is moved from outstanding to available:
+
+    Options Outstanding = sum(Awards Outstanding) - BC Subplan Cancelled Adjustment
+    Options Available = sum(Shares Remaining For Issuance) + BC Subplan Cancelled Adjustment
+
+The adjustment is the absolute negative Total value when available; otherwise it is the difference between the maximum and minimum Total rows labelled Total. The outstanding-plus-available total remains unchanged.
+
+### Fully diluted denominator
+
+    Total Fully Diluted = round(
+      EOM Equity Balance OS + Options Outstanding
+      + Warrants for Convertible Preferred Stock + Series B Preferred Stock
+      - BC Subplan Transfer + Options Available
+      + Options Outstanding - Cullgen + Options Available - Cullgen,
+      0
+    )
+
+Warrants, Series B, and Cullgen option values are global parameters. Every fully diluted percentage is the row Common Shares Equivalent divided by this denominator.
+
+The output rows are Asset Class Summary: EOM, Common Shares OS, Cullgen common stock, BCI Shares Held by Futu, 2025 BC Subplan shares transferred to Futu, warrants, Series B, Gyre options outstanding, Gyre options available, Cullgen options outstanding, Cullgen options available, and Total Fully Diluted Shares Outstand. The key identity is:
+
+    Common Shares OS = EOM - Cullgen common stock
+                     - BCI Shares Held by Futu - BC Subplan Transfer
+    Options Outstanding- Gyre = Options Outstanding - BC Subplan Transfer
+
+The previous Capitalization Summary EOM asset-class balance must match the current Control Book last-month balance, unless there is no previous summary. A mismatch blocks the run.
+
+## Incremental merges
+
+### EQ Control Book
+
+The base starts at row 9 and the increment at row 10. A record matches only when Security ID, As of Date, Process Date, Trans. Type, Trans. No., Broker No., Shares Issued, and Shares Retired all match. Text keys are trimmed and upper-cased; empty numeric values compare as zero. Non-empty increment fields override base fields, while blank increment fields preserve base values. The result is sorted by dates and source row order and saved as the next control_book base.
+
+### Futu Exercises
+
+Increment rows are limited to exercise dates at or before the workflow month; --, empty, and null quantities become zero. Base rows with a real Exercise Order No. are retained. A base row without an order number is replaced when Grant No. + Exercise Date matches the increment; otherwise it remains. Non-empty increment fields then overlay base fields, preventing duplicate cumulative exercise counts.
+
+## ESOP ledgers
+
+- **Grant Record**: Futu grants are copied from the Grant Record sheet. Shareworks projects employee, plan, grant, vesting, exercise, cancellation, and outstanding fields. The Merge view aligns Futu and Shareworks fields; it does not recalculate source quantities.
+- **Exercise Record**: Futu --, empty, and null quantities become zero. The page shows ordered, exercised, cost, deduction/selling, and dealt quantities. Shareworks exercise rows remain a separate source.
+- **Sold Shares**: empty employee number, empty name, the header 工号, and names beginning with note: are removed before output.
+- **2025 Transfer to Futu**: after editing Options cancelled/forfeited, the page recalculates Transfer to Futu as In Total + Cancelled / Forfeited.
+
+## Plan summary and employee import
+
+Plan names are recovered by walking backward within category and sort order, skipping statistic keys such as Granted, Exercised, Repurchased, and Cancelled. The output aggregates:
+
+    Granted = sum(value where key = Granted)
+    Exercised = sum(value where key = Exercised)
+    Cancelled = sum(value where key = Cancelled)
+    Outstanding = sum(value where key = Awards Outstanding)
+
+Only plans with non-zero Outstanding are written to Plan Summary. For employee import, Futu employee numbers are trimmed and upper-cased. Shareworks subplan rows are excluded when Last Name is subplan and plan or grant name contains subplan; names are First + Middle + Last. Both sources are unioned and upserted by employee_id, updating name and file evidence without deleting history.
+
+## 5% holders
+
+The workflow checks for the Common Shares OS, Cullgen common stock, and Total Fully Diluted Shares Outstand denominator rows. It calculates:
+
+    Common Stock OS = Common Shares OS + Cullgen common stock
+    % of Class = holder Common Stock / Common Stock OS
+    % Fully Diluted = holder Total CSEs / Fully Diluted
+    Total >5% = GNI Group Ltd. + Songjiang Ma
+
+Holder Common Stock and Total CSEs are global-parameter values. Missing or duplicated denominator rows block the run.
+
+## Where results appear
+
+CapTable reads Capitalization_Table_Summary_View.xlsx, specifically Shares OS Reconciliation and Capitalization Summary. ESOP, Plan Summary, and 5% Holders read their workflow output workbooks; the pages provide display, filtering, export, and employee-link behavior without changing the calculations. Employee Management reads the imported employee records and layers labels, links, and deactivation state on top.
+
+To investigate a number, check the workflow month, selected file and sheet, run record, assertion/SQL step, and output sheet in that order.`,
   },
   {
     id: 'esop-detail',

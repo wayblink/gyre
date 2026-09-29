@@ -5892,6 +5892,97 @@ select.form-input {
   padding-right: 32px;
 }
 
+.month-picker-control {
+  position: relative;
+}
+
+.month-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  cursor: pointer;
+  min-width: 180px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.month-picker-trigger.month-has-data {
+  border-color: var(--success-500);
+}
+
+.month-picker-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 280px;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-lg);
+}
+
+.month-picker-year + .month-picker-year {
+  margin-top: 10px;
+}
+
+.month-picker-year > strong {
+  display: block;
+  padding: 6px 8px;
+  color: var(--text-primary);
+  background: var(--bg-subtle, var(--bg-muted));
+  font-size: var(--text-sm);
+}
+
+.month-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.month-picker-option {
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.month-picker-option:hover,
+.month-picker-option:focus-visible {
+  border-color: var(--primary-400);
+  background: var(--primary-50, rgba(59, 130, 246, 0.08));
+  outline: none;
+}
+
+.month-picker-option.has-data {
+  border-color: var(--success-500);
+  color: var(--success-700, var(--success-600));
+  font-weight: 600;
+}
+
+.month-picker-option.has-data span {
+  margin-left: 4px;
+  font-weight: 700;
+}
+
+.month-picker-option.is-selected {
+  border-color: var(--primary-600);
+  background: var(--primary-600);
+  color: #fff;
+}
+
+.month-picker-option.is-selected.has-data {
+  border-color: var(--success-600, var(--primary-600));
+  background: var(--success-600, var(--primary-600));
+  color: #fff;
+}
+
 textarea.form-input {
   height: auto;
   min-height: 80px;
@@ -8620,6 +8711,80 @@ textarea.form-input {
     font-size: var(--text-xs);
     letter-spacing: 0.01em;
     text-transform: uppercase;
+}
+
+.monthly-run-source-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.source-table th {
+    position: relative;
+}
+
+.monthly-run-source-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--border-default);
+    border-radius: 50%;
+    background: var(--bg-card);
+    color: var(--text-muted);
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.monthly-run-source-help:hover,
+.monthly-run-source-help:focus-visible {
+    border-color: var(--primary-500);
+    color: var(--primary-600);
+    outline: 2px solid var(--primary-200);
+    outline-offset: 1px;
+}
+
+.monthly-run-source-help svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.monthly-run-source-help-popover {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% - 2px);
+    left: var(--space-4);
+    width: min(380px, calc(100vw - 48px));
+    padding: 10px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-lg);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    white-space: normal;
+}
+
+.monthly-run-source-help-popover p {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+}
+
+.monthly-run-source-help-popover--header {
+    top: calc(100% + 4px);
+    left: 8px;
+    width: 260px;
+    font-weight: var(--font-normal);
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 .source-table td {

@@ -418,6 +418,25 @@ function previousMonthKey(monthKey: string): string {
   return month <= 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
 }
 
+async function injectPreviousCancelRestoreBase(
+  runtimeParameters: WorkflowRuntimeParameters,
+  monthKey: string,
+): Promise<void> {
+  const fileRefs = runtimeParameters.fileRefs;
+  if (!fileRefs || typeof fileRefs !== 'object' || Array.isArray(fileRefs)) return;
+  const previousBasePath = `cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_${previousMonthKey(monthKey).replace('-', '_')}.xlsx`;
+  const previousBase = await db.queryOne<{ logical_path: string }>(
+    'select logical_path from product_files where logical_path = $1 order by id desc limit 1',
+    [previousBasePath],
+  );
+  if (!previousBase?.logical_path) return;
+  (fileRefs as Record<string, unknown>).base_cancel_restore_report = {
+    provider: 'product-files',
+    key: previousBase.logical_path,
+    sheet: '取消与恢复明细',
+  };
+}
+
 async function assertMonthlyRunInstanceReady(instance: MonthlyRunInstanceRecord): Promise<void> {
   const sources = await monthlySourceDescriptors();
   for (const source of sources) {
@@ -775,6 +794,7 @@ async function readLatestWorkflowDataFrameArtifact(params: {
   workflowCode: string;
   taskId: string;
   fallbackSheetName: string;
+  month?: string | null;
 }): Promise<LatestWorkflowDataFrameArtifact | null> {
   const artifact = await db.queryOne<Record<string, unknown>>(
     `select artifact.metadata_json,
@@ -792,9 +812,10 @@ async function readLatestWorkflowDataFrameArtifact(params: {
         and artifact.task_id = $2
         and artifact.artifact_type = 'file'
         and artifact.file_id is not null
+        and ($3::text is null or run.runtime_parameters_json->>'month' = $3)
       order by run.finished_at desc nulls last, artifact.id desc
       limit 1`,
-    [params.workflowCode, params.taskId],
+    [params.workflowCode, params.taskId, params.month?.trim() || null],
   );
   if (!artifact) return null;
   const metadata = parseJson<Record<string, unknown>>(artifact.metadata_json, {});
@@ -2370,7 +2391,26 @@ async function registerRoutes() {
   });
 
   app.get('/api/months', async () => {
-    const rows = await db.query('select month_key as month, eom_date as "eomDate", status from months order by month_key desc');
+    const rows = await db.query(`
+      select m.month_key as month,
+             m.eom_date as "eomDate",
+             m.status,
+             (exists (select 1 from calculation_snapshots cs where cs.month_id = m.id and cs.status = 'current')
+               or m.capitalization_source_file_id is not null) as "hasCapTableData",
+             exists (
+               select 1
+                 from workflow_run_artifacts artifact
+                 join workflow_runs run on run.id = artifact.run_id
+                where run.workflow_code = 'gyre-captable-summary-v2'
+                  and run.status in ('completed', 'completed_with_warnings')
+                  and artifact.task_id = 'invoke_plan_summary_sync'
+                  and artifact.artifact_type = 'file'
+                  and artifact.file_id is not null
+                  and run.runtime_parameters_json->>'month' = m.month_key
+             ) as "hasPlanSummaryData"
+        from months m
+       order by m.month_key desc
+    `);
     return { months: rows };
   });
 
@@ -2467,6 +2507,11 @@ async function registerRoutes() {
         prevFileRefs.previous_capitalization_summary = { provider: 'product-files', key: previousOutput.logicalPath };
       }
     }
+
+    // The cancel/restore base is maintained internally: when last month's merged
+    // workbook exists, feed it into this run automatically instead of requiring a
+    // user-visible source binding.
+    await injectPreviousCancelRestoreBase(resolvedRuntimeParameters, monthlyRunInstance.monthKey);
 
     const monthKey = String(resolvedRuntimeParameters.month);
     const monthId = await getOrCreateMonth(monthKey);
@@ -2889,9 +2934,6 @@ async function registerRoutes() {
       formulaTrace: parseJson(snapshot?.formula_trace_json, {}),
       notes,
       capitalizationSource: buildCapitalizationSource(monthRow, sourceFile),
-      fixedValues: {
-        seriesBPreferredStock: monthlyRunInstance?.fixedValues.seriesBPreferredStock,
-      },
     };
 
     return responseSummary;
@@ -4075,17 +4117,19 @@ async function registerRoutes() {
     return fetchEmployeeById(targetId);
   });
 
-  app.get('/api/plan-summary', async () => {
+  app.get('/api/plan-summary', async (request) => {
+    const requestedMonth = String((request.query as { month?: string }).month ?? '').trim();
+    if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
+      throw badRequest('Invalid month; expected YYYY-MM');
+    }
     const artifact = await readLatestWorkflowDataFrameArtifact({
-      workflowCode: 'plan-summary-sync',
-      taskId: 'persist_plan_summary_file',
+      workflowCode: 'gyre-captable-summary-v2',
+      taskId: 'invoke_plan_summary_sync',
       fallbackSheetName: 'Plan Summary',
+      month: requestedMonth || null,
     });
-    const inputSourceBindings = await latestWorkflowInputSourceBindings('plan-summary-sync');
-    const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     return {
-      sourceFiles: inputSourceFiles,
-      workflowSourceBindings: inputSourceBindings,
+      sourceFiles: artifact ? [artifact.filePath || artifact.fileName] : [],
       resultFileName: artifact?.fileName ?? null,
       workflowResultFiles: resultFilesFromArtifacts(artifact),
       resultFiles: sourceFilesFromArtifacts(artifact),

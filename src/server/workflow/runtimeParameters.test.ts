@@ -82,6 +82,55 @@ test('resolveWorkflowRuntimeConfiguration injects fileRef from nested runtime re
   });
 });
 
+test('resolveWorkflowRuntimeConfiguration migrates the legacy cancel/restore fileRef name', () => {
+  const task = baseTask({
+    id: 'read_cancel_restore',
+    operatorCode: 'sheet.range.extract',
+    params: { fileRef: { $fromRuntime: 'fileRefs.incremental_cancel_restore_report' } },
+  });
+  const schema: WorkflowRuntimeParametersSchema = {
+    fileRefs: {
+      type: 'object',
+      label: 'fileRefs',
+      properties: { incremental_cancel_restore_report: { type: 'object', label: 'Incremental report' } },
+    },
+  };
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [task],
+    runtimeParamsSchema: schema,
+    runtimeParamsDefaults: {},
+    runtimeParameters: { fileRefs: { cancel_restore_report: { provider: 'product-files', id: 206 } } },
+  });
+  assert.deepEqual(resolved.tasks[0].params.fileRef, { provider: 'product-files', id: 206 });
+  assert.deepEqual(resolved.runtimeParameters.fileRefs, {
+    incremental_cancel_restore_report: { provider: 'product-files', id: 206 },
+  });
+});
+
+test('resolveWorkflowRuntimeConfiguration drops the legacy cancel/restore fileRef when both names are present', () => {
+  const schema: WorkflowRuntimeParametersSchema = {
+    fileRefs: {
+      type: 'object',
+      label: 'fileRefs',
+      properties: { incremental_cancel_restore_report: { type: 'object', label: 'Incremental report' } },
+    },
+  };
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [],
+    runtimeParamsSchema: schema,
+    runtimeParamsDefaults: {},
+    runtimeParameters: {
+      fileRefs: {
+        cancel_restore_report: { provider: 'product-files', id: 1 },
+        incremental_cancel_restore_report: { provider: 'product-files', id: 2 },
+      },
+    },
+  });
+  assert.deepEqual(resolved.runtimeParameters.fileRefs, {
+    incremental_cancel_restore_report: { provider: 'product-files', id: 2 },
+  });
+});
+
 test('resolveWorkflowRuntimeConfiguration preserves product file path keys', () => {
   const resolved = resolveWorkflowRuntimeConfiguration({
     tasks: [baseTask({

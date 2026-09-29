@@ -372,11 +372,29 @@ export function monthlyRunInstanceToRuntimeParameters(instance: MonthlyRunInstan
     if (sheet) fileRef.sheet = sheet;
     fileRefs[sourceKey] = fileRef;
   }
+  // Migrate instances created before the cancel/restore source split. The old
+  // source is treated as the current incremental input; the merge workflow's
+  // base input still comes from its configured default/previous output.
+  if (fileRefs.cancel_restore_report !== undefined) {
+    if (fileRefs.incremental_cancel_restore_report === undefined) {
+      fileRefs.incremental_cancel_restore_report = fileRefs.cancel_restore_report;
+    }
+    delete fileRefs.cancel_restore_report;
+  }
   return {
     month: instance.monthKey,
     monthUnderscore: instance.monthKey.replace(/-/g, '_'),
     fileRefs,
-    fixedValues: instance.fixedValues,
+    // Series B is derived by the Read SERIES B child workflow and is kept out of
+    // the runtime payload so legacy monthly instance rows cannot reintroduce the
+    // removed fixedValues.seriesBPreferredStock parameter.
+    fixedValues: {
+      optionsOutstandingCullgen: instance.fixedValues.optionsOutstandingCullgen,
+      optionsAvailableCullgen: instance.fixedValues.optionsAvailableCullgen,
+      warrantsConvertiblePreferred: instance.fixedValues.warrantsConvertiblePreferred,
+      cullgenCommonStock: instance.fixedValues.cullgenCommonStock,
+      gyre2023ChinaSubplanTotal: instance.fixedValues.gyre2023ChinaSubplanTotal,
+    },
   };
 }
 
@@ -384,7 +402,6 @@ const MONTHLY_RUNTIME_FIXED_VALUE_KEYS = {
   optionsOutstandingCullgen: 'options_outstanding_cullgen',
   optionsAvailableCullgen: 'options_available_cullgen',
   warrantsConvertiblePreferred: 'warrants_convertible_preferred',
-  seriesBPreferredStock: 'series_b_preferred_stock',
   cullgenCommonStock: 'cullgen_common_stock',
   gyre2023ChinaSubplanTotal: 'gyre_2023_china_subplan_total',
 } as const;
@@ -406,7 +423,6 @@ export async function loadMonthlyRunRuntimeFixedValues(db: MonthlyRunDb): Promis
     optionsOutstandingCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsOutstandingCullgen)),
     optionsAvailableCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsAvailableCullgen)),
     warrantsConvertiblePreferred: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.warrantsConvertiblePreferred)),
-    seriesBPreferredStock: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.seriesBPreferredStock)),
     cullgenCommonStock: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.cullgenCommonStock)),
     gyre2023ChinaSubplanTotal: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.gyre2023ChinaSubplanTotal)),
   };
