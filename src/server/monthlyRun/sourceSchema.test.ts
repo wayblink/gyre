@@ -42,6 +42,38 @@ test('monthly Futu input sources are labelled for the monthly update flow', () =
   assert.equal(byKey.get('incremental_futu_exercises'), 'Futu Exercise Monthly Update');
 });
 
+test('monthly input sources distinguish required business files from optional compatibility inputs', () => {
+  const sources = monthlySourcesFromSchemaOrdered(monthlyWorkflowSchema());
+  const byKey = new Map(sources.map((source) => [source.sourceKey, source]));
+
+  for (const sourceKey of [
+    'incremental_control_book',
+    'option_plans_summary',
+    'incremental_futu_exercises',
+    'incremental_cancel_restore_report',
+  ]) {
+    assert.equal(byKey.get(sourceKey)?.required, true, `${sourceKey} should be required`);
+  }
+
+  for (const sourceKey of [
+    'base_control_book',
+    'base_futu_exercises',
+    'base_cancel_restore_report',
+    'bc_subplan_transfer',
+    'previous_capitalization_summary',
+    'series_b',
+  ]) {
+    assert.equal(byKey.get(sourceKey)?.required, false, `${sourceKey} should remain optional`);
+  }
+
+  assert.equal(byKey.get('base_control_book')?.optionalCategory, 'inherit');
+  assert.equal(byKey.get('base_futu_exercises')?.optionalCategory, 'inherit');
+  assert.equal(byKey.get('previous_capitalization_summary')?.optionalCategory, 'inherit');
+  assert.equal(byKey.get('base_cancel_restore_report')?.optionalCategory, 'inherit');
+  assert.equal(byKey.get('bc_subplan_transfer')?.optionalCategory, 'validation');
+  assert.equal(byKey.get('series_b')?.optionalCategory, 'supplement');
+});
+
 test('2025 BC Subplan transfer remains as an optional compatibility input source', () => {
   const sources = monthlySourcesFromSchemaOrdered(monthlyWorkflowSchema());
   const transfer = sources.find((source) => source.sourceKey === 'bc_subplan_transfer');
@@ -98,6 +130,8 @@ test('Plan Summary overrides BC Subplan Cancelled from the dated cancel/restore 
   const calculate = workflow.tasks.find((task) => task.id === 'calculate_cancel_restore_cancelled');
   assert.match(calculate?.params?.sql ?? '', /\[变更日期\]/);
   assert.match(calculate?.params?.sql ?? '', /\[数量\]/);
+  assert.match(calculate?.params?.sql ?? '', /\[变更类型\]/);
+  assert.match(calculate?.params?.sql ?? '', /已归属到期失效/);
   assert.match(calculate?.params?.sql ?? '', /wf_month_key\(\[变更日期\]\) <= \{constants\.workflowMonth\}/);
   assert.match(calculate?.params?.sql ?? '', /GYRE 2025 BC Subplan/);
   const aggregate = workflow.tasks.find((task) => task.id === 'aggregate_plan_summary');

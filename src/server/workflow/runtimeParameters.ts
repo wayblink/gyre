@@ -33,6 +33,11 @@ export function normalizeWorkflowRuntimeParametersSchema(value: unknown): Workfl
     const field: WorkflowRuntimeParameterField = {
       type: fieldType,
       label: String(rawField.label ?? key).trim() || key,
+      required: typeof rawField.required === 'boolean' ? rawField.required : undefined,
+      optionalCategory:
+        rawField.optionalCategory === 'inherit' || rawField.optionalCategory === 'validation' || rawField.optionalCategory === 'supplement'
+          ? rawField.optionalCategory
+          : undefined,
       description: typeof rawField.description === 'string' ? rawField.description : undefined,
       enum: Array.isArray(rawField.enum) ? rawField.enum.map((item) => String(item)).filter(Boolean) : undefined,
       properties: fieldType === 'object' && isRecord(rawField.properties) ? normalizeWorkflowRuntimeParametersSchema(rawField.properties) : undefined,

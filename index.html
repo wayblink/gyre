@@ -165,6 +165,10 @@
             <!-- Top Bar -->
             <header class="top-bar">
                 <div class="page-title" id="pageTitle">Captable</div>
+                <label class="monthly-run-topbar-month hidden" id="monthlyRunTopbarMonth">
+                    <span>Month</span>
+                    <input type="month" id="monthlyRunMonth" value="2026-06" aria-label="Month">
+                </label>
                 <div class="top-bar__actions">
                     <button class="nav-item nav-item--topbar nav-item--topbar-icon-only" data-page="docs" type="button" title="使用手册" aria-label="使用手册">
                         <span class="nav-icon">
@@ -1220,23 +1224,19 @@
 
                 <section class="page-section" id="page-monthlyrun">
                     <div class="monthly-run-hidden-controls hidden" aria-hidden="true">
-                        <input type="month" id="monthlyRunMonth" value="2026-06">
                         <button id="btnMonthlyRunConfigureSources" type="button">配置输入源</button>
                         <button id="btnMonthlyRunRefreshFiles" type="button">刷新文件</button>
                         <span id="monthlyRunSourceInfo"></span>
+                        <span id="monthlyRunInputMonth"></span>
                     </div>
 
                     <div class="card monthly-run-input-card" id="monthlyRunInputCard">
                         <div class="card-header">
                             <div>
-                                <h3 class="card-title" id="modalTitle">输入配置</h3>
-                            </div>
-                            <div class="monthly-run-input-month">
-                                <span>月份</span>
-                                <strong id="monthlyRunInputMonth">-</strong>
+                                <h3 class="card-title" id="modalTitle">Input Files</h3>
                             </div>
                             <div class="monthly-run-input-actions">
-                                <button class="card-collapse__btn monthly-run-input-toggle" id="btnToggleMonthlyRunInput" type="button" aria-expanded="true" aria-controls="monthlyRunInputBody" title="收起输入配置">
+                                <button class="card-collapse__btn monthly-run-input-toggle" id="btnToggleMonthlyRunInput" type="button" aria-expanded="true" aria-controls="monthlyRunInputBody" title="Collapse Input Files">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                                 </button>
                             </div>
@@ -1260,7 +1260,13 @@
                                                 </button>
                                                 <span class="monthly-run-source-help-popover monthly-run-source-help-popover--header hidden" data-source-help-header-popover="true">输入文件用途</span>
                                             </th>
-                                            <th style="width:80px;">Is required</th>
+                                            <th style="width:150px;">
+                                                <span>Is required</span>
+                                                <button type="button" class="monthly-run-source-help monthly-run-source-help--header" aria-label="Is required取值说明" title="Is required取值说明" data-required-help-header="true">
+                                                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.3 2.3 0 1 1 3.8 1.7c-.9.7-1.6 1.1-1.6 2.3"></path><path d="M12 16.5h.01"></path></svg>
+                                                </button>
+                                                <span class="monthly-run-source-help-popover monthly-run-source-help-popover--header hidden" data-required-help-header-popover="true"></span>
+                                            </th>
                                             <th>Uploaded file</th>
                                             <th>Uploaded time</th>
                                             <th>Actions</th>
@@ -1269,9 +1275,10 @@
                                     <tbody id="monthlyRunSourcesBody"></tbody>
                                 </table>
                             </div>
-                            <div class="monthly-run-constants" id="monthlyRunConstantsBlock"></div>
                         </div>
                     </div>
+
+                    <div class="card monthly-run-constants-card" id="monthlyRunConstantsBlock"></div>
 
                     <div class="card monthly-run-panel" id="monthlyRunPanel">
                         <div class="card-header">

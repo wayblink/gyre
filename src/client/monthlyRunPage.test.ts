@@ -262,6 +262,8 @@ test('monthly input rows expose an accessible purpose help icon and bilingual so
   assert.match(source, /data-source-help-popover/);
   assert.match(source, /sourcePurposeEnglish/);
   assert.match(source, /fileNameHelpHint/);
+  assert.match(source, /requiredHelpHint/);
+  assert.match(source, /data-required-help-header-popover/);
 });
 
 test('monthly update treats optional sources as non-blocking and explains warning behavior', () => {
@@ -276,13 +278,14 @@ test('monthly update treats optional sources as non-blocking and explains warnin
   assert.match(source, /未提供时运行会产生 warning/);
 });
 
-test('monthly constants are rendered on the main Monthly Update page and saved through one button', () => {
+test('monthly constants are rendered on the main Monthly Update page and saved row by row', () => {
   const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
   const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
 
   // The host block lives on the Monthly Update page itself, below the source table, so admins
   // can review the 5 monthly constants without opening the source modal.
-  assert.match(html, /<div class="monthly-run-constants" id="monthlyRunConstantsBlock">/);
+  assert.match(html, /<div class="card monthly-run-constants-card" id="monthlyRunConstantsBlock">/);
   assert.doesNotMatch(html, /id="monthlyRunSourceConstantsBlock"/);
   assert.match(source, /function renderMonthlyConstants\(\)/);
 
@@ -302,41 +305,45 @@ test('monthly constants are rendered on the main Monthly Update page and saved t
   assert.match(block, /MONTHLY_FIXED_VALUE_DEFS\.map\(/);
   assert.match(block, /fv\[def\.key\]/);
 
-  // Laid out as a vertical list (one variable per row), not a horizontal grid.
-  assert.match(block, /monthly-run-constants__list/);
-  assert.match(block, /monthly-run-constants__row/);
-  assert.doesNotMatch(block, /monthly-run-constants__grid/);
-
-  // The save button sits in a footer below the list, not in the header.
-  assert.match(block, /monthly-run-constants__footer/);
-  const header = block.match(/monthly-run-constants__header[\s\S]*?<\/div>/)?.[0] ?? '';
-  assert.doesNotMatch(header, /btnSaveMonthlyConstants/);
+  // Constants use the same table treatment as Input Configuration, with a header and per-row actions.
+  assert.match(block, /monthly-run-constants__table/);
+  assert.match(block, /monthlyConstantName/);
+  assert.match(block, /monthlyConstantValue/);
+  assert.match(block, /monthlyConstantActions/);
+  assert.match(block, /data-constant-edit/);
+  assert.match(block, /data-constant-save/);
+  assert.match(block, /data-constant-cancel/);
+  assert.doesNotMatch(block, /btnSaveMonthlyConstants/);
+  assert.match(block, /data-constant-help/);
+  assert.match(block, /data-constant-help-popover/);
+  assert.match(block, /monthly-run-constants-toggle/);
+  assert.match(block, /monthlyConstantsCollapsed/);
+  assert.doesNotMatch(block, /monthlyConstantsHint/);
+  assert.doesNotMatch(block, /monthly-run-constants__desc/);
+  assert.match(block, /card-title monthly-run-constants__title/);
+  assert.match(html, /monthly-run-topbar-month/);
+  assert.doesNotMatch(main, /\$\{pageTitleFor\('monthly'\)\} \/ \$\{pageTitleFor\('monthlyrun'\)\}/);
 
   // Each variable carries a bilingual business explanation rendered under it.
   assert.match(block, /def\.description\[lang\(\)\]/);
-  assert.match(block, /monthly-run-constants__desc/);
+  assert.match(block, /data-constant-help-popover/);
   for (const def of MONTHLY_FIXED_VALUE_DEFS) {
     assert.ok(def.description['zh-CN'].length > 0, `${def.key} missing zh-CN description`);
     assert.ok(def.description['en-US'].length > 0, `${def.key} missing en-US description`);
   }
 
-  // One save button PUTs every parsed value as fixedValues; blank/non-numeric inputs are skipped
-  // so an untouched field never overwrites the stored value with NaN.
-  const save = block.match(/el\('btnSaveMonthlyConstants'\)\?\.addEventListener\('click', \(\) => \{[\s\S]*?saveInstance\(\{ fixedValues: next \}\)/)?.[0] ?? '';
-  assert.match(save, /data-const-key\]/);
-  assert.match(save, /Number\.isFinite\(parsed\)/);
-  assert.match(save, /saveInstance\(\{ fixedValues: next \}\)/);
+  // Each row saves only its own parsed value; blank/non-numeric values are rejected.
+  assert.match(block, /Number\.isFinite\(parsed\)/);
+  assert.match(block, /saveInstance\(\{ fixedValues: \{ \[key\]: parsed \} \}\)/);
 
-  // Inputs and the save action stay in the centered editing column shown in the UI.
+  // Inputs and actions use the same table treatment as the source configuration.
   const stylesheet = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
-  const rowMainStyles = stylesheet.match(/\.monthly-run-constants__row-main\s*\{[\s\S]*?\}/)?.[0] ?? '';
-  const footerStyles = stylesheet.match(/\.monthly-run-constants__footer\s*\{[\s\S]*?\}/)?.[0] ?? '';
-  assert.match(rowMainStyles, /display:\s*grid/);
-  assert.match(rowMainStyles, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+180px\s+minmax\(0,\s*1fr\)/);
+  assert.match(stylesheet, /\.monthly-run-constants__table-wrap\s*\{/);
+  assert.match(stylesheet, /\.monthly-run-constants__actions\s*\{/);
+  assert.match(stylesheet, /\.monthly-run-constants__help\s*\{/);
+  assert.match(stylesheet, /\.monthly-run-constants-toggle\s*\{/);
+  assert.match(stylesheet, /\.monthly-run-constants-card\.is-collapsed \.monthly-run-constants-toggle svg/);
   const inputStyles = stylesheet.match(/\.monthly-run-constants__input\s*\{[\s\S]*?\}/)?.[0] ?? '';
-  assert.match(inputStyles, /grid-column:\s*2/);
-  assert.match(inputStyles, /justify-self:\s*center/);
-  assert.match(footerStyles, /justify-content:\s*center/);
   assert.match(inputStyles, /font-size:\s*var\(--text-md\)/);
 
   // The UI key set must stay in sync with the server's per-month columns: each camelCase UI key

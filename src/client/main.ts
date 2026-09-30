@@ -746,7 +746,7 @@ function applyRoleVisibility() {
 const pageTitleTranslations: Record<PageKey, Record<AppLanguage, string>> = {
   captable: { 'zh-CN': '股权汇总', 'en-US': 'CapTable' },
   monthly: { 'zh-CN': '月度更新', 'en-US': 'Monthly Update' },
-  monthlyrun: { 'zh-CN': '月度运行', 'en-US': 'Monthly Run' },
+  monthlyrun: { 'zh-CN': '月度更新', 'en-US': 'Monthly Update' },
   'esop-detail': { 'zh-CN': 'ESOP 明细', 'en-US': 'ESOP Detail' },
   'grant-record': { 'zh-CN': '授予记录', 'en-US': 'Grant Record' },
   'exercise-record': { 'zh-CN': '行权记录', 'en-US': 'Exercise Record' },
@@ -1139,9 +1139,7 @@ function applyLanguage() {
   renderUserManagementTable();
 
   const activePage = getPageFromLocation();
-  el('pageTitle').textContent = activePage === 'monthlyrun'
-    ? `${pageTitleFor('monthly')} / ${pageTitleFor('monthlyrun')}`
-    : pageTitleFor(activePage);
+  el('pageTitle').textContent = pageTitleFor(activePage);
   el('authSubmit').textContent = authStatus?.bootstrapRequired ? t('createAndLogin') : t('login');
   el('sidebarToggle').setAttribute('aria-label', sidebarCollapsed ? t('expandSidebar') : t('collapseSidebar'));
   syncLanguageButtons();
@@ -1536,9 +1534,8 @@ function setActivePage(page: string) {
   document.querySelectorAll<HTMLElement>('.page-section').forEach((node) => {
     node.classList.toggle('active', node.id === `page-${targetPage}`);
   });
-  el('pageTitle').textContent = targetPage === 'monthlyrun'
-    ? `${pageTitleFor('monthly')} / ${pageTitleFor('monthlyrun')}`
-    : pageTitleFor(targetPage);
+  el('pageTitle').textContent = pageTitleFor(targetPage);
+  el('monthlyRunTopbarMonth')?.classList.toggle('hidden', targetPage !== 'monthlyrun');
   resetActivePageSourceFile();
 }
 
@@ -1664,7 +1661,7 @@ async function openMonthlyRunMonthOnly(month: string) {
     window.history.pushState(null, '', url);
   }
   el('monthlyRunInputMonth').textContent = formatMonthCN(month);
-  el('modalTitle').textContent = 'Input Configuration';
+  el('modalTitle').textContent = 'Input Files';
   el('monthlyRunSourcesBody').innerHTML = '<tr><td colspan="5" class="table-empty-cell">正在加载输入定义...</td></tr>';
   setActivePage('monthlyrun');
   localizeAppDom();
@@ -2049,7 +2046,7 @@ function applyMonthlyRunInputCollapsed() {
   const toggle = el<HTMLButtonElement>('btnToggleMonthlyRunInput');
   card.classList.toggle('is-collapsed', monthlyRunInputCollapsed);
   toggle.setAttribute('aria-expanded', String(!monthlyRunInputCollapsed));
-  toggle.setAttribute('title', monthlyRunInputCollapsed ? 'Expand Input Configuration' : 'Collapse Input Configuration');
+  toggle.setAttribute('title', monthlyRunInputCollapsed ? 'Expand Input Files' : 'Collapse Input Files');
 }
 
 function initMonthlyRunInputCard() {

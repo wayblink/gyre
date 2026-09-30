@@ -3,7 +3,7 @@
   "name": "Plan Summary Sync",
   "description": "读取 Gyre Option Plans Summary SL，并消费取消与恢复报表增量合并后的完整基表；仅在 Plan Summary 指标计算时按变更月份累计 GYRE 2025 BC Subplan 的 Cancelled，保留 Outstanding 不为 0 的计划。",
   "status": "active",
-  "version": 4,
+  "version": 5,
   "tasks": [
     {
       "x": 420,
@@ -82,7 +82,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  'cancel_restore' as category_for_grouping,\n  'GYRE 2025 BC Subplan' as plan_name,\n  'Cancelled' as [key],\n  sum(\n    case\n      when wf_month_key([变更日期]) is not null\n       and wf_month_key([变更日期]) <= {constants.workflowMonth}\n      then case\n        when cast(coalesce([数量], 0) as string) in ('--', '', 'null') then 0\n        else cast([数量] as number)\n      end\n      else 0\n    end\n  ) as [value]\nfrom {cancel_restore}",
+        "sql": "\nselect\n  'cancel_restore' as category_for_grouping,\n  'GYRE 2025 BC Subplan' as plan_name,\n  'Cancelled' as [key],\n  sum(\n    case\n      when wf_month_key([变更日期]) is not null\n       and wf_month_key([变更日期]) <= {constants.workflowMonth}\n       and cast(coalesce([变更类型], '') as string) <> '已归属到期失效'\n      then case\n        when cast(coalesce([数量], 0) as string) in ('--', '', 'null') then 0\n        else cast([数量] as number)\n      end\n      else 0\n    end\n  ) as [value]\nfrom {cancel_restore}",
         "constants": {
           "workflowMonth": {
             "$type": "string",
@@ -98,7 +98,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "按变更日期月份不晚于业务月份筛选取消与恢复报表，并合计数量作为 GYRE 2025 BC Subplan Cancelled。",
+      "description": "按变更日期月份不晚于业务月份筛选取消与恢复报表，排除已归属到期失效，再合计数量作为 GYRE 2025 BC Subplan Cancelled。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -193,6 +193,7 @@
         "option_plans_summary": {
           "type": "object",
           "label": "Gyre Option Plans Summary SL workbook",
+          "required": true,
           "properties": {
             "sheet": {
               "type": "string",
@@ -215,6 +216,7 @@
         "incremental_cancel_restore_report": {
           "type": "object",
           "label": "Cancel & Restore Detail",
+          "required": true,
           "properties": {
             "sheet": {
               "type": "string",

@@ -11,7 +11,7 @@ Gyre ESOP 系统每月需要：上传外部平台（Shareworks / Futu）导出�
 
 ## 2. 已确认的产品决策
 
-1. 专用月度页 + 配好一个月度 workflow（把 id=159 `gyre-captable-summary` 参数化作为被调用工作流）。
+1. 专用月度页 + 配好一个月度 workflow（使用 `gyre-captable-summary-v2` 作为被调用工作流）。
 2. 产出→Summary 用 xlsx 作载体：产出 xlsx 落 product_files → 自动调 `PUT /api/months/:month/capitalization-source` 设为当月数据源 → Summary 实时解析显示。**严格约束：历史快照/版本回看也以 xlsx 为载体（每月一份产出 xlsx 即快照），不写 calculation_snapshots、不建内部聚合表、不 hardcode。**
 3. 执行历史用业务表 monthly_run_history（元数据审计，与决策 2 不冲突）。
 
@@ -22,7 +22,7 @@ Gyre ESOP 系统每月需要：上传外部平台（Shareworks / Futu）导出�
 - 数据库：不拆物理 schema，单库 + workflow_ 前缀；业务→库只用逻辑 id 列、不加跨界外键（monthly_run_history.workflow_id / workflow_run_id 用纯 integer）。
 - 本阶段以"代码隔离 + 单向依赖"为主；workflow 物理目录归位（src/workflow/）作为后续独立重构，与本功能不冲突、可并行。
 
-## 4. 月度 workflow 参数化（id=159）
+## 4. 月度 workflow 参数化（`gyre-captable-summary-v2`）
 
 runtime_params_schema_json：
 - month: { type: string, required: true }

@@ -219,6 +219,7 @@
         "incremental_cancel_restore_report": {
           "type": "object",
           "label": "Cancel & Restore Detail",
+          "required": true,
           "properties": {
             "sheet": {
               "type": "string",

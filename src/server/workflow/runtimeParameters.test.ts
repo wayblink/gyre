@@ -386,14 +386,28 @@ test('resolveWorkflowRuntimeConfiguration resolves runtime constants into output
   assert.deepEqual(resolved.runtimeParameters, { month: '2026-05' });
 });
 
-test('normalizeWorkflowRuntimeParametersSchema strips required metadata from workflow runtime schema', () => {
+test('normalizeWorkflowRuntimeParametersSchema preserves required metadata from workflow runtime schema', () => {
   const schema = normalizeWorkflowRuntimeParametersSchema({
     optionalMonth: { type: 'string', label: 'Optional Month' },
     requiredMonth: { type: 'string', label: 'Required Month', required: true },
   });
 
   assert.equal(schema.optionalMonth.required, undefined);
-  assert.equal(schema.requiredMonth.required, undefined);
+  assert.equal(schema.requiredMonth.required, true);
+});
+
+test('normalizeWorkflowRuntimeParametersSchema preserves optional source categories', () => {
+  const schema = normalizeWorkflowRuntimeParametersSchema({
+    fileRefs: {
+      type: 'object',
+      label: 'fileRefs',
+      properties: {
+        source: { type: 'object', label: 'Source', required: false, optionalCategory: 'inherit' },
+      },
+    },
+  });
+
+  assert.equal(schema.fileRefs.properties?.source.optionalCategory, 'inherit');
 });
 
 test('deriveWorkflowRuntimeConfigFromTasks does not inject workflow-level required metadata', () => {

@@ -1005,6 +1005,8 @@
           "order": 3,
           "hidden": false,
           "taskId": "invoke_read_series_b",
+          "required": false,
+          "optionalCategory": "supplement",
           "properties": {
             "sheet": {
               "type": "string",
@@ -1019,6 +1021,8 @@
           "order": 1,
           "hidden": false,
           "taskId": "invoke_control_book_merge",
+          "required": false,
+          "optionalCategory": "inherit",
           "properties": {
             "sheet": {
               "type": "string",
@@ -1033,6 +1037,8 @@
           "order": 5,
           "hidden": false,
           "taskId": "invoke_futu_exercises_merge",
+          "required": false,
+          "optionalCategory": "inherit",
           "properties": {
             "sheet": {
               "type": "string",
@@ -1048,6 +1054,7 @@
           "hidden": false,
           "taskId": "extract_bc_subplan_transfer",
           "required": false,
+          "optionalCategory": "validation",
           "properties": {
             "sheet": {
               "type": "string",
@@ -1062,6 +1069,7 @@
           "order": 4,
           "hidden": false,
           "taskId": "invoke_option_plans_summary",
+          "required": true,
           "properties": {
             "sheet": {
               "type": "string",
@@ -1076,6 +1084,7 @@
           "order": 2,
           "hidden": false,
           "taskId": "invoke_control_book_merge",
+          "required": true,
           "properties": {
             "sheet": {
               "type": "string",
@@ -1091,6 +1100,7 @@
           "hidden": false,
           "taskId": "invoke_plan_summary_sync",
           "required": false,
+          "optionalCategory": "inherit",
           "properties": {
             "sheet": {
               "type": "string",
@@ -1105,6 +1115,7 @@
           "order": 6,
           "hidden": false,
           "taskId": "invoke_futu_exercises_merge",
+          "required": true,
           "properties": {
             "sheet": {
               "type": "string",
@@ -1120,6 +1131,7 @@
           "hidden": false,
           "taskId": "extract_previous_capitalization_summary",
           "required": false,
+          "optionalCategory": "inherit",
           "description": "由业务逻辑自动引入：触发时若存在上一个月的 Capitalization Summary 输出，则自动作为本源用于校验本月 EQ Control Book 的 Last Month；无则置空跳过。UI 不暴露该源。"
         },
         "incremental_cancel_restore_report": {
@@ -1128,6 +1140,7 @@
           "order": 10,
           "hidden": false,
           "taskId": "invoke_plan_summary_sync",
+          "required": true,
           "properties": {
             "sheet": {
               "type": "string",

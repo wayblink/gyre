@@ -253,7 +253,7 @@ function isFileForBinding(
 }
 
 /**
- * Input Configuration is a single flat list. The server already sorted the definitions by the
+ * Input Files is a single flat list. The server already sorted the definitions by the
  * DB-owned `order` field, so this only drops hidden sources — sourceGroup is deliberately not
  * used for grouping or sorting; reorder rows by editing `order` in the workflow definition.
  */
@@ -366,6 +366,7 @@ export function createMonthlyRunPage({
   let activeRunMonth: string | null = null;
   let isRunning = false;
   let isSavingSources = false;
+  let monthlyConstantsCollapsed = false;
   const expandedWarningTaskIds = new Set<string>();
   const text = {
     selectMonth: { 'zh-CN': '请选择月份', 'en-US': 'Please select a month' },
@@ -376,6 +377,9 @@ export function createMonthlyRunPage({
     notConfigured: { 'zh-CN': '未配置', 'en-US': 'Not configured' },
     notUploaded: { 'zh-CN': '未上传', 'en-US': 'Not uploaded' },
     optionalNotConfigured: { 'zh-CN': '未配置（可选）', 'en-US': 'Not configured (optional)' },
+    optionalInherit: { 'zh-CN': 'Optional · 继承', 'en-US': 'Optional · Inherit' },
+    optionalValidation: { 'zh-CN': 'Optional · 校验', 'en-US': 'Optional · Validation' },
+    optionalSupplement: { 'zh-CN': 'Optional · 补充', 'en-US': 'Optional · Supplement' },
     optionalSourceHint: {
       'zh-CN': '可选输入：未提供时运行会产生 warning，批准后跳过该输入对应的修正。',
       'en-US': 'Optional input: if omitted, the run raises a warning and skips the adjustment associated with this input after approval.',
@@ -384,8 +388,15 @@ export function createMonthlyRunPage({
     currentFile: { 'zh-CN': '当前文件', 'en-US': 'Current file' },
     uploadNewFile: { 'zh-CN': '上传新文件', 'en-US': 'Upload new file' },
     monthlyConstantsTitle: { 'zh-CN': '月度常量', 'en-US': 'Monthly Constants' },
-    monthlyConstantsHint: { 'zh-CN': '每月独立维护，新建月份默认延用上月的值，可修改。', 'en-US': 'Maintained per month; a new month inherits the prior month by default, editable here.' },
-    saveMonthlyConstants: { 'zh-CN': '保存常量', 'en-US': 'Save constants' },
+    collapseMonthlyConstants: { 'zh-CN': '收起月度常量', 'en-US': 'Collapse Monthly Constants' },
+    expandMonthlyConstants: { 'zh-CN': '展开月度常量', 'en-US': 'Expand Monthly Constants' },
+    monthlyConstantsHeaderHelp: { 'zh-CN': '这些常量按月份保存，并参与当月 Cap Table 计算；编辑某一行只会更新该行。', 'en-US': 'These constants are stored per month and used by the monthly Cap Table calculation; editing a row updates only that row.' },
+    monthlyConstantName: { 'zh-CN': '常量', 'en-US': 'Constant' },
+    monthlyConstantValue: { 'zh-CN': '数值', 'en-US': 'Value' },
+    monthlyConstantActions: { 'zh-CN': '操作', 'en-US': 'Actions' },
+    editMonthlyConstant: { 'zh-CN': '编辑', 'en-US': 'Edit' },
+    saveMonthlyConstant: { 'zh-CN': '保存', 'en-US': 'Save' },
+    cancelMonthlyConstant: { 'zh-CN': '取消', 'en-US': 'Cancel' },
     monthlyConstantsSaved: { 'zh-CN': '月度常量已保存', 'en-US': 'Monthly constants saved' },
     selectSourceFile: { 'zh-CN': '选择', 'en-US': 'Select' },
     defaultSheet: { 'zh-CN': '默认 Sheet', 'en-US': 'Default Sheet' },
@@ -398,7 +409,12 @@ export function createMonthlyRunPage({
     copiedFileName: { 'zh-CN': '文件名已复制', 'en-US': 'File name copied' },
     copyFileNameFailed: { 'zh-CN': '复制文件名失败', 'en-US': 'Failed to copy file name' },
     fileNameHelp: { 'zh-CN': '输入文件用途', 'en-US': 'Input file purpose' },
-    fileNameHelpHint: { 'zh-CN': '点击每个输入项旁的问号，可查看该文件在 Monthly Run 中的用途。', 'en-US': 'Click the question mark beside an input to see how the file is used in Monthly Run.' },
+    fileNameHelpHint: { 'zh-CN': '点击每个输入项旁的问号，可查看该文件在 Monthly Update 中的用途。', 'en-US': 'Click the question mark beside an input to see how the file is used in Monthly Update.' },
+    requiredHelp: { 'zh-CN': 'Is required 取值说明', 'en-US': 'Is required value meanings' },
+    requiredHelpHint: {
+      'zh-CN': 'Required：必需提供，缺少时不能执行。\nOptional · Inherit：继承上一轮输出，缺少时使用系统已保存结果。\nOptional · Validation：仅用于校验，不影响核心计算。\nOptional · Supplement：可选补充逻辑，缺少时仍可计算。',
+      'en-US': 'Required: must be provided or execution is blocked.\nOptional · Inherit: carries forward the prior output when no new file is provided.\nOptional · Validation: used only for validation and does not affect core calculations.\nOptional · Supplement: adds optional logic; calculation can continue without it.',
+    },
     removeConfigTitle: { 'zh-CN': '删除 Uploaded file 配置', 'en-US': 'Delete Uploaded file configuration' },
     removeConfigConfirm: { 'zh-CN': '确定删除', 'en-US': 'Delete the Uploaded file configuration for' },
     removeConfigSuffix: { 'zh-CN': '的 Uploaded file 配置吗？文件中心里的文件不会被删除。', 'en-US': '? The file in Files will not be deleted.' },
@@ -406,8 +422,8 @@ export function createMonthlyRunPage({
     removedConfigSuffix: { 'zh-CN': '的 Uploaded file 配置', 'en-US': '' },
     chooseFileFor: { 'zh-CN': '请先为', 'en-US': 'Please select a file for' },
     completeSourceConfig: { 'zh-CN': '请先完成 source 配置', 'en-US': 'Complete source configuration first' },
-    submittingRun: { 'zh-CN': '正在提交 Monthly Run...', 'en-US': 'Submitting Monthly Run...' },
-    submittedRun: { 'zh-CN': 'Monthly Run 已提交', 'en-US': 'Monthly Run submitted' },
+    submittingRun: { 'zh-CN': '正在提交 Monthly Update...', 'en-US': 'Submitting Monthly Update...' },
+    submittedRun: { 'zh-CN': 'Monthly Update 已提交', 'en-US': 'Monthly Update submitted' },
     emptyRunState: { 'zh-CN': '执行后会在这里显示节点状态。', 'en-US': 'Node status will appear here after execution.' },
     reviewRequired: { 'zh-CN': '需人工复核', 'en-US': 'review required' },
     showWarningDetails: { 'zh-CN': '查看告警详情', 'en-US': 'View warning details' },
@@ -552,6 +568,15 @@ export function createMonthlyRunPage({
       headerPopover.textContent = tt('fileNameHelpHint');
       headerHelp.onclick = () => headerPopover.classList.toggle('hidden');
     }
+    const requiredHelp = document.querySelector<HTMLButtonElement>('[data-required-help-header]');
+    const requiredPopover = document.querySelector<HTMLElement>('[data-required-help-header-popover]');
+    if (requiredHelp && requiredPopover) {
+      requiredHelp.setAttribute('aria-label', tt('requiredHelp'));
+      requiredHelp.title = tt('requiredHelp');
+      requiredPopover.textContent = tt('requiredHelpHint');
+      requiredPopover.style.whiteSpace = 'pre-line';
+      requiredHelp.onclick = () => requiredPopover.classList.toggle('hidden');
+    }
 
     document.querySelectorAll<HTMLButtonElement>('[data-business-source-upload]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -617,50 +642,103 @@ export function createMonthlyRunPage({
   }
 
   // Monthly fixed values rendered on the main Monthly Update page (below the source table),
-  // so admins can review and edit them without opening the source modal. Saved together via
-  // a single "Save constants" button that PUTs all 6 values.
+  // so admins can review and edit them without opening the source modal. Each row saves its
+  // own value so a partial edit cannot overwrite unrelated monthly constants.
   function renderMonthlyConstants() {
     const host = el('monthlyRunConstantsBlock');
     if (!host) return;
     const fv = currentInstance?.fixedValues ?? {};
     host.innerHTML = `
-      <div class="monthly-run-constants__header">
-        <div>
-          <h4 class="monthly-run-constants__title">${escapeHtml(tt('monthlyConstantsTitle'))}</h4>
-          <p class="monthly-run-constants__hint">${escapeHtml(tt('monthlyConstantsHint'))}</p>
-        </div>
+      <div class="card-header monthly-run-constants__header">
+        <h3 class="card-title monthly-run-constants__title">${escapeHtml(tt('monthlyConstantsTitle'))}</h3>
+        <button class="card-collapse__btn monthly-run-constants-toggle" type="button" aria-expanded="${String(!monthlyConstantsCollapsed)}" aria-controls="monthlyRunConstantsBody" title="${escapeHtml(monthlyConstantsCollapsed ? tt('expandMonthlyConstants') : tt('collapseMonthlyConstants'))}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
       </div>
-      <div class="monthly-run-constants__list">
-        ${MONTHLY_FIXED_VALUE_DEFS.map((def) => `
-          <div class="monthly-run-constants__row">
-            <div class="monthly-run-constants__row-main">
-              <span class="monthly-run-constants__label">${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span>
-              <input class="search-input monthly-run-constants__input" type="text" inputmode="decimal" data-const-key="${escapeHtml(def.key)}"
-                value="${fv[def.key] === undefined ? '' : escapeHtml(String(fv[def.key]))}">
-            </div>
-            <p class="monthly-run-constants__desc">${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}</p>
-          </div>`).join('')}
+      <div class="card-body monthly-run-constants-body" id="monthlyRunConstantsBody">
+      <div class="monthly-run-constants__table-wrap">
+        <table class="source-table monthly-run-constants__table">
+          <thead>
+            <tr>
+              <th>${escapeHtml(tt('monthlyConstantName'))}</th>
+              <th>${escapeHtml(tt('monthlyConstantValue'))}</th>
+              <th>${escapeHtml(tt('monthlyConstantActions'))}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${MONTHLY_FIXED_VALUE_DEFS.map((def) => `
+              <tr data-constant-row="${escapeHtml(def.key)}">
+                <td class="monthly-run-constants__label"><span>${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span><button type="button" class="monthly-run-constants__help" data-constant-help="${escapeHtml(def.key)}" aria-label="${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}" title="${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.3 2.3 0 1 1 3.8 1.7c-.9.7-1.6 1.1-1.6 2.3"></path><path d="M12 16.5h.01"></path></svg></button><span class="monthly-run-constants__help-popover hidden" data-constant-help-popover="${escapeHtml(def.key)}">${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}</span></td>
+                <td><input class="search-input monthly-run-constants__input" type="text" inputmode="decimal" data-const-key="${escapeHtml(def.key)}" value="${fv[def.key] === undefined ? '' : escapeHtml(String(fv[def.key]))}" disabled></td>
+                <td class="monthly-run-constants__actions">
+                  <button class="source-upload-btn monthly-run-constants__edit" type="button" data-constant-edit="${escapeHtml(def.key)}" title="${escapeHtml(tt('editMonthlyConstant'))}" aria-label="${escapeHtml(tt('editMonthlyConstant'))}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 16.5-.8 3.3 3.3-.8L18.2 7.3a2.1 2.1 0 0 0-3-3L4 16.5Z"></path><path d="m13.8 5.2 3 3"></path></svg><span>${escapeHtml(tt('editMonthlyConstant'))}</span></button>
+                  <span class="monthly-run-constants__edit-actions hidden" data-constant-edit-actions="${escapeHtml(def.key)}">
+                    <button class="source-upload-btn monthly-run-constants__save" type="button" data-constant-save="${escapeHtml(def.key)}" title="${escapeHtml(tt('saveMonthlyConstant'))}" aria-label="${escapeHtml(tt('saveMonthlyConstant'))}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4.5 4.5L19 7"></path></svg><span>${escapeHtml(tt('saveMonthlyConstant'))}</span></button>
+                    <button class="source-file-delete source-file-delete--text monthly-run-constants__cancel" type="button" data-constant-cancel="${escapeHtml(def.key)}" title="${escapeHtml(tt('cancelMonthlyConstant'))}" aria-label="${escapeHtml(tt('cancelMonthlyConstant'))}">${escapeHtml(tt('cancelMonthlyConstant'))}</button>
+                  </span>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
       </div>
-      <div class="monthly-run-constants__footer">
-        <button class="btn btn-primary btn-sm" id="btnSaveMonthlyConstants" type="button">${escapeHtml(tt('saveMonthlyConstants'))}</button>
       </div>`;
 
-    el('btnSaveMonthlyConstants')?.addEventListener('click', () => {
-      const next: Record<string, number> = {};
-      host.querySelectorAll<HTMLInputElement>('[data-const-key]').forEach((input) => {
-        const key = input.dataset.constKey;
+    host.classList.toggle('is-collapsed', monthlyConstantsCollapsed);
+    host.querySelector<HTMLButtonElement>('.monthly-run-constants-toggle')?.addEventListener('click', (event) => {
+      monthlyConstantsCollapsed = !monthlyConstantsCollapsed;
+      host.classList.toggle('is-collapsed', monthlyConstantsCollapsed);
+      const button = event.currentTarget as HTMLButtonElement;
+      button.setAttribute('aria-expanded', String(!monthlyConstantsCollapsed));
+      button.setAttribute('title', monthlyConstantsCollapsed ? tt('expandMonthlyConstants') : tt('collapseMonthlyConstants'));
+    });
+
+    host.querySelectorAll<HTMLButtonElement>('[data-constant-help]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const key = button.dataset.constantHelp;
         if (!key) return;
-        const parsed = Number(input.value.replace(/[, ]/g, ''));
-        if (input.value.trim() !== '' && Number.isFinite(parsed)) next[key] = parsed;
+        host.querySelector<HTMLElement>(`[data-constant-help-popover="${CSS.escape(key)}"]`)?.classList.toggle('hidden');
       });
-      void (async () => {
-        try {
-          await saveInstance({ fixedValues: next });
-          notify(tt('monthlyConstantsSaved'), { type: 'success' });
-        } catch (error) {
-          notify(error instanceof Error ? error.message : String(error), { type: 'error' });
+    });
+
+    host.querySelectorAll<HTMLButtonElement>('[data-constant-edit]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const key = button.dataset.constantEdit;
+        if (!key) return;
+        const input = host.querySelector<HTMLInputElement>(`[data-const-key="${CSS.escape(key)}"]`);
+        const actions = host.querySelector<HTMLElement>(`[data-constant-edit-actions="${CSS.escape(key)}"]`);
+        if (!input || !actions) return;
+        input.disabled = false;
+        button.classList.add('hidden');
+        actions.classList.remove('hidden');
+        input.focus();
+        input.select();
+      });
+    });
+
+    host.querySelectorAll<HTMLButtonElement>('[data-constant-cancel]').forEach((button) => {
+      button.addEventListener('click', () => renderMonthlyConstants());
+    });
+
+    host.querySelectorAll<HTMLButtonElement>('[data-constant-save]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const key = button.dataset.constantSave;
+        if (!key) return;
+        const input = host.querySelector<HTMLInputElement>(`[data-const-key="${CSS.escape(key)}"]`);
+        if (!input) return;
+        const parsed = Number(input.value.replace(/[, ]/g, ''));
+        if (input.value.trim() === '' || !Number.isFinite(parsed)) {
+          notify(tt('monthlyConstantValue'), { type: 'warning' });
+          return;
         }
-      })();
+        void (async () => {
+          try {
+            await saveInstance({ fixedValues: { [key]: parsed } });
+            notify(tt('monthlyConstantsSaved'), { type: 'success' });
+          } catch (error) {
+            notify(error instanceof Error ? error.message : String(error), { type: 'error' });
+          }
+        })();
+      });
     });
   }
 
@@ -763,6 +841,15 @@ export function createMonthlyRunPage({
           : `<div class="source-file-action-group">
               <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">${escapeHtml(tt('selectSourceFile'))}</button>
             </div>`;
+        const requirementLabel = source.required
+          ? 'Required'
+          : source.optionalCategory === 'inherit'
+            ? tt('optionalInherit')
+            : source.optionalCategory === 'validation'
+              ? tt('optionalValidation')
+              : source.optionalCategory === 'supplement'
+                ? tt('optionalSupplement')
+                : 'Optional';
         return `<tr>
           <td style="text-align:left; font-weight:600; position:relative;">
             <div class="monthly-run-source-name">
@@ -776,7 +863,7 @@ export function createMonthlyRunPage({
               <p>${escapeHtml(sourceDescription(source, lang()))}</p>
             </div>
           </td>
-          <td>${source.required ? '<span class="source-required-badge">Required</span>' : '<span class="source-optional-badge">Optional</span>'}</td>
+          <td>${source.required ? '<span class="source-required-badge">Required</span>' : `<span class="source-optional-badge source-optional-badge--${escapeHtml(source.optionalCategory ?? 'default')}">${escapeHtml(requirementLabel)}</span>`}</td>
           <td class="source-uploaded-cell">${uploaded}</td>
           <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>
           <td>${actions}</td>

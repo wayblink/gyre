@@ -16,6 +16,10 @@ function parseJson<T>(value: unknown, fallback: T): T {
 
 export type OrderedMonthlyRunSourceDefinition = MonthlyRunSourceDefinition & { order: number };
 
+function readOptionalCategory(value: unknown): MonthlyRunSourceDefinition['optionalCategory'] {
+  return value === 'inherit' || value === 'validation' || value === 'supplement' ? value : undefined;
+}
+
 /**
  * Monthly page's rich source definitions, derived from the DB workflow's fileRefs.properties
  * metadata (workflow definitions are DB-owned; see CLAUDE.md). jsonb does not preserve key order,
@@ -38,6 +42,7 @@ export function monthlySourcesFromSchemaOrdered(schemaJson: unknown): OrderedMon
         allowSheetNameOverride: field.allowSheetNameOverride === true,
         required: field.required === true,
         hidden: field.hidden === true,
+        optionalCategory: readOptionalCategory(field.optionalCategory),
         order: typeof field.order === 'number' ? field.order : 0,
       };
     })

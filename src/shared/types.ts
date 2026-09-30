@@ -715,6 +715,7 @@ export type WorkflowRuntimeParameterField = {
   defaultSheetName?: string | null;
   allowSheetNameOverride?: boolean;
   hidden?: boolean;
+  optionalCategory?: 'inherit' | 'validation' | 'supplement';
 };
 
 export type WorkflowRuntimeParametersSchema = Record<string, WorkflowRuntimeParameterField>;
@@ -1002,6 +1003,7 @@ export type MonthlyRunSourceDefinition = {
   allowSheetNameOverride?: boolean;
   required: boolean;
   hidden?: boolean;
+  optionalCategory?: 'inherit' | 'validation' | 'supplement';
 };
 
 export type MonthlyRunFixedValueDefinition = {
