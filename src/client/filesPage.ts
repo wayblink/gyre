@@ -39,7 +39,17 @@ type WorkbookViewer = {
   exportXlsxBlob: () => Blob | null;
 };
 
-export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime, formatFileSize, notify, confirmAction, getLanguage }: FilesPageDeps) {
+export function createFilesPage({
+  el,
+  api,
+  apiBinary,
+  escapeHtml,
+  formatDateTime,
+  formatFileSize,
+  notify,
+  confirmAction,
+  getLanguage,
+}: FilesPageDeps) {
   const fileMoveDialog = createFileMoveDialog({
     el,
     api,
@@ -71,7 +81,10 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   const collapsedTreeDirectoryPaths = new Set<string>();
   const text = {
     count: { 'zh-CN': '个', 'en-US': 'items' },
-    chooseFile: { 'zh-CN': '选择左侧文件后可在页面内查看完整 Excel 工作簿。', 'en-US': 'Select a file on the left to view the full Excel workbook here.' },
+    chooseFile: {
+      'zh-CN': '选择左侧文件后可在页面内查看完整 Excel 工作簿。',
+      'en-US': 'Select a file on the left to view the full Excel workbook here.',
+    },
     noFiles: { 'zh-CN': '尚未上传任何文件', 'en-US': 'No files uploaded yet' },
     noSearchResults: { 'zh-CN': '没有匹配的文件', 'en-US': 'No matching files' },
     listView: { 'zh-CN': '列表视图', 'en-US': 'List view' },
@@ -86,7 +99,10 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     moveSelectedFiles: { 'zh-CN': '批量移动', 'en-US': 'Move selected' },
     selectedFiles: { 'zh-CN': '已选择', 'en-US': 'selected' },
     selectAllFiles: { 'zh-CN': '全选文件', 'en-US': 'Select all files' },
-    deleteSelectedConfirm: { 'zh-CN': '确定删除选中的文件吗？此操作不可撤销。', 'en-US': 'Delete the selected files? This action cannot be undone.' },
+    deleteSelectedConfirm: {
+      'zh-CN': '确定删除选中的文件吗？此操作不可撤销。',
+      'en-US': 'Delete the selected files? This action cannot be undone.',
+    },
     fileName: { 'zh-CN': '文件名', 'en-US': 'File name' },
     saving: { 'zh-CN': '保存中...', 'en-US': 'Saving...' },
     save: { 'zh-CN': '保存', 'en-US': 'Save' },
@@ -94,7 +110,10 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
     readOnlyMode: { 'zh-CN': '只读预览', 'en-US': 'Read-only preview' },
     editingMode: { 'zh-CN': '编辑中', 'en-US': 'Editing' },
-    readOnlyHint: { 'zh-CN': '预览状态不可编辑，点击「编辑」后可修改', 'en-US': 'Preview is read-only; click Edit to make changes' },
+    readOnlyHint: {
+      'zh-CN': '预览状态不可编辑，点击「编辑」后可修改',
+      'en-US': 'Preview is read-only; click Edit to make changes',
+    },
     discardEditTitle: { 'zh-CN': '放弃编辑', 'en-US': 'Discard changes' },
     discardEditConfirm: { 'zh-CN': '确定放弃未保存的修改吗？', 'en-US': 'Discard unsaved changes?' },
     discardEdit: { 'zh-CN': '放弃修改', 'en-US': 'Discard' },
@@ -167,7 +186,9 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     } catch (error) {
       if (!(error instanceof UploadHttpError) || error.status !== 409) throw error;
       const confirmed = await confirmAction(`同一文件夹中已存在“${file.name}”，是否覆盖？`, {
-        title: '文件已存在', confirmText: '覆盖', tone: 'danger',
+        title: '文件已存在',
+        confirmText: '覆盖',
+        tone: 'danger',
       });
       if (!confirmed) return;
       data = await upload(true);
@@ -176,15 +197,19 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   }
 
   async function uploadWorkbookBuffer(fileName: string, buffer: BlobPart) {
-    await uploadWorkbookFile(new File([buffer], fileName, {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    }));
+    await uploadWorkbookFile(
+      new File([buffer], fileName, {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    );
   }
 
   async function loadProductFiles(selectedId?: number) {
     const data = await api<{ files: ProductFileRecord[] }>('/api/files');
     productFiles = data.files;
-    selectedProductFileIds = new Set([...selectedProductFileIds].filter((id) => productFiles.some((file) => file.id === id)));
+    selectedProductFileIds = new Set(
+      [...selectedProductFileIds].filter((id) => productFiles.some((file) => file.id === id)),
+    );
     el('filesCountBadge').textContent = `${productFiles.length} ${tt('count')}`;
 
     if (productFiles.length === 0) {
@@ -254,11 +279,10 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     }
 
     container.innerHTML = filteredFiles
-      .map(
-        (file) => {
-          const displayPath = getProductFileDisplayPath(file);
-          const icon = getProductFileIcon(file);
-          return `
+      .map((file) => {
+        const displayPath = getProductFileDisplayPath(file);
+        const icon = getProductFileIcon(file);
+        return `
         <div
           class="workbook-item ${selectedProductFileId === file.id ? 'is-active' : ''} ${productFileLoading && selectedProductFileId === file.id ? 'is-loading' : ''}"
           data-file-id="${file.id}"
@@ -328,11 +352,10 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
                 ? `<div class="workbook-item__status">${escapeHtml(tt('loading'))}</div>`
                 : productFileSaving && selectedProductFileId === file.id
                   ? `<div class="workbook-item__status">${escapeHtml(tt('saving'))}</div>`
-                : ''
+                  : ''
           }
         </div>`;
-        },
-      )
+      })
       .join('');
 
     bindProductFilesBrowserInteractions(container);
@@ -506,7 +529,9 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     const selectAll = el<HTMLInputElement>('filesSelectAll');
     selectAll.addEventListener('change', () => {
       const visibleFiles = getFilteredProductFiles();
-      visibleFiles.forEach((file) => selectAll.checked ? selectedProductFileIds.add(file.id) : selectedProductFileIds.delete(file.id));
+      visibleFiles.forEach((file) =>
+        selectAll.checked ? selectedProductFileIds.add(file.id) : selectedProductFileIds.delete(file.id),
+      );
       renderProductFilesList();
     });
     el('btnDeleteSelectedFiles').addEventListener('click', () => void deleteSelectedProductFiles());
@@ -524,8 +549,19 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   async function deleteSelectedProductFiles() {
     const ids = [...selectedProductFileIds].filter((id) => productFiles.some((file) => file.id === id));
     if (!ids.length) return;
-    if (!(await confirmAction(tt('deleteSelectedConfirm'), { title: tt('deleteTitle'), confirmText: tt('deleteSelectedFiles'), tone: 'danger' }))) return;
-    await api('/api/files', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+    if (
+      !(await confirmAction(tt('deleteSelectedConfirm'), {
+        title: tt('deleteTitle'),
+        confirmText: tt('deleteSelectedFiles'),
+        tone: 'danger',
+      }))
+    )
+      return;
+    await api('/api/files', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
     if (currentProductFileDetail && ids.includes(currentProductFileDetail.file.id)) {
       currentProductFileDetail = null;
       currentWorkbookBuffer = null;
@@ -636,8 +672,16 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
     const childCount = countTreeFiles(node);
     const childDirectories = collapsed
       ? ''
-      : Array.from(node.children.values()).sort(compareTreeNode).map((child) => renderTreeDirectory(child, depth + 1)).join('');
-    const childFiles = collapsed ? '' : node.files.sort(compareProductFile).map((file) => renderTreeFile(file, depth + 1)).join('');
+      : Array.from(node.children.values())
+          .sort(compareTreeNode)
+          .map((child) => renderTreeDirectory(child, depth + 1))
+          .join('');
+    const childFiles = collapsed
+      ? ''
+      : node.files
+          .sort(compareProductFile)
+          .map((file) => renderTreeFile(file, depth + 1))
+          .join('');
     return `
       <button
         class="workbook-tree__dir ${collapsed ? 'is-collapsed' : 'is-expanded'}"
@@ -871,7 +915,14 @@ export function createFilesPage({ el, api, apiBinary, escapeHtml, formatDateTime
   async function deleteProductFile(fileId: number) {
     const file = productFiles.find((item) => item.id === fileId);
     if (!file) return;
-    if (!(await confirmAction(`${tt('deleteConfirm')} ${getProductFileDisplayName(file)} ${tt('deleteConfirmSuffix')}`, { title: tt('deleteTitle'), confirmText: tt('deleteFile'), tone: 'danger' }))) return;
+    if (
+      !(await confirmAction(`${tt('deleteConfirm')} ${getProductFileDisplayName(file)} ${tt('deleteConfirmSuffix')}`, {
+        title: tt('deleteTitle'),
+        confirmText: tt('deleteFile'),
+        tone: 'danger',
+      }))
+    )
+      return;
 
     await api(`/api/files/${fileId}`, { method: 'DELETE' });
 

@@ -120,7 +120,11 @@ export async function evaluateWorkflowInputGuards(params: {
     } else if (guard.type === 'dataframe.shape.assert') {
       assertion = evaluateShapeAssertion(guardTask, params.dataframe);
     } else {
-      const { assertion: sqlAssertion } = await evaluateSqlAssertion(guardTask, params.runtime, async () => params.dataframe);
+      const { assertion: sqlAssertion } = await evaluateSqlAssertion(
+        guardTask,
+        params.runtime,
+        async () => params.dataframe,
+      );
       assertion = sqlAssertion;
     }
 

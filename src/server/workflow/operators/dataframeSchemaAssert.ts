@@ -98,7 +98,13 @@ export const dataframeSchemaAssertOperator = defineWorkflowOperator({
       enum: ['block', 'warning', 'pass-through'],
       default: 'block',
     },
-    failureMessage: { type: 'string', label: '失败提示', required: false, placeholder: 'Assertion failed', default: 'Assertion failed' },
+    failureMessage: {
+      type: 'string',
+      label: '失败提示',
+      required: false,
+      placeholder: 'Assertion failed',
+      default: 'Assertion failed',
+    },
   },
   normalizeTask: normalizeSchemaAssertTask,
   async execute(context) {

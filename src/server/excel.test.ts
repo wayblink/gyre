@@ -80,14 +80,14 @@ test('uploaded workbook validation rejects text disguised as xlsx', () => {
     () => summarizeValidatedWorkbook(Buffer.from('not a workbook'), 'fake.xlsx'),
     /Invalid XLSX file signature/,
   );
-  assert.throws(
-    () => summarizeValidatedWorkbook(Buffer.alloc(0), 'empty.xlsx'),
-    /empty/i,
-  );
+  assert.throws(() => summarizeValidatedWorkbook(Buffer.alloc(0), 'empty.xlsx'), /empty/i);
 });
 
 test('uploaded workbook validation accepts real xlsx and non-empty csv', () => {
-  const worksheet = XLSX.utils.aoa_to_sheet([['Name', 'Value'], ['A', 1]]);
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    ['Name', 'Value'],
+    ['A', 1],
+  ]);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
   const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
@@ -98,7 +98,10 @@ test('uploaded workbook validation accepts real xlsx and non-empty csv', () => {
 });
 
 test('uploaded workbook parsing can run in the resource-limited worker', async () => {
-  const worksheet = XLSX.utils.aoa_to_sheet([['Name', 'Value'], ['A', 1]]);
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    ['Name', 'Value'],
+    ['A', 1],
+  ]);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
   const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;

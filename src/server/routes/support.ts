@@ -71,7 +71,11 @@ export type LatestWorkflowDataFrameArtifact = {
 };
 
 export type WorkflowPageSourceDescriptor = { sourceKey: string; label: string; sheet?: string | null };
-export type WorkflowPageSourceBindingResponse = WorkflowPageSourceDescriptor & { fileId: number | null; fileName: string | null; sheet?: string | null };
+export type WorkflowPageSourceBindingResponse = WorkflowPageSourceDescriptor & {
+  fileId: number | null;
+  fileName: string | null;
+  sheet?: string | null;
+};
 export type WorkflowResultFileBindingResponse = { fileId: number; fileName: string };
 
 export function workflowArtifactSheetName(metadata: Record<string, unknown>, fallback: string): string {
@@ -115,10 +119,9 @@ export function conflict(message: string) {
 }
 
 export function isUniqueConstraintViolation(error: unknown): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && (error as { code?: unknown }).code === '23505';
+  return (
+    typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === '23505'
+  );
 }
 
 export function updatedByFromRequest(request: RequestWithAuth): string {
@@ -170,9 +173,13 @@ export function productFileDisplayPath(row: Record<string, unknown>) {
   const relativePath = productFileRelativeStoragePath(row);
   const directory = relativePath.includes('/') ? relativePath.split('/').slice(0, -1).join('/') : '';
   const normalizedDirectory = normalizeProductFileStoragePrefix(directory);
-  const inferredOutputDirectory = normalizedDirectory.startsWith('output/') ? null : inferOutputFolderFromProductFile(row);
+  const inferredOutputDirectory = normalizedDirectory.startsWith('output/')
+    ? null
+    : inferOutputFolderFromProductFile(row);
   const displayDirectory = inferredOutputDirectory ?? normalizedDirectory;
-  const rawDisplayFileName = path.posix.basename(String(row.original_name ?? row.stored_name ?? relativePath)).replace(/^\/+/, '');
+  const rawDisplayFileName = path.posix
+    .basename(String(row.original_name ?? row.stored_name ?? relativePath))
+    .replace(/^\/+/, '');
   const displayFileName = displayDirectory.startsWith('output/')
     ? rawDisplayFileName
     : stripFileVersion(rawDisplayFileName);
@@ -237,11 +244,19 @@ export function stripFileVersion(fileName: string): string {
   return fileName.replace(/\.v\d{14}(?=\.[^.]+$)/i, '');
 }
 
-export function sourceFilesFromArtifacts(...artifacts: Array<LatestWorkflowDataFrameArtifact | null | undefined>): string[] {
-  return [...new Set(artifacts.map((artifact) => artifact?.filePath?.trim() || artifact?.fileName?.trim()).filter(Boolean) as string[])];
+export function sourceFilesFromArtifacts(
+  ...artifacts: Array<LatestWorkflowDataFrameArtifact | null | undefined>
+): string[] {
+  return [
+    ...new Set(
+      artifacts.map((artifact) => artifact?.filePath?.trim() || artifact?.fileName?.trim()).filter(Boolean) as string[],
+    ),
+  ];
 }
 
-export function resultFilesFromArtifacts(...artifacts: Array<LatestWorkflowDataFrameArtifact | null | undefined>): WorkflowResultFileBindingResponse[] {
+export function resultFilesFromArtifacts(
+  ...artifacts: Array<LatestWorkflowDataFrameArtifact | null | undefined>
+): WorkflowResultFileBindingResponse[] {
   const byId = new Map<number, WorkflowResultFileBindingResponse>();
   for (const artifact of artifacts) {
     if (!artifact?.fileId) continue;
@@ -254,7 +269,10 @@ export function resultFilesFromArtifacts(...artifacts: Array<LatestWorkflowDataF
 }
 
 export function productFileIdAtRuntimePath(runtimeParameters: unknown, runtimePath: string): number | null {
-  const segments = runtimePath.split('.').map((segment) => segment.trim()).filter(Boolean);
+  const segments = runtimePath
+    .split('.')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
   let current: unknown = runtimeParameters;
   for (const segment of segments) {
     if (!isRecord(current)) return null;
@@ -266,7 +284,10 @@ export function productFileIdAtRuntimePath(runtimeParameters: unknown, runtimePa
 }
 
 export function productFileKeyAtRuntimePath(runtimeParameters: unknown, runtimePath: string): string | null {
-  const segments = runtimePath.split('.').map((segment) => segment.trim()).filter(Boolean);
+  const segments = runtimePath
+    .split('.')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
   let current: unknown = runtimeParameters;
   for (const segment of segments) {
     if (!isRecord(current)) return null;
@@ -356,7 +377,8 @@ export async function getOrCreateMonth(db: AppDb, monthKey: string): Promise<num
   return Number(row.id);
 }
 
-export async function getMonth(db: AppDb, 
+export async function getMonth(
+  db: AppDb,
   monthKey: string,
 ): Promise<
   | {
@@ -386,17 +408,18 @@ export async function getProductFileOrThrow(db: AppDb, id: number) {
   return file;
 }
 
-export async function saveProductWorkbook(db: AppDb, params: {
-  originalName: string;
-  buffer: Buffer;
-  mimeType?: string;
-  uploadedBy?: string;
-  folderPrefix?: string;
-  conflictPolicy?: 'error' | 'overwrite';
-}) {
-  const mimeType =
-    params.mimeType?.trim() ||
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+export async function saveProductWorkbook(
+  db: AppDb,
+  params: {
+    originalName: string;
+    buffer: Buffer;
+    mimeType?: string;
+    uploadedBy?: string;
+    folderPrefix?: string;
+    conflictPolicy?: 'error' | 'overwrite';
+  },
+) {
+  const mimeType = params.mimeType?.trim() || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const uploadedBy = params.uploadedBy?.trim() || 'Workflow';
   const folderPrefix = normalizeProductFileStoragePrefix(params.folderPrefix);
   const originalName = normalizeProductFileName(params.originalName);
@@ -432,9 +455,21 @@ export async function saveProductWorkbook(db: AppDb, params: {
               uploaded_by = $13, created_at = current_timestamp
         where id = $1
         returning *`,
-      [existing.id, originalName, stored.storedName, ext.replace(/^\./, ''), stored.filePath, logicalPath,
-        params.buffer.length, mimeType, checksum, stored.storageBackend, summary.sheetCount,
-        summary.totalRowCount, uploadedBy],
+      [
+        existing.id,
+        originalName,
+        stored.storedName,
+        ext.replace(/^\./, ''),
+        stored.filePath,
+        logicalPath,
+        params.buffer.length,
+        mimeType,
+        checksum,
+        stored.storageBackend,
+        summary.sheetCount,
+        summary.totalRowCount,
+        uploadedBy,
+      ],
     );
     if (!row) throw new Error('Failed to overwrite product file');
     return { file: row, summary };
@@ -472,17 +507,18 @@ export async function saveProductWorkbook(db: AppDb, params: {
   };
 }
 
-export async function updateProductWorkbook(db: AppDb, params: {
-  fileId: number;
-  originalName: string;
-  buffer: Buffer;
-  mimeType?: string;
-  uploadedBy?: string;
-}) {
+export async function updateProductWorkbook(
+  db: AppDb,
+  params: {
+    fileId: number;
+    originalName: string;
+    buffer: Buffer;
+    mimeType?: string;
+    uploadedBy?: string;
+  },
+) {
   const existing = await getProductFileOrThrow(db, params.fileId);
-  const mimeType =
-    params.mimeType?.trim() ||
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const mimeType = params.mimeType?.trim() || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const uploadedBy = params.uploadedBy?.trim() || String(existing.uploaded_by ?? 'Administrator');
   const originalName = String(existing.original_name);
   const checksum = crypto.createHash('sha256').update(params.buffer).digest('hex');
@@ -544,12 +580,15 @@ export async function updateProductWorkbook(db: AppDb, params: {
   };
 }
 
-export async function readLatestWorkflowDataFrameArtifact(db: AppDb, params: {
-  workflowCode: string;
-  taskId: string;
-  fallbackSheetName: string;
-  month?: string | null;
-}): Promise<LatestWorkflowDataFrameArtifact | null> {
+export async function readLatestWorkflowDataFrameArtifact(
+  db: AppDb,
+  params: {
+    workflowCode: string;
+    taskId: string;
+    fallbackSheetName: string;
+    month?: string | null;
+  },
+): Promise<LatestWorkflowDataFrameArtifact | null> {
   const artifact = await db.queryOne<Record<string, unknown>>(
     `select artifact.metadata_json,
             file.id as file_id,
@@ -587,7 +626,10 @@ export async function readLatestWorkflowDataFrameArtifact(db: AppDb, params: {
   };
 }
 
-export async function workflowSourceDescriptors(db: AppDb, workflowCode: string): Promise<WorkflowPageSourceDescriptor[]> {
+export async function workflowSourceDescriptors(
+  db: AppDb,
+  workflowCode: string,
+): Promise<WorkflowPageSourceDescriptor[]> {
   const row = await db.queryOne<Record<string, unknown>>(
     `select runtime_params_schema_json
        from workflow_definitions
@@ -608,11 +650,12 @@ export async function monthlySourceDescriptors(db: AppDb): Promise<MonthlyRunSou
 }
 
 export async function monthlyRunInputSourceLabels(db: AppDb): Promise<Record<string, string>> {
-  const sources = await monthlySourceDescriptors(db, );
+  const sources = await monthlySourceDescriptors(db);
   return Object.fromEntries(sources.map((source) => [source.sourceKey, source.label]));
 }
 
-export async function pageWorkflowConfig(db: AppDb, 
+export async function pageWorkflowConfig(
+  db: AppDb,
   pageKey: string,
   workflowCode: string,
 ): Promise<{
@@ -636,7 +679,8 @@ export async function pageWorkflowConfig(db: AppDb,
   };
 }
 
-export async function latestWorkflowInputSourceBindings(db: AppDb, 
+export async function latestWorkflowInputSourceBindings(
+  db: AppDb,
   workflowCode: string,
 ): Promise<WorkflowPageSourceBindingResponse[]> {
   const sources = await workflowSourceDescriptors(db, workflowCode);
@@ -656,22 +700,25 @@ export async function latestWorkflowInputSourceBindings(db: AppDb,
   const keys = sources
     .map((source) => productFileKeyAtRuntimePath(runtimeParameters, `fileRefs.${source.sourceKey}`))
     .filter((fileKey): fileKey is string => fileKey !== null);
-  const files = ids.length || keys.length
-    ? await db.query<Record<string, unknown>>(
-      'select * from product_files where id = any($1::int[]) or lower(logical_path) = any($2::text[])',
-      [ids, keys.map((key) => key.toLowerCase())],
-    )
-    : [];
+  const files =
+    ids.length || keys.length
+      ? await db.query<Record<string, unknown>>(
+          'select * from product_files where id = any($1::int[]) or lower(logical_path) = any($2::text[])',
+          [ids, keys.map((key) => key.toLowerCase())],
+        )
+      : [];
   const nameById = new Map(files.map((file) => [Number(file.id), productFileDisplayPath(file)]));
   const fileByKey = new Map(files.map((file) => [String(file.logical_path ?? '').toLowerCase(), file]));
   return sources.map((source) => {
     const runtimePath = `fileRefs.${source.sourceKey}`;
     const fileKey = productFileKeyAtRuntimePath(runtimeParameters, runtimePath);
     const keyedFile = fileKey ? fileByKey.get(fileKey.toLowerCase()) : undefined;
-    const fileId = productFileIdAtRuntimePath(runtimeParameters, runtimePath) ?? (keyedFile ? Number(keyedFile.id) : null);
-    const runtimeFileRef = isRecord(runtimeParameters) && isRecord(runtimeParameters.fileRefs)
-      ? runtimeParameters.fileRefs[source.sourceKey]
-      : undefined;
+    const fileId =
+      productFileIdAtRuntimePath(runtimeParameters, runtimePath) ?? (keyedFile ? Number(keyedFile.id) : null);
+    const runtimeFileRef =
+      isRecord(runtimeParameters) && isRecord(runtimeParameters.fileRefs)
+        ? runtimeParameters.fileRefs[source.sourceKey]
+        : undefined;
     const selectedSheet = isRecord(runtimeFileRef) ? String(runtimeFileRef.sheet ?? '').trim() : '';
     return {
       sourceKey: source.sourceKey,
@@ -701,12 +748,7 @@ export async function employeeLabelsByNumber(db: AppDb): Promise<Map<string, Emp
        left join employee_label l on l.id = ela.label_id
       group by a.employee_id`,
   );
-  return new Map(
-    rows.map((row) => [
-      String(row.employee_id ?? ''),
-      parseEmployeeLabelRefs(row.labels),
-    ]),
-  );
+  return new Map(rows.map((row) => [String(row.employee_id ?? ''), parseEmployeeLabelRefs(row.labels)]));
 }
 
 export async function employeeCanonicalByNumber(db: AppDb): Promise<Map<string, number>> {
@@ -718,7 +760,9 @@ export async function employeeCanonicalByNumber(db: AppDb): Promise<Map<string, 
   return new Map(rows.map((row) => [String(row.employee_id ?? ''), Number(row.canonical_id)]));
 }
 
-export async function employeeLinkGroupByNumber(db: AppDb): Promise<Map<string, Array<{ id: number; employeeId: string; source: string; name: string }>>> {
+export async function employeeLinkGroupByNumber(
+  db: AppDb,
+): Promise<Map<string, Array<{ id: number; employeeId: string; source: string; name: string }>>> {
   const rows = await db.query<Record<string, unknown>>(
     `with aliases as (
        select e.id, e.employee_id, e.source, e.employee_name,
@@ -749,7 +793,9 @@ export function previousMonthKey(monthKey: string): string {
   return month <= 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
 }
 
-export function parseLinkedIdentities(value: unknown): Array<{ id: number; employeeId: string; source: string; name: string }> {
+export function parseLinkedIdentities(
+  value: unknown,
+): Array<{ id: number; employeeId: string; source: string; name: string }> {
   const arr = Array.isArray(value) ? value : [];
   return arr
     .map((item) => {

@@ -4,10 +4,7 @@ import type {
   WorkflowRunStatus,
   WorkflowTask,
 } from '../../shared/types.js';
-import {
-  getWorkflowDependencyIds,
-  getWorkflowExecutionOrder,
-} from './engine.js';
+import { getWorkflowDependencyIds, getWorkflowExecutionOrder } from './engine.js';
 import type { WorkflowOperatorRuntime } from './operators/types.js';
 import type { WorkflowRunMode } from './runDispatcher.js';
 import type { WorkflowRunRepository } from './runRepository.js';
@@ -30,10 +27,7 @@ export type WorkflowRunSchedulerOptions = {
 };
 
 type TaskReadiness =
-  | { kind: 'ready' }
-  | { kind: 'blocked' }
-  | { kind: 'waiting' }
-  | { kind: 'missing_output'; dependencyId: string };
+  { kind: 'ready' } | { kind: 'blocked' } | { kind: 'waiting' } | { kind: 'missing_output'; dependencyId: string };
 
 export class WorkflowRunScheduler {
   private readonly worker: WorkflowStepWorker;
@@ -105,7 +99,13 @@ export class WorkflowRunScheduler {
 
   async cancelRun(runId: number): Promise<void> {
     const run = await this.store.getRun(runId);
-    const preservedStatuses = new Set<WorkflowExecutionTaskState>(['completed', 'running', 'failed', 'warning', 'skipped']);
+    const preservedStatuses = new Set<WorkflowExecutionTaskState>([
+      'completed',
+      'running',
+      'failed',
+      'warning',
+      'skipped',
+    ]);
     for (const task of run.tasksSnapshot) {
       const step = run.steps.find((item) => item.taskId === task.id);
       if (step && preservedStatuses.has(step.status)) continue;
@@ -147,7 +147,8 @@ export class WorkflowRunScheduler {
       const isRetryTarget = mode.kind === 'retry_unfinished' || (mode.kind === 'single' && task.id === mode.taskId);
       if (currentState === 'completed') continue;
       if (currentState === 'running') continue;
-      if (currentState === 'warning' && isApprovedWarning(run, task.id) && isReusableStepOutput(currentStep, task)) continue;
+      if (currentState === 'warning' && isApprovedWarning(run, task.id) && isReusableStepOutput(currentStep, task))
+        continue;
       if ((currentState === 'failed' || currentState === 'skipped') && !isRetryTarget) continue;
 
       const readiness = await this.resolveTaskReadiness(runId, task, run, stepStates, executed);

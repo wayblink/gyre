@@ -10,7 +10,10 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function mergeRuntimeParameters(base: WorkflowRuntimeParameters, override: WorkflowRuntimeParameters): WorkflowRuntimeParameters {
+function mergeRuntimeParameters(
+  base: WorkflowRuntimeParameters,
+  override: WorkflowRuntimeParameters,
+): WorkflowRuntimeParameters {
   const merged: WorkflowRuntimeParameters = cloneJson(base);
   for (const [key, value] of Object.entries(override)) {
     if (isRecord(value) && isRecord(merged[key])) {
@@ -150,7 +153,8 @@ export const workflowInvokeOperator = defineWorkflowOperator({
       type: 'array',
       label: 'Input Mappings',
       required: false,
-      description: '把当前节点的 inputSlot 注入到子 workflow 的 taskId，例如 [{ "inputSlot": "input1", "taskId": "source" }]',
+      description:
+        '把当前节点的 inputSlot 注入到子 workflow 的 taskId，例如 [{ "inputSlot": "input1", "taskId": "source" }]',
       default: [],
     },
     outputTaskId: {

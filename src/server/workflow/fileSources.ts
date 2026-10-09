@@ -31,9 +31,9 @@ export function productFileRef(key: string): WorkflowFileReference {
  * Source keys come from whatever bindings the caller resolved (which mirror a DB workflow's
  * runtime_params_schema.fileRefs); this does not depend on any hardcoded source list.
  */
-export function buildFileRefsFromBindings(
-  sources: Record<string, { fileKey?: string; sheet?: string } | undefined>,
-): { fileRefs: Record<string, WorkflowFileReference> } {
+export function buildFileRefsFromBindings(sources: Record<string, { fileKey?: string; sheet?: string } | undefined>): {
+  fileRefs: Record<string, WorkflowFileReference>;
+} {
   const fileRefs: Record<string, WorkflowFileReference> = {};
   for (const [sourceKey, binding] of Object.entries(sources)) {
     const fileKey = String(binding?.fileKey ?? '').trim();

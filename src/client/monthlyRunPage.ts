@@ -52,15 +52,24 @@ const sourceFileNameMatchers: Record<string, string[]> = {
 };
 
 const sourcePurposeEnglish: Record<string, string> = {
-  base_control_book: 'The complete EQ Control Book from the prior month. It becomes the base for the incremental merge and can be carried forward to the next month.',
-  incremental_control_book: 'The current month Control Book detail export. It is merged with the base by the transaction natural key without duplicating prior records.',
-  series_b: 'The SERIES B Control Book workbook. Its Shares Issued total is used to calculate Series B Preferred Stock in the capitalization summary.',
-  option_plans_summary: 'The standalone Gyre Option Plans Summary workbook. It supplies each plan’s outstanding and available share totals.',
-  base_futu_exercises: 'The complete Futu BCI Exercises base from the prior month. It becomes the base for the incremental merge and is carried forward month to month.',
-  incremental_futu_exercises: 'The current month Futu exercise detail export. It is merged with the base by exercise order number without duplicating prior records.',
-  bc_subplan_transfer: 'Optional 2025 BC Subplan transfer or vesting data. When omitted, the related adjustment is skipped after warning review.',
-  previous_capitalization_summary: 'Automatically supplied from the prior month’s Capitalization Summary output to validate the current month EQ Control Book Last Month value.',
-  incremental_cancel_restore_report: 'The current month cancel-and-restore report. It supplies the incremental cancellation adjustments used by Plan Summary.',
+  base_control_book:
+    'The complete EQ Control Book from the prior month. It becomes the base for the incremental merge and can be carried forward to the next month.',
+  incremental_control_book:
+    'The current month Control Book detail export. It is merged with the base by the transaction natural key without duplicating prior records.',
+  series_b:
+    'The SERIES B Control Book workbook. Its Shares Issued total is used to calculate Series B Preferred Stock in the capitalization summary.',
+  option_plans_summary:
+    'The standalone Gyre Option Plans Summary workbook. It supplies each plan’s outstanding and available share totals.',
+  base_futu_exercises:
+    'The complete Futu BCI Exercises base from the prior month. It becomes the base for the incremental merge and is carried forward month to month.',
+  incremental_futu_exercises:
+    'The current month Futu exercise detail export. It is merged with the base by exercise order number without duplicating prior records.',
+  bc_subplan_transfer:
+    'Optional 2025 BC Subplan transfer or vesting data. When omitted, the related adjustment is skipped after warning review.',
+  previous_capitalization_summary:
+    'Automatically supplied from the prior month’s Capitalization Summary output to validate the current month EQ Control Book Last Month value.',
+  incremental_cancel_restore_report:
+    'The current month cancel-and-restore report. It supplies the incremental cancellation adjustments used by Plan Summary.',
 };
 
 function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLanguage): string {
@@ -112,7 +121,8 @@ export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
     label: { 'zh-CN': 'Options Available - Cullgen', 'en-US': 'Options Available - Cullgen' },
     description: {
       'zh-CN': 'Cullgen 计划池中仍可供未来授予的期权额度，作为固定项计入 Total Fully Diluted。',
-      'en-US': 'Remaining Cullgen pool capacity available for future grants; added as a fixed term into Total Fully Diluted.',
+      'en-US':
+        'Remaining Cullgen pool capacity available for future grants; added as a fixed term into Total Fully Diluted.',
     },
   },
   {
@@ -128,15 +138,18 @@ export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
     label: { 'zh-CN': 'Cullgen Common Stock', 'en-US': 'Cullgen Common Stock' },
     description: {
       'zh-CN': 'Cullgen 已发行普通股总数的对账基准值。运行时会校验 EQ Control Book 算出的该列必须等于此值，否则阻塞。',
-      'en-US': 'Reconciliation baseline for total Cullgen common stock outstanding. The run asserts the EQ Control Book column equals this value, and blocks otherwise.',
+      'en-US':
+        'Reconciliation baseline for total Cullgen common stock outstanding. The run asserts the EQ Control Book column equals this value, and blocks otherwise.',
     },
   },
   {
     key: 'gyre2023ChinaSubplanTotal',
     label: { 'zh-CN': 'Gyre 2023 China SubPlan Total', 'en-US': 'Gyre 2023 China SubPlan Total' },
     description: {
-      'zh-CN': 'Gyre 2023 中国子计划期权总数的对账基准值。运行时会校验 EQ Control Book 算出的该列必须等于此值，否则阻塞。',
-      'en-US': 'Reconciliation baseline for the Gyre 2023 China sub-plan option total. The run asserts the EQ Control Book column equals this value, and blocks otherwise.',
+      'zh-CN':
+        'Gyre 2023 中国子计划期权总数的对账基准值。运行时会校验 EQ Control Book 算出的该列必须等于此值，否则阻塞。',
+      'en-US':
+        'Reconciliation baseline for the Gyre 2023 China sub-plan option total. The run asserts the EQ Control Book column equals this value, and blocks otherwise.',
     },
   },
 ];
@@ -159,9 +172,7 @@ export function getMonthlyRunSheetNameOptions(params: {
   defaultSheetName?: string | null;
   sheets: ReadonlyArray<ProductFileSheetSummary>;
 }): { selectedSheetName: string; options: string[] } {
-  const options = params.sheets
-    .map((sheet) => sheet.sheetName.trim())
-    .filter((sheetName) => sheetName.length > 0);
+  const options = params.sheets.map((sheet) => sheet.sheetName.trim()).filter((sheetName) => sheetName.length > 0);
   const selectedSheetName = params.bindingSheetName?.trim() || params.defaultSheetName?.trim() || options[0] || '';
   if (selectedSheetName && !options.some((sheetName) => sheetName === selectedSheetName)) {
     return { selectedSheetName, options: [selectedSheetName, ...options] };
@@ -204,7 +215,9 @@ export function getMonthlyRunModalSourceDefinitions<T extends Pick<MonthlyRunSou
   return sourceDefinitions.filter((source) => source.sourceKey === activeSourceKey);
 }
 
-export function getMonthlyRunFileCandidatesForSource<T extends Pick<ProductFileRecord, 'id' | 'displayName' | 'originalName'> & { logicalPath?: string | null }>(
+export function getMonthlyRunFileCandidatesForSource<
+  T extends Pick<ProductFileRecord, 'id' | 'displayName' | 'originalName'> & { logicalPath?: string | null },
+>(
   sourceKey: string,
   files: ReadonlyArray<T>,
   currentFileId?: number | null,
@@ -264,7 +277,9 @@ function sourceBindingsFromInstance(instance: MonthlyRunInstanceRecord): Record<
 }
 
 function normalizedFileKey(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase();
+  return String(value ?? '')
+    .trim()
+    .toLowerCase();
 }
 
 function isFileForBinding(
@@ -356,7 +371,10 @@ export function resolveMonthlyRunPreviewFileId(
   run: Pick<WorkflowRunRecord, 'artifacts'> | null | undefined,
   instance: Pick<MonthlyRunInstanceRecord, 'latestOutputFileId'> | null | undefined,
 ): number | null {
-  const artifactFileId = run?.artifacts.find((artifact) => artifact.artifactType === 'file' && typeof artifact.fileId === 'number' && artifact.fileId > 0)?.fileId ?? null;
+  const artifactFileId =
+    run?.artifacts.find(
+      (artifact) => artifact.artifactType === 'file' && typeof artifact.fileId === 'number' && artifact.fileId > 0,
+    )?.fileId ?? null;
   if (artifactFileId) return artifactFileId;
   const latestOutputFileId = instance?.latestOutputFileId ?? null;
   return typeof latestOutputFileId === 'number' && latestOutputFileId > 0 ? latestOutputFileId : null;
@@ -400,7 +418,10 @@ export function createMonthlyRunPage({
     codeDefined: { 'zh-CN': '代码定义', 'en-US': 'Code defined' },
     noInputDefinitions: { 'zh-CN': '暂无输入定义', 'en-US': 'No input definitions' },
     loadingSourceConfig: { 'zh-CN': '正在加载 source 配置…', 'en-US': 'Loading source configuration…' },
-    configureSourcesHint: { 'zh-CN': '请先配置每个 workflow 输入节点需要使用的源文件。', 'en-US': 'Configure the source files required by each workflow input node first.' },
+    configureSourcesHint: {
+      'zh-CN': '请先配置每个 workflow 输入节点需要使用的源文件。',
+      'en-US': 'Configure the source files required by each workflow input node first.',
+    },
     notConfigured: { 'zh-CN': '未配置', 'en-US': 'Not configured' },
     notUploaded: { 'zh-CN': '未上传', 'en-US': 'Not uploaded' },
     optionalNotConfigured: { 'zh-CN': '未配置（可选）', 'en-US': 'Not configured (optional)' },
@@ -409,7 +430,8 @@ export function createMonthlyRunPage({
     optionalSupplement: { 'zh-CN': 'Optional · 补充', 'en-US': 'Optional · Supplement' },
     optionalSourceHint: {
       'zh-CN': '可选输入：未提供时运行会产生 warning，批准后跳过该输入对应的修正。',
-      'en-US': 'Optional input: if omitted, the run raises a warning and skips the adjustment associated with this input after approval.',
+      'en-US':
+        'Optional input: if omitted, the run raises a warning and skips the adjustment associated with this input after approval.',
     },
     chooseUploadedFile: { 'zh-CN': '选择已上传文件', 'en-US': 'Choose uploaded file' },
     currentFile: { 'zh-CN': '当前文件', 'en-US': 'Current file' },
@@ -417,7 +439,11 @@ export function createMonthlyRunPage({
     monthlyConstantsTitle: { 'zh-CN': '月度常量', 'en-US': 'Monthly Constants' },
     collapseMonthlyConstants: { 'zh-CN': '收起月度常量', 'en-US': 'Collapse Monthly Constants' },
     expandMonthlyConstants: { 'zh-CN': '展开月度常量', 'en-US': 'Expand Monthly Constants' },
-    monthlyConstantsHeaderHelp: { 'zh-CN': '这些常量按月份保存，并参与当月 Cap Table 计算；编辑某一行只会更新该行。', 'en-US': 'These constants are stored per month and used by the monthly Cap Table calculation; editing a row updates only that row.' },
+    monthlyConstantsHeaderHelp: {
+      'zh-CN': '这些常量按月份保存，并参与当月 Cap Table 计算；编辑某一行只会更新该行。',
+      'en-US':
+        'These constants are stored per month and used by the monthly Cap Table calculation; editing a row updates only that row.',
+    },
     monthlyConstantName: { 'zh-CN': '常量', 'en-US': 'Constant' },
     monthlyConstantValue: { 'zh-CN': '数值', 'en-US': 'Value' },
     monthlyConstantActions: { 'zh-CN': '操作', 'en-US': 'Actions' },
@@ -436,26 +462,39 @@ export function createMonthlyRunPage({
     copiedFileName: { 'zh-CN': '文件名已复制', 'en-US': 'File name copied' },
     copyFileNameFailed: { 'zh-CN': '复制文件名失败', 'en-US': 'Failed to copy file name' },
     fileNameHelp: { 'zh-CN': '输入文件用途', 'en-US': 'Input file purpose' },
-    fileNameHelpHint: { 'zh-CN': '点击每个输入项旁的问号，可查看该文件在 Monthly Update 中的用途。', 'en-US': 'Click the question mark beside an input to see how the file is used in Monthly Update.' },
+    fileNameHelpHint: {
+      'zh-CN': '点击每个输入项旁的问号，可查看该文件在 Monthly Update 中的用途。',
+      'en-US': 'Click the question mark beside an input to see how the file is used in Monthly Update.',
+    },
     requiredHelp: { 'zh-CN': 'Is required 取值说明', 'en-US': 'Is required value meanings' },
     requiredHelpHint: {
-      'zh-CN': 'Required：必需提供，缺少时不能执行。\nOptional · Inherit：继承上一轮输出，缺少时使用系统已保存结果。\nOptional · Validation：仅用于校验，不影响核心计算。\nOptional · Supplement：可选补充逻辑，缺少时仍可计算。',
-      'en-US': 'Required: must be provided or execution is blocked.\nOptional · Inherit: carries forward the prior output when no new file is provided.\nOptional · Validation: used only for validation and does not affect core calculations.\nOptional · Supplement: adds optional logic; calculation can continue without it.',
+      'zh-CN':
+        'Required：必需提供，缺少时不能执行。\nOptional · Inherit：继承上一轮输出，缺少时使用系统已保存结果。\nOptional · Validation：仅用于校验，不影响核心计算。\nOptional · Supplement：可选补充逻辑，缺少时仍可计算。',
+      'en-US':
+        'Required: must be provided or execution is blocked.\nOptional · Inherit: carries forward the prior output when no new file is provided.\nOptional · Validation: used only for validation and does not affect core calculations.\nOptional · Supplement: adds optional logic; calculation can continue without it.',
     },
     removeConfigTitle: { 'zh-CN': '删除 Uploaded file 配置', 'en-US': 'Delete Uploaded file configuration' },
     removeConfigConfirm: { 'zh-CN': '确定删除', 'en-US': 'Delete the Uploaded file configuration for' },
-    removeConfigSuffix: { 'zh-CN': '的 Uploaded file 配置吗？文件中心里的文件不会被删除。', 'en-US': '? The file in Files will not be deleted.' },
+    removeConfigSuffix: {
+      'zh-CN': '的 Uploaded file 配置吗？文件中心里的文件不会被删除。',
+      'en-US': '? The file in Files will not be deleted.',
+    },
     removedConfig: { 'zh-CN': '已删除', 'en-US': 'Deleted the Uploaded file configuration for' },
     removedConfigSuffix: { 'zh-CN': '的 Uploaded file 配置', 'en-US': '' },
     chooseFileFor: { 'zh-CN': '请先为', 'en-US': 'Please select a file for' },
     completeSourceConfig: { 'zh-CN': '请先完成 source 配置', 'en-US': 'Complete source configuration first' },
     workflowVersionMismatch: {
-      'zh-CN': '月度更新工作流版本不匹配：前端 UI 基于 v{expected} 编写，数据库中的工作流定义为 v{actual}。请先更新数据库中的工作流定义或前端代码，使两边版本一致后再执行。',
-      'en-US': 'Monthly workflow version mismatch: this UI was built for workflow definition v{expected}, but the database holds v{actual}. Update the workflow definition (or the UI) so both versions match before running Monthly Update.',
+      'zh-CN':
+        '月度更新工作流版本不匹配：前端 UI 基于 v{expected} 编写，数据库中的工作流定义为 v{actual}。请先更新数据库中的工作流定义或前端代码，使两边版本一致后再执行。',
+      'en-US':
+        'Monthly workflow version mismatch: this UI was built for workflow definition v{expected}, but the database holds v{actual}. Update the workflow definition (or the UI) so both versions match before running Monthly Update.',
     },
     submittingRun: { 'zh-CN': '正在提交 Monthly Update...', 'en-US': 'Submitting Monthly Update...' },
     submittedRun: { 'zh-CN': 'Monthly Update 已提交', 'en-US': 'Monthly Update submitted' },
-    emptyRunState: { 'zh-CN': '执行后会在这里显示节点状态。', 'en-US': 'Node status will appear here after execution.' },
+    emptyRunState: {
+      'zh-CN': '执行后会在这里显示节点状态。',
+      'en-US': 'Node status will appear here after execution.',
+    },
     reviewRequired: { 'zh-CN': '需人工复核', 'en-US': 'review required' },
     showWarningDetails: { 'zh-CN': '查看告警详情', 'en-US': 'View warning details' },
     hideWarningDetails: { 'zh-CN': '收起告警详情', 'en-US': 'Hide warning details' },
@@ -463,15 +502,24 @@ export function createMonthlyRunPage({
     fileCount: { 'zh-CN': '个文件', 'en-US': 'files' },
     noInputSnapshot: { 'zh-CN': '暂无输入快照', 'en-US': 'No input snapshot' },
     loadingHistoryRun: { 'zh-CN': '正在加载历史执行记录...', 'en-US': 'Loading historical run...' },
-    historyMissingRun: { 'zh-CN': '该历史记录没有关联 workflow 执行记录', 'en-US': 'This history record has no workflow run attached' },
+    historyMissingRun: {
+      'zh-CN': '该历史记录没有关联 workflow 执行记录',
+      'en-US': 'This history record has no workflow run attached',
+    },
     historyLoadFailed: { 'zh-CN': '加载历史执行记录失败', 'en-US': 'Failed to load historical run' },
     runHistory: { 'zh-CN': '运行历史', 'en-US': 'Run history' },
-    cannotDeleteRunning: { 'zh-CN': '运行中或待审批的记录不能删除', 'en-US': 'Running or approval-pending records cannot be deleted' },
+    cannotDeleteRunning: {
+      'zh-CN': '运行中或待审批的记录不能删除',
+      'en-US': 'Running or approval-pending records cannot be deleted',
+    },
     deleteHistoryTitle: { 'zh-CN': '删除运行历史及输出文件', 'en-US': 'Delete run history and output file' },
     deleteHistoryConfirm: { 'zh-CN': '确定删除这条运行历史吗？', 'en-US': 'Delete this run history?' },
     outputDeleteNotice: { 'zh-CN': '对应输出文件', 'en-US': 'The output file' },
     outputDeleteNoticeSuffix: { 'zh-CN': '也会被永久删除。', 'en-US': 'will also be permanently deleted.' },
-    historyDeleted: { 'zh-CN': '运行历史及对应输出文件已删除', 'en-US': 'Run history and corresponding output file deleted' },
+    historyDeleted: {
+      'zh-CN': '运行历史及对应输出文件已删除',
+      'en-US': 'Run history and corresponding output file deleted',
+    },
     previewExcel: { 'zh-CN': '预览', 'en-US': 'Preview' },
     delete: { 'zh-CN': '删除', 'en-US': 'Delete' },
   } satisfies Record<string, Record<AppLanguage, string>>;
@@ -568,7 +616,9 @@ export function createMonthlyRunPage({
       renderBusinessDefinedInputConfiguration();
       return;
     }
-    const data = await api<{ instance: MonthlyRunInstanceRecord }>(`/api/monthly-runs/instance?month=${encodeURIComponent(month)}`);
+    const data = await api<{ instance: MonthlyRunInstanceRecord }>(
+      `/api/monthly-runs/instance?month=${encodeURIComponent(month)}`,
+    );
     currentInstance = data.instance;
     selectedSources = sourceBindingsFromInstance(data.instance);
     renderSourceInfo();
@@ -578,10 +628,13 @@ export function createMonthlyRunPage({
   async function saveInstance(patch: MonthlyRunInstanceUpsertRequest) {
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
     if (!month) throw new Error(tt('selectMonth'));
-    const data = await api<{ instance: MonthlyRunInstanceRecord }>(`/api/monthly-runs/instance?month=${encodeURIComponent(month)}`, {
-      method: 'PUT',
-      body: JSON.stringify(patch),
-    });
+    const data = await api<{ instance: MonthlyRunInstanceRecord }>(
+      `/api/monthly-runs/instance?month=${encodeURIComponent(month)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      },
+    );
     currentInstance = data.instance;
     selectedSources = sourceBindingsFromInstance(data.instance);
     renderSourceInfo();
@@ -636,7 +689,9 @@ export function createMonthlyRunPage({
         const popover = document.querySelector<HTMLElement>(`[data-source-help-popover="${CSS.escape(sourceKey)}"]`);
         if (!popover) return;
         const wasHidden = popover.classList.contains('hidden');
-        document.querySelectorAll<HTMLElement>('[data-source-help-popover]').forEach((item) => item.classList.add('hidden'));
+        document
+          .querySelectorAll<HTMLElement>('[data-source-help-popover]')
+          .forEach((item) => item.classList.add('hidden'));
         popover.classList.toggle('hidden', !wasHidden);
       });
     });
@@ -709,7 +764,8 @@ export function createMonthlyRunPage({
             </tr>
           </thead>
           <tbody>
-            ${MONTHLY_FIXED_VALUE_DEFS.map((def) => `
+            ${MONTHLY_FIXED_VALUE_DEFS.map(
+              (def) => `
               <tr data-constant-row="${escapeHtml(def.key)}">
                 <td class="monthly-run-constants__label"><span>${escapeHtml(def.label[lang()] ?? def.label['zh-CN'])}</span><button type="button" class="monthly-run-constants__help" data-constant-help="${escapeHtml(def.key)}" aria-label="${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}" title="${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.3 2.3 0 1 1 3.8 1.7c-.9.7-1.6 1.1-1.6 2.3"></path><path d="M12 16.5h.01"></path></svg></button><span class="monthly-run-constants__help-popover hidden" data-constant-help-popover="${escapeHtml(def.key)}">${escapeHtml(def.description[lang()] ?? def.description['zh-CN'])}</span></td>
                 <td><input class="search-input monthly-run-constants__input" type="text" inputmode="decimal" data-const-key="${escapeHtml(def.key)}" value="${fv[def.key] === undefined ? '' : escapeHtml(String(fv[def.key]))}" disabled></td>
@@ -720,7 +776,8 @@ export function createMonthlyRunPage({
                     <button class="source-file-delete source-file-delete--text monthly-run-constants__cancel" type="button" data-constant-cancel="${escapeHtml(def.key)}" title="${escapeHtml(tt('cancelMonthlyConstant'))}" aria-label="${escapeHtml(tt('cancelMonthlyConstant'))}">${escapeHtml(tt('cancelMonthlyConstant'))}</button>
                   </span>
                 </td>
-              </tr>`).join('')}
+              </tr>`,
+            ).join('')}
           </tbody>
         </table>
       </div>
@@ -732,14 +789,19 @@ export function createMonthlyRunPage({
       host.classList.toggle('is-collapsed', monthlyConstantsCollapsed);
       const button = event.currentTarget as HTMLButtonElement;
       button.setAttribute('aria-expanded', String(!monthlyConstantsCollapsed));
-      button.setAttribute('title', monthlyConstantsCollapsed ? tt('expandMonthlyConstants') : tt('collapseMonthlyConstants'));
+      button.setAttribute(
+        'title',
+        monthlyConstantsCollapsed ? tt('expandMonthlyConstants') : tt('collapseMonthlyConstants'),
+      );
     });
 
     host.querySelectorAll<HTMLButtonElement>('[data-constant-help]').forEach((button) => {
       button.addEventListener('click', () => {
         const key = button.dataset.constantHelp;
         if (!key) return;
-        host.querySelector<HTMLElement>(`[data-constant-help-popover="${CSS.escape(key)}"]`)?.classList.toggle('hidden');
+        host
+          .querySelector<HTMLElement>(`[data-constant-help-popover="${CSS.escape(key)}"]`)
+          ?.classList.toggle('hidden');
       });
     });
 
@@ -829,7 +891,10 @@ export function createMonthlyRunPage({
     if (!model) return '';
     void ensureSourceSheetSummaries(model.fileId);
     const options = model.options
-      .map((sheetName) => `<option value="${escapeHtml(sheetName)}"${sheetName === model.selectedSheetName ? ' selected' : ''}>${escapeHtml(sheetName)}</option>`)
+      .map(
+        (sheetName) =>
+          `<option value="${escapeHtml(sheetName)}"${sheetName === model.selectedSheetName ? ' selected' : ''}>${escapeHtml(sheetName)}</option>`,
+      )
       .join('');
     const status = sheetState?.loading
       ? `<span class="source-sheet-control__status">Loading...</span>`
@@ -870,7 +935,8 @@ export function createMonthlyRunPage({
       return `<tr><td colspan="5" class="table-empty-cell" style="color:#b91c1c;">${escapeHtml(formatWorkflowVersionMismatch(workflowVersionMismatch))}</td></tr>`;
     }
     const sources = getMonthlyRunVisibleSources(sourceDefinitions);
-    if (!sources.length) return `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
+    if (!sources.length)
+      return `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
     return sources
       .map((source) => {
         const binding = selectedSources[source.sourceKey] ?? null;
@@ -1010,9 +1076,8 @@ export function createMonthlyRunPage({
       notify(formatWorkflowVersionMismatch(workflowVersionMismatch), { type: 'error' });
       return;
     }
-    activeSourceModalKey = focusSourceKey && sourceDefinitions.some((source) => source.sourceKey === focusSourceKey)
-      ? focusSourceKey
-      : null;
+    activeSourceModalKey =
+      focusSourceKey && sourceDefinitions.some((source) => source.sourceKey === focusSourceKey) ? focusSourceKey : null;
     draftSources = Object.fromEntries(
       sourceDefinitions.map((source) => [source.sourceKey, selectedSources[source.sourceKey] ?? null]),
     );
@@ -1073,7 +1138,10 @@ export function createMonthlyRunPage({
 
     if (sheetOptions.options.length > 0) {
       const options = sheetOptions.options
-        .map((sheetName) => `<option value="${escapeHtml(sheetName)}"${sheetName === currentSheet ? ' selected' : ''}>${escapeHtml(sheetName)}</option>`)
+        .map(
+          (sheetName) =>
+            `<option value="${escapeHtml(sheetName)}"${sheetName === currentSheet ? ' selected' : ''}>${escapeHtml(sheetName)}</option>`,
+        )
         .join('');
       return `
         <label class="monthly-run-source-card__sheet">
@@ -1194,7 +1262,6 @@ export function createMonthlyRunPage({
         void uploadSourceFileFor(sourceKey);
       });
     });
-
   }
 
   async function uploadSourceFileFor(sourceKey: string) {
@@ -1221,7 +1288,9 @@ export function createMonthlyRunPage({
       } catch (error) {
         if (!(error instanceof UploadHttpError) || error.status !== 409) throw error;
         const confirmed = await confirmAction(`本月文件夹中已存在“${file.name}”，是否覆盖？`, {
-          title: '文件已存在', confirmText: '覆盖', tone: 'danger',
+          title: '文件已存在',
+          confirmText: '覆盖',
+          tone: 'danger',
         });
         if (!confirmed) return;
         data = await upload(true);
@@ -1251,11 +1320,13 @@ export function createMonthlyRunPage({
   async function removeSourceFileFor(sourceKey: string) {
     const source = sourceDefinitions.find((item) => item.sourceKey === sourceKey);
     const label = source?.label ?? sourceKey;
-    if (!(await confirmAction(`${tt('removeConfigConfirm')} ${label} ${tt('removeConfigSuffix')}`, {
-      title: tt('removeConfigTitle'),
-      confirmText: tt('delete'),
-      tone: 'danger',
-    }))) {
+    if (
+      !(await confirmAction(`${tt('removeConfigConfirm')} ${label} ${tt('removeConfigSuffix')}`, {
+        title: tt('removeConfigTitle'),
+        confirmText: tt('delete'),
+        tone: 'danger',
+      }))
+    ) {
       return;
     }
 
@@ -1325,12 +1396,14 @@ export function createMonthlyRunPage({
       notify(formatWorkflowVersionMismatch(workflowVersionMismatch), { type: 'error' });
       return;
     }
-    if (!sourceDefinitions.every((source) => {
-      const binding = selectedSources[source.sourceKey];
-      if (source.required && !binding?.fileId) return false;
-      if (source.allowSheetNameOverride && binding?.fileId && !binding.sheetName?.trim()) return false;
-      return true;
-    })) {
+    if (
+      !sourceDefinitions.every((source) => {
+        const binding = selectedSources[source.sourceKey];
+        if (source.required && !binding?.fileId) return false;
+        if (source.allowSheetNameOverride && binding?.fileId && !binding.sheetName?.trim()) return false;
+        return true;
+      })
+    ) {
       notify(tt('completeSourceConfig'), { type: 'warning' });
       return;
     }
@@ -1383,7 +1456,9 @@ export function createMonthlyRunPage({
 
   async function approveActiveRun(decision: 'approved' | 'skipped') {
     if (!activeRun || !activeHistoryId || isRunning) return;
-    const waitingTaskIds = activeRun.approvals.filter((approval) => approval.status === 'pending').map((approval) => approval.taskId);
+    const waitingTaskIds = activeRun.approvals
+      .filter((approval) => approval.status === 'pending')
+      .map((approval) => approval.taskId);
     if (!waitingTaskIds.length) return;
 
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
@@ -1418,12 +1493,17 @@ export function createMonthlyRunPage({
   }
 
   function getWarningMessageForTask(run: WorkflowRunRecord, taskId: string): string | null {
-    const pendingApproval = run.approvals.find((approval) => approval.taskId === taskId && approval.status === 'pending');
+    const pendingApproval = run.approvals.find(
+      (approval) => approval.taskId === taskId && approval.status === 'pending',
+    );
     if (pendingApproval?.comment?.trim()) return pendingApproval.comment.trim();
 
     const warningEvent = [...run.events]
       .reverse()
-      .find((event) => event.taskId === taskId && (event.eventType === 'warning_raised' || event.eventType === 'approval_requested'));
+      .find(
+        (event) =>
+          event.taskId === taskId && (event.eventType === 'warning_raised' || event.eventType === 'approval_requested'),
+      );
     if (warningEvent?.message?.trim()) return warningEvent.message.trim();
 
     const step = run.steps.find((item) => item.taskId === taskId);
@@ -1526,13 +1606,22 @@ export function createMonthlyRunPage({
       return;
     }
 
-    const completedStates = new Set<WorkflowExecutionTaskState>(['completed', 'warning', 'failed', 'blocked', 'skipped']);
+    const completedStates = new Set<WorkflowExecutionTaskState>([
+      'completed',
+      'warning',
+      'failed',
+      'blocked',
+      'skipped',
+    ]);
     const reached = run.steps.filter((step) => completedStates.has(step.status)).length;
     const total = run.steps.length;
     const ratio = total ? Math.min(1, reached / total) : 0;
     const pendingApprovals = run.approvals.filter((approval) => approval.status === 'pending');
     const statusCode = run.status === 'completed_with_warnings' ? 'warning' : run.status;
-    const shouldShowSummary = isMonthlyRunAttentionMessage(overrideMessage) || Boolean(run.errorMessage) || isMonthlyRunAttentionStatus(run.status);
+    const shouldShowSummary =
+      isMonthlyRunAttentionMessage(overrideMessage) ||
+      Boolean(run.errorMessage) ||
+      isMonthlyRunAttentionStatus(run.status);
     if (shouldShowSummary) {
       summary.classList.remove('hidden');
       summary.innerHTML = `<span class="monthly-run-status monthly-run-status--${escapeHtml(statusCode)}">${escapeHtml(statusLabel(run.status, lang()))}</span>${
@@ -1543,15 +1632,18 @@ export function createMonthlyRunPage({
       summary.innerHTML = '';
     }
     progressBar.style.width = `${ratio * 100}%`;
-    progressText.textContent = pendingApprovals.length ? `${reached} / ${total} · ${tt('reviewRequired')}` : `${reached} / ${total}`;
+    progressText.textContent = pendingApprovals.length
+      ? `${reached} / ${total} · ${tt('reviewRequired')}`
+      : `${reached} / ${total}`;
     taskList.innerHTML = run.steps
       .map((step, index) => {
         const warningMessage = step.status === 'warning' ? getWarningMessageForTask(run, step.taskId) : null;
-        const failureMessage = step.status === 'failed' || step.status === 'blocked'
-          ? step.result?.kind === 'assert'
-            ? step.result.assertion.failureMessage
-            : step.errorMessage?.trim() ?? ''
-          : '';
+        const failureMessage =
+          step.status === 'failed' || step.status === 'blocked'
+            ? step.result?.kind === 'assert'
+              ? step.result.assertion.failureMessage
+              : (step.errorMessage?.trim() ?? '')
+            : '';
         const isWarningExpandable = Boolean(warningMessage);
         const isExpanded = isWarningExpandable && expandedWarningTaskIds.has(step.taskId);
         return `
@@ -1620,7 +1712,7 @@ export function createMonthlyRunPage({
                   </div>`,
               )
               .join('')
-              : `<div class="monthly-run-history__input-empty">${escapeHtml(tt('noInputSnapshot'))}</div>`;
+          : `<div class="monthly-run-history__input-empty">${escapeHtml(tt('noInputSnapshot'))}</div>`;
         return `
         <tr class="monthly-run-history__row${item.id === activeHistoryId ? ' is-selected' : ''}" data-history-row="${item.id}">
           <td class="monthly-run-history__run-cell">
@@ -1670,7 +1762,14 @@ export function createMonthlyRunPage({
         const outputNotice = history?.producedFileName
           ? `\n${tt('outputDeleteNotice')} “${history.producedFileName}” ${tt('outputDeleteNoticeSuffix')}`
           : '';
-        if (!(await confirmAction(`${tt('deleteHistoryConfirm')}${outputNotice}`, { title: tt('deleteHistoryTitle'), confirmText: tt('delete'), tone: 'danger' }))) return;
+        if (
+          !(await confirmAction(`${tt('deleteHistoryConfirm')}${outputNotice}`, {
+            title: tt('deleteHistoryTitle'),
+            confirmText: tt('delete'),
+            tone: 'danger',
+          }))
+        )
+          return;
         await api(`/api/monthly-runs/${historyId}`, { method: 'DELETE' });
         if (activeHistoryId === historyId) {
           activeHistoryId = null;

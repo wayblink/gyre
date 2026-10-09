@@ -85,10 +85,12 @@ export function toMonthlyRunHistoryRecord(row: Record<string, unknown>): Monthly
     monthId: Number(row.month_id),
     monthKey: String(row.month_key),
     workflowId: Number(row.workflow_id),
-    workflowRunId: row.workflow_run_id === null || row.workflow_run_id === undefined ? null : Number(row.workflow_run_id),
+    workflowRunId:
+      row.workflow_run_id === null || row.workflow_run_id === undefined ? null : Number(row.workflow_run_id),
     sourceFileId: row.source_file_id === null || row.source_file_id === undefined ? null : Number(row.source_file_id),
     sourceFileName: row.source_file_name ? String(row.source_file_name) : null,
-    producedFileId: row.produced_file_id === null || row.produced_file_id === undefined ? null : Number(row.produced_file_id),
+    producedFileId:
+      row.produced_file_id === null || row.produced_file_id === undefined ? null : Number(row.produced_file_id),
     producedFileName: row.produced_file_name ? String(row.produced_file_name) : null,
     producedSheetName: row.produced_sheet_name ? String(row.produced_sheet_name) : null,
     operator: String(row.operator ?? 'Administrator'),
@@ -142,7 +144,7 @@ async function attachInputFiles(
         sourceKey,
         label: monthlyRunInputLabel(sourceKey, sourceLabels),
         fileId: fileId ?? (keyedFile ? Number(keyedFile.id) : null),
-        fileName: fileId ? (fileNameById.get(fileId) ?? null) : keyedFile?.original_name ?? null,
+        fileName: fileId ? (fileNameById.get(fileId) ?? null) : (keyedFile?.original_name ?? null),
       };
     });
     return { ...row, input_files_json: JSON.stringify(inputFiles) };
@@ -235,12 +237,12 @@ export async function deleteMonthlyRunHistory(
   }
 
   const monthId = Number(history.month_id);
-  const workflowRunId = history.workflow_run_id === null || history.workflow_run_id === undefined
-    ? null
-    : Number(history.workflow_run_id);
-  const outputFileId = history.produced_file_id === null || history.produced_file_id === undefined
-    ? null
-    : Number(history.produced_file_id);
+  const workflowRunId =
+    history.workflow_run_id === null || history.workflow_run_id === undefined ? null : Number(history.workflow_run_id);
+  const outputFileId =
+    history.produced_file_id === null || history.produced_file_id === undefined
+      ? null
+      : Number(history.produced_file_id);
   const outputFilePath = history.produced_file_path ? String(history.produced_file_path) : null;
   const outputFileName = history.produced_file_name ? String(history.produced_file_name) : null;
 
@@ -261,9 +263,10 @@ export async function deleteMonthlyRunHistory(
       limit 1`,
     [monthId, historyId],
   );
-  const fallbackOutputFileId = fallback?.produced_file_id === null || fallback?.produced_file_id === undefined
-    ? null
-    : Number(fallback.produced_file_id);
+  const fallbackOutputFileId =
+    fallback?.produced_file_id === null || fallback?.produced_file_id === undefined
+      ? null
+      : Number(fallback.produced_file_id);
 
   if (outputFileId) {
     const sharedHistory = await db.queryOne<{ id: number }>(
@@ -396,12 +399,11 @@ export async function updateMonthlyUpdatePlanStatus(
   );
 }
 
-async function reconcileMonthlyRunStatuses(
-  db: MonthlyRunDb,
-  rows: Array<Record<string, unknown>>,
-): Promise<void> {
+async function reconcileMonthlyRunStatuses(db: MonthlyRunDb, rows: Array<Record<string, unknown>>): Promise<void> {
   const runIds = rows
-    .map((row) => (row.workflow_run_id === null || row.workflow_run_id === undefined ? null : Number(row.workflow_run_id)))
+    .map((row) =>
+      row.workflow_run_id === null || row.workflow_run_id === undefined ? null : Number(row.workflow_run_id),
+    )
     .filter((runId): runId is number => runId !== null && Number.isInteger(runId) && runId > 0);
   if (!runIds.length) return;
 
@@ -412,7 +414,8 @@ async function reconcileMonthlyRunStatuses(
   const workflowRunById = new Map(workflowRuns.map((run) => [Number(run.id), run]));
 
   for (const row of rows) {
-    const workflowRunId = row.workflow_run_id === null || row.workflow_run_id === undefined ? null : Number(row.workflow_run_id);
+    const workflowRunId =
+      row.workflow_run_id === null || row.workflow_run_id === undefined ? null : Number(row.workflow_run_id);
     if (!workflowRunId) continue;
     const workflowRun = workflowRunById.get(workflowRunId);
     if (!workflowRun) continue;
@@ -432,7 +435,8 @@ async function reconcileMonthlyRunStatuses(
       if (workflowRun.finished_at) row.finished_at = workflowRun.finished_at;
     }
 
-    const updatePlanId = row.update_plan_id === null || row.update_plan_id === undefined ? null : Number(row.update_plan_id);
+    const updatePlanId =
+      row.update_plan_id === null || row.update_plan_id === undefined ? null : Number(row.update_plan_id);
     if (updatePlanId) {
       await updateMonthlyUpdatePlanStatus(db, updatePlanId, planStatusForWorkflowRunStatus(nextStatus));
     }
@@ -465,7 +469,8 @@ export async function applyMonthlyRunPostProcessing(db: MonthlyRunDb, run: Workf
     [run.id],
   );
   if (!history) return;
-  const updatePlanId = history.update_plan_id === null || history.update_plan_id === undefined ? null : Number(history.update_plan_id);
+  const updatePlanId =
+    history.update_plan_id === null || history.update_plan_id === undefined ? null : Number(history.update_plan_id);
 
   let producedFileId: number | null = null;
   let producedSheetName: string | null = null;

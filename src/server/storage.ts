@@ -30,11 +30,19 @@ class LocalStorage {
     ensureDir(config.productFileDir);
   }
 
-  async save(category: FileCategory, storedName: string, buffer: Buffer, options: SaveFileOptions = {}): Promise<StoredFile> {
+  async save(
+    category: FileCategory,
+    storedName: string,
+    buffer: Buffer,
+    options: SaveFileOptions = {},
+  ): Promise<StoredFile> {
     const baseDir = category === 'product' ? config.productFileDir : config.uploadDir;
     const relativePath = options.relativeFilePath
       ? normalizePathSegment(options.relativeFilePath)
-      : [options.prefix, storedName].filter((value): value is string => Boolean(value)).map(normalizePathSegment).join('/');
+      : [options.prefix, storedName]
+          .filter((value): value is string => Boolean(value))
+          .map(normalizePathSegment)
+          .join('/');
     const filePath = path.join(baseDir, relativePath);
     ensureDir(path.dirname(filePath));
     fs.writeFileSync(filePath, buffer);
@@ -76,10 +84,18 @@ class MinioStorage {
     }
   }
 
-  async save(category: FileCategory, storedName: string, buffer: Buffer, options: SaveFileOptions = {}): Promise<StoredFile> {
+  async save(
+    category: FileCategory,
+    storedName: string,
+    buffer: Buffer,
+    options: SaveFileOptions = {},
+  ): Promise<StoredFile> {
     const relativePath = options.relativeFilePath
       ? normalizePathSegment(options.relativeFilePath)
-      : [options.prefix, storedName].filter((value): value is string => Boolean(value)).map(normalizePathSegment).join('/');
+      : [options.prefix, storedName]
+          .filter((value): value is string => Boolean(value))
+          .map(normalizePathSegment)
+          .join('/');
     const objectName = `${category}/${relativePath}`;
     await this.client.putObject(config.minioBucket, objectName, buffer, buffer.length);
     return {
@@ -116,7 +132,12 @@ class FileStorage {
     await this.backend.init();
   }
 
-  async save(category: FileCategory, storedName: string, buffer: Buffer, options: SaveFileOptions = {}): Promise<StoredFile> {
+  async save(
+    category: FileCategory,
+    storedName: string,
+    buffer: Buffer,
+    options: SaveFileOptions = {},
+  ): Promise<StoredFile> {
     return this.backend.save(category, storedName, buffer, options);
   }
 

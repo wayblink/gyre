@@ -56,8 +56,6 @@ export async function startDataManagementWorkflow(
   const config = DATA_MANAGEMENT_WORKFLOW_CONFIGS[pageKey];
   const workflow = await loadActiveWorkflowDefinition(db, config.workflowCode);
   if (!workflow) throw new Error(`Data management workflow is not available: ${config.workflowCode}`);
-  const runtimeParameters = pageKey === 'five-percent-holders'
-    ? await loadFivePercentHolderRuntimeOverrides(db)
-    : {};
+  const runtimeParameters = pageKey === 'five-percent-holders' ? await loadFivePercentHolderRuntimeOverrides(db) : {};
   return startWorkflowRun({ db, runStore, executor, workflow, sources, runtimeParameters });
 }

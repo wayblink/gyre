@@ -90,7 +90,12 @@ test('monthly run endpoints read the workflow definition the page renders from',
           fileRefs: {
             type: 'object',
             properties: {
-              incremental_control_book: { type: 'object', label: 'Control Book Detail update', order: 2, required: true },
+              incremental_control_book: {
+                type: 'object',
+                label: 'Control Book Detail update',
+                order: 2,
+                required: true,
+              },
             },
           },
         },
@@ -119,8 +124,32 @@ test('workflow definitions are listed newest first', async () => {
     {
       match: /from workflow_definitions order by updated_at desc/,
       rows: [
-        { id: 7, code: 'gyre-captable-summary-v2', name: 'CapTable Summary', description: '', status: 'active', version: 17, tasks_json: '[]', runtime_params_schema_json: '{}', runtime_params_defaults_json: '{}', created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-02T00:00:00Z' },
-        { id: 3, code: 'plan-summary-sync', name: 'Plan Summary', description: '', status: 'active', version: 3, tasks_json: '[]', runtime_params_schema_json: '{}', runtime_params_defaults_json: '{}', created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-02T00:00:00Z' },
+        {
+          id: 7,
+          code: 'gyre-captable-summary-v2',
+          name: 'CapTable Summary',
+          description: '',
+          status: 'active',
+          version: 17,
+          tasks_json: '[]',
+          runtime_params_schema_json: '{}',
+          runtime_params_defaults_json: '{}',
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-02T00:00:00Z',
+        },
+        {
+          id: 3,
+          code: 'plan-summary-sync',
+          name: 'Plan Summary',
+          description: '',
+          status: 'active',
+          version: 3,
+          tasks_json: '[]',
+          runtime_params_schema_json: '{}',
+          runtime_params_defaults_json: '{}',
+          created_at: '2026-08-01T00:00:00Z',
+          updated_at: '2026-08-02T00:00:00Z',
+        },
       ],
     },
   ]);
@@ -129,7 +158,10 @@ test('workflow definitions are listed newest first', async () => {
 
   assert.equal(response.statusCode, 200);
   const items = JSON.parse(response.body).items;
-  assert.deepEqual(items.map((item: { id: number }) => item.id), [7, 3]);
+  assert.deepEqual(
+    items.map((item: { id: number }) => item.id),
+    [7, 3],
+  );
   assert.equal(items[0].version, 17);
   await app.close();
 });
@@ -139,7 +171,13 @@ test('global parameters are returned in page order with the latest revision per 
     {
       match: /distinct on \(key\)/,
       rows: [
-        { id: 2, key: 'optionsOutstandingCullgen', value: 100, updated_at: '2026-09-02T00:00:00Z', updated_by: 'admin' },
+        {
+          id: 2,
+          key: 'optionsOutstandingCullgen',
+          value: 100,
+          updated_at: '2026-09-02T00:00:00Z',
+          updated_by: 'admin',
+        },
         { id: 1, key: 'cullgenCommonStock', value: 14450527, updated_at: '2026-09-01T00:00:00Z', updated_by: 'admin' },
       ],
     },
@@ -150,14 +188,22 @@ test('global parameters are returned in page order with the latest revision per 
   assert.equal(response.statusCode, 200);
   const items = JSON.parse(response.body).items;
   assert.equal(items.length, 2);
-  assert.ok(items.every((item: { key: string; value: number }) => typeof item.key === 'string' && Number.isFinite(item.value)));
+  assert.ok(
+    items.every((item: { key: string; value: number }) => typeof item.key === 'string' && Number.isFinite(item.value)),
+  );
   await app.close();
 });
 
 test('settings endpoints keep their typed response shapes', async () => {
   const { app } = await buildTestApp([
-    { match: /from employee_mappings/, rows: [{ id: 1, display_name: 'Alice', employee_id: 'E1', futu_id: 'F1', shareworks_id: 'S1' }] },
-    { match: /from tracked_plans/, rows: [{ id: 2, plan_name: '2023 Plan', created_at: '2026-01-01T00:00:00Z', status: 'active' }] },
+    {
+      match: /from employee_mappings/,
+      rows: [{ id: 1, display_name: 'Alice', employee_id: 'E1', futu_id: 'F1', shareworks_id: 'S1' }],
+    },
+    {
+      match: /from tracked_plans/,
+      rows: [{ id: 2, plan_name: '2023 Plan', created_at: '2026-01-01T00:00:00Z', status: 'active' }],
+    },
     { match: /from shareholder_tags/, rows: [{ id: 3, name: 'Bob', identity: 'ID-3', tracked: true }] },
   ]);
 
@@ -192,12 +238,19 @@ test('employee list paginates, filters and sorts through the shared helpers', as
     },
     {
       match: /runtime_params_schema_json\s+from workflow_definitions/,
-      one: { runtime_params_schema_json: { fileRefs: { type: 'object', properties: { employees: { type: 'object', label: 'Employees' } } } } },
+      one: {
+        runtime_params_schema_json: {
+          fileRefs: { type: 'object', properties: { employees: { type: 'object', label: 'Employees' } } },
+        },
+      },
     },
     { match: /from workflow_runs/, rows: [] },
   ]);
 
-  const response = await app.inject({ method: 'GET', url: '/api/employees?page=1&pageSize=20&query=ali&sort=name&dir=asc' });
+  const response = await app.inject({
+    method: 'GET',
+    url: '/api/employees?page=1&pageSize=20&query=ali&sort=name&dir=asc',
+  });
 
   assert.equal(response.statusCode, 200);
   const payload = JSON.parse(response.body);
@@ -220,7 +273,13 @@ test('link details resolve their stored payload', async () => {
   const { app } = await buildTestApp([
     {
       match: /from link_details/,
-      one: { key: 'grants', title: 'Grants', columns_json: [{ key: 'name', label: 'Name' }], rows_json: [{ name: 'Alice' }], summary_json: null },
+      one: {
+        key: 'grants',
+        title: 'Grants',
+        columns_json: [{ key: 'name', label: 'Name' }],
+        rows_json: [{ name: 'Alice' }],
+        summary_json: null,
+      },
     },
   ]);
 

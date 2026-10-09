@@ -1,9 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import {
-  asBoolean,
-  notFound,
-} from './support.js';
+import { asBoolean, notFound } from './support.js';
 import type { RouteContext } from './context.js';
 import type { EmployeeMapping, ShareholderTag, TrackedPlan } from '../../shared/types.js';
 
@@ -33,7 +30,12 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: RouteContext) 
 
   app.post('/api/settings/employee-mappings', async (request, reply) => {
     const body = z
-      .object({ name: z.string(), empId: z.string(), futuId: z.string().optional(), shareworksId: z.string().optional() })
+      .object({
+        name: z.string(),
+        empId: z.string(),
+        futuId: z.string().optional(),
+        shareworksId: z.string().optional(),
+      })
       .parse(request.body);
     const row = await db.queryOne<{ id: number }>(
       'insert into employee_mappings (display_name, employee_id, futu_id, shareworks_id) values ($1, $2, $3, $4) returning id',
@@ -44,7 +46,9 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: RouteContext) 
 
   app.patch('/api/settings/employee-mappings/:id', async (request) => {
     const { id } = request.params as { id: string };
-    const body = z.object({ name: z.string(), empId: z.string(), futuId: z.string(), shareworksId: z.string() }).parse(request.body);
+    const body = z
+      .object({ name: z.string(), empId: z.string(), futuId: z.string(), shareworksId: z.string() })
+      .parse(request.body);
     await db.execute(
       'update employee_mappings set display_name = $1, employee_id = $2, futu_id = $3, shareworks_id = $4 where id = $5',
       [body.name, body.empId, body.futuId, body.shareworksId, Number(id)],
@@ -112,8 +116,12 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: RouteContext) 
 
   app.patch('/api/settings/shareholders/:id', async (request) => {
     const { id } = request.params as { id: string };
-    const body = z.object({ name: z.string().optional(), identity: z.string().optional(), track: z.boolean().optional() }).parse(request.body);
-    const current = await db.queryOne<Record<string, unknown>>('select * from shareholder_tags where id = $1', [Number(id)]);
+    const body = z
+      .object({ name: z.string().optional(), identity: z.string().optional(), track: z.boolean().optional() })
+      .parse(request.body);
+    const current = await db.queryOne<Record<string, unknown>>('select * from shareholder_tags where id = $1', [
+      Number(id),
+    ]);
     if (!current) throw notFound('Shareholder not found');
     await db.execute('update shareholder_tags set name = $1, identity = $2, tracked = $3 where id = $4', [
       body.name ?? current.name,
@@ -134,4 +142,3 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: RouteContext) 
     return reply.code(204).send();
   });
 }
-

@@ -11,7 +11,10 @@ test('business service resolves Plan Summary by stable code and starts a run', a
     name: 'Plan Summary Sync',
     tasks_json: JSON.stringify([]),
     runtime_params_schema_json: JSON.stringify({
-      fileRefs: { type: 'object', properties: { option_plans_summary: { type: 'object', properties: { sheet: { type: 'string' } } } } },
+      fileRefs: {
+        type: 'object',
+        properties: { option_plans_summary: { type: 'object', properties: { sheet: { type: 'string' } } } },
+      },
     }),
     runtime_params_defaults_json: JSON.stringify({
       fileRefs: { option_plans_summary: { sheet: '!Option Plans Summary (Post-Gyr' } },
@@ -33,9 +36,16 @@ test('business service resolves Plan Summary by stable code and starts a run', a
       },
     },
     {
-      async createRun(input) { calls.push(input); return fakeRun; },
+      async createRun(input) {
+        calls.push(input);
+        return fakeRun;
+      },
     },
-    { startAsync(runId) { assert.equal(runId, 91); } },
+    {
+      startAsync(runId) {
+        assert.equal(runId, 91);
+      },
+    },
     'plan-summary',
     { option_plans_summary: { fileId: 4 } },
   );
@@ -61,32 +71,44 @@ test('5% Holders workflow refuses to start when global fixed values are missing'
     runtime_params_defaults_json: '{}',
   };
   await assert.rejects(
-    () => startDataManagementWorkflow(
-      {
-        async queryOne(_sql, params) {
-          assert.deepEqual(params, ['five-percent-holders-sync']);
-          return workflow;
+    () =>
+      startDataManagementWorkflow(
+        {
+          async queryOne(_sql, params) {
+            assert.deepEqual(params, ['five-percent-holders-sync']);
+            return workflow;
+          },
+          async query<T extends Record<string, unknown> = Record<string, unknown>>(
+            _sql: string,
+            params?: unknown[],
+          ): Promise<T[]> {
+            assert.deepEqual(params, [
+              [
+                'fivePercentHoldersGniCommonStock',
+                'fivePercentHoldersGniTotalCses',
+                'fivePercentHoldersSongjiangMaCommonStock',
+                'fivePercentHoldersSongjiangMaTotalCses',
+              ],
+            ]);
+            return [
+              { key: 'fivePercentHoldersGniCommonStock', value: 1 },
+              { key: 'fivePercentHoldersGniTotalCses', value: 2 },
+            ] as unknown as T[];
+          },
         },
-        async query<T extends Record<string, unknown> = Record<string, unknown>>(_sql: string, params?: unknown[]): Promise<T[]> {
-          assert.deepEqual(params, [[
-            'fivePercentHoldersGniCommonStock',
-            'fivePercentHoldersGniTotalCses',
-            'fivePercentHoldersSongjiangMaCommonStock',
-            'fivePercentHoldersSongjiangMaTotalCses',
-          ]]);
-          return [
-            { key: 'fivePercentHoldersGniCommonStock', value: 1 },
-            { key: 'fivePercentHoldersGniTotalCses', value: 2 },
-          ] as unknown as T[];
+        {
+          async createRun() {
+            throw new Error('should not create run');
+          },
         },
-      },
-      {
-        async createRun() { throw new Error('should not create run'); },
-      },
-      { startAsync() { throw new Error('should not start run'); } },
-      'five-percent-holders',
-      { capitalization_summary: { fileId: 4 } },
-    ),
+        {
+          startAsync() {
+            throw new Error('should not start run');
+          },
+        },
+        'five-percent-holders',
+        { capitalization_summary: { fileId: 4 } },
+      ),
     /Missing 5% Holders fixed values: fivePercentHoldersSongjiangMaCommonStock, fivePercentHoldersSongjiangMaTotalCses/,
   );
 });
@@ -101,27 +123,34 @@ test('5% Holders workflow ignores system-generated fixed values', async () => {
     runtime_params_defaults_json: '{}',
   };
   await assert.rejects(
-    () => startDataManagementWorkflow(
-      {
-        async queryOne() {
-          return workflow;
+    () =>
+      startDataManagementWorkflow(
+        {
+          async queryOne() {
+            return workflow;
+          },
+          async query<T extends Record<string, unknown> = Record<string, unknown>>(): Promise<T[]> {
+            return [
+              { key: 'fivePercentHoldersGniCommonStock', value: 11, updated_by: 'system' },
+              { key: 'fivePercentHoldersGniTotalCses', value: 12, updated_by: 'system' },
+              { key: 'fivePercentHoldersSongjiangMaCommonStock', value: 13, updated_by: 'system' },
+              { key: 'fivePercentHoldersSongjiangMaTotalCses', value: 14, updated_by: 'system' },
+            ] as unknown as T[];
+          },
         },
-        async query<T extends Record<string, unknown> = Record<string, unknown>>(): Promise<T[]> {
-          return [
-            { key: 'fivePercentHoldersGniCommonStock', value: 11, updated_by: 'system' },
-            { key: 'fivePercentHoldersGniTotalCses', value: 12, updated_by: 'system' },
-            { key: 'fivePercentHoldersSongjiangMaCommonStock', value: 13, updated_by: 'system' },
-            { key: 'fivePercentHoldersSongjiangMaTotalCses', value: 14, updated_by: 'system' },
-          ] as unknown as T[];
+        {
+          async createRun() {
+            throw new Error('should not create run');
+          },
         },
-      },
-      {
-        async createRun() { throw new Error('should not create run'); },
-      },
-      { startAsync() { throw new Error('should not start run'); } },
-      'five-percent-holders',
-      { capitalization_summary: { fileId: 4 } },
-    ),
+        {
+          startAsync() {
+            throw new Error('should not start run');
+          },
+        },
+        'five-percent-holders',
+        { capitalization_summary: { fileId: 4 } },
+      ),
     /Missing 5% Holders fixed values/,
   );
 });
@@ -162,12 +191,14 @@ test('5% Holders workflow passes all global fixed values as runtime parameters',
       },
       async query(sql: string, params?: unknown[]) {
         if (sql.includes('global_parameters')) {
-          assert.deepEqual(params, [[
-            'fivePercentHoldersGniCommonStock',
-            'fivePercentHoldersGniTotalCses',
-            'fivePercentHoldersSongjiangMaCommonStock',
-            'fivePercentHoldersSongjiangMaTotalCses',
-          ]]);
+          assert.deepEqual(params, [
+            [
+              'fivePercentHoldersGniCommonStock',
+              'fivePercentHoldersGniTotalCses',
+              'fivePercentHoldersSongjiangMaCommonStock',
+              'fivePercentHoldersSongjiangMaTotalCses',
+            ],
+          ]);
           return [
             { key: 'fivePercentHoldersGniCommonStock', value: 11 },
             { key: 'fivePercentHoldersGniTotalCses', value: 12 },
@@ -181,9 +212,16 @@ test('5% Holders workflow passes all global fixed values as runtime parameters',
       },
     },
     {
-      async createRun(input) { calls.push(input); return fakeRun; },
+      async createRun(input) {
+        calls.push(input);
+        return fakeRun;
+      },
     },
-    { startAsync(runId) { assert.equal(runId, 92); } },
+    {
+      startAsync(runId) {
+        assert.equal(runId, 92);
+      },
+    },
     'five-percent-holders',
     { capitalization_summary: { fileId: 7 } },
   );

@@ -57,7 +57,11 @@ test('business service resolves workflow by stable code and starts a run', async
         return fakeRun;
       },
     },
-    { startAsync(runId) { assert.equal(runId, 88); } },
+    {
+      startAsync(runId) {
+        assert.equal(runId, 88);
+      },
+    },
     'exercise-record',
     { futu_exercises: { fileId: 17 } },
   );
@@ -68,5 +72,8 @@ test('business service resolves workflow by stable code and starts a run', async
   assert.deepEqual(calls[0]?.runtimeParameters, {
     fileRefs: { futu_exercises: { provider: 'product-files', key: 'input/2026-05/exercises.xlsx' } },
   });
-  assert.deepEqual(calls[0]?.tasks[0]?.params.fileRef, { provider: 'product-files', key: 'input/2026-05/exercises.xlsx' });
+  assert.deepEqual(calls[0]?.tasks[0]?.params.fileRef, {
+    provider: 'product-files',
+    key: 'input/2026-05/exercises.xlsx',
+  });
 });

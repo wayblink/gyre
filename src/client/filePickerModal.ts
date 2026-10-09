@@ -193,9 +193,11 @@ export function createFilePickerModal({
     const children = collapsed
       ? ''
       : [
-        ...Array.from(node.children.values()).sort(compareTreeNode).map((child) => renderDirectory(child, depth + 1)),
-        ...[...node.files].sort(compareProductFile).map((file) => renderFile(file, depth + 1)),
-      ].join('');
+          ...Array.from(node.children.values())
+            .sort(compareTreeNode)
+            .map((child) => renderDirectory(child, depth + 1)),
+          ...[...node.files].sort(compareProductFile).map((file) => renderFile(file, depth + 1)),
+        ].join('');
     return `
       <button
         class="workbook-tree__dir ${collapsed ? 'is-collapsed' : 'is-expanded'}"
@@ -242,7 +244,9 @@ export function createFilePickerModal({
     }
     const root = buildProductFilesTree(files, productFileLogicalTreePath);
     const content = [
-      ...Array.from(root.children.values()).sort(compareTreeNode).map((node) => renderDirectory(node, 0)),
+      ...Array.from(root.children.values())
+        .sort(compareTreeNode)
+        .map((node) => renderDirectory(node, 0)),
       ...[...root.files].sort(compareProductFile).map((file) => renderFile(file, 0)),
     ].join('');
     const emptyMessage = searchQuery ? tt('noSearchResults') : tt('empty');
@@ -362,9 +366,8 @@ export function createFilePickerModal({
       highlightedFileId = response.file.id;
       closeMovePanel();
       render();
-      const workflowsNote = response.rewrittenWorkflows > 0
-        ? `，${response.rewrittenWorkflows} ${tt('movedWorkflows')}`
-        : '';
+      const workflowsNote =
+        response.rewrittenWorkflows > 0 ? `，${response.rewrittenWorkflows} ${tt('movedWorkflows')}` : '';
       notify(`${tt('moved')}: ${response.file.displayPath}${workflowsNote}`, { type: 'success' });
     } catch (error) {
       setMoveError(error instanceof Error ? error.message : tt('moveFailed'));

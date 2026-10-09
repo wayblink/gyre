@@ -11,15 +11,23 @@ const uploadProgressSource = readFileSync(new URL('./uploadProgress.ts', import.
 const workbookViewerSource = readFileSync(new URL('./univer/createWorkbookViewer.ts', import.meta.url), 'utf8');
 const docsPageSource = readFileSync(new URL('./docsPage.ts', import.meta.url), 'utf8');
 const filePickerSource = readFileSync(new URL('./filePickerModal.ts', import.meta.url), 'utf8');
-const grantRecordWorkflow = JSON.parse(readFileSync(new URL('../../database/workflows/esop-grant-record-sync.json', import.meta.url), 'utf8')) as {
+const grantRecordWorkflow = JSON.parse(
+  readFileSync(new URL('../../database/workflows/esop-grant-record-sync.json', import.meta.url), 'utf8'),
+) as {
   version: number;
-  tasks: Array<{ id: string; params?: { sheetName?: string; headerRow?: number }; inputs?: Record<string, { guards?: Array<{ type?: string; params?: { expectedColumns?: string } }> }>; }>;
+  tasks: Array<{
+    id: string;
+    params?: { sheetName?: string; headerRow?: number };
+    inputs?: Record<string, { guards?: Array<{ type?: string; params?: { expectedColumns?: string } }> }>;
+  }>;
   runtimeParamsSchema: { fileRefs: { properties: Record<string, { label?: string }> } };
   runtimeParamsDefaults: { fileRefs: { shareworks_grants: { key: string } } };
 };
 
 function pageLabel(page: string): string {
-  const match = html.match(new RegExp(`<div class="nav-item[^"]*" data-page="${page}"[\\s\\S]*?<span class="nav-text">([^<]+)</span>`));
+  const match = html.match(
+    new RegExp(`<div class="nav-item[^"]*" data-page="${page}"[\\s\\S]*?<span class="nav-text">([^<]+)</span>`),
+  );
   return match?.[1]?.trim() ?? '';
 }
 
@@ -28,9 +36,7 @@ function pagePosition(page: string): number {
 }
 
 function pageSection(page: string, nextPage?: string): string {
-  const endPattern = nextPage
-    ? `id="page-${nextPage}"`
-    : '<section class="page-section" id="page-docs">';
+  const endPattern = nextPage ? `id="page-${nextPage}"` : '<section class="page-section" id="page-docs">';
   return html.match(new RegExp(`id="page-${page}"[\\s\\S]*?${endPattern}`))?.[0] ?? '';
 }
 
@@ -65,13 +71,22 @@ test('primary navigation follows the product menu layout before dev tools', () =
   );
 
   const positions = expectedPages.map((page) => pagePosition(page));
-  assert.equal(positions.every((position) => position >= 0), true);
-  assert.deepEqual([...positions].sort((a, b) => a - b), positions);
+  assert.equal(
+    positions.every((position) => position >= 0),
+    true,
+  );
+  assert.deepEqual(
+    [...positions].sort((a, b) => a - b),
+    positions,
+  );
 
   assert.equal(pagePosition('summary'), -1);
 
   const firstDevTool = Math.min(pagePosition('files'), pagePosition('workflow'));
-  assert.equal(positions.every((position) => position < firstDevTool), true);
+  assert.equal(
+    positions.every((position) => position < firstDevTool),
+    true,
+  );
 });
 
 test('captable is the renamed Summary page and new product pages have matching sections', () => {
@@ -146,21 +161,33 @@ test('workflow editor picks files through a tree picker that can upload and move
   assert.match(pickerModal, /id="btnConfirmWorkflowFilePicker"/);
 
   // The real select stays in the DOM (hidden) so the existing encode/decode + sync path keeps working.
-  const fileRow = html.match(/id="workflowStructuredFileRow"[\s\S]*?<\/div>\s*<div class="workflow-structured__row" id="workflowStructuredSheetRow"/)?.[0] ?? '';
+  const fileRow =
+    html.match(
+      /id="workflowStructuredFileRow"[\s\S]*?<\/div>\s*<div class="workflow-structured__row" id="workflowStructuredSheetRow"/,
+    )?.[0] ?? '';
   assert.match(fileRow, /<select id="workflowPreviewFileId" class="search-input workflow-select hidden">/);
   assert.match(fileRow, /id="workflowPreviewFilePickTrigger"/);
 
   assert.match(workflowPageSource, /createFilePickerModal\(/);
   assert.match(workflowPageSource, /data-file-pick-open/);
-  assert.match(workflowPageSource, /type="hidden" class="workflow-runtime-summary__control"[^`]*data-runtime-default-type="fileRef"/);
+  assert.match(
+    workflowPageSource,
+    /type="hidden" class="workflow-runtime-summary__control"[^`]*data-runtime-default-type="fileRef"/,
+  );
   assert.match(workflowPageSource, /control\.dispatchEvent\(new Event\('change', \{ bubbles: true \}\)\)/);
-  assert.match(filePickerModalSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
+  assert.match(
+    filePickerModalSource,
+    /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/,
+  );
   assert.match(filePickerModalSource, /\/api\/files\/\$\{file\.id\}\/move/);
 
   assert.match(css, /\.workflow-file-picker__tree\s*\{/);
   assert.match(css, /\.modal-container\.workflow-file-picker-modal\s*\{[\s\S]*height: min\(88vh, 940px\);/);
   assert.match(css, /\.workflow-runtime-summary__filepick-trigger\s*\{/);
-  assert.match(css, /\.workflow-operator-picker-modal,\s*\n\s*\.workflow-file-picker-modal,\s*\n\s*\.file-move-modal\s*\{/);
+  assert.match(
+    css,
+    /\.workflow-operator-picker-modal,\s*\n\s*\.workflow-file-picker-modal,\s*\n\s*\.file-move-modal\s*\{/,
+  );
 });
 
 test('files browser can move single files and selections to another folder', () => {
@@ -210,7 +237,10 @@ test('new product pages expose real data containers instead of placeholder-only 
   assert.doesNotMatch(employeePage, /id="employeesResultFileName"/);
   assert.doesNotMatch(employeePage, /Employee master records summarized from ESOP detail/);
   assert.match(employeePage, /id="filterEmployeesPageTag"[\s\S]*All Tags/);
-  assert.match(employeePage, /class="card-header"[\s\S]*class="btn btn-warning" id="btnManageEmployeeLabels"[\s\S]*data-workflow-update-page="employee-management"[\s\S]*id="btnAddEmployeesPage"[\s\S]*id="employeesPageTable"/);
+  assert.match(
+    employeePage,
+    /class="card-header"[\s\S]*class="btn btn-warning" id="btnManageEmployeeLabels"[\s\S]*data-workflow-update-page="employee-management"[\s\S]*id="btnAddEmployeesPage"[\s\S]*id="employeesPageTable"/,
+  );
   assert.match(employeePage, /名称或颜色变更会自动影响所有员工/);
   assert.match(employeePage, /id="employeeLabelsTable"/);
   assert.match(employeePage, /id="employeeLabelsBody"/);
@@ -225,7 +255,8 @@ test('new product pages expose real data containers instead of placeholder-only 
   assert.match(employeePage, /id="employeeLabelModal"/);
   assert.match(html, /id="page-plan-summary"[\s\S]*id="planSummaryBody"/);
   assert.match(html, /id="page-five-percent-holders"[\s\S]*id="fivePercentHoldersBody"/);
-  const monthlyRunPage = html.match(/id="page-monthlyrun"[\s\S]*?<div class="modal-overlay hidden" id="monthlyRunSourceModal"/)?.[0] ?? '';
+  const monthlyRunPage =
+    html.match(/id="page-monthlyrun"[\s\S]*?<div class="modal-overlay hidden" id="monthlyRunSourceModal"/)?.[0] ?? '';
   // Input Configuration is one flat table: no per-source-group sections or title bars.
   assert.match(monthlyRunPage, /<tbody id="monthlyRunSourcesBody"><\/tbody>/);
   assert.doesNotMatch(monthlyRunPage, /source-table-title/);
@@ -239,7 +270,10 @@ test('new product pages expose real data containers instead of placeholder-only 
 });
 
 test('file uploads use a shared visible progress dialog', () => {
-  const sourceActionSection = css.match(/\/\* ============ 27\. File Action Buttons \(Source Tables\) ============ \*\/[\s\S]*?\/\* ============================================================\s+Link Detail Modal - Table Styles \*\//)?.[0] ?? '';
+  const sourceActionSection =
+    css.match(
+      /\/\* ============ 27\. File Action Buttons \(Source Tables\) ============ \*\/[\s\S]*?\/\* ============================================================\s+Link Detail Modal - Table Styles \*\//,
+    )?.[0] ?? '';
 
   assert.match(html, /id="uploadProgressModal"[\s\S]*role="dialog"[\s\S]*id="uploadProgressTitle"/);
   assert.match(html, /id="uploadProgressBar"[^>]*role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"/);
@@ -256,12 +290,18 @@ test('file uploads use a shared visible progress dialog', () => {
   assert.match(uploadProgressSource, /new XMLHttpRequest\(\)/);
   assert.match(uploadProgressSource, /xhr\.upload\.onprogress/);
   assert.match(filesPageSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
-  assert.match(filesPageSource, /uploadFormDataWithProgress\(`\/api\/files\/\$\{currentProductFileDetail\.file\.id\}\/content`, form,/);
+  assert.match(
+    filesPageSource,
+    /uploadFormDataWithProgress\(`\/api\/files\/\$\{currentProductFileDetail\.file\.id\}\/content`, form,/,
+  );
   assert.match(filePickerSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
   // The transfer-plan page no longer owns a local file input (its import runs through the shared
   // workflow update modal), so main.ts itself must not grow an ad-hoc upload call site.
   assert.doesNotMatch(mainSource, /uploadFormDataWithProgress/);
-  assert.match(monthlyRunPageSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
+  assert.match(
+    monthlyRunPageSource,
+    /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/,
+  );
   assert.match(monthlyRunPageSource, /renderUploadedFileCell\(file\)/);
   assert.match(monthlyRunPageSource, /\.source-file-link\[data-source-file-preview\]/);
   assert.match(monthlyRunPageSource, /\.source-file-copy\[data-source-file-copy\]/);
@@ -291,7 +331,10 @@ test('monthly run uploaded time uses the yyyy-MM-dd HH:mm:ss format', () => {
     monthlyRunPageSource,
     /const day = `\$\{date\.getFullYear\(\)\}-\$\{pad\(date\.getMonth\(\) \+ 1\)\}-\$\{pad\(date\.getDate\(\)\)\}`/,
   );
-  assert.match(monthlyRunPageSource, /\$\{day\} \$\{pad\(date\.getHours\(\)\)\}:\$\{pad\(date\.getMinutes\(\)\)\}:\$\{pad\(date\.getSeconds\(\)\)\}/);
+  assert.match(
+    monthlyRunPageSource,
+    /\$\{day\} \$\{pad\(date\.getHours\(\)\)\}:\$\{pad\(date\.getMinutes\(\)\)\}:\$\{pad\(date\.getSeconds\(\)\)\}/,
+  );
   assert.doesNotMatch(monthlyRunPageSource, /formatCompactTimestamp/);
 });
 
@@ -325,7 +368,10 @@ test('Grant Record workflow uses the Shareworks source workbook contract', () =>
   assert.equal(extract?.params?.headerRow, 2);
   assert.match(schemaGuard?.params?.expectedColumns ?? '', /Employee Number/);
   assert.match(schemaGuard?.params?.expectedColumns ?? '', /Shares Outstanding/);
-  assert.match(grantRecordWorkflow.runtimeParamsSchema.fileRefs.properties.shareworks_grants.label ?? '', /source workbook/i);
+  assert.match(
+    grantRecordWorkflow.runtimeParamsSchema.fileRefs.properties.shareworks_grants.label ?? '',
+    /source workbook/i,
+  );
   assert.match(grantRecordWorkflow.runtimeParamsDefaults.fileRefs.shareworks_grants.key, /2026\/06-26\//);
 });
 
@@ -432,7 +478,10 @@ test('Exercise Record exposes Futu / Shareworks / Merge source tabs like Grant R
   assert.match(serverSource, /taskId: 'persist_exercise_record_shareworks_file'/);
 
   // Workflow definition (DB-owned, exported to seed JSON) carries the Shareworks source + tasks.
-  const exerciseSeed = readFileSync(new URL('../../database/workflows/esop-exercise-record-sync.json', import.meta.url), 'utf8');
+  const exerciseSeed = readFileSync(
+    new URL('../../database/workflows/esop-exercise-record-sync.json', import.meta.url),
+    'utf8',
+  );
   assert.match(exerciseSeed, /"shareworks_exercises"/);
   assert.match(exerciseSeed, /"extract_shareworks_exec"/);
   assert.match(exerciseSeed, /"persist_exercise_record_shareworks_file"/);
@@ -464,7 +513,10 @@ test('Sold Shares exposes file-backed filters, nineteen-column table, and pagina
 });
 
 test('Sold Shares workflow reads the Futu source workbook summary sheet', () => {
-  const soldSharesWorkflow = readFileSync(new URL('../../database/workflows/esop-sold-shares-sync.json', import.meta.url), 'utf8');
+  const soldSharesWorkflow = readFileSync(
+    new URL('../../database/workflows/esop-sold-shares-sync.json', import.meta.url),
+    'utf8',
+  );
 
   assert.match(soldSharesWorkflow, /"version": 2/);
   assert.match(soldSharesWorkflow, /"sheetName": "出售汇总数据"/);
@@ -489,25 +541,28 @@ test('Transfer to Futu exposes file-backed monthly summary, cancellation editing
   assert.doesNotMatch(transferPage, /id="btnExportTransferPlan"/);
   assert.doesNotMatch(transferPage, /id="transferPlanFileInput"/);
   assert.match(transferPage, /id="btnToggleTransferPlanTableView"[\s\S]*<svg/);
-  assert.match(transferPage, /id="btnToggleTransferPlanTableView"[\s\S]*<rect x="6" y="3" width="8" height="14" rx="2"/);
+  assert.match(
+    transferPage,
+    /id="btnToggleTransferPlanTableView"[\s\S]*<rect x="6" y="3" width="8" height="14" rx="2"/,
+  );
   assert.match(transferPage, /id="btnToggleTransferPlanTableView"[\s\S]*v-3\.1h3\.1/);
-  assert.match(mainSource, /\[data-workflow-update-page="transfer-plan"\], \[data-workflow-export-page="transfer-plan"\]/);
+  assert.match(
+    mainSource,
+    /\[data-workflow-update-page="transfer-plan"\], \[data-workflow-export-page="transfer-plan"\]/,
+  );
   assert.match(mainSource, /button\.classList\.toggle\('hidden', transferPlanEditMode\)/);
 });
 
 test('workflow-backed product pages expose update actions and shared update modal', () => {
-  for (const page of [
-    'grant-record',
-    'exercise-record',
-    'sold-shares',
-    'transfer-plan',
-    'five-percent-holders',
-  ]) {
+  for (const page of ['grant-record', 'exercise-record', 'sold-shares', 'transfer-plan', 'five-percent-holders']) {
     assert.match(html, new RegExp(`data-workflow-update-page="${page}"`));
     assert.match(html, new RegExp(`data-workflow-export-page="${page}"`));
   }
   assert.match(html, /id="page-employee-management"[\s\S]*data-workflow-update-page="employee-management"/);
-  assert.doesNotMatch(html.match(/id="page-employee-management"[\s\S]*?id="page-plan-summary"/)?.[0] ?? '', /data-workflow-export-page="employee-management"/);
+  assert.doesNotMatch(
+    html.match(/id="page-employee-management"[\s\S]*?id="page-plan-summary"/)?.[0] ?? '',
+    /data-workflow-export-page="employee-management"/,
+  );
 
   assert.match(html, /id="workflowUpdateModal"/);
   assert.match(html, /id="workflowUpdateModalTitle"/);
@@ -515,7 +570,10 @@ test('workflow-backed product pages expose update actions and shared update moda
   assert.match(html, /id="workflowUpdateSourceList"/);
   assert.match(html, /id="workflowUpdateStatus"/);
   assert.match(html, /id="workflowUpdateProgress"/);
-  assert.match(html, /id="workflowUpdateProgressBar"[^>]*role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"/);
+  assert.match(
+    html,
+    /id="workflowUpdateProgressBar"[^>]*role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"/,
+  );
   assert.match(html, /id="btnCancelWorkflowUpdateModal"/);
   assert.match(html, /id="btnConfirmWorkflowUpdate"/);
 });
@@ -558,8 +616,14 @@ test('workflow update modal gives the sheet input the shared form-control struct
 
 test('plan summary update modal explains the non-zero Outstanding filter', () => {
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
-  const workflowSource = readFileSync(new URL('../../database/workflows/plan-summary-sync.json', import.meta.url), 'utf8');
-  const optionSummarySource = readFileSync(new URL('../../database/workflows/option-plans-summary-values.json', import.meta.url), 'utf8');
+  const workflowSource = readFileSync(
+    new URL('../../database/workflows/plan-summary-sync.json', import.meta.url),
+    'utf8',
+  );
+  const optionSummarySource = readFileSync(
+    new URL('../../database/workflows/option-plans-summary-values.json', import.meta.url),
+    'utf8',
+  );
 
   assert.match(mainSource, /only plans with non-zero Outstanding are shown/);
   assert.match(mainSource, /仅显示 Outstanding 不为 0 的计划/);
@@ -600,11 +664,16 @@ test('workflow update and export actions live in table card headers, not hero fi
     assert.doesNotMatch(heroMetrics, new RegExp(`data-workflow-update-page="${page}"`));
     assert.doesNotMatch(heroMetrics, new RegExp(`data-workflow-export-page="${page}"`));
     if (page === 'plan-summary') {
-      assert.match(section, /card-header-actions product-table-actions[\s\S]*id="btnOpenMonthlyUpdateFromPlanSummary"[\s\S]*data-workflow-export-page="plan-summary"/);
+      assert.match(
+        section,
+        /card-header-actions product-table-actions[\s\S]*id="btnOpenMonthlyUpdateFromPlanSummary"[\s\S]*data-workflow-export-page="plan-summary"/,
+      );
     } else {
       assert.match(
         section,
-        new RegExp(`(?:card-header-actions product-table-actions|transfer-plan-actions)[\\s\\S]*data-workflow-update-page="${page}"[\\s\\S]*data-workflow-export-page="${page}"`),
+        new RegExp(
+          `(?:card-header-actions product-table-actions|transfer-plan-actions)[\\s\\S]*data-workflow-update-page="${page}"[\\s\\S]*data-workflow-export-page="${page}"`,
+        ),
       );
     }
   }
@@ -620,10 +689,22 @@ test('workflow update and export actions live in table card headers, not hero fi
 
 test('ESOP Detail hero cards link to their corresponding pages', () => {
   const esopDetailPage = pageSection('esop-detail', 'grant-record');
-  assert.match(esopDetailPage, /<a class="product-card product-card--link" href="\/grant-record" aria-label="进入授予记录页面">/);
-  assert.match(esopDetailPage, /<a class="product-card product-card--link" href="\/exercise-record" aria-label="进入行权记录页面">/);
-  assert.match(esopDetailPage, /<a class="product-card product-card--link" href="\/sold-shares" aria-label="进入卖出记录页面">/);
-  assert.match(esopDetailPage, /<a class="product-card product-card--link" href="\/transfer-plan" aria-label="进入 2025 年计划页面">/);
+  assert.match(
+    esopDetailPage,
+    /<a class="product-card product-card--link" href="\/grant-record" aria-label="进入授予记录页面">/,
+  );
+  assert.match(
+    esopDetailPage,
+    /<a class="product-card product-card--link" href="\/exercise-record" aria-label="进入行权记录页面">/,
+  );
+  assert.match(
+    esopDetailPage,
+    /<a class="product-card product-card--link" href="\/sold-shares" aria-label="进入卖出记录页面">/,
+  );
+  assert.match(
+    esopDetailPage,
+    /<a class="product-card product-card--link" href="\/transfer-plan" aria-label="进入 2025 年计划页面">/,
+  );
 });
 
 test('monthly update page keeps create action in the plan table header without month search controls', () => {
@@ -635,9 +716,15 @@ test('monthly update page keeps create action in the plan table header without m
 
 test('CapTable ownership summary exposes an Update button that links to Monthly Update', () => {
   const captablePage = pageSection('captable', 'monthly');
-  const ownershipSummaryCard = captablePage.match(/<div class="card">\s*<div class="card-header">[\s\S]*?股权结构汇总[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? '';
+  const ownershipSummaryCard =
+    captablePage.match(
+      /<div class="card">\s*<div class="card-header">[\s\S]*?股权结构汇总[\s\S]*?<\/div>\s*<\/div>/,
+    )?.[0] ?? '';
   assert.match(ownershipSummaryCard, /id="btnOpenMonthlyUpdateFromCapTable"/);
-  assert.match(ownershipSummaryCard, /<button class="btn btn-primary btn-sm" id="btnOpenMonthlyUpdateFromCapTable" type="button">[\s\S]*Update[\s\S]*<\/button>/);
+  assert.match(
+    ownershipSummaryCard,
+    /<button class="btn btn-primary btn-sm" id="btnOpenMonthlyUpdateFromCapTable" type="button">[\s\S]*Update[\s\S]*<\/button>/,
+  );
   assert.doesNotMatch(ownershipSummaryCard, /data-workflow-update-page=/);
 });
 
@@ -669,8 +756,14 @@ test('workflow runtime parameter controls are synchronized before save and execu
   const workflowSource = readFileSync(new URL('./workflowPage.ts', import.meta.url), 'utf8');
 
   assert.match(workflowSource, /function syncVisibleRuntimeDefaultsToWorkflow\(workflow: WorkflowDefinition\)/);
-  assert.match(workflowSource, /async function executeWorkflow\(\)[\s\S]*?syncVisibleRuntimeDefaultsToWorkflow\(workflow\);[\s\S]*?persistWorkflowDefinition\(workflow/);
-  assert.match(workflowSource, /async function saveWorkflow\(\)[\s\S]*?workflow\.name = name;[\s\S]*?syncVisibleRuntimeDefaultsToWorkflow\(workflow\);/);
+  assert.match(
+    workflowSource,
+    /async function executeWorkflow\(\)[\s\S]*?syncVisibleRuntimeDefaultsToWorkflow\(workflow\);[\s\S]*?persistWorkflowDefinition\(workflow/,
+  );
+  assert.match(
+    workflowSource,
+    /async function saveWorkflow\(\)[\s\S]*?workflow\.name = name;[\s\S]*?syncVisibleRuntimeDefaultsToWorkflow\(workflow\);/,
+  );
   assert.match(workflowSource, /const sameFile = existing\.key === nextFileKey/);
   assert.match(workflowSource, /\.\.\.\(sameFile \? existing : \{\}\)/);
   assert.match(workflowSource, /expectedUpdatedAt: workflow\.updatedAt/);
@@ -788,7 +881,10 @@ test('Files and Workflow use flex-propagated viewport height instead of fixed vi
   assert.match(css, /body\s*\{[\s\S]*height:\s*100dvh;/);
   assert.match(css, /\.app-container\s*\{[\s\S]*height:\s*100dvh;/);
   assert.match(css, /\.main-content\s*\{[\s\S]*height:\s*100dvh;/);
-  assert.match(css, /\.page-container:has\(#page-files\.page-section\.active\),\s*\.page-container:has\(#page-workflow\.page-section\.active\)\s*\{[\s\S]*overflow:\s*hidden;/);
+  assert.match(
+    css,
+    /\.page-container:has\(#page-files\.page-section\.active\),\s*\.page-container:has\(#page-workflow\.page-section\.active\)\s*\{[\s\S]*overflow:\s*hidden;/,
+  );
   assert.doesNotMatch(css, /--workflow-panel-height/);
   assert.match(css, /\.workflow-page\s*\{[\s\S]*height:\s*100%;/);
   assert.match(css, /\.workflow-sidebar,\s*\.workflow-canvas,\s*\.workflow-inspector\s*\{[\s\S]*height:\s*100%;/);
@@ -836,34 +932,26 @@ test('result file labels are exposed only for monthly output pages', () => {
 });
 
 test('workflow update and export actions include svg icons and stable labels', () => {
-  for (const page of [
-    'grant-record',
-    'exercise-record',
-    'sold-shares',
-    'transfer-plan',
-    'five-percent-holders',
-  ]) {
+  for (const page of ['grant-record', 'exercise-record', 'sold-shares', 'transfer-plan', 'five-percent-holders']) {
     assert.match(
       html,
-      new RegExp(`data-workflow-update-page="${page}"[\\s\\S]*?<svg[\\s\\S]*?<span data-workflow-action-label>Update</span>`),
+      new RegExp(
+        `data-workflow-update-page="${page}"[\\s\\S]*?<svg[\\s\\S]*?<span data-workflow-action-label>Update</span>`,
+      ),
     );
     assert.match(
       html,
-      new RegExp(`data-workflow-export-page="${page}"[\\s\\S]*?<svg[\\s\\S]*?<span data-workflow-action-label>Export</span>`),
+      new RegExp(
+        `data-workflow-export-page="${page}"[\\s\\S]*?<svg[\\s\\S]*?<span data-workflow-action-label>Export</span>`,
+      ),
     );
   }
   assert.match(
     html,
     /data-workflow-update-page="employee-management"[\s\S]*?<svg[\s\S]*?<span data-workflow-action-label>Update<\/span>/,
   );
-  assert.match(
-    html,
-    /id="btnManageEmployeeLabels"[\s\S]*?<svg[\s\S]*?<span>标签管理<\/span>/,
-  );
-  assert.match(
-    html,
-    /id="btnAddEmployeesPage"[\s\S]*?<svg[\s\S]*?<span>New Employee<\/span>/,
-  );
+  assert.match(html, /id="btnManageEmployeeLabels"[\s\S]*?<svg[\s\S]*?<span>标签管理<\/span>/);
+  assert.match(html, /id="btnAddEmployeesPage"[\s\S]*?<svg[\s\S]*?<span>New Employee<\/span>/);
 });
 
 test('Employee Management update runs the employee data-management workflow and exposes failures', () => {
@@ -906,7 +994,10 @@ test('5% Holders edit mode exposes localized Confirm & Run and Cancel actions', 
   assert.match(mainSource, /setButtonLabel\('btnCancelFivePercentHoldersEdit', t\('cancel'\)\)/);
   assert.match(mainSource, /function cancelFivePercentHoldersEdit\(\)/);
   assert.match(mainSource, /fivePercentHoldersEditMode = false;\s*await renderFivePercentHoldersPage\(\);/);
-  assert.match(mainSource, /btnCancelFivePercentHoldersEdit'\)\.addEventListener\('click', \(\) => void cancelFivePercentHoldersEdit\(\)\)/);
+  assert.match(
+    mainSource,
+    /btnCancelFivePercentHoldersEdit'\)\.addEventListener\('click', \(\) => void cancelFivePercentHoldersEdit\(\)\)/,
+  );
 });
 
 test('Global Parameter editing uses the application modal instead of a browser prompt', () => {
@@ -920,7 +1011,8 @@ test('Global Parameter editing uses the application modal instead of a browser p
   assert.doesNotMatch(fixedValueSection, /id="fixedValueEditEffectiveFrom"/);
   assert.match(fixedValueSection, /id="btnSubmitFixedValueEdit"/);
   assert.match(fixedValueSection, /data-close="fixedValueEditModal"/);
-  const fixedValueEditSource = mainSource.match(/async function editFixedValue[\s\S]*?function openFixedValueModal/)?.[0] ?? '';
+  const fixedValueEditSource =
+    mainSource.match(/async function editFixedValue[\s\S]*?function openFixedValueModal/)?.[0] ?? '';
   assert.doesNotMatch(fixedValueEditSource, /\bprompt\(/);
   assert.match(mainSource, /let editingFixedValueId: number \| null = null;/);
   assert.match(mainSource, /function openFixedValueEditModal\(item: FixedValueRecord\)/);
@@ -931,7 +1023,10 @@ test('Global Parameter editing uses the application modal instead of a browser p
   assert.match(mainSource, /el\('fixedValueEditModal'\)\.classList\.remove\('hidden'\)/);
   assert.match(mainSource, /async function saveFixedValueEdit\(\)/);
   assert.match(mainSource, /`\/api\/global-parameters\/\$\{editingFixedValueId\}`/);
-  assert.match(mainSource, /btnSubmitFixedValueEdit'\)\.addEventListener\('click', \(\) => void saveFixedValueEdit\(\)\)/);
+  assert.match(
+    mainSource,
+    /btnSubmitFixedValueEdit'\)\.addEventListener\('click', \(\) => void saveFixedValueEdit\(\)\)/,
+  );
 });
 
 test('page size selectors survive language switches because only the label text is translated', () => {

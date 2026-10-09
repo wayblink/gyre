@@ -15,18 +15,21 @@ test('monthly input sources render in the order the workflow definition declares
   const sources = monthlySourcesFromSchemaOrdered(monthlyWorkflowSchema());
   const visible = sources.filter((source) => !source.hidden);
 
-  assert.deepEqual(visible.map((source) => source.label), [
-    'Control Book Summary',
-    'Control Book Detail update',
-    'SERIES B Control Book',
-    'Gyre Option Plans Summary SL',
-    'Futu Exercises Summary',
-    'Futu Exercise Monthly Update',
-    '2025 BC Subplan Transfer',
-    'Previous Capitalization Summary',
-    'Cancel & Restore Summary',
-    'Cancel & Restore Detail',
-  ]);
+  assert.deepEqual(
+    visible.map((source) => source.label),
+    [
+      'Control Book Summary',
+      'Control Book Detail update',
+      'SERIES B Control Book',
+      'Gyre Option Plans Summary SL',
+      'Futu Exercises Summary',
+      'Futu Exercise Monthly Update',
+      '2025 BC Subplan Transfer',
+      'Previous Capitalization Summary',
+      'Cancel & Restore Summary',
+      'Cancel & Restore Detail',
+    ],
+  );
 
   // jsonb does not preserve key order, so a repeated `order` makes the rendered row order
   // arbitrary. Every source must carry a distinct order value.
@@ -82,31 +85,45 @@ test('2025 BC Subplan transfer remains as an optional compatibility input source
   assert.equal(transfer?.hidden, false);
   assert.equal(transfer?.order, 7);
 
-  const workflow = JSON.parse(readFileSync(
-    path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'),
-    'utf8',
-  )) as { tasks: Array<Record<string, unknown>> };
-  assert.equal(workflow.tasks.some((candidate) => candidate.id === 'extract_bc_subplan_transfer'), true);
-  assert.equal(workflow.tasks.some((candidate) => candidate.id === 'calc_bc_subplan_cancelled'), true);
-  const controlMetrics = workflow.tasks.find((candidate) => candidate.id === 'calc_control_book_metrics') as { params?: { sql?: string } } | undefined;
+  const workflow = JSON.parse(
+    readFileSync(path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'), 'utf8'),
+  ) as { tasks: Array<Record<string, unknown>> };
+  assert.equal(
+    workflow.tasks.some((candidate) => candidate.id === 'extract_bc_subplan_transfer'),
+    true,
+  );
+  assert.equal(
+    workflow.tasks.some((candidate) => candidate.id === 'calc_bc_subplan_cancelled'),
+    true,
+  );
+  const controlMetrics = workflow.tasks.find((candidate) => candidate.id === 'calc_control_book_metrics') as
+    { params?: { sql?: string } } | undefined;
   assert.match(controlMetrics?.params?.sql ?? '', /Omnibus Inc\. Pl/);
   assert.match(controlMetrics?.params?.sql ?? '', /bc_subplan_transfer_control_book/);
-  const optionMetrics = workflow.tasks.find((candidate) => candidate.id === 'calc_option_metrics') as { inputs?: unknown; params?: { sql?: string } } | undefined;
+  const optionMetrics = workflow.tasks.find((candidate) => candidate.id === 'calc_option_metrics') as
+    { inputs?: unknown; params?: { sql?: string } } | undefined;
   assert.equal(JSON.stringify(optionMetrics?.inputs ?? {}).includes('bc_subplan'), true);
   assert.match(optionMetrics?.params?.sql ?? '', /bc_subplan_cancelled_adjustment/);
 });
 
 test('CapTable workflow derives Series B Preferred Stock from the Read SERIES B child workflow', () => {
-  const workflow = JSON.parse(readFileSync(
-    path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'),
-    'utf8',
-  )) as { version: number; runtimeParamsSchema: Record<string, any>; runtimeParamsDefaults: Record<string, any>; tasks: Array<Record<string, any>> };
+  const workflow = JSON.parse(
+    readFileSync(path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'), 'utf8'),
+  ) as {
+    version: number;
+    runtimeParamsSchema: Record<string, any>;
+    runtimeParamsDefaults: Record<string, any>;
+    tasks: Array<Record<string, any>>;
+  };
   assert.ok(workflow.version >= 12);
   assert.equal(workflow.runtimeParamsSchema.monthUnderscore.type, 'string');
   const planSummaryInvoke = workflow.tasks.find((task) => task.id === 'invoke_plan_summary_sync');
   assert.equal(planSummaryInvoke?.operatorCode, 'workflow.invoke');
   assert.equal(planSummaryInvoke?.params?.workflowCode, 'plan-summary-sync');
-  assert.equal(workflow.tasks.some((task) => task.id === 'aggregate_plan_summary' || task.id === 'persist_plan_summary'), false);
+  assert.equal(
+    workflow.tasks.some((task) => task.id === 'aggregate_plan_summary' || task.id === 'persist_plan_summary'),
+    false,
+  );
   assert.equal(workflow.runtimeParamsSchema.fixedValues.properties.seriesBPreferredStock, undefined);
   assert.equal(workflow.runtimeParamsDefaults.fixedValues?.seriesBPreferredStock, undefined);
   const businessInputs = workflow.tasks.find((task) => task.id === 'calc_business_inputs');
@@ -119,10 +136,9 @@ test('CapTable workflow derives Series B Preferred Stock from the Read SERIES B 
 });
 
 test('Plan Summary overrides BC Subplan Cancelled from the dated cancel/restore report', () => {
-  const workflow = JSON.parse(readFileSync(
-    path.join(process.cwd(), 'database', 'workflows', 'plan-summary-sync.json'),
-    'utf8',
-  )) as { version: number; tasks: Array<Record<string, any>> };
+  const workflow = JSON.parse(
+    readFileSync(path.join(process.cwd(), 'database', 'workflows', 'plan-summary-sync.json'), 'utf8'),
+  ) as { version: number; tasks: Array<Record<string, any>> };
   assert.ok(workflow.version >= 3);
   const readReport = workflow.tasks.find((task) => task.id === 'invoke_cancel_restore_report');
   assert.equal(readReport?.operatorCode, 'workflow.invoke');
@@ -140,10 +156,12 @@ test('Plan Summary overrides BC Subplan Cancelled from the dated cancel/restore 
 });
 
 test('Cancel and restore merge keeps all rows and defers month filtering to Plan Summary', () => {
-  const workflow = JSON.parse(readFileSync(
-    path.join(process.cwd(), 'database', 'workflows', 'gyre-therapeutics-cancel-restore-incremental-merge.json'),
-    'utf8',
-  )) as { tasks: Array<Record<string, any>> };
+  const workflow = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), 'database', 'workflows', 'gyre-therapeutics-cancel-restore-incremental-merge.json'),
+      'utf8',
+    ),
+  ) as { tasks: Array<Record<string, any>> };
   const project = workflow.tasks.find((task) => task.id === 'project_incremental_cancel_restore_report');
   assert.doesNotMatch(project?.params?.sql ?? '', /wf_month_key/);
   assert.match(project?.params?.sql ?? '', /创建编号/);

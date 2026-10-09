@@ -25,7 +25,11 @@ function renderCancelledCell(item: TransferPlanPeriod, deps: RenderDeps, editabl
     >`;
 }
 
-function renderSummaryRowsTable(data: TransferPlanResponse, deps: RenderDeps, editable: boolean): TransferPlanTableHtml {
+function renderSummaryRowsTable(
+  data: TransferPlanResponse,
+  deps: RenderDeps,
+  editable: boolean,
+): TransferPlanTableHtml {
   return {
     headHtml: `
       <tr>

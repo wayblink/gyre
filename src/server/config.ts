@@ -21,7 +21,8 @@ export const config = {
   minioBucket: process.env.MINIO_BUCKET ?? 'captable-files',
   sessionCookieName: process.env.SESSION_COOKIE_NAME ?? 'captable_session',
   sessionTtlHours: Number(process.env.SESSION_TTL_HOURS ?? 24 * 7),
-  sessionCookieSecure: (process.env.SESSION_COOKIE_SECURE ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true',
+  sessionCookieSecure:
+    (process.env.SESSION_COOKIE_SECURE ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true',
   authBootstrapSecret: process.env.AUTH_BOOTSTRAP_SECRET ?? '',
   // Fail-secure default: authentication stays ON unless a deployment explicitly opts out with
   // AUTH_DISABLED=true (local dev only). Images/containers must never ship with this unset.

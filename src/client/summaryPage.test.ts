@@ -21,7 +21,10 @@ test('month options sort newest first and distinguish months with data', () => {
     { month: '2026-06', hasData: true },
     { month: '2026-05', hasData: true },
   ]);
-  assert.deepEqual(months.map((item) => item.month), ['2026-06', '2026-05', '2026-04']);
+  assert.deepEqual(
+    months.map((item) => item.month),
+    ['2026-06', '2026-05', '2026-04'],
+  );
   assert.equal(monthAvailabilityLabel(months[0]), '2026-06 · 有数据');
   assert.equal(monthAvailabilityLabel(months[2]), '2026-04 · 暂无数据');
 });
@@ -36,28 +39,33 @@ test('legacy Captable snapshots receive the configured Series B row and updated 
   const result = normalizeCapitalizationRows(rows, 20);
   const seriesB = result.find((row) => row.description === 'Series B Preferred Stock');
   const total = result.find((row) => row.description.startsWith('Total Fully Diluted'));
-  assert.deepEqual(seriesB, { type: 'data', number: '6', description: 'Series B Preferred Stock', shares: 20, percent: 20 / 120 });
+  assert.deepEqual(seriesB, {
+    type: 'data',
+    number: '6',
+    description: 'Series B Preferred Stock',
+    shares: 20,
+    percent: 20 / 120,
+  });
   assert.equal(result.find((row) => row.description === 'Options Outstanding- Gyre')?.number, '7');
   assert.equal(total?.shares, 120);
   assert.equal(result.find((row) => row.description === 'Common Shares OS')?.percent, 90 / 120);
 });
 
 test('new Captable snapshots do not duplicate Series B', () => {
-  const rows: CapitalizationRow[] = [{ type: 'data', number: '6', description: 'Series B Preferred Stock', shares: 20, percent: 1 }];
+  const rows: CapitalizationRow[] = [
+    { type: 'data', number: '6', description: 'Series B Preferred Stock', shares: 20, percent: 1 },
+  ];
   assert.deepEqual(normalizeCapitalizationRows(rows, 18_486_180), rows);
 });
 
 test('CapTable defaults to the month of the latest successful monthly output', () => {
   assert.equal(
-    resolveDefaultSummaryMonth(
-      ['2026-06', '2026-05'],
-      {
-        monthKey: '2026-05',
-        fileId: 9,
-        fileName: 'latest-result.xlsx',
-        finishedAt: '2026-07-13T10:00:00.000Z',
-      },
-    ),
+    resolveDefaultSummaryMonth(['2026-06', '2026-05'], {
+      monthKey: '2026-05',
+      fileId: 9,
+      fileName: 'latest-result.xlsx',
+      finishedAt: '2026-07-13T10:00:00.000Z',
+    }),
     '2026-05',
   );
 });
@@ -134,28 +142,57 @@ test('row deltas compare shares and normalized percentages together', () => {
   const previous: CapitalizationRow[] = [
     { type: 'cat-sub-label', description: 'Asset Class Summary: EOM', shares: 111_488_849, percent: null },
     { type: 'data', number: '1', description: 'Common Shares OS', shares: 91_466_284, percent: 0.6848553887478952 },
-    { type: 'data', number: '2', description: 'Cullgen common stock', shares: 14_450_527, percent: 0.10819857168568207 },
-    { type: 'data', number: '9', description: 'Options Available- Cullgen', shares: 10_994, percent: 0.00008231776578891473 },
+    {
+      type: 'data',
+      number: '2',
+      description: 'Cullgen common stock',
+      shares: 14_450_527,
+      percent: 0.10819857168568207,
+    },
+    {
+      type: 'data',
+      number: '9',
+      description: 'Options Available- Cullgen',
+      shares: 10_994,
+      percent: 0.00008231776578891473,
+    },
   ];
   const index = indexCapitalizationRows(previous);
   const deltasFor = (row: CapitalizationRow) => computeCapitalizationRowDeltas(row, findComparableRow(index, row));
 
   // Shares up while the share of fully diluted goes down.
-  const commonShares = deltasFor({ type: 'data', number: '1', description: 'Common Shares OS', shares: 91_529_389, percent: 0.6646424961597269 });
+  const commonShares = deltasFor({
+    type: 'data',
+    number: '1',
+    description: 'Common Shares OS',
+    shares: 91_529_389,
+    percent: 0.6646424961597269,
+  });
   assert.equal(commonShares.shares.direction, 'up');
   assert.equal(commonShares.shares.text, '+63,105');
   assert.equal(commonShares.percent.direction, 'down');
   assert.equal(commonShares.percent.text, '-2.02%');
 
   // Unchanged shares still shift as a percentage of the bigger denominator.
-  const cullgen = deltasFor({ type: 'data', number: '2', description: 'Cullgen common stock', shares: 14_450_527, percent: 0.10493279198120213 });
+  const cullgen = deltasFor({
+    type: 'data',
+    number: '2',
+    description: 'Cullgen common stock',
+    shares: 14_450_527,
+    percent: 0.10493279198120213,
+  });
   assert.equal(cullgen.shares.direction, 'flat');
   assert.equal(cullgen.shares.text, '');
   assert.equal(cullgen.percent.direction, 'down');
   assert.equal(cullgen.percent.text, '-0.33%');
 
   // Sub-label rows only compare shares.
-  const subLabel = deltasFor({ type: 'cat-sub-label', description: 'Asset Class Summary: EOM', shares: 111_509_849, percent: null });
+  const subLabel = deltasFor({
+    type: 'cat-sub-label',
+    description: 'Asset Class Summary: EOM',
+    shares: 111_509_849,
+    percent: null,
+  });
   assert.equal(subLabel.shares.text, '+21,000');
   assert.equal(subLabel.percent.direction, 'none');
 

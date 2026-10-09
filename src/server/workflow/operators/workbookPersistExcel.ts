@@ -29,7 +29,9 @@ function timestampVersionTag(date = new Date()): string {
 }
 
 function isOutputFolder(folderPrefix: unknown): boolean {
-  const normalized = String(folderPrefix ?? '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const normalized = String(folderPrefix ?? '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '');
   return normalized === 'output' || normalized.startsWith('output/');
 }
 
@@ -116,9 +118,7 @@ function normalizeSheetsParam(value: unknown): WorkbookSheetSpec[] {
       return inputSlot && sheetName ? { inputSlot, sheetName, headerRow, columnFormats } : null;
     })
     .filter((item): item is WorkbookSheetSpec => Boolean(item));
-  return sheets.length
-    ? sheets
-    : [{ inputSlot: 'input1', sheetName: 'Sheet1', headerRow: 1, columnFormats: {} }];
+  return sheets.length ? sheets : [{ inputSlot: 'input1', sheetName: 'Sheet1', headerRow: 1, columnFormats: {} }];
 }
 
 function normalizeConflictPolicy(value: unknown): 'error' | 'overwrite' {
@@ -131,10 +131,18 @@ export const workbookPersistExcelOperator = defineWorkflowOperator({
   version: '1.0.0',
   category: 'Output',
   description: '将多个 dataframe 写入同一个 Excel workbook 的多个 sheet 并保存到 Files。',
-  inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'DataFrame 1', required: true }],
+  inputSlots: [
+    { slot: 'input1', type: 'table', contentType: 'application/json', label: 'DataFrame 1', required: true },
+  ],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'First DataFrame' }],
   paramsSchema: {
-    fileName: { type: 'string', label: '文件名', required: true, placeholder: 'workflow-output.xlsx', default: 'workflow-output.xlsx' },
+    fileName: {
+      type: 'string',
+      label: '文件名',
+      required: true,
+      placeholder: 'workflow-output.xlsx',
+      default: 'workflow-output.xlsx',
+    },
     fileNamePrefix: { type: 'string', label: '文件名前缀', required: false, placeholder: '2026-05', default: '' },
     fileNameSuffix: { type: 'string', label: '文件名后缀', required: false, placeholder: '2026_06', default: '' },
     folderPrefix: { type: 'string', label: '输出目录', required: false, placeholder: 'output/captable', default: '' },
@@ -162,7 +170,8 @@ export const workbookPersistExcelOperator = defineWorkflowOperator({
     uploadedBy: { type: 'string', label: '上传人', required: false, placeholder: 'Workflow', default: 'Workflow' },
   },
   documentation: {
-    usage: '把多个上游 dataframe 分别写入同一个 workbook 的多个 sheet。适合 CapTable 这类一个结果文件包含多张业务表的输出。',
+    usage:
+      '把多个上游 dataframe 分别写入同一个 workbook 的多个 sheet。适合 CapTable 这类一个结果文件包含多张业务表的输出。',
     steps: [
       '连接多个 dataframe 输入。',
       '在 sheets 中声明 inputSlot、sheetName；可用 headerRow 定位表头，并用 columnFormats 设置 Excel 单元格格式。',

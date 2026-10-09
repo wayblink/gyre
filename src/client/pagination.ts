@@ -63,14 +63,24 @@ export function renderPaginationControls(
  * Next page for a relative move (prev/next), or null when the move would be a no-op. Callers keep
  * their own state, so they can skip the reload when nothing changes.
  */
-export function nextPageWithinBounds(total: number, pageSize: number, currentPage: number, delta: number): number | null {
+export function nextPageWithinBounds(
+  total: number,
+  pageSize: number,
+  currentPage: number,
+  delta: number,
+): number | null {
   const maxPage = Math.max(1, Math.ceil(total / pageSize));
   const next = Math.min(Math.max(1, currentPage + delta), maxPage);
   return next === currentPage ? null : next;
 }
 
 /** First/last page, or null when already there. */
-export function edgePage(total: number, pageSize: number, currentPage: number, target: 'first' | 'last'): number | null {
+export function edgePage(
+  total: number,
+  pageSize: number,
+  currentPage: number,
+  target: 'first' | 'last',
+): number | null {
   const maxPage = Math.max(1, Math.ceil(total / pageSize));
   const next = target === 'first' ? 1 : maxPage;
   return next === currentPage ? null : next;

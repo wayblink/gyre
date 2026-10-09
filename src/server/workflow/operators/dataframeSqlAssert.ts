@@ -22,7 +22,10 @@ export function normalizeSqlAssertTask(task: WorkflowTask) {
     };
   }
   task.inputs = Object.keys(nextInputs).length ? nextInputs : { input1: { from: '', slot: 'dataframe' } };
-  task.params.sql = typeof task.params.sql === 'string' && task.params.sql.trim() ? task.params.sql : 'select count(*) as actual from {source}';
+  task.params.sql =
+    typeof task.params.sql === 'string' && task.params.sql.trim()
+      ? task.params.sql
+      : 'select count(*) as actual from {source}';
   task.params.tableBindings = normalizeSqlTableBindings(task.params.tableBindings);
   if (!Array.isArray(task.params.tableBindings) || !task.params.tableBindings.length) {
     task.params.tableBindings = [{ tableName: 'source', inputSlot: 'input1' }];
@@ -41,7 +44,11 @@ export async function evaluateSqlAssertion(
   resolveInputDataFrame: Parameters<typeof executeSqlDataFrameQuery>[2],
 ) {
   normalizeSqlAssertTask(task);
-  const { dataFrame: sqlResult, firstInputDataFrame } = await executeSqlDataFrameQuery(task, runtime, resolveInputDataFrame);
+  const { dataFrame: sqlResult, firstInputDataFrame } = await executeSqlDataFrameQuery(
+    task,
+    runtime,
+    resolveInputDataFrame,
+  );
   const operator = task.params.operator as WorkflowAssertOperator;
   const expectedValue = task.params.expectedValue;
   const failureMessage = String(task.params.failureMessage ?? 'Assertion failed').trim() || 'Assertion failed';
@@ -104,7 +111,13 @@ export const dataframeSqlAssertOperator = defineWorkflowOperator({
       description: '将 SQL 中的 {source} 这类占位符映射到 input1/input2 等输入槽位。',
       default: [{ tableName: 'source', inputSlot: 'input1' }],
     },
-    operator: { type: 'string', label: '比较符', required: true, enum: ['>', '>=', '<', '<=', '=', '!='], default: '=' },
+    operator: {
+      type: 'string',
+      label: '比较符',
+      required: true,
+      enum: ['>', '>=', '<', '<=', '=', '!='],
+      default: '=',
+    },
     expectedValue: { type: 'string', label: '预期值', required: true, placeholder: '0', default: 0 },
     failureStrategy: {
       type: 'string',
@@ -113,7 +126,13 @@ export const dataframeSqlAssertOperator = defineWorkflowOperator({
       enum: ['block', 'warning', 'pass-through'],
       default: 'block',
     },
-    failureMessage: { type: 'string', label: '失败提示', required: false, placeholder: 'Assertion failed', default: 'Assertion failed' },
+    failureMessage: {
+      type: 'string',
+      label: '失败提示',
+      required: false,
+      placeholder: 'Assertion failed',
+      default: 'Assertion failed',
+    },
   },
   normalizeTask: normalizeSqlAssertTask,
   async execute({ task, runtime, resolveInputDataFrame }) {

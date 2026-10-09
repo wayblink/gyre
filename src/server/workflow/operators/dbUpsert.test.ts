@@ -50,9 +50,7 @@ function createContext(
 }
 
 test('db.upsert passes dataframe columns and conflict/update keys to the runtime', async () => {
-  const frame = rowsToDataFrame([
-    { employee_id: '100015', source: 'shareworks', employee_name: 'Han Lin' },
-  ]);
+  const frame = rowsToDataFrame([{ employee_id: '100015', source: 'shareworks', employee_name: 'Han Lin' }]);
   const calls: UpsertCall[] = [];
   const context = createContext(
     frame,

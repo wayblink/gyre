@@ -57,8 +57,10 @@ function loadSeed(workflowCode: string) {
       status: doc.status === 'draft' ? 'draft' : 'active',
       version: doc.version,
       tasks: doc.tasks,
-      runtimeParamsSchema: doc.runtimeParamsSchema && typeof doc.runtimeParamsSchema === 'object' ? doc.runtimeParamsSchema : {},
-      runtimeParamsDefaults: doc.runtimeParamsDefaults && typeof doc.runtimeParamsDefaults === 'object' ? doc.runtimeParamsDefaults : {},
+      runtimeParamsSchema:
+        doc.runtimeParamsSchema && typeof doc.runtimeParamsSchema === 'object' ? doc.runtimeParamsSchema : {},
+      runtimeParamsDefaults:
+        doc.runtimeParamsDefaults && typeof doc.runtimeParamsDefaults === 'object' ? doc.runtimeParamsDefaults : {},
     },
   };
 }

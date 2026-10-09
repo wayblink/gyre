@@ -44,11 +44,7 @@ function monthlyRunInstancesDdl(): string {
 test('monthly_run_instances DDL declares every fixed-value column instanceStore reads and writes', () => {
   const declared = declaredColumns(monthlyRunInstancesDdl());
   const missing = MONTHLY_FIXED_VALUE_COLUMNS.filter((column) => !declared.has(column));
-  assert.deepEqual(
-    missing,
-    [],
-    `monthly_run_instances DDL is missing fixed-value columns: ${missing.join(', ')}`,
-  );
+  assert.deepEqual(missing, [], `monthly_run_instances DDL is missing fixed-value columns: ${missing.join(', ')}`);
 });
 
 // `create table if not exists` cannot backfill a database whose table already exists, so every

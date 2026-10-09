@@ -19,11 +19,13 @@ function task(id: string, dependsOn: string[] = []): WorkflowTask {
 }
 
 test('selectWorkflowPreviewTasks keeps only the selected task dependency closure', () => {
-  const selected = selectWorkflowPreviewTasks([
-    task('extract_current'),
-    task('calc_current', ['extract_current']),
-    task('optional_unrelated'),
-  ], 'calc_current');
+  const selected = selectWorkflowPreviewTasks(
+    [task('extract_current'), task('calc_current', ['extract_current']), task('optional_unrelated')],
+    'calc_current',
+  );
 
-  assert.deepEqual(selected.map((item) => item.id), ['extract_current', 'calc_current']);
+  assert.deepEqual(
+    selected.map((item) => item.id),
+    ['extract_current', 'calc_current'],
+  );
 });

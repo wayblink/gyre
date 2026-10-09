@@ -1,9 +1,5 @@
 import type { WorkflowDataFrame, WorkflowTask } from '../../../shared/types.js';
-import {
-  defineWorkflowOperator,
-  normalizeWorkflowTaskDependencies,
-  requireInputDataFrame,
-} from './types.js';
+import { defineWorkflowOperator, normalizeWorkflowTaskDependencies, requireInputDataFrame } from './types.js';
 
 type ConflictPolicy = 'increment-wins' | 'base-wins' | 'error';
 type IncomingBlankPolicy = 'preserve' | 'overwrite';
@@ -73,9 +69,7 @@ function normalizeSortSpecs(value: unknown): SortSpec[] {
 }
 
 function normalizeKeyNormalization(value: unknown): KeyNormalizationConfig {
-  const record = value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+  const record = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   return {
     caseInsensitive: record.caseInsensitive !== false,
     collapseWhitespace: record.collapseWhitespace !== false,
@@ -143,7 +137,7 @@ export function buildDataFrameKey(
 ): string {
   const config: KeyNormalizationConfig =
     normalization instanceof Object && 'numericColumns' in normalization && normalization.numericColumns instanceof Set
-      ? normalization as KeyNormalizationConfig
+      ? (normalization as KeyNormalizationConfig)
       : normalizeKeyNormalization(normalization);
   return JSON.stringify(keyColumns.map((column) => normalizeKeyValue(column, row[column], config)));
 }
@@ -222,7 +216,8 @@ export function mergeKeyedDataFrames(params: {
   const incrementColumns = params.increment.columns;
   for (const column of keyColumns) {
     if (!baseColumns.includes(column)) throw new Error(`Keyed merge base input is missing key column: ${column}`);
-    if (!incrementColumns.includes(column)) throw new Error(`Keyed merge increment input is missing key column: ${column}`);
+    if (!incrementColumns.includes(column))
+      throw new Error(`Keyed merge increment input is missing key column: ${column}`);
   }
 
   const outputColumns = (params.outputColumns?.length ? params.outputColumns : [...baseColumns, ...incrementColumns])
@@ -265,9 +260,10 @@ export function mergeKeyedDataFrames(params: {
       }
       if (source === 'increment' && conflictPolicy === 'base-wins') continue;
 
-      const nextRow = source === 'increment'
-        ? mergeRows(existing.row, row, incomingColumns, blankPolicy, outputColumns)
-        : projectRow(row, outputColumns);
+      const nextRow =
+        source === 'increment'
+          ? mergeRows(existing.row, row, incomingColumns, blankPolicy, outputColumns)
+          : projectRow(row, outputColumns);
       entries.set(key, {
         row: nextRow,
         source,
@@ -282,9 +278,7 @@ export function mergeKeyedDataFrames(params: {
   ingest(params.increment, 'increment');
 
   const sortedEntries = sortEntries(Array.from(entries.values()), sortSpecs);
-  const auditColumns = params.emitAuditColumns === true
-    ? ['__merge_key', '__merge_action', '__merge_source']
-    : [];
+  const auditColumns = params.emitAuditColumns === true ? ['__merge_key', '__merge_action', '__merge_source'] : [];
   const rows: Array<Record<string, unknown>> = sortedEntries.map((entry) => ({
     ...entry.row,
     ...(params.emitAuditColumns === true

@@ -8,7 +8,12 @@ import {
 
 const entries = [
   { path: 'fileRefs.control_book', required: false, type: 'object', label: 'EQ Control Book workbook' },
-  { path: 'fileRefs.bc_subplan_transfer', required: false, type: 'object', label: '2025 BC Subplan Transfer input source' },
+  {
+    path: 'fileRefs.bc_subplan_transfer',
+    required: false,
+    type: 'object',
+    label: '2025 BC Subplan Transfer input source',
+  },
   { path: 'fileRefs.bc_subplan_transfer.sheet', required: false, type: 'string', label: 'Sheet' },
   { path: 'fixedValues.warrants', required: false, type: 'number', label: 'Warrants' },
 ];

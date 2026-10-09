@@ -5,10 +5,7 @@ import type {
   WorkflowTask,
   WorkflowTaskPreviewResult,
 } from '../../shared/types.js';
-import {
-  evaluateTaskInputGuards,
-  executeWorkflowTaskOutputStrict,
-} from './engine.js';
+import { evaluateTaskInputGuards, executeWorkflowTaskOutputStrict } from './engine.js';
 import type { WorkflowOperatorRuntime } from './operators/types.js';
 import type { WorkflowRunRepository, WorkflowRunStepClaim } from './runRepository.js';
 import { isApprovedWarning, isAssertOperatorCode, workflowRunToExecutionResult } from './runResult.js';
@@ -45,7 +42,16 @@ export class WorkflowStepWorker {
     const startedAt = claim.step.startedAt;
 
     try {
-      const guardResult = await this.evaluateInputGuards(runId, task, claim, executed, taskResults, taskMap, run, startedAt);
+      const guardResult = await this.evaluateInputGuards(
+        runId,
+        task,
+        claim,
+        executed,
+        taskResults,
+        taskMap,
+        run,
+        startedAt,
+      );
       if (guardResult === 'paused' || guardResult === 'failed') {
         return { state: guardResult === 'paused' ? 'warning' : 'failed', paused: guardResult === 'paused' };
       }
@@ -82,7 +88,9 @@ export class WorkflowStepWorker {
               result: workflowRunToExecutionResult(await this.store.getRun(runId)),
               errorMessage: null,
             });
-            await this.store.createRunFinishedEvent(runId, 'waiting_approval', { waitingForApprovalTaskIds: [task.id] });
+            await this.store.createRunFinishedEvent(runId, 'waiting_approval', {
+              waitingForApprovalTaskIds: [task.id],
+            });
             return { state: 'warning', paused: true };
           }
         }
@@ -125,7 +133,9 @@ export class WorkflowStepWorker {
     startedAt: string | null,
   ): Promise<'passed' | 'paused' | 'failed'> {
     const guardResults = await evaluateTaskInputGuards(task, executed, taskResults, taskMap, this.runtime);
-    const failedGuard = guardResults.find((result) => !result.assertion.passed && result.assertion.failureStrategy === 'block');
+    const failedGuard = guardResults.find(
+      (result) => !result.assertion.passed && result.assertion.failureStrategy === 'block',
+    );
     if (failedGuard) {
       const result: WorkflowTaskPreviewResult = {
         kind: 'assert',
@@ -145,7 +155,9 @@ export class WorkflowStepWorker {
       return 'failed';
     }
 
-    const warningGuard = guardResults.find((result) => !result.assertion.passed && result.assertion.failureStrategy === 'warning');
+    const warningGuard = guardResults.find(
+      (result) => !result.assertion.passed && result.assertion.failureStrategy === 'warning',
+    );
     if (warningGuard && !isApprovedWarning(run, task.id)) {
       const result: WorkflowTaskPreviewResult = {
         kind: 'assert',

@@ -32,12 +32,17 @@ export function normalizeWorkflowRuntimeParametersSchema(value: unknown): Workfl
       label: String(rawField.label ?? key).trim() || key,
       required: typeof rawField.required === 'boolean' ? rawField.required : undefined,
       optionalCategory:
-        rawField.optionalCategory === 'inherit' || rawField.optionalCategory === 'validation' || rawField.optionalCategory === 'supplement'
+        rawField.optionalCategory === 'inherit' ||
+        rawField.optionalCategory === 'validation' ||
+        rawField.optionalCategory === 'supplement'
           ? rawField.optionalCategory
           : undefined,
       description: typeof rawField.description === 'string' ? rawField.description : undefined,
       enum: Array.isArray(rawField.enum) ? rawField.enum.map((item) => String(item)).filter(Boolean) : undefined,
-      properties: fieldType === 'object' && isRecord(rawField.properties) ? normalizeWorkflowRuntimeParametersSchema(rawField.properties) : undefined,
+      properties:
+        fieldType === 'object' && isRecord(rawField.properties)
+          ? normalizeWorkflowRuntimeParametersSchema(rawField.properties)
+          : undefined,
     };
     schema[key] = field;
   }
@@ -45,7 +50,10 @@ export function normalizeWorkflowRuntimeParametersSchema(value: unknown): Workfl
   return schema;
 }
 
-function mergeRuntimeParameters(base: WorkflowRuntimeParameters, override: WorkflowRuntimeParameters): WorkflowRuntimeParameters {
+function mergeRuntimeParameters(
+  base: WorkflowRuntimeParameters,
+  override: WorkflowRuntimeParameters,
+): WorkflowRuntimeParameters {
   const merged: WorkflowRuntimeParameters = cloneJson(base);
   for (const [key, value] of Object.entries(override)) {
     if (isRecord(value) && isRecord(merged[key])) {
@@ -57,11 +65,7 @@ function mergeRuntimeParameters(base: WorkflowRuntimeParameters, override: Workf
   return merged;
 }
 
-function filterRuntimeValueBySchema(
-  keyPath: string,
-  value: unknown,
-  field: WorkflowRuntimeParameterField,
-): unknown {
+function filterRuntimeValueBySchema(keyPath: string, value: unknown, field: WorkflowRuntimeParameterField): unknown {
   if (value === undefined) return undefined;
 
   if (field.type !== 'object' || !isRecord(value) || !field.properties) {
@@ -116,11 +120,7 @@ function isRuntimeReference(value: unknown): value is WorkflowRuntimeParameterRe
   return isRecord(value) && typeof value.$fromRuntime === 'string';
 }
 
-function validateRuntimeValue(
-  keyPath: string,
-  value: unknown,
-  field: WorkflowRuntimeParameterField,
-): void {
+function validateRuntimeValue(keyPath: string, value: unknown, field: WorkflowRuntimeParameterField): void {
   if (value === undefined) {
     return;
   }
@@ -162,9 +162,7 @@ function validateRuntimeValue(
   }
 
   const fileReferenceKeys = new Set(['provider', 'id', 'key']);
-  const configurableValue = Object.fromEntries(
-    Object.entries(value).filter(([key]) => !fileReferenceKeys.has(key)),
-  );
+  const configurableValue = Object.fromEntries(Object.entries(value).filter(([key]) => !fileReferenceKeys.has(key)));
   validateRuntimeParameters(configurableValue, field.properties, keyPath);
 }
 
@@ -201,7 +199,10 @@ function resolveRuntimeReferences(value: unknown, runtimeParameters: WorkflowRun
 
   if (isRecord(value)) {
     return Object.fromEntries(
-      Object.entries(value).map(([key, nestedValue]) => [key, resolveRuntimeReferences(nestedValue, runtimeParameters)]),
+      Object.entries(value).map(([key, nestedValue]) => [
+        key,
+        resolveRuntimeReferences(nestedValue, runtimeParameters),
+      ]),
     );
   }
 

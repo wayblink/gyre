@@ -276,7 +276,9 @@ export class WorkflowRunStore implements WorkflowRunRepository {
   }
 
   async getRun(runId: number, opts?: { light?: boolean }): Promise<WorkflowRunRecord> {
-    const runRow = await this.db.queryOne<Record<string, unknown>>('select * from workflow_runs where id = $1', [runId]);
+    const runRow = await this.db.queryOne<Record<string, unknown>>('select * from workflow_runs where id = $1', [
+      runId,
+    ]);
     if (!runRow) {
       const error = new Error('Workflow run not found') as Error & { statusCode?: number };
       error.statusCode = 404;
@@ -515,7 +517,7 @@ export class WorkflowRunStore implements WorkflowRunRepository {
     const startedAt = params.startedAt ?? finishedAt;
     const durationMs = Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime());
     const claimedWhere = claim
-      ? 'run_id = $1 and task_id = $2 and id = $9 and lock_token = $10 and status = \'running\''
+      ? "run_id = $1 and task_id = $2 and id = $9 and lock_token = $10 and status = 'running'"
       : `id = (
          select id from workflow_run_steps where run_id = $1 and task_id = $2 order by id desc limit 1
        )`;
@@ -551,12 +553,20 @@ export class WorkflowRunStore implements WorkflowRunRepository {
       );
     }
     const step = toWorkflowRunStepRecord(row);
-    const level = params.status === 'failed' ? 'error' : params.status === 'warning' || params.status === 'blocked' ? 'warning' : 'info';
+    const level =
+      params.status === 'failed'
+        ? 'error'
+        : params.status === 'warning' || params.status === 'blocked'
+          ? 'warning'
+          : 'info';
     await this.createEvent({
       runId: params.runId,
       stepId: step.id,
       taskId: params.task.id,
-      eventType: params.result?.kind === 'assert' && params.status === 'failed' ? 'assertion_failed' : taskStateForEvent(params.status),
+      eventType:
+        params.result?.kind === 'assert' && params.status === 'failed'
+          ? 'assertion_failed'
+          : taskStateForEvent(params.status),
       level,
       message: params.errorMessage ?? `${params.task.name} ${params.status}`,
       payload: { taskName: params.task.name, operatorCode: params.task.operatorCode, durationMs },
@@ -686,8 +696,17 @@ export class WorkflowRunStore implements WorkflowRunRepository {
     );
   }
 
-  async createRunFinishedEvent(runId: number, status: WorkflowRunStatus, payload: Record<string, unknown> = {}): Promise<void> {
-    const level = status === 'failed' ? 'error' : status === 'waiting_approval' || status === 'completed_with_warnings' ? 'warning' : 'info';
+  async createRunFinishedEvent(
+    runId: number,
+    status: WorkflowRunStatus,
+    payload: Record<string, unknown> = {},
+  ): Promise<void> {
+    const level =
+      status === 'failed'
+        ? 'error'
+        : status === 'waiting_approval' || status === 'completed_with_warnings'
+          ? 'warning'
+          : 'info';
     const message =
       status === 'failed'
         ? String(payload.errorMessage ?? 'Workflow failed')

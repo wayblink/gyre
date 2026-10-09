@@ -16,22 +16,14 @@ test('no linked identities renders nothing', () => {
 });
 
 test('a linked identity renders the zh-CN 关联 badge with a leading space', () => {
-  const html = buildLinkedBadge(
-    [{ source: 'futu', employeeId: 'K01447', name: '王涛' }],
-    'zh-CN',
-    escape,
-  );
+  const html = buildLinkedBadge([{ source: 'futu', employeeId: 'K01447', name: '王涛' }], 'zh-CN', escape);
   assert.match(html, /^ <span class="linked-badge"/); // leading space so it sits after the name
   assert.match(html, />关联<\/span>$/);
   assert.match(html, /title="futu:K01447 王涛"/);
 });
 
 test('non-zh language renders the English Linked label', () => {
-  const html = buildLinkedBadge(
-    [{ source: 'shareworks', employeeId: 'SW-1', name: 'Alice' }],
-    'en-US',
-    escape,
-  );
+  const html = buildLinkedBadge([{ source: 'shareworks', employeeId: 'SW-1', name: 'Alice' }], 'en-US', escape);
   assert.match(html, />Linked<\/span>$/);
   assert.match(html, /title="shareworks:SW-1 Alice"/);
 });
@@ -49,10 +41,6 @@ test('multiple identities join with the full-width semicolon in the tooltip', ()
 });
 
 test('the tooltip title is passed through escape', () => {
-  const html = buildLinkedBadge(
-    [{ source: 'futu', employeeId: 'K1', name: '<b>&' }],
-    'zh-CN',
-    escape,
-  );
+  const html = buildLinkedBadge([{ source: 'futu', employeeId: 'K1', name: '<b>&' }], 'zh-CN', escape);
   assert.match(html, /title="futu:K1 &lt;b&gt;&amp;"/);
 });

@@ -7,7 +7,10 @@ import { WorkflowRunExecutor } from '../workflow/runExecutor.js';
 import { WorkflowRunStore } from '../workflow/runStore.js';
 import type { WorkflowOperatorRuntime } from '../workflow/operators/types.js';
 import { executeWorkflowDefinition } from '../workflow/engine.js';
-import { filterWorkflowRuntimeParametersBySchema, resolveWorkflowRuntimeConfiguration } from '../workflow/runtimeParameters.js';
+import {
+  filterWorkflowRuntimeParametersBySchema,
+  resolveWorkflowRuntimeConfiguration,
+} from '../workflow/runtimeParameters.js';
 import { normalizeWorkflowTasks } from '../workflow/tasks.js';
 import { fileStorage } from '../storage.js';
 import { parseJson } from '../utils/json.js';
@@ -72,15 +75,19 @@ export function createRouteContext(db: AppDb): RouteContext {
         throw new Error('workflow.invoke requires workflowCode or workflowId');
       }
       if (params.invocationStack.includes(requestedKey)) {
-        throw new Error(`workflow.invoke recursive workflow call detected: ${[...params.invocationStack, requestedKey].join(' -> ')}`);
+        throw new Error(
+          `workflow.invoke recursive workflow call detected: ${[...params.invocationStack, requestedKey].join(' -> ')}`,
+        );
       }
 
       const workflowRow = params.workflowId
-        ? await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [params.workflowId])
-        : await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where code = $1 and status = $2', [
-            params.workflowCode,
-            'active',
-          ]);
+        ? await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [
+            params.workflowId,
+          ])
+        : await db.queryOne<Record<string, unknown>>(
+            'select * from workflow_definitions where code = $1 and status = $2',
+            [params.workflowCode, 'active'],
+          );
       if (!workflowRow) {
         throw new Error(`workflow.invoke target workflow not found: ${params.workflowId ?? params.workflowCode}`);
       }
@@ -121,7 +128,9 @@ export function createRouteContext(db: AppDb): RouteContext {
       }
 
       if (!childResult.result?.dataFrame) {
-        throw new Error(`workflow.invoke target workflow did not produce dataframe output: ${workflowCode || workflowId}`);
+        throw new Error(
+          `workflow.invoke target workflow did not produce dataframe output: ${workflowCode || workflowId}`,
+        );
       }
       return childResult.result;
     },

@@ -8,7 +8,6 @@ import {
   getMonthlyRunModalSourceDefinitions,
   getMonthlyRunSourceSheetControlModel,
   getMonthlyRunVisibleSources,
-  getMonthlyRunSheetNameOptions,
   getMonthlyRunWarningTaskIds,
   isRunPanelStaleForMonth,
   MONTHLY_FIXED_VALUE_DEFS,
@@ -22,7 +21,11 @@ const MONTHLY_FIXED_VALUE_KEYS = MONTHLY_FIXED_VALUE_DEFS.map((def) => def.key);
 
 test('monthly source file candidates prefer files matching the configured input source', () => {
   const files = [
-    { id: 63, originalName: '02-6-2026_14-55-05_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx', displayName: '' },
+    {
+      id: 63,
+      originalName: '02-6-2026_14-55-05_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx',
+      displayName: '',
+    },
     { id: 61, originalName: '09-7-2026_12-05-18_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx', displayName: '' },
     { id: 64, originalName: '!!Gyre Cap Table 05.31.26【新】.xlsx', displayName: '' },
   ] as const;
@@ -39,12 +42,24 @@ test('monthly source file candidates prefer files matching the configured input 
 
 test('monthly source file candidates keep the current logical file even when its id changed after overwrite', () => {
   const files = [
-    { id: 72, originalName: 'shared-workbook.xlsx', displayName: '', logicalPath: 'input/2026-08/shared-workbook.xlsx' },
-    { id: 61, originalName: '09-7-2026_12-05-18_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx', displayName: '', logicalPath: 'input/2026-08/options.xlsx' },
+    {
+      id: 72,
+      originalName: 'shared-workbook.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-08/shared-workbook.xlsx',
+    },
+    {
+      id: 61,
+      originalName: '09-7-2026_12-05-18_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-08/options.xlsx',
+    },
   ] as const;
 
   assert.deepEqual(
-    getMonthlyRunFileCandidatesForSource('option_plans_summary', files, 70, 'input/2026-08/shared-workbook.xlsx').map((file) => file.id),
+    getMonthlyRunFileCandidatesForSource('option_plans_summary', files, 70, 'input/2026-08/shared-workbook.xlsx').map(
+      (file) => file.id,
+    ),
     [61, 72],
   );
 });
@@ -52,20 +67,37 @@ test('monthly source file candidates keep the current logical file even when its
 test('monthly source candidates are limited to the current month input folder', () => {
   const files = [
     { id: 1, originalName: 'EQ Control Book.xlsx', displayName: '', logicalPath: 'input/2026-02/EQ Control Book.xlsx' },
-    { id: 2, originalName: 'Control_Books_Detail_Data.xlsx', displayName: '', logicalPath: 'input/2026-02/Control_Books_Detail_Data.xlsx' },
-    { id: 3, originalName: 'Control_Books_Detail_Data_prev.xlsx', displayName: '', logicalPath: 'input/2026-01/Control_Books_Detail_Data_prev.xlsx' },
+    {
+      id: 2,
+      originalName: 'Control_Books_Detail_Data.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-02/Control_Books_Detail_Data.xlsx',
+    },
+    {
+      id: 3,
+      originalName: 'Control_Books_Detail_Data_prev.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-01/Control_Books_Detail_Data_prev.xlsx',
+    },
   ] as const;
 
   // Current month + name-matched only: the historical-month file (id 3) is excluded.
   assert.deepEqual(
-    getMonthlyRunFileCandidatesForSource('incremental_control_book', files, null, null, '2026-02').map((file) => file.id),
+    getMonthlyRunFileCandidatesForSource('incremental_control_book', files, null, null, '2026-02').map(
+      (file) => file.id,
+    ),
     [2],
   );
 });
 
 test('Control Book Summary candidates come from the control_book folder, not the month input folder', () => {
   const files = [
-    { id: 1, originalName: 'EQ_Control_Book_Base_2026_01.xlsx', displayName: '', logicalPath: 'control_book/EQ_Control_Book_Base_2026_01.xlsx' },
+    {
+      id: 1,
+      originalName: 'EQ_Control_Book_Base_2026_01.xlsx',
+      displayName: '',
+      logicalPath: 'control_book/EQ_Control_Book_Base_2026_01.xlsx',
+    },
     { id: 2, originalName: 'EQ Control Book.xlsx', displayName: '', logicalPath: 'input/2026-02/EQ Control Book.xlsx' },
   ] as const;
 
@@ -77,11 +109,36 @@ test('Control Book Summary candidates come from the control_book folder, not the
 
 test('Base Futu BCI Exercises candidates come from futu_exercises dated archives, not output/ or the month input folder', () => {
   const files = [
-    { id: 10, originalName: 'Futu_Exercises_Base.xlsx', displayName: '', logicalPath: 'output/futu-exercises/Futu_Exercises_Base.xlsx' },
-    { id: 11, originalName: 'Futu_Exercises_Base_2026_08.xlsx', displayName: '', logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_08.xlsx' },
-    { id: 12, originalName: 'Futu_Exercises_Base_2026_09.xlsx', displayName: '', logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_09.xlsx' },
-    { id: 13, originalName: 'Control_Books_Detail_Data.xlsx', displayName: '', logicalPath: 'input/2026-09/Control_Books_Detail_Data.xlsx' },
-    { id: 14, originalName: 'Gyre Therapeutics员工行权记录.xlsx', displayName: '', logicalPath: 'input/2026-09/Gyre Therapeutics员工行权记录.xlsx' },
+    {
+      id: 10,
+      originalName: 'Futu_Exercises_Base.xlsx',
+      displayName: '',
+      logicalPath: 'output/futu-exercises/Futu_Exercises_Base.xlsx',
+    },
+    {
+      id: 11,
+      originalName: 'Futu_Exercises_Base_2026_08.xlsx',
+      displayName: '',
+      logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_08.xlsx',
+    },
+    {
+      id: 12,
+      originalName: 'Futu_Exercises_Base_2026_09.xlsx',
+      displayName: '',
+      logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_09.xlsx',
+    },
+    {
+      id: 13,
+      originalName: 'Control_Books_Detail_Data.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-09/Control_Books_Detail_Data.xlsx',
+    },
+    {
+      id: 14,
+      originalName: 'Gyre Therapeutics员工行权记录.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-09/Gyre Therapeutics员工行权记录.xlsx',
+    },
   ] as const;
 
   assert.deepEqual(
@@ -92,8 +149,18 @@ test('Base Futu BCI Exercises candidates come from futu_exercises dated archives
 
 test('monthly source candidates always keep the configured file even from a historical month', () => {
   const files = [
-    { id: 2, originalName: 'Control_Books_Detail_Data.xlsx', displayName: '', logicalPath: 'input/2026-02/Control_Books_Detail_Data.xlsx' },
-    { id: 9, originalName: 'Control_Books_Detail_Data_prev.xlsx', displayName: '', logicalPath: 'input/2026-01/Control_Books_Detail_Data_prev.xlsx' },
+    {
+      id: 2,
+      originalName: 'Control_Books_Detail_Data.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-02/Control_Books_Detail_Data.xlsx',
+    },
+    {
+      id: 9,
+      originalName: 'Control_Books_Detail_Data_prev.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-01/Control_Books_Detail_Data_prev.xlsx',
+    },
   ] as const;
 
   assert.deepEqual(
@@ -110,8 +177,22 @@ test('monthly source candidates always keep the configured file even from a hist
 
 test('monthly source update modal can be scoped to a single input source', () => {
   const sources = [
-    { sourceGroup: 'shareworks', sourceKey: 'control_book', taskId: 'extract_control_book', label: 'EQ Control Book', description: '', required: true },
-    { sourceGroup: 'shareworks', sourceKey: 'option_plans_summary', taskId: 'extract_option_plans', label: 'Gyre Option Plans Summary SL', description: '', required: true },
+    {
+      sourceGroup: 'shareworks',
+      sourceKey: 'control_book',
+      taskId: 'extract_control_book',
+      label: 'EQ Control Book',
+      description: '',
+      required: true,
+    },
+    {
+      sourceGroup: 'shareworks',
+      sourceKey: 'option_plans_summary',
+      taskId: 'extract_option_plans',
+      label: 'Gyre Option Plans Summary SL',
+      description: '',
+      required: true,
+    },
   ] as const;
 
   assert.deepEqual(
@@ -251,12 +332,10 @@ test('input configuration renders one flat source list: hidden dropped, group ig
     { sourceKey: 'options_os_detail_by_plan', sourceGroup: 'shareworks', hidden: true },
   ] as const;
 
-  assert.deepEqual(getMonthlyRunVisibleSources(sources).map((source) => source.sourceKey), [
-    'base_control_book',
-    'incremental_control_book',
-    'option_plans_summary',
-    'futu_exercises',
-  ]);
+  assert.deepEqual(
+    getMonthlyRunVisibleSources(sources).map((source) => source.sourceKey),
+    ['base_control_book', 'incremental_control_book', 'option_plans_summary', 'futu_exercises'],
+  );
 });
 
 test('monthly input rows expose an accessible purpose help icon and bilingual source purpose', () => {
@@ -294,15 +373,15 @@ test('monthly constants are rendered on the main Monthly Update page and saved r
 
   // Rendering must happen after the instance is loaded: renderBusinessDefinedInputConfiguration
   // is the shared repaint path (called by refreshInstance once currentInstance is set).
-  const render = source.match(/function renderBusinessDefinedInputConfiguration\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  const render = source.match(/function renderBusinessDefinedInputConfiguration\(\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
   assert.match(render, /renderMonthlyConstants\(\);/);
 
-  const sourceModal = source.match(/function renderSourceModal\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  const sourceModal = source.match(/function renderSourceModal\(\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
   assert.doesNotMatch(sourceModal, /monthlyRunSourceConstantsBlock|data-fixed-value/);
 
   // All 5 keys get their own input, addressed by data-const-key, prefilled from the instance.
-  const block = source.match(/function renderMonthlyConstants\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
-  for (const key of MONTHLY_FIXED_VALUE_KEYS) {
+  const block = source.match(/function renderMonthlyConstants\(\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
+  for (const _key of MONTHLY_FIXED_VALUE_KEYS) {
     assert.match(block, new RegExp(`data-const-key="\\$\\{escapeHtml\\(def\\.key\\)\\}"`));
   }
   assert.match(block, /MONTHLY_FIXED_VALUE_DEFS\.map\(/);
@@ -366,16 +445,18 @@ test('monthly constants are rendered on the main Monthly Update page and saved r
   ]);
 
   assert.equal(MONTHLY_FIXED_VALUE_DEFS.length, 5);
-  assert.equal(MONTHLY_FIXED_VALUE_DEFS.some((definition) => definition.key === 'seriesBPreferredStock'), false);
+  assert.equal(
+    MONTHLY_FIXED_VALUE_DEFS.some((definition) => definition.key === 'seriesBPreferredStock'),
+    false,
+  );
 });
 
 test('monthly page pins the monthly workflow definition version and rejects a mismatch', () => {
   // The definition itself stays in the DB (CLAUDE.md); the page only pins the version it renders
   // inputs for. A DB definition edited without bumping this constant must fail loudly.
-  const seed = JSON.parse(readFileSync(
-    path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'),
-    'utf8',
-  )) as { version: number };
+  const seed = JSON.parse(
+    readFileSync(path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'), 'utf8'),
+  ) as { version: number };
   assert.equal(MONTHLY_WORKFLOW_VERSION, seed.version);
   assert.ok(MONTHLY_WORKFLOW_VERSION > 0);
 
@@ -397,20 +478,21 @@ test('monthly page blocks rendering and execution while the workflow version is 
   const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
 
   // The API reports the DB definition version; the page compares it against its pinned version.
-  const refresh = source.match(/async function refreshSourceConfig\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  const refresh = source.match(/async function refreshSourceConfig\(\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
   assert.match(refresh, /monthlyWorkflowVersionMismatch\(data\.workflowVersion\)/);
   assert.match(refresh, /sourceDefinitions = workflowVersionMismatch \? \[\] : data\.sources;/);
   assert.match(refresh, /notify\(formatWorkflowVersionMismatch\(workflowVersionMismatch\), \{ type: 'error' \}\)/);
 
   // No source rows are rendered for a definition this page does not know.
-  const rows = source.match(/function renderBusinessDefinedSourceRows\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  const rows = source.match(/function renderBusinessDefinedSourceRows\(\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
   assert.match(rows, /if \(workflowVersionMismatch\) \{/);
 
   // Execution is blocked instead of running against unknown inputs, and the pinned version is
   // sent along so the server can reject a stale client too.
-  const trigger = source.match(/async function triggerMonthlyRun\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  const trigger = source.match(/async function triggerMonthlyRun\(\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
   assert.ok(
-    trigger.indexOf('if (workflowVersionMismatch)') < trigger.indexOf("api<MonthlyRunTriggerResponse>('/api/monthly-runs'"),
+    trigger.indexOf('if (workflowVersionMismatch)') <
+      trigger.indexOf("api<MonthlyRunTriggerResponse>('/api/monthly-runs'"),
     'the version guard must run before the run is submitted',
   );
   assert.match(trigger, /expectedWorkflowVersion: MONTHLY_WORKFLOW_VERSION/);

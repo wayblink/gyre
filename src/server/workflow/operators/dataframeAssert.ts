@@ -81,7 +81,13 @@ export const dataframeAssertOperator = defineWorkflowOperator({
   inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'DataFrame', required: true }],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {
-    operator: { type: 'string', label: '比较符', required: true, enum: ['>', '>=', '<', '<=', '=', '!='], default: '=' },
+    operator: {
+      type: 'string',
+      label: '比较符',
+      required: true,
+      enum: ['>', '>=', '<', '<=', '=', '!='],
+      default: '=',
+    },
     expectedValue: { type: 'string', label: '预期值', required: true, placeholder: '0', default: 0 },
     failureStrategy: {
       type: 'string',
@@ -90,7 +96,13 @@ export const dataframeAssertOperator = defineWorkflowOperator({
       enum: ['block', 'warning', 'pass-through'],
       default: 'block',
     },
-    failureMessage: { type: 'string', label: '失败提示', required: false, placeholder: 'Assertion failed', default: 'Assertion failed' },
+    failureMessage: {
+      type: 'string',
+      label: '失败提示',
+      required: false,
+      placeholder: 'Assertion failed',
+      default: 'Assertion failed',
+    },
   },
   normalizeTask: normalizeAssertTask,
   async execute(context) {

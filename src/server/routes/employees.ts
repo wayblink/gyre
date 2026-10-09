@@ -1,12 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { normalizeEmployeeSourceFilter, normalizeExternalNumber } from '../employees.js';
-import {
-  conflict,
-  normalizeEmployeeLabelColor,
-  notFound,
-  parseTags,
-} from './support.js';
+import { normalizeEmployeeLabelColor, notFound, parseTags } from './support.js';
 import { badRequest, latestWorkflowInputSourceBindings } from './support.js';
 import { parseJson } from '../utils/json.js';
 import type { EmployeeLabelRef } from './support.js';
@@ -153,14 +148,14 @@ export function toEmployee(row: Record<string, unknown>) {
     employeeNumber: String(row.employee_id ?? ''),
     employeeName: String(row.employee_name ?? ''),
     userId: row.user_id ? String(row.user_id) : null,
-    labelIds: Array.isArray(row.label_ids) ? row.label_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id)) : [],
+    labelIds: Array.isArray(row.label_ids)
+      ? row.label_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id))
+      : [],
     labels,
     tags: parseTags(row.tags),
     grantCount: Number(row.grant_count ?? 0),
     source: (source === 'shareworks' ? 'shareworks' : source === 'manual' ? 'manual' : 'futu') as
-      | 'futu'
-      | 'shareworks'
-      | 'manual',
+      'futu' | 'shareworks' | 'manual',
     hasFileEvidence: row.has_file_evidence === true || row.has_file_evidence === 'true',
     active: row.is_active === undefined ? true : row.is_active === true || row.is_active === 'true',
     linkedIdentities,
@@ -183,19 +178,18 @@ export async function employeeNumberByName(db: RouteContext['db']): Promise<Map<
   return byName;
 }
 
-  
-
 export function registerEmployeeRoutes(app: FastifyInstance, ctx: RouteContext) {
   const { db } = ctx;
 
-app.get('/api/employee-labels', async () => ({ items: await listEmployeeLabels(db) }));
-
+  app.get('/api/employee-labels', async () => ({ items: await listEmployeeLabels(db) }));
 
   app.post('/api/employee-labels', async (request, reply) => {
-    const body = z.object({
-      name: z.string().trim().min(1),
-      color: z.string().optional(),
-    }).parse(request.body ?? {});
+    const body = z
+      .object({
+        name: z.string().trim().min(1),
+        color: z.string().optional(),
+      })
+      .parse(request.body ?? {});
     const color = body.color === undefined ? null : normalizeEmployeeLabelColor(body.color);
     const row = await db.queryOne<{ id: number }>(
       `insert into employee_label (name, color) values ($1, $2)
@@ -210,10 +204,12 @@ app.get('/api/employee-labels', async () => ({ items: await listEmployeeLabels(d
 
   app.patch('/api/employee-labels/:id', async (request) => {
     const labelId = Number((request.params as { id: string }).id);
-    const body = z.object({
-      name: z.string().trim().min(1).optional(),
-      color: z.string().optional(),
-    }).parse(request.body ?? {});
+    const body = z
+      .object({
+        name: z.string().trim().min(1).optional(),
+        color: z.string().optional(),
+      })
+      .parse(request.body ?? {});
     if (body.name === undefined && body.color === undefined) throw badRequest('Employee label update is empty');
     const color = body.color === undefined ? null : normalizeEmployeeLabelColor(body.color);
     if (body.name !== undefined) {
@@ -244,7 +240,13 @@ app.get('/api/employee-labels', async () => ({ items: await listEmployeeLabels(d
 
   app.get('/api/employees', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', tag = '', source = '', sort = '', dir = '' } = request.query as {
+    const {
+      query = '',
+      tag = '',
+      source = '',
+      sort = '',
+      dir = '',
+    } = request.query as {
       query?: string;
       tag?: string;
       source?: string;
@@ -384,10 +386,9 @@ app.get('/api/employee-labels', async () => ({ items: await listEmployeeLabels(d
     let targetId: number | null = null;
     const normalizedTarget = normalizeExternalNumber(rawTarget);
     if (normalizedTarget) {
-      const idRow = await db.queryOne<{ id: number }>(
-        'select id from employees where employee_id = $1 limit 1',
-        [normalizedTarget],
-      );
+      const idRow = await db.queryOne<{ id: number }>('select id from employees where employee_id = $1 limit 1', [
+        normalizedTarget,
+      ]);
       if (idRow) targetId = Number(idRow.id);
     }
     if (targetId === null && /^\d+$/.test(rawTarget)) targetId = Number(rawTarget);
@@ -395,8 +396,14 @@ app.get('/api/employee-labels', async () => ({ items: await listEmployeeLabels(d
     if (sourceId === targetId) return reply.code(400).send({ error: '不能与自身关联' });
 
     await db.transaction(async (tx) => {
-      const target = await tx.queryOne<{ id: number }>('select id from employees where id = $1 and merged_into_id is null', [targetId]);
-      const source = await tx.queryOne<{ id: number }>('select id from employees where id = $1 and merged_into_id is null', [sourceId]);
+      const target = await tx.queryOne<{ id: number }>(
+        'select id from employees where id = $1 and merged_into_id is null',
+        [targetId],
+      );
+      const source = await tx.queryOne<{ id: number }>(
+        'select id from employees where id = $1 and merged_into_id is null',
+        [sourceId],
+      );
       if (!target) throw notFound('Target employee not found');
       if (!source) throw notFound('Source employee not found');
 
@@ -420,7 +427,9 @@ app.get('/api/employee-labels', async () => ({ items: await listEmployeeLabels(d
     let targetId: number | null = null;
     const normalizedTarget = normalizeExternalNumber(rawTarget);
     if (normalizedTarget) {
-      const idRow = await db.queryOne<{ id: number }>('select id from employees where employee_id = $1 limit 1', [normalizedTarget]);
+      const idRow = await db.queryOne<{ id: number }>('select id from employees where employee_id = $1 limit 1', [
+        normalizedTarget,
+      ]);
       if (idRow) targetId = Number(idRow.id);
     }
     if (targetId === null && /^\d+$/.test(rawTarget)) targetId = Number(rawTarget);

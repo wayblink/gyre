@@ -28,7 +28,6 @@ import { renderOperatorConfigForm, syncOperatorConfigForm } from './workflow/ope
 import {
   applyTaskOperatorDefaults,
   collectWorkflowTaskParamInputUsages,
-  buildDefaultTaskParams,
   buildWorkflowTask,
   decodeWorkflowFileParamSelection,
   encodeWorkflowFileParamSelection,
@@ -235,19 +234,13 @@ function splitSqlTopLevelConditions(text: string): string[] {
 function formatSqlExpressionList(prefix: string, body: string): string[] {
   const items = splitSqlTopLevelList(body);
   if (items.length <= 1) return [prefix, `  ${body}`];
-  return [
-    prefix,
-    ...items.map((item, index) => `  ${item}${index < items.length - 1 ? ',' : ''}`),
-  ];
+  return [prefix, ...items.map((item, index) => `  ${item}${index < items.length - 1 ? ',' : ''}`)];
 }
 
 function formatSqlCondition(prefix: string, body: string): string[] {
   const parts = splitSqlTopLevelConditions(body);
   if (parts.length <= 1) return [`${prefix} ${body}`.trim()];
-  return [
-    prefix,
-    ...parts.map((part) => `  ${part}`),
-  ];
+  return [prefix, ...parts.map((part) => `  ${part}`)];
 }
 
 function formatSqlClauseLines(sql: string): string {
@@ -300,7 +293,17 @@ function indentSqlLines(sql: string): string {
     .trim();
 }
 
-export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getProductFiles, refreshProductFiles, notify, confirmAction, getLanguage }: WorkflowPageDeps) {
+export function createWorkflowPage({
+  el,
+  api,
+  escapeHtml,
+  formatFileSize,
+  getProductFiles,
+  refreshProductFiles,
+  notify,
+  confirmAction,
+  getLanguage,
+}: WorkflowPageDeps) {
   const filePicker = createFilePickerModal({
     el,
     api,
@@ -332,7 +335,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
   const WORKFLOW_ZOOM_STEP = 0.1;
   const WORKFLOW_SIDEBAR_COLLAPSED_KEY = 'captable.workflow.sidebarCollapsed';
   const WORKFLOW_INSPECTOR_COLLAPSED_KEY = 'captable.workflow.inspectorCollapsed';
-  const WORKFLOW_OPERATOR_GROUPS: Array<{ category: WorkflowOperator['category']; label: Record<AppLanguage, string> }> = [
+  const WORKFLOW_OPERATOR_GROUPS: Array<{
+    category: WorkflowOperator['category'];
+    label: Record<AppLanguage, string>;
+  }> = [
     { category: 'Input', label: { 'zh-CN': '输入', 'en-US': 'Input' } },
     { category: 'Transform', label: { 'zh-CN': '计算', 'en-US': 'Transform' } },
     { category: 'Output', label: { 'zh-CN': '输出', 'en-US': 'Output' } },
@@ -364,14 +370,12 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
   let activeWorkflowTaskId: string | null = null;
   let activeWorkflowPreview: WorkflowTaskPreviewResult | null = null;
   let workflowPreviewPage = 1;
-  let activeWorkflowBindingPreview:
-    | {
-        dataFrame: WorkflowDataFrame;
-        tableName: string;
-        inputSlot: string;
-        sourceTaskName: string;
-      }
-    | null = null;
+  let activeWorkflowBindingPreview: {
+    dataFrame: WorkflowDataFrame;
+    tableName: string;
+    inputSlot: string;
+    sourceTaskName: string;
+  } | null = null;
   let workflowBindingPreviewPage = 1;
   let pendingWorkflowOperatorKey: string | null = null;
   let isWorkflowSidebarCollapsed = false;
@@ -382,13 +386,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
   let activeWorkflowOperatorKey: string | null = null;
   let workflowCanvasZoom = 1;
   let isWorkflowPersisting = false;
-  let workflowInputGuardAddSlot: string | null = null;
-  let activeWorkflowEdgeGuards:
-    | {
-        taskId: string;
-        slot: string;
-      }
-    | null = null;
+  let activeWorkflowEdgeGuards: {
+    taskId: string;
+    slot: string;
+  } | null = null;
   let pendingWorkflowConnectionSource: { taskId: string; slot: string } | null = null;
   let workflowRunState: WorkflowRunState = {
     isOpen: false,
@@ -405,17 +406,15 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     message: '准备执行',
     errorMessage: null,
   };
-  let workflowDragState:
-    | {
-        taskId: string;
-        pointerId: number;
-        startClientX: number;
-        startClientY: number;
-        startTaskX: number;
-        startTaskY: number;
-        moved: boolean;
-      }
-    | null = null;
+  let workflowDragState: {
+    taskId: string;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startTaskX: number;
+    startTaskY: number;
+    moved: boolean;
+  } | null = null;
 
   const handleWorkflowDragPointerMove = (event: PointerEvent) => {
     updateWorkflowDrag(event);
@@ -490,8 +489,12 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     el('workflowInspectorCollapsedRail').addEventListener('click', toggleWorkflowInspector);
     el('btnAddWorkflowTask').addEventListener('click', addWorkflowTask);
     el('btnAutoLayoutWorkflow').addEventListener('click', autoLayoutActiveWorkflow);
-    el('btnWorkflowZoomOut').addEventListener('click', () => setWorkflowCanvasZoom(workflowCanvasZoom - WORKFLOW_ZOOM_STEP));
-    el('btnWorkflowZoomIn').addEventListener('click', () => setWorkflowCanvasZoom(workflowCanvasZoom + WORKFLOW_ZOOM_STEP));
+    el('btnWorkflowZoomOut').addEventListener('click', () =>
+      setWorkflowCanvasZoom(workflowCanvasZoom - WORKFLOW_ZOOM_STEP),
+    );
+    el('btnWorkflowZoomIn').addEventListener('click', () =>
+      setWorkflowCanvasZoom(workflowCanvasZoom + WORKFLOW_ZOOM_STEP),
+    );
     el('btnWorkflowZoomReset').addEventListener('click', fitWorkflowCanvas);
     el('btnExecuteWorkflow').addEventListener('click', () => void executeWorkflow());
     el('btnEditWorkflowDescription').addEventListener('click', () => {
@@ -668,13 +671,13 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
   function getWorkflowCanvasSize(workflow: WorkflowDefinition) {
     const operatorsByTaskId = new Map(workflow.tasks.map((task) => [task.id, getWorkflowOperator(task)]));
     return {
-      width: Math.max(
-        960,
-        ...workflow.tasks.map((task) => task.x + WORKFLOW_NODE_WIDTH + WORKFLOW_CANVAS_PADDING * 2),
-      ),
+      width: Math.max(960, ...workflow.tasks.map((task) => task.x + WORKFLOW_NODE_WIDTH + WORKFLOW_CANVAS_PADDING * 2)),
       height: Math.max(
         620,
-        ...workflow.tasks.map((task) => task.y + getWorkflowNodeHeight(task, operatorsByTaskId.get(task.id) ?? null) + WORKFLOW_CANVAS_PADDING * 2),
+        ...workflow.tasks.map(
+          (task) =>
+            task.y + getWorkflowNodeHeight(task, operatorsByTaskId.get(task.id) ?? null) + WORKFLOW_CANVAS_PADDING * 2,
+        ),
       ),
     };
   }
@@ -1089,7 +1092,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       notify('暂无可用算子', { type: 'warning' });
       return;
     }
-    if (!pendingWorkflowOperatorKey || !workflowOperators.some((item) => getWorkflowOperatorKey(item) === pendingWorkflowOperatorKey)) {
+    if (
+      !pendingWorkflowOperatorKey ||
+      !workflowOperators.some((item) => getWorkflowOperatorKey(item) === pendingWorkflowOperatorKey)
+    ) {
       pendingWorkflowOperatorKey = getWorkflowOperatorKey(workflowOperators[0]);
     }
     el<HTMLSelectElement>('workflowOperatorPickerSelect').value = pendingWorkflowOperatorKey;
@@ -1152,7 +1158,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
   }
 
   function getWorkflowOperator(task: WorkflowTask): WorkflowOperator | null {
-    return workflowOperators.find((item) => item.code === task.operatorCode && item.version === task.operatorVersion) ?? null;
+    return (
+      workflowOperators.find((item) => item.code === task.operatorCode && item.version === task.operatorVersion) ?? null
+    );
   }
 
   function getWorkflowFileLabel(fileId: number) {
@@ -1308,28 +1316,36 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     const record = value as Record<string, unknown>;
     if (record.provider !== 'product-files') return null;
     const fileKey = String(record.key ?? '').trim();
-    if (fileKey) return getProductFiles().find((file) => (file.logicalPath ?? file.displayPath) === fileKey)?.id ?? null;
+    if (fileKey)
+      return getProductFiles().find((file) => (file.logicalPath ?? file.displayPath) === fileKey)?.id ?? null;
     const fileId = Number(record.id);
     return Number.isInteger(fileId) && fileId > 0 ? fileId : null;
   }
 
   function workflowRuntimeDefaultFileId(workflow: WorkflowDefinition, runtimePath: string): number | null {
-    return runtimeProductFileId(getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, runtimePath));
+    return runtimeProductFileId(
+      getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, runtimePath),
+    );
   }
 
   function setWorkflowRuntimeDefaultFileId(workflow: WorkflowDefinition, runtimePath: string, fileId: number | null) {
     const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
     const existing = getNestedValueAtPath(defaults, runtimePath);
-    const existingRecord = existing && typeof existing === 'object' && !Array.isArray(existing)
-      ? existing as Record<string, unknown>
-      : {};
+    const existingRecord =
+      existing && typeof existing === 'object' && !Array.isArray(existing) ? (existing as Record<string, unknown>) : {};
     const file = fileId ? getProductFiles().find((item) => item.id === fileId) : null;
-    setNestedValueAtPath(defaults, runtimePath, file ? {
-      ...existingRecord,
-      provider: 'product-files',
-      key: file.logicalPath ?? file.displayPath,
-      id: undefined,
-    } : undefined);
+    setNestedValueAtPath(
+      defaults,
+      runtimePath,
+      file
+        ? {
+            ...existingRecord,
+            provider: 'product-files',
+            key: file.logicalPath ?? file.displayPath,
+            id: undefined,
+          }
+        : undefined,
+    );
     workflow.runtimeParamsDefaults = defaults;
   }
 
@@ -1354,9 +1370,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     if (type === 'number') return Number(rawValue);
     if (type === 'boolean') return rawValue === 'true';
     if (type === 'fileRef') {
-      const existing = currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue)
-        ? currentValue as Record<string, unknown>
-        : {};
+      const existing =
+        currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue)
+          ? (currentValue as Record<string, unknown>)
+          : {};
       const nextFileId = Number(rawValue);
       const file = getProductFiles().find((item) => item.id === nextFileId);
       const nextFileKey = file?.logicalPath ?? file?.displayPath;
@@ -1388,9 +1405,11 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
   function syncVisibleRuntimeDefaultsToWorkflow(workflow: WorkflowDefinition): boolean {
     const container = el('workflowRuntimeParamsSummary');
     let changed = false;
-    container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]').forEach((control) => {
-      changed = syncRuntimeDefaultControlToWorkflow(workflow, control) || changed;
-    });
+    container
+      .querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]')
+      .forEach((control) => {
+        changed = syncRuntimeDefaultControlToWorkflow(workflow, control) || changed;
+      });
     if (changed) resetWorkflowRunState(workflow.id);
     return changed;
   }
@@ -1408,7 +1427,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
   function getRuntimeParameterLabel(path: string): string {
     const workflow = getActiveWorkflow();
     if (!workflow) return path;
-    return flattenWorkflowRuntimeSchema(workflow.runtimeParamsSchema).find((entry) => entry.path === path)?.label ?? path;
+    return (
+      flattenWorkflowRuntimeSchema(workflow.runtimeParamsSchema).find((entry) => entry.path === path)?.label ?? path
+    );
   }
 
   function formatRuntimeFileSelectionLabel(runtimePath: string): string {
@@ -1446,10 +1467,7 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     return `<input class="workflow-runtime-summary__control" value="${escapeHtml(value ?? '')}" data-runtime-default-path="${pathAttr}" data-runtime-default-type="string">`;
   }
 
-  function renderWorkflowRuntimeParameterItem(
-    workflow: WorkflowDefinition,
-    entry: RuntimeParameterEntry,
-  ) {
+  function renderWorkflowRuntimeParameterItem(workflow: WorkflowDefinition, entry: RuntimeParameterEntry) {
     const rawDefaultValue = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, entry.path);
     const defaultValue = formatRuntimeDefaultDisplay(entry, rawDefaultValue);
     return `
@@ -1470,7 +1488,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     sheetEntry: RuntimeParameterEntry,
   ) {
     const fileId = workflowRuntimeDefaultFileId(workflow, fileEntry.path);
-    const currentSheet = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, sheetEntry.path);
+    const currentSheet = getNestedValueAtPath(
+      workflow.runtimeParamsDefaults as Record<string, unknown>,
+      sheetEntry.path,
+    );
     const currentSheetName = typeof currentSheet === 'string' ? currentSheet : '';
     const options = fileId
       ? `<option value="${escapeHtml(currentSheetName)}">Loading sheets...</option>`
@@ -1559,7 +1580,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       const currentName = typeof current === 'string' ? current : '';
       control.innerHTML = [
         '<option value="">Select sheet</option>',
-        ...detail.sheets.map((sheet) => `<option value="${escapeHtml(sheet.sheetName)}">${escapeHtml(sheet.sheetName)}</option>`),
+        ...detail.sheets.map(
+          (sheet) => `<option value="${escapeHtml(sheet.sheetName)}">${escapeHtml(sheet.sheetName)}</option>`,
+        ),
       ].join('');
       control.value = detail.sheets.some((sheet) => sheet.sheetName === currentName) ? currentName : '';
       control.disabled = false;
@@ -1589,8 +1612,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       return;
     }
 
-    const currentSheet = workflowRuntimeDefaultString(workflow, sheetPath)
-      || (typeof task.params.sheetName.$default === 'string' ? task.params.sheetName.$default : '');
+    const currentSheet =
+      workflowRuntimeDefaultString(workflow, sheetPath) ||
+      (typeof task.params.sheetName.$default === 'string' ? task.params.sheetName.$default : '');
     sheetSelect.innerHTML = `<option value="${escapeHtml(currentSheet)}">Loading sheets...</option>`;
     sheetSelect.disabled = true;
     try {
@@ -1598,7 +1622,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       if (!sheetSelect.isConnected || getActiveWorkflowTask()?.id !== task.id) return;
       sheetSelect.innerHTML = [
         '<option value="">Select sheet</option>',
-        ...detail.sheets.map((sheet) => `<option value="${escapeHtml(sheet.sheetName)}">${escapeHtml(sheet.sheetName)}</option>`),
+        ...detail.sheets.map(
+          (sheet) => `<option value="${escapeHtml(sheet.sheetName)}">${escapeHtml(sheet.sheetName)}</option>`,
+        ),
       ].join('');
       sheetSelect.value = detail.sheets.some((sheet) => sheet.sheetName === currentSheet) ? currentSheet : '';
       sheetSelect.disabled = false;
@@ -1627,7 +1653,8 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
         (document.querySelector('[data-workflow-runtime-json="schema"]') as HTMLTextAreaElement | null)?.value || '{}',
       ) as WorkflowDefinition['runtimeParamsSchema'];
       const defaults = JSON.parse(
-        (document.querySelector('[data-workflow-runtime-json="defaults"]') as HTMLTextAreaElement | null)?.value || '{}',
+        (document.querySelector('[data-workflow-runtime-json="defaults"]') as HTMLTextAreaElement | null)?.value ||
+          '{}',
       ) as WorkflowDefinition['runtimeParamsDefaults'];
       workflow.runtimeParamsSchema = schema;
       workflow.runtimeParamsDefaults = defaults;
@@ -1708,19 +1735,23 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       renderWorkflowRuntimeParamsSummary(workflow);
     });
 
-    container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]').forEach((control) => {
-      control.addEventListener('change', () => syncRuntimeDefaultFromControl(control));
-      control.addEventListener('input', () => {
-        if (control instanceof HTMLInputElement) syncRuntimeDefaultFromControl(control);
+    container
+      .querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]')
+      .forEach((control) => {
+        control.addEventListener('change', () => syncRuntimeDefaultFromControl(control));
+        control.addEventListener('input', () => {
+          if (control instanceof HTMLInputElement) syncRuntimeDefaultFromControl(control);
+        });
       });
-    });
     container.querySelectorAll<HTMLSelectElement>('[data-runtime-sheet-file-path]').forEach((control) => {
       void hydrateRuntimeSheetControl(control, workflow);
     });
     container.querySelectorAll<HTMLElement>('[data-file-pick-open]').forEach((trigger) => {
       trigger.addEventListener('click', () => void openRuntimeFilePicker(trigger));
     });
-    container.querySelector<HTMLElement>('[data-workflow-runtime-json-apply]')?.addEventListener('click', applyRuntimeJsonFromTextareas);
+    container
+      .querySelector<HTMLElement>('[data-workflow-runtime-json-apply]')
+      ?.addEventListener('click', applyRuntimeJsonFromTextareas);
     localizeWorkflowDom();
   }
 
@@ -1729,7 +1760,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
    * sync → re-render → sheet hydration path stays the single source of truth.
    */
   async function openRuntimeFilePicker(trigger: HTMLElement) {
-    const control = trigger.closest('[data-file-pick]')?.querySelector<HTMLInputElement>('input[data-runtime-default-type="fileRef"]');
+    const control = trigger
+      .closest('[data-file-pick]')
+      ?.querySelector<HTMLInputElement>('input[data-runtime-default-type="fileRef"]');
     if (!control) return;
     const currentFileId = control.value ? Number(control.value) : null;
     const result = await filePicker.open({
@@ -1742,7 +1775,6 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     control.value = result.action === 'pick' ? String(result.fileId) : '';
     control.dispatchEvent(new Event('change', { bubbles: true }));
   }
-
 
   function getEdgePath(startX: number, startY: number, endX: number, endY: number) {
     const deltaX = Math.max((endX - startX) * 0.45, 48);
@@ -1816,7 +1848,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
         .map((dependencyTaskId) => {
           const dependencyTask = workflow.tasks.find((candidate) => candidate.id === dependencyTaskId);
           if (!dependencyTask) return null;
-          const sourceNode = canvas.querySelector<HTMLElement>(`.workflow-node[data-task-id="${cssEscape(dependencyTask.id)}"]`);
+          const sourceNode = canvas.querySelector<HTMLElement>(
+            `.workflow-node[data-task-id="${cssEscape(dependencyTask.id)}"]`,
+          );
           const targetNode = canvas.querySelector<HTMLElement>(`.workflow-node[data-task-id="${cssEscape(task.id)}"]`);
           if (!sourceNode || !targetNode) return null;
           const sourceRect = sourceNode.getBoundingClientRect();
@@ -1905,7 +1939,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     normalizeTaskDependencies(targetTask);
     if (isSqlComputeTask(targetTask)) {
       normalizeSqlTask(targetTask);
-      targetTask.params.tableBindings = getSqlTableBindings(targetTask).filter((binding) => binding.inputSlot !== targetSlot || targetTask.inputs[targetSlot]);
+      targetTask.params.tableBindings = getSqlTableBindings(targetTask).filter(
+        (binding) => binding.inputSlot !== targetSlot || targetTask.inputs[targetSlot],
+      );
     }
     activeWorkflowPreview = null;
     workflowPreviewPage = 1;
@@ -2029,7 +2065,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
 
     panel.classList.remove('hidden');
     panel.classList.toggle('is-running', workflowRunState.isRunning);
-    panel.classList.toggle('is-finished', !workflowRunState.isRunning && reached > 0 && !hasFailedTask && !hasWaitingWarning);
+    panel.classList.toggle(
+      'is-finished',
+      !workflowRunState.isRunning && reached > 0 && !hasFailedTask && !hasWaitingWarning,
+    );
     panel.classList.toggle('is-failed', hasFailedTask);
     panel.classList.toggle('is-warning', hasWarningTask);
     if (headerTitle) {
@@ -2048,15 +2087,15 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
             ? '✓'
             : state === 'running'
               ? '…'
-            : state === 'failed'
+              : state === 'failed'
                 ? '!'
                 : state === 'warning'
                   ? '!'
-                : state === 'blocked'
-                  ? '·'
-                : state === 'skipped'
-                  ? '–'
-                : String(index + 1).padStart(2, '0');
+                  : state === 'blocked'
+                    ? '·'
+                    : state === 'skipped'
+                      ? '–'
+                      : String(index + 1).padStart(2, '0');
         const stateLabel =
           state === 'completed'
             ? 'Completed'
@@ -2068,13 +2107,16 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
                   ? isWaiting
                     ? 'Needs Review'
                     : 'Warning'
-                : state === 'blocked'
-                  ? 'Blocked'
-                : state === 'skipped'
-                  ? 'Skipped'
-                : 'Pending';
+                  : state === 'blocked'
+                    ? 'Blocked'
+                    : state === 'skipped'
+                      ? 'Skipped'
+                      : 'Pending';
         const detailMessage = workflowRunState.taskMessages[task.id] ?? '';
-        const meta = state === 'warning' ? (workflowRunState.warningMessages[task.id] ?? task.operatorCode) : (task.description || task.operatorCode);
+        const meta =
+          state === 'warning'
+            ? (workflowRunState.warningMessages[task.id] ?? task.operatorCode)
+            : task.description || task.operatorCode;
         return `
           <div class="workflow-run-task workflow-run-task--${state}">
             <span class="workflow-run-task__indicator">${escapeHtml(indicator)}</span>
@@ -2249,13 +2291,20 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     if (!workflowDragState.moved && Math.hypot(deltaX, deltaY) >= WORKFLOW_DRAG_THRESHOLD) {
       workflowDragState.moved = true;
     }
-    task.x = Math.max(WORKFLOW_CANVAS_PADDING / 2, Math.round(workflowDragState.startTaskX + deltaX / workflowCanvasZoom));
-    task.y = Math.max(WORKFLOW_CANVAS_PADDING / 2, Math.round(workflowDragState.startTaskY + deltaY / workflowCanvasZoom));
+    task.x = Math.max(
+      WORKFLOW_CANVAS_PADDING / 2,
+      Math.round(workflowDragState.startTaskX + deltaX / workflowCanvasZoom),
+    );
+    task.y = Math.max(
+      WORKFLOW_CANVAS_PADDING / 2,
+      Math.round(workflowDragState.startTaskY + deltaY / workflowCanvasZoom),
+    );
     renderWorkflowEditor();
   }
 
   function finishWorkflowDrag(event: PointerEvent, taskId: string) {
-    if (!workflowDragState || workflowDragState.pointerId !== event.pointerId || workflowDragState.taskId !== taskId) return false;
+    if (!workflowDragState || workflowDragState.pointerId !== event.pointerId || workflowDragState.taskId !== taskId)
+      return false;
     const didMove = workflowDragState.moved;
     clearWorkflowDragState();
     return didMove;
@@ -2336,11 +2385,12 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
                 <div class="workflow-node__meta">${escapeHtml(task.id)} · ${escapeHtml(metaParts.join(' · '))}</div>
                 <div class="workflow-node__slots" style="--workflow-slot-count:${slotRows};">
                   <div class="workflow-node__slot-column workflow-node__slot-column--inputs">
-                    ${inputSlots.length
-                      ? inputSlots
-                          .map((slot) => {
-                            const binding = task.inputs?.[slot];
-                            return `
+                    ${
+                      inputSlots.length
+                        ? inputSlots
+                            .map((slot) => {
+                              const binding = task.inputs?.[slot];
+                              return `
                             <button
                               type="button"
                               class="workflow-handle workflow-handle--target"
@@ -2353,9 +2403,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
                               <span class="workflow-node__slot-name">${escapeHtml(slot)}</span>
                               <span class="workflow-node__slot-binding">${escapeHtml(binding?.from ? `${binding.from}.${binding.slot}` : 'Not connected')}</span>
                             </div>`;
-                          })
-                          .join('')
-                      : ''}
+                            })
+                            .join('')
+                        : ''
+                    }
                     ${
                       paramInputs.length
                         ? paramInputs
@@ -2483,7 +2534,8 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       if (
         event.target === dag ||
         (event.target instanceof HTMLElement &&
-          (event.target.classList.contains('workflow-dag__canvas') || event.target.classList.contains('workflow-dag__surface')))
+          (event.target.classList.contains('workflow-dag__canvas') ||
+            event.target.classList.contains('workflow-dag__surface')))
       ) {
         clearPendingWorkflowConnection();
         renderWorkflowEditor();
@@ -2563,69 +2615,23 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
           type: operator.code,
           name: String(record.name ?? operator.name).trim() || operator.name,
           enabled: record.enabled !== false,
-          params: record.params && typeof record.params === 'object' && !Array.isArray(record.params) ? record.params : {},
+          params:
+            record.params && typeof record.params === 'object' && !Array.isArray(record.params) ? record.params : {},
         };
       })
       .filter((guard): guard is WorkflowInputGuard => Boolean(guard));
   }
 
-  function getInputBindingWithGuards(input: WorkflowTaskInput | undefined, next: { from: string; slot?: string }): WorkflowTaskInput {
+  function getInputBindingWithGuards(
+    input: WorkflowTaskInput | undefined,
+    next: { from: string; slot?: string },
+  ): WorkflowTaskInput {
     const guards = normalizeInputGuards(input?.guards);
     return {
       from: next.from,
       slot: next.slot ?? 'dataframe',
       guards,
     };
-  }
-
-  function getInputGuardParamValue(guard: WorkflowInputGuard, key: string, operator: WorkflowOperator) {
-    if (Object.prototype.hasOwnProperty.call(guard.params, key)) return guard.params[key];
-    return operator.paramsSchema?.[key]?.default ?? '';
-  }
-
-  function renderInputGuardParamField(guard: WorkflowInputGuard, operator: WorkflowOperator, key: string) {
-    const field = operator.paramsSchema[key];
-    const value = getInputGuardParamValue(guard, key, operator);
-    const label = escapeHtml(field.label ?? key);
-    const commonAttrs = `data-input-guard-param-id="${escapeHtml(guard.id)}" data-input-guard-param-key="${escapeHtml(key)}"`;
-    if (field.enum?.length) {
-      return `
-        <label class="workflow-input-guard__field">
-          <span>${label}</span>
-          <select class="search-input workflow-select" ${commonAttrs}>
-            ${field.enum.map((item) => `<option value="${escapeHtml(item)}"${String(value) === item ? ' selected' : ''}>${escapeHtml(item)}</option>`).join('')}
-          </select>
-        </label>`;
-    }
-    if (field.type === 'number') {
-      return `
-        <label class="workflow-input-guard__field">
-          <span>${label}</span>
-          <input class="search-input workflow-input" type="number" ${commonAttrs} value="${escapeHtml(value)}">
-        </label>`;
-    }
-    if (field.type === 'boolean') {
-      return `
-        <label class="workflow-input-guard__field workflow-input-guard__field--checkbox">
-          <input type="checkbox" ${commonAttrs} ${value === true ? 'checked' : ''}>
-          <span>${label}</span>
-        </label>`;
-    }
-    const isLong = key === 'sql' || key === 'expectedColumns' || field.type === 'array';
-    if (isLong) {
-      return `
-        <label class="workflow-input-guard__field workflow-input-guard__field--wide">
-          <span>${label}</span>
-          <textarea class="search-input workflow-textarea" rows="2" ${commonAttrs}>${escapeHtml(
-            Array.isArray(value) ? value.join(', ') : value,
-          )}</textarea>
-        </label>`;
-    }
-    return `
-      <label class="workflow-input-guard__field">
-        <span>${label}</span>
-        <input class="search-input workflow-input" ${commonAttrs} value="${escapeHtml(value)}" placeholder="${escapeHtml(field.placeholder ?? '')}">
-      </label>`;
   }
 
   function renderWorkflowEdgeGuardsModal() {
@@ -2685,7 +2691,7 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
                     </article>`;
                 })
                 .join('')
-              : '<div class="workflow-dependency-empty">当前输入暂无检查</div>'
+            : '<div class="workflow-dependency-empty">当前输入暂无检查</div>'
         }
       </div>
     `;
@@ -2703,147 +2709,6 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     });
   }
 
-  function renderWorkflowInputGuards(task: WorkflowTask) {
-    const row = el('workflowStructuredInputGuardsRow');
-    const container = el('workflowInputGuardsEditor');
-    const operator = getWorkflowOperator(task);
-    const inputSlots = getTaskInputSlots(task, operator);
-    const guardOperators = getInputGuardOperators();
-    const slotsWithInputs = inputSlots.filter((slot) => task.inputs?.[slot]);
-
-    if (!slotsWithInputs.length || !guardOperators.length) {
-      row.classList.add('hidden');
-      container.innerHTML = '';
-      return;
-    }
-
-    row.classList.remove('hidden');
-    container.innerHTML = `
-      <div class="workflow-input-guards">
-        <div class="workflow-structured__section-head">
-          <div>
-            <div class="workflow-structured__label">Input Checks</div>
-            <div class="workflow-structured__section-subtitle">Assertions attached to data inputs. Failed checks can block or pause this node.</div>
-          </div>
-        </div>
-        ${slotsWithInputs
-          .map((slot) => {
-            const input = task.inputs[slot];
-            const guards = normalizeInputGuards(input.guards);
-            return `
-              <section class="workflow-input-guard-slot" data-input-guard-slot="${escapeHtml(slot)}">
-                <div class="workflow-input-guard-slot__header">
-                  <div>
-                    <strong>${escapeHtml(slot)}</strong>
-                    <span>${escapeHtml(input.from ? `${input.from}.${input.slot}` : 'Not connected')}</span>
-                  </div>
-                  <button class="workflow-icon-btn" type="button" data-add-input-guard-slot="${escapeHtml(slot)}" aria-label="Add check" title="Add check">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <line x1="12" y1="5" x2="12" y2="19"></line>
-                      <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                  </button>
-                </div>
-                ${
-                  workflowInputGuardAddSlot === slot
-                    ? `<div class="workflow-input-guard-picker">
-                        ${guardOperators
-                          .map(
-                            (guardOperator) => `
-                              <button class="workflow-dependency-option" type="button" data-create-input-guard-slot="${escapeHtml(slot)}" data-create-input-guard-type="${escapeHtml(guardOperator.code)}">
-                                <span>${escapeHtml(guardOperator.name)}</span>
-                                <small>${escapeHtml(guardOperator.description)}</small>
-                              </button>`,
-                          )
-                          .join('')}
-                      </div>`
-                    : ''
-                }
-                <div class="workflow-input-guard-list">
-                  ${
-                    guards.length
-                      ? guards
-                          .map((guard) => {
-                            const guardOperator = getInputGuardOperator(guard.type);
-                            if (!guardOperator) return '';
-                            return `
-                              <article class="workflow-input-guard" data-input-guard-id="${escapeHtml(guard.id)}">
-                                <div class="workflow-input-guard__header">
-                                  <label class="workflow-input-guard__enabled">
-                                    <input type="checkbox" data-toggle-input-guard-id="${escapeHtml(guard.id)}" ${guard.enabled ? 'checked' : ''}>
-                                    <span>${escapeHtml(guard.name)}</span>
-                                  </label>
-                                  <span class="workflow-input-guard__type">${escapeHtml(guardOperator.name)}</span>
-                                  <button class="workflow-icon-btn workflow-icon-btn--danger" type="button" data-remove-input-guard-id="${escapeHtml(guard.id)}" aria-label="Remove check">
-                                    <svg viewBox="0 0 16 16" fill="none">
-                                      <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                                    </svg>
-                                  </button>
-                                </div>
-                                <div class="workflow-input-guard__params">
-                                  ${Object.keys(guardOperator.paramsSchema ?? {})
-                                    .map((key) => renderInputGuardParamField(guard, guardOperator, key))
-                                    .join('')}
-                                </div>
-                              </article>`;
-                          })
-                          .join('')
-                      : '<div class="workflow-dependency-empty">No checks on this input</div>'
-                  }
-                </div>
-              </section>`;
-          })
-          .join('')}
-      </div>
-    `;
-
-    container.querySelectorAll<HTMLButtonElement>('[data-add-input-guard-slot]').forEach((button) => {
-      button.addEventListener('click', () => {
-        workflowInputGuardAddSlot = workflowInputGuardAddSlot === button.dataset.addInputGuardSlot ? null : button.dataset.addInputGuardSlot ?? null;
-        renderWorkflowInputGuards(task);
-      });
-    });
-    container.querySelectorAll<HTMLButtonElement>('[data-create-input-guard-slot]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const slot = button.dataset.createInputGuardSlot ?? '';
-        const guardOperator = getInputGuardOperator(button.dataset.createInputGuardType ?? '');
-        if (!slot || !guardOperator || !task.inputs[slot]) return;
-        const guards = normalizeInputGuards(task.inputs[slot].guards);
-        guards.push({
-          id: `guard_${Date.now().toString(36)}`,
-          type: guardOperator.code,
-          name: guardOperator.name,
-          enabled: true,
-          params: buildDefaultTaskParams(guardOperator),
-        });
-        task.inputs[slot].guards = guards;
-        workflowInputGuardAddSlot = null;
-        syncTaskParamsTextarea(task);
-        renderWorkflowEditor();
-      });
-    });
-    container.querySelectorAll<HTMLInputElement>('[data-toggle-input-guard-id]').forEach((checkbox) => {
-      checkbox.addEventListener('change', () => {
-        const guard = findInputGuard(task, checkbox.dataset.toggleInputGuardId ?? '');
-        if (!guard) return;
-        guard.enabled = checkbox.checked;
-        syncTaskParamsTextarea(task);
-        renderWorkflowEditor();
-      });
-    });
-    container.querySelectorAll<HTMLButtonElement>('[data-remove-input-guard-id]').forEach((button) => {
-      button.addEventListener('click', () => {
-        removeInputGuard(task, button.dataset.removeInputGuardId ?? '');
-        syncTaskParamsTextarea(task);
-        renderWorkflowEditor();
-      });
-    });
-    container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-input-guard-param-id]').forEach((field) => {
-      field.addEventListener('input', () => syncInputGuardParam(task, field));
-      field.addEventListener('change', () => syncInputGuardParam(task, field));
-    });
-  }
-
   function findInputGuard(task: WorkflowTask, guardId: string): WorkflowInputGuard | null {
     for (const input of Object.values(task.inputs ?? {})) {
       input.guards = normalizeInputGuards(input.guards);
@@ -2851,46 +2716,6 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       if (guard) return guard;
     }
     return null;
-  }
-
-  function removeInputGuard(task: WorkflowTask, guardId: string) {
-    for (const input of Object.values(task.inputs ?? {})) {
-      input.guards = normalizeInputGuards(input.guards).filter((guard) => guard.id !== guardId);
-    }
-  }
-
-  function syncInputGuardParam(
-    task: WorkflowTask,
-    field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
-  ) {
-    const guard = findInputGuard(task, field.dataset.inputGuardParamId ?? '');
-    if (!guard) return;
-    const key = field.dataset.inputGuardParamKey ?? '';
-    if (!key) return;
-    let value: unknown = field.value;
-    const guardOperator = getInputGuardOperator(guard.type);
-    const paramField = guardOperator?.paramsSchema?.[key];
-    if (field instanceof HTMLInputElement && field.type === 'checkbox') {
-      value = field.checked;
-    } else if (paramField?.type === 'number') {
-      const numeric = Number(field.value);
-      value = Number.isFinite(numeric) ? numeric : field.value;
-    } else if (paramField?.type === 'array') {
-      value = field.value;
-    }
-    guard.params[key] = value;
-    syncTaskParamsTextarea(task);
-    activeWorkflowPreview = null;
-    workflowPreviewPage = 1;
-    renderWorkflowEdgesForActiveEditor();
-  }
-
-  function renderWorkflowEdgesForActiveEditor() {
-    const workflow = getActiveWorkflow();
-    const dag = el('workflowDag');
-    if (!workflow) return;
-    const operatorsByTaskId = new Map(workflow.tasks.map((item) => [item.id, getWorkflowOperator(item)]));
-    renderWorkflowEdges(workflow, operatorsByTaskId, dag);
   }
 
   function getSqlInputSlots(task: WorkflowTask): string[] {
@@ -2985,7 +2810,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       if (!activeTask.inputs[defaultInputSlot]) {
         activeTask.inputs[defaultInputSlot] = { from: '', slot: 'dataframe' };
       }
-      nextBindings.push({ tableName: `table${String.fromCharCode(97 + nextBindings.length)}`, inputSlot: defaultInputSlot });
+      nextBindings.push({
+        tableName: `table${String.fromCharCode(97 + nextBindings.length)}`,
+        inputSlot: defaultInputSlot,
+      });
       activeTask.params.tableBindings = nextBindings;
       syncTaskParamsTextarea(activeTask);
       renderStructuredTaskParams(activeTask);
@@ -3073,11 +2901,13 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
 
     el<HTMLSelectElement>('workflowSectionMode').addEventListener('change', syncStructuredTaskParamsToState);
     el<HTMLInputElement>('workflowSectionSplitByColumn').addEventListener('input', syncStructuredTaskParamsToState);
-    container.querySelectorAll<HTMLInputElement>(
-      '[data-sheet-section-key], [data-sheet-section-title], [data-sheet-section-range], [data-sheet-section-anchor-text], [data-sheet-section-range-columns], [data-sheet-section-header-row], [data-sheet-section-header-offset], [data-sheet-section-data-offset], [data-sheet-section-max-rows]',
-    ).forEach((input) => {
-      input.addEventListener('input', syncStructuredTaskParamsToState);
-    });
+    container
+      .querySelectorAll<HTMLInputElement>(
+        '[data-sheet-section-key], [data-sheet-section-title], [data-sheet-section-range], [data-sheet-section-anchor-text], [data-sheet-section-range-columns], [data-sheet-section-header-row], [data-sheet-section-header-offset], [data-sheet-section-data-offset], [data-sheet-section-max-rows]',
+      )
+      .forEach((input) => {
+        input.addEventListener('input', syncStructuredTaskParamsToState);
+      });
     container.querySelectorAll<HTMLElement>('[data-remove-sheet-section]').forEach((button) => {
       button.addEventListener('click', () => {
         const activeTask = getActiveWorkflowTask();
@@ -3146,7 +2976,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     const candidates = getWorkflowTaskCandidates(task.id).filter((candidate) => !selected.has(candidate.id));
     const workflow = getActiveWorkflow();
     const taskMap = workflow ? getWorkflowTaskMap(workflow) : new Map<string, WorkflowTask>();
-    const selectedTasks = selectedIds.map((taskId) => taskMap.get(taskId)).filter((candidate): candidate is WorkflowTask => Boolean(candidate));
+    const selectedTasks = selectedIds
+      .map((taskId) => taskMap.get(taskId))
+      .filter((candidate): candidate is WorkflowTask => Boolean(candidate));
     const hasCandidates = candidates.length > 0;
 
     container.innerHTML = `
@@ -3286,7 +3118,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     }
 
     if (isSqlAssertTask(task)) {
-      ['sql', 'tableBindings', 'operator', 'expectedValue', 'failureStrategy', 'failureMessage'].forEach((key) => keys.add(key));
+      ['sql', 'tableBindings', 'operator', 'expectedValue', 'failureStrategy', 'failureMessage'].forEach((key) =>
+        keys.add(key),
+      );
     }
 
     if (isSchemaAssertTask(task)) {
@@ -3294,7 +3128,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     }
 
     if (isShapeAssertTask(task)) {
-      ['rowOperator', 'expectedRows', 'columnOperator', 'expectedColumns', 'failureStrategy', 'failureMessage'].forEach((key) => keys.add(key));
+      ['rowOperator', 'expectedRows', 'columnOperator', 'expectedColumns', 'failureStrategy', 'failureMessage'].forEach(
+        (key) => keys.add(key),
+      );
     }
 
     return keys;
@@ -3336,12 +3172,14 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     const workflow = getActiveWorkflow();
     const fileSelect = el<HTMLSelectElement>('workflowPreviewFileId');
     const runtimeFilePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
-    const runtimeDefaultFileId = workflow && runtimeFilePath ? workflowRuntimeDefaultFileId(workflow, runtimeFilePath) : null;
+    const runtimeDefaultFileId =
+      workflow && runtimeFilePath ? workflowRuntimeDefaultFileId(workflow, runtimeFilePath) : null;
     fileSelect.innerHTML = [
       `<option value="">${runtimeFilePath ? '未设置默认文件' : '请选择文件'}</option>`,
-      ...getProductFiles().map((file) => `<option value="${file.id}">${escapeHtml(productFileDisplayName(file))}</option>`),
-    ]
-      .join('');
+      ...getProductFiles().map(
+        (file) => `<option value="${file.id}">${escapeHtml(productFileDisplayName(file))}</option>`,
+      ),
+    ].join('');
     fileSelect.dataset.runtimeDefaultPath = runtimeFilePath ?? '';
     fileSelect.dataset.fileParamMode = runtimeFilePath ? 'runtime-default' : 'direct';
     fileSelect.title = runtimeFilePath ? formatRuntimeFileSelectionLabel(runtimeFilePath) : '';
@@ -3407,7 +3245,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       rangeRow.classList.remove('hidden');
       headerRow.classList.remove('hidden');
 
-      fileSelect.value = runtimeFilePath ? String(runtimeDefaultFileId ?? '') : encodeWorkflowFileParamSelection(task.params.fileRef ?? task.params.fileId);
+      fileSelect.value = runtimeFilePath
+        ? String(runtimeDefaultFileId ?? '')
+        : encodeWorkflowFileParamSelection(task.params.fileRef ?? task.params.fileId);
       if (isWorkflowRuntimeParameterReference(task.params.sheetName)) {
         sheetNameInput.value = '';
         sheetNameInput.classList.add('hidden');
@@ -3429,7 +3269,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       sheetRow.classList.remove('hidden');
       sectionsRow.classList.remove('hidden');
 
-      fileSelect.value = runtimeFilePath ? String(runtimeDefaultFileId ?? '') : encodeWorkflowFileParamSelection(task.params.fileRef ?? task.params.fileId);
+      fileSelect.value = runtimeFilePath
+        ? String(runtimeDefaultFileId ?? '')
+        : encodeWorkflowFileParamSelection(task.params.fileRef ?? task.params.fileId);
       if (isWorkflowRuntimeParameterReference(task.params.sheetName)) {
         sheetNameInput.value = '';
         sheetNameInput.classList.add('hidden');
@@ -3473,7 +3315,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       el<HTMLSelectElement>('workflowAssertOperator').value = String(task.params.operator ?? '=');
       el<HTMLInputElement>('workflowAssertExpectedValue').value = String(task.params.expectedValue ?? '');
       el<HTMLSelectElement>('workflowAssertFailureStrategy').value = getAssertFailureStrategy(task);
-      el<HTMLInputElement>('workflowAssertFailureMessage').value = String(task.params.failureMessage ?? 'Assertion failed');
+      el<HTMLInputElement>('workflowAssertFailureMessage').value = String(
+        task.params.failureMessage ?? 'Assertion failed',
+      );
     }
 
     if (isSqlAssertTask(task)) {
@@ -3485,7 +3329,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       el<HTMLSelectElement>('workflowAssertOperator').value = String(task.params.operator ?? '=');
       el<HTMLInputElement>('workflowAssertExpectedValue').value = String(task.params.expectedValue ?? '');
       el<HTMLSelectElement>('workflowAssertFailureStrategy').value = getAssertFailureStrategy(task);
-      el<HTMLInputElement>('workflowAssertFailureMessage').value = String(task.params.failureMessage ?? 'Assertion failed');
+      el<HTMLInputElement>('workflowAssertFailureMessage').value = String(
+        task.params.failureMessage ?? 'Assertion failed',
+      );
     }
 
     if (isSchemaAssertTask(task)) {
@@ -3499,7 +3345,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       el<HTMLSelectElement>('workflowAssertSchemaMode').value = String(task.params.mode ?? 'contains');
       el<HTMLTextAreaElement>('workflowAssertSchemaColumns').value = String(task.params.expectedColumns ?? '');
       el<HTMLSelectElement>('workflowAssertFailureStrategy').value = getAssertFailureStrategy(task);
-      el<HTMLInputElement>('workflowAssertFailureMessage').value = String(task.params.failureMessage ?? 'Assertion failed');
+      el<HTMLInputElement>('workflowAssertFailureMessage').value = String(
+        task.params.failureMessage ?? 'Assertion failed',
+      );
     }
 
     if (isShapeAssertTask(task)) {
@@ -3515,7 +3363,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       el<HTMLSelectElement>('workflowShapeColumnOperator').value = String(task.params.columnOperator ?? '>=');
       el<HTMLInputElement>('workflowShapeExpectedColumns').value = String(task.params.expectedColumns ?? 1);
       el<HTMLSelectElement>('workflowAssertFailureStrategy').value = getAssertFailureStrategy(task);
-      el<HTMLInputElement>('workflowAssertFailureMessage').value = String(task.params.failureMessage ?? 'Assertion failed');
+      el<HTMLInputElement>('workflowAssertFailureMessage').value = String(
+        task.params.failureMessage ?? 'Assertion failed',
+      );
     }
 
     inputGuardsRow.classList.add('hidden');
@@ -3547,7 +3397,10 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       uploadFolderPrefix: 'input',
     });
     if (!result) return;
-    if (result.action === 'pick' && !Array.from(select.options).some((option) => option.value === String(result.fileId))) {
+    if (
+      result.action === 'pick' &&
+      !Array.from(select.options).some((option) => option.value === String(result.fileId))
+    ) {
       // A file uploaded from inside the picker has no option yet, and <select>.value ignores unknown values.
       const file = getProductFiles().find((item) => item.id === result.fileId);
       const option = document.createElement('option');
@@ -3625,18 +3478,27 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       }
       task.params.sectionMode = el<HTMLSelectElement>('workflowSectionMode')?.value ?? 'manual';
       task.params.splitByColumn = el<HTMLInputElement>('workflowSectionSplitByColumn')?.value.trim() ?? '';
-      task.params.sections = Array.from(document.querySelectorAll<HTMLElement>('[data-sheet-section-row]'))
-        .map((row, index) => {
+      task.params.sections = Array.from(document.querySelectorAll<HTMLElement>('[data-sheet-section-row]')).map(
+        (row, index) => {
           const key =
-            row.querySelector<HTMLInputElement>(`[data-sheet-section-key="${index}"]`)?.value.trim() || `section_${index + 1}`;
-          const title = row.querySelector<HTMLInputElement>(`[data-sheet-section-title="${index}"]`)?.value.trim() || key;
-          const range = row.querySelector<HTMLInputElement>(`[data-sheet-section-range="${index}"]`)?.value.trim() ?? '';
-          const anchorText = row.querySelector<HTMLInputElement>(`[data-sheet-section-anchor-text="${index}"]`)?.value.trim() ?? '';
-          const rangeColumns = row.querySelector<HTMLInputElement>(`[data-sheet-section-range-columns="${index}"]`)?.value.trim() ?? '';
-          const headerRowValue = row.querySelector<HTMLInputElement>(`[data-sheet-section-header-row="${index}"]`)?.value.trim() ?? '';
-          const headerOffsetValue = row.querySelector<HTMLInputElement>(`[data-sheet-section-header-offset="${index}"]`)?.value.trim() ?? '';
-          const dataOffsetValue = row.querySelector<HTMLInputElement>(`[data-sheet-section-data-offset="${index}"]`)?.value.trim() ?? '';
-          const maxRowsValue = row.querySelector<HTMLInputElement>(`[data-sheet-section-max-rows="${index}"]`)?.value.trim() ?? '';
+            row.querySelector<HTMLInputElement>(`[data-sheet-section-key="${index}"]`)?.value.trim() ||
+            `section_${index + 1}`;
+          const title =
+            row.querySelector<HTMLInputElement>(`[data-sheet-section-title="${index}"]`)?.value.trim() || key;
+          const range =
+            row.querySelector<HTMLInputElement>(`[data-sheet-section-range="${index}"]`)?.value.trim() ?? '';
+          const anchorText =
+            row.querySelector<HTMLInputElement>(`[data-sheet-section-anchor-text="${index}"]`)?.value.trim() ?? '';
+          const rangeColumns =
+            row.querySelector<HTMLInputElement>(`[data-sheet-section-range-columns="${index}"]`)?.value.trim() ?? '';
+          const headerRowValue =
+            row.querySelector<HTMLInputElement>(`[data-sheet-section-header-row="${index}"]`)?.value.trim() ?? '';
+          const headerOffsetValue =
+            row.querySelector<HTMLInputElement>(`[data-sheet-section-header-offset="${index}"]`)?.value.trim() ?? '';
+          const dataOffsetValue =
+            row.querySelector<HTMLInputElement>(`[data-sheet-section-data-offset="${index}"]`)?.value.trim() ?? '';
+          const maxRowsValue =
+            row.querySelector<HTMLInputElement>(`[data-sheet-section-max-rows="${index}"]`)?.value.trim() ?? '';
           return {
             key,
             title,
@@ -3648,7 +3510,8 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
             dataStartRowOffset: dataOffsetValue ? Number(dataOffsetValue) : null,
             maxRows: maxRowsValue ? Number(maxRowsValue) : null,
           };
-        });
+        },
+      );
       normalizeSheetSectionsExtractTask(task);
     }
 
@@ -3657,11 +3520,18 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       const nextInputs: WorkflowTask['inputs'] = {};
       task.params.tableBindings = Array.from(document.querySelectorAll<HTMLElement>('[data-sql-table-row]'))
         .map((row, index) => {
-          const tableName = (row.querySelector<HTMLInputElement>(`[data-sql-table-name="${index}"]`)?.value ?? '').trim();
-          const upstreamTaskId = (row.querySelector<HTMLSelectElement>(`[data-sql-table-source="${index}"]`)?.value ?? '').trim();
+          const tableName = (
+            row.querySelector<HTMLInputElement>(`[data-sql-table-name="${index}"]`)?.value ?? ''
+          ).trim();
+          const upstreamTaskId = (
+            row.querySelector<HTMLSelectElement>(`[data-sql-table-source="${index}"]`)?.value ?? ''
+          ).trim();
           if (!tableName) return null;
           const inputSlot = `input${index + 1}`;
-          nextInputs[inputSlot] = getInputBindingWithGuards(task.inputs?.[inputSlot], { from: upstreamTaskId, slot: 'dataframe' });
+          nextInputs[inputSlot] = getInputBindingWithGuards(task.inputs?.[inputSlot], {
+            from: upstreamTaskId,
+            slot: 'dataframe',
+          });
           return { tableName, inputSlot };
         })
         .filter((item): item is WorkflowSqlTableBinding => Boolean(item));
@@ -3691,10 +3561,12 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       const expectedValueNumber = Number(expectedValueRaw);
       task.params.expectedValue =
         expectedValueRaw !== '' && Number.isFinite(expectedValueNumber) ? expectedValueNumber : expectedValueRaw;
-      const failureStrategy = el<HTMLSelectElement>('workflowAssertFailureStrategy').value as WorkflowAssertFailureStrategy;
+      const failureStrategy = el<HTMLSelectElement>('workflowAssertFailureStrategy')
+        .value as WorkflowAssertFailureStrategy;
       task.params.failureStrategy = failureStrategy;
       task.params.blockExecution = failureStrategy === 'block';
-      task.params.failureMessage = el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
+      task.params.failureMessage =
+        el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
       task.inputs = {
         input1: getInputBindingWithGuards(task.inputs?.input1, {
           from: el<HTMLSelectElement>('workflowAssertInputSource').value.trim(),
@@ -3710,20 +3582,24 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       const expectedValueNumber = Number(expectedValueRaw);
       task.params.expectedValue =
         expectedValueRaw !== '' && Number.isFinite(expectedValueNumber) ? expectedValueNumber : expectedValueRaw;
-      const failureStrategy = el<HTMLSelectElement>('workflowAssertFailureStrategy').value as WorkflowAssertFailureStrategy;
+      const failureStrategy = el<HTMLSelectElement>('workflowAssertFailureStrategy')
+        .value as WorkflowAssertFailureStrategy;
       task.params.failureStrategy = failureStrategy;
       task.params.blockExecution = failureStrategy === 'block';
-      task.params.failureMessage = el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
+      task.params.failureMessage =
+        el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
       normalizeSqlTask(task);
     }
 
     if (isSchemaAssertTask(task)) {
       task.params.mode = el<HTMLSelectElement>('workflowAssertSchemaMode').value;
       task.params.expectedColumns = el<HTMLTextAreaElement>('workflowAssertSchemaColumns').value.trim();
-      const failureStrategy = el<HTMLSelectElement>('workflowAssertFailureStrategy').value as WorkflowAssertFailureStrategy;
+      const failureStrategy = el<HTMLSelectElement>('workflowAssertFailureStrategy')
+        .value as WorkflowAssertFailureStrategy;
       task.params.failureStrategy = failureStrategy;
       task.params.blockExecution = failureStrategy === 'block';
-      task.params.failureMessage = el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
+      task.params.failureMessage =
+        el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
       task.inputs = {
         input1: getInputBindingWithGuards(task.inputs?.input1, {
           from: el<HTMLSelectElement>('workflowAssertInputSource').value.trim(),
@@ -3740,10 +3616,12 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       task.params.expectedRows = expectedRowsRaw ? Number(expectedRowsRaw) : 0;
       task.params.columnOperator = el<HTMLSelectElement>('workflowShapeColumnOperator').value;
       task.params.expectedColumns = expectedColumnsRaw ? Number(expectedColumnsRaw) : 0;
-      const failureStrategy = el<HTMLSelectElement>('workflowAssertFailureStrategy').value as WorkflowAssertFailureStrategy;
+      const failureStrategy = el<HTMLSelectElement>('workflowAssertFailureStrategy')
+        .value as WorkflowAssertFailureStrategy;
       task.params.failureStrategy = failureStrategy;
       task.params.blockExecution = failureStrategy === 'block';
-      task.params.failureMessage = el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
+      task.params.failureMessage =
+        el<HTMLInputElement>('workflowAssertFailureMessage').value.trim() || 'Assertion failed';
       task.inputs = {
         input1: getInputBindingWithGuards(task.inputs?.input1, {
           from: el<HTMLSelectElement>('workflowAssertInputSource').value.trim(),
@@ -3821,17 +3699,23 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
           step.taskId,
           step.result?.kind === 'assert'
             ? step.result.assertion.failureMessage
-            : step.errorMessage ?? run.approvals.find((approval) => approval.taskId === step.taskId)?.comment ?? 'Warning',
+            : (step.errorMessage ??
+              run.approvals.find((approval) => approval.taskId === step.taskId)?.comment ??
+              'Warning'),
         ]),
     );
     const taskMessages = Object.fromEntries(
       run.steps
-        .filter((step) => (step.status === 'warning' || step.status === 'failed' || step.status === 'blocked') && Boolean(step.errorMessage?.trim() || step.result?.kind === 'assert'))
+        .filter(
+          (step) =>
+            (step.status === 'warning' || step.status === 'failed' || step.status === 'blocked') &&
+            Boolean(step.errorMessage?.trim() || step.result?.kind === 'assert'),
+        )
         .map((step) => [
           step.taskId,
           step.status === 'warning' && step.result?.kind === 'assert'
             ? step.result.assertion.failureMessage
-            : step.errorMessage?.trim() ?? (step.status === 'failed' ? 'Task failed' : 'Task blocked'),
+            : (step.errorMessage?.trim() ?? (step.status === 'failed' ? 'Task failed' : 'Task blocked')),
         ]),
     );
 
@@ -3891,7 +3775,8 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       applyWorkflowRunRecord(run, workflow);
       shouldRefreshFiles ||= run.artifacts.some((artifact) => artifact.artifactType === 'file');
       const isSettled =
-        isWorkflowRunTerminalStatus(run.status) || (run.status !== 'running' && !run.steps.some((step) => step.status === 'running'));
+        isWorkflowRunTerminalStatus(run.status) ||
+        (run.status !== 'running' && !run.steps.some((step) => step.status === 'running'));
       if (pollCount < (options.minimumPollCount ?? 1)) continue;
       if (!isSettled) continue;
       if (shouldRefreshFiles || getWorkflowRunLastResult(run)?.kind === 'file') {
@@ -3972,7 +3857,8 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     }
 
     workflowRunState.isRunning = true;
-    workflowRunState.message = decision === 'skipped' ? `Skipping downstream flow for ${workflow.name}` : `Continuing ${workflow.name}`;
+    workflowRunState.message =
+      decision === 'skipped' ? `Skipping downstream flow for ${workflow.name}` : `Continuing ${workflow.name}`;
     renderWorkflowEditor();
 
     const result = await api<WorkflowExecutionResult>(`/api/workflow-runs/${workflowRunState.runId}/approvals`, {
@@ -4174,10 +4060,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
             ${
               previewRows.length
                 ? previewRows
-                    .map(
-                      (row, rowIndex) => {
-                        const absoluteRowIndex = startIndex + rowIndex;
-                        return `
+                    .map((row, rowIndex) => {
+                      const absoluteRowIndex = startIndex + rowIndex;
+                      return `
                           <tr>
                             <td>${escapeHtml(dataFrame.index?.[absoluteRowIndex] ?? absoluteRowIndex + 1)}</td>
                             ${dataFrame.columns
@@ -4187,8 +4072,7 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
                               })
                               .join('')}
                           </tr>`;
-                      },
-                    )
+                    })
                     .join('')
                 : `<tr><td colspan="${dataFrame.columns.length + 1}"><div class="workflow-empty">暂无数据</div></td></tr>`
             }
@@ -4223,7 +4107,8 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     panel.classList.remove('hidden');
 
     if (!activeWorkflowPreview) {
-      summary.innerHTML = '<div class="workflow-empty workflow-preview__empty">点击 Preview 执行当前节点，预览节点输出</div>';
+      summary.innerHTML =
+        '<div class="workflow-empty workflow-preview__empty">点击 Preview 执行当前节点，预览节点输出</div>';
       table.innerHTML = '';
       localizeWorkflowDom();
       return;
@@ -4281,7 +4166,11 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
   function renderAssertionPreview(assertion: WorkflowAssertionResult, dataFrame: WorkflowDataFrame) {
     const summary = el('workflowPreviewSummary');
     const table = el('workflowPreviewTable');
-    const statusClass = assertion.passed ? 'is-success' : assertion.failureStrategy === 'warning' ? 'is-warning' : 'is-danger';
+    const statusClass = assertion.passed
+      ? 'is-success'
+      : assertion.failureStrategy === 'warning'
+        ? 'is-warning'
+        : 'is-danger';
     const statusLabel = assertion.passed ? 'Passed' : assertion.failureStrategy === 'warning' ? 'Warning' : 'Failed';
     const failureStrategyLabel =
       assertion.failureStrategy === 'block'
@@ -4338,7 +4227,11 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
     `;
 
     workflowBindingPreviewPage = clampWorkflowPreviewPage(workflowBindingPreviewPage, preview.rows.length);
-    table.innerHTML = renderWorkflowDataFramePreviewTable(preview, workflowBindingPreviewPage, 'workflowBindingPreviewPage');
+    table.innerHTML = renderWorkflowDataFramePreviewTable(
+      preview,
+      workflowBindingPreviewPage,
+      'workflowBindingPreviewPage',
+    );
   }
 
   function renderWorkflowOperatorSlotList(title: string, slots: WorkflowOperator['inputSlots']) {
@@ -4373,9 +4266,12 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
             ? `<div class="workflow-operator-card__param-list">
                 ${entries
                   .map(([key, field]) => {
-                    const enumValues = Array.isArray(field.enum) && field.enum.length ? ` · ${field.enum.join(' | ')}` : '';
+                    const enumValues =
+                      Array.isArray(field.enum) && field.enum.length ? ` · ${field.enum.join(' | ')}` : '';
                     const defaultValue =
-                      field.default === undefined || field.default === null ? '' : ` · default: ${JSON.stringify(field.default)}`;
+                      field.default === undefined || field.default === null
+                        ? ''
+                        : ` · default: ${JSON.stringify(field.default)}`;
                     return `
                       <div class="workflow-operator-card__param">
                         <div>
@@ -4465,10 +4361,9 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
           </div>
           <div class="workflow-operator-group__list">
             ${group.operators
-              .map(
-                (operator) => {
-                  const operatorKey = getWorkflowOperatorKey(operator);
-                  return `
+              .map((operator) => {
+                const operatorKey = getWorkflowOperatorKey(operator);
+                return `
                 <div class="workflow-operator-card" role="button" tabindex="0" data-workflow-operator-key="${escapeHtml(operatorKey)}" aria-label="Open ${escapeHtml(operator.name)} documentation">
                   <div class="workflow-operator-card__head">
                     <span class="workflow-operator-card__name">${escapeHtml(operator.name)}</span>
@@ -4478,8 +4373,7 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
                   <div class="workflow-operator-card__desc">${escapeHtml(operator.description)}</div>
                   <div class="workflow-operator-card__meta">${escapeHtml(getWorkflowOperatorGroupLabel(operator.category))} · ${operator.inputSlots.length} in · ${operator.outputSlots.length} out</div>
                 </div>`;
-                },
-              )
+              })
               .join('')}
           </div>
         </section>`,
@@ -4527,7 +4421,12 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
       return;
     }
     const suffix = Date.now();
-    const baseCode = (workflow.code || 'workflow').trim().replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'workflow';
+    const baseCode =
+      (workflow.code || 'workflow')
+        .trim()
+        .replace(/[^a-zA-Z0-9-_]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '') || 'workflow';
     const created = await api<WorkflowDefinition>('/api/workflows', {
       method: 'POST',
       body: JSON.stringify({
@@ -4624,7 +4523,14 @@ export function createWorkflowPage({ el, api, escapeHtml, formatFileSize, getPro
   async function deleteWorkflow() {
     const workflow = getActiveWorkflow();
     if (!workflow) return;
-    if (!(await confirmAction(`确定删除工作流 ${workflow.name} 吗？`, { title: '删除工作流', confirmText: '删除', tone: 'danger' }))) return;
+    if (
+      !(await confirmAction(`确定删除工作流 ${workflow.name} 吗？`, {
+        title: '删除工作流',
+        confirmText: '删除',
+        tone: 'danger',
+      }))
+    )
+      return;
     await api(`/api/workflows/${workflow.id}`, { method: 'DELETE' });
     resetWorkflowRunState();
     await loadWorkflows();

@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import path from 'node:path';
 import { parseJson } from '../utils/json.js';
 import type { RouteContext } from './context.js';
 
@@ -10,7 +9,9 @@ export function registerLinkDetailRoutes(app: FastifyInstance, ctx: RouteContext
 
   app.get('/api/link-details/:key', async (request, reply) => {
     const { key } = request.params as { key: string };
-    const detail = await db.queryOne<Record<string, unknown>>('select * from link_details where detail_key = $1', [key]);
+    const detail = await db.queryOne<Record<string, unknown>>('select * from link_details where detail_key = $1', [
+      key,
+    ]);
     if (!detail) return reply.code(404).send({ error: 'Link detail not found' });
     return {
       title: String(detail.title),
@@ -20,4 +21,3 @@ export function registerLinkDetailRoutes(app: FastifyInstance, ctx: RouteContext
     };
   });
 }
-

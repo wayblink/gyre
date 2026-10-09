@@ -27,7 +27,6 @@ import {
 } from '../dataManagementWorkflow/workflowDefinitions.js';
 import {
   badRequest,
-  conflict,
   employeeCanonicalByNumber,
   employeeLabelsByNumber,
   employeeLinkGroupByNumber,
@@ -52,12 +51,7 @@ import {
   updatedByFromRequest,
   workflowSourceDescriptors,
 } from './support.js';
-import {
-  employeeLabelIds,
-  employeeLabelNames,
-  employeeNumberByName,
-  normalizeEmployeeName,
-} from './employees.js';
+import { employeeLabelIds, employeeLabelNames, employeeNumberByName, normalizeEmployeeName } from './employees.js';
 import {
   emptyFivePercentHolderRows,
   applyFivePercentHolderGlobalParameters,
@@ -83,17 +77,24 @@ const paginationQuerySchema = z.object({
 const esopPageKeySchema = z.enum(['grant-record', 'exercise-record', 'sold-shares', 'transfer-plan']);
 
 const esopWorkflowRunBodySchema = z.object({
-  sources: z.record(z.string(), z.object({
-    fileId: z.number().int().positive(),
-    sheet: z.string().trim().min(1).max(255).optional(),
-  })),
+  sources: z.record(
+    z.string(),
+    z.object({
+      fileId: z.number().int().positive(),
+      sheet: z.string().trim().min(1).max(255).optional(),
+    }),
+  ),
 });
 
 const transferPlanEditBodySchema = z.object({
-  edits: z.array(z.object({
-    period: z.string().trim().min(1),
-    cancelledQuantity: z.number().finite(),
-  })).min(1),
+  edits: z
+    .array(
+      z.object({
+        period: z.string().trim().min(1),
+        cancelledQuantity: z.number().finite(),
+      }),
+    )
+    .min(1),
 });
 
 const dataManagementPageKeySchema = z.enum(['employee', 'plan-summary', 'five-percent-holders']);
@@ -202,7 +203,11 @@ function exerciseFromWorkflowRow(row: Record<string, unknown>, index: number, la
   };
 }
 
-function shareworksExerciseFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
+function shareworksExerciseFromWorkflowRow(
+  row: Record<string, unknown>,
+  index: number,
+  labels: EmployeeLabelRef[] = [],
+) {
   return {
     id: index + 1,
     employeeNumber: '',
@@ -234,7 +239,8 @@ function shareworksExerciseFromWorkflowRow(row: Record<string, unknown>, index: 
   };
 }
 
-function soldShareFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {  return {
+function soldShareFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
+  return {
     id: index + 1,
     name: textValue(row['姓名']) ?? '',
     employeeNumber: textValue(row['工号']) ?? '',
@@ -324,22 +330,21 @@ function transferPlanEditedWorkbookBuffer(
     }
   }
   sourceTotalRow[totalColumn] = periodColumns.reduce((total, period) => total + numberValue(sourceTotalRow[period]), 0);
-  adjustedTotalRow[totalColumn] = periodColumns.reduce((total, period) => total + numberValue(adjustedTotalRow[period]), 0);
+  adjustedTotalRow[totalColumn] = periodColumns.reduce(
+    (total, period) => total + numberValue(adjustedTotalRow[period]),
+    0,
+  );
 
-  const sheetRows = [
-    [],
-    [],
-    [],
-    columns,
-    ...editedRows.map((row) => columns.map((column) => row[column] ?? null)),
-  ];
+  const sheetRows = [[], [], [], columns, ...editedRows.map((row) => columns.map((column) => row[column] ?? null))];
   const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, '2025 BC Subplan Transfer');
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }
 
-async function latestFivePercentHolderInputSourceBindings(db: RouteContext['db']): Promise<WorkflowPageSourceBindingResponse[]> {
+async function latestFivePercentHolderInputSourceBindings(
+  db: RouteContext['db'],
+): Promise<WorkflowPageSourceBindingResponse[]> {
   const bindings = await latestWorkflowInputSourceBindings(db, 'five-percent-holders-sync');
   const existing = bindings.find((binding) => binding.sourceKey === 'capitalization_summary');
   if (existing?.fileId) return bindings;
@@ -348,23 +353,28 @@ async function latestFivePercentHolderInputSourceBindings(db: RouteContext['db']
   if (!latestMonthlyOutput?.fileId) return bindings;
 
   const file = await getProductFileOrThrow(db, latestMonthlyOutput.fileId);
-  return bindings.map((binding) => binding.sourceKey === 'capitalization_summary'
-    ? {
-      ...binding,
-      fileId: latestMonthlyOutput.fileId,
-      fileName: productFileDisplayPath(file),
-    }
-    : binding);
+  return bindings.map((binding) =>
+    binding.sourceKey === 'capitalization_summary'
+      ? {
+          ...binding,
+          fileId: latestMonthlyOutput.fileId,
+          fileName: productFileDisplayPath(file),
+        }
+      : binding,
+  );
 }
-
 
 export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) {
   const { db, workflowRunStore, workflowRunExecutor } = ctx;
 
-
-app.get('/api/holdings', async (request) => {
+  app.get('/api/holdings', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', grantType = '', tagId = '', tag = '' } = request.query as {
+    const {
+      query = '',
+      grantType = '',
+      tagId = '',
+      tag = '',
+    } = request.query as {
       query?: string;
       grantType?: string;
       tagId?: string;
@@ -402,14 +412,10 @@ app.get('/api/holdings', async (request) => {
       normalizedQuery,
       canonicalByNumber,
       (row) =>
-        [
-          row.employeeName,
-          row.employeeNumber,
-          row.tags.join(' '),
-          row.grantNumber,
-          row.planName,
-          row.vestingRuleName,
-        ].join(' ').toLowerCase().includes(normalizedQuery),
+        [row.employeeName, row.employeeNumber, row.tags.join(' '), row.grantNumber, row.planName, row.vestingRuleName]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery),
     ).sort(
       (left, right) =>
         left.employeeNumber.localeCompare(right.employeeNumber) ||
@@ -481,7 +487,10 @@ app.get('/api/holdings', async (request) => {
           row.planName,
           row.grantName,
           row.grantType,
-        ].join(' ').toLowerCase().includes(normalizedQuery),
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery),
     ).sort(
       (left, right) =>
         String(left.employeeNumber ?? '').localeCompare(String(right.employeeNumber ?? '')) ||
@@ -554,8 +563,14 @@ app.get('/api/holdings', async (request) => {
     const linkGroup = await employeeLinkGroupByNumber(db);
     const items = expandByLinkedGroup(
       [
-        ...futuRows.map((row) => ({ ...mergeFutuGrant(row), linkedIdentities: linkGroup.get(row.employeeNumber) ?? [] })),
-        ...shareworksRows.map((row) => ({ ...mergeShareworksGrant(row), linkedIdentities: linkGroup.get(row.employeeNumber ?? '') ?? [] })),
+        ...futuRows.map((row) => ({
+          ...mergeFutuGrant(row),
+          linkedIdentities: linkGroup.get(row.employeeNumber) ?? [],
+        })),
+        ...shareworksRows.map((row) => ({
+          ...mergeShareworksGrant(row),
+          linkedIdentities: linkGroup.get(row.employeeNumber ?? '') ?? [],
+        })),
       ],
       normalizedQuery,
       canonicalByNumber,
@@ -602,7 +617,12 @@ app.get('/api/holdings', async (request) => {
 
   app.get('/api/exercises', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', grantYear = '', tagId = '', tag = '' } = request.query as {
+    const {
+      query = '',
+      grantYear = '',
+      tagId = '',
+      tag = '',
+    } = request.query as {
       query?: string;
       grantYear?: string;
       tagId?: string;
@@ -641,15 +661,10 @@ app.get('/api/holdings', async (request) => {
       normalizedQuery,
       canonicalByNumber,
       (row) =>
-        [
-          row.name,
-          row.employeeNumber,
-          row.futubullId,
-          row.userId,
-          row.grantNumber,
-          row.grantDate,
-          row.exerciseDate,
-        ].join(' ').toLowerCase().includes(normalizedQuery),
+        [row.name, row.employeeNumber, row.futubullId, row.userId, row.grantNumber, row.grantDate, row.exerciseDate]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery),
     ).sort(
       (left, right) =>
         String(right.exerciseDate ?? '').localeCompare(String(left.exerciseDate ?? '')) ||
@@ -680,7 +695,11 @@ app.get('/api/holdings', async (request) => {
 
   app.get('/api/exercises/shareworks', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', tagId = '', tag = '' } = request.query as {
+    const {
+      query = '',
+      tagId = '',
+      tag = '',
+    } = request.query as {
       query?: string;
       tagId?: string;
       tag?: string;
@@ -689,18 +708,19 @@ app.get('/api/holdings', async (request) => {
     const normalizedLabelId = Number(tagId);
     const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
     const normalizedTag = tag.trim();
-    const [artifact, inputSourceBindings, labelsByEmployee, numberByName, canonicalByNumber, linkGroup] = await Promise.all([
-      readLatestWorkflowDataFrameArtifact(db, {
-        workflowCode: 'esop-exercise-record-sync',
-        taskId: 'persist_exercise_record_shareworks_file',
-        fallbackSheetName: 'Shareworks Exec Option OS',
-      }),
-      latestWorkflowInputSourceBindings(db, 'esop-exercise-record-sync'),
-      employeeLabelsByNumber(db),
-      employeeNumberByName(db),
-      employeeCanonicalByNumber(db),
-      employeeLinkGroupByNumber(db),
-    ]);
+    const [artifact, inputSourceBindings, labelsByEmployee, numberByName, canonicalByNumber, linkGroup] =
+      await Promise.all([
+        readLatestWorkflowDataFrameArtifact(db, {
+          workflowCode: 'esop-exercise-record-sync',
+          taskId: 'persist_exercise_record_shareworks_file',
+          fallbackSheetName: 'Shareworks Exec Option OS',
+        }),
+        latestWorkflowInputSourceBindings(db, 'esop-exercise-record-sync'),
+        employeeLabelsByNumber(db),
+        employeeNumberByName(db),
+        employeeCanonicalByNumber(db),
+        employeeLinkGroupByNumber(db),
+      ]);
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
     const rows = expandByLinkedGroup(
       (artifact?.rows ?? [])
@@ -756,7 +776,11 @@ app.get('/api/holdings', async (request) => {
 
   app.get('/api/exercises/merge', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', tagId = '', tag = '' } = request.query as {
+    const {
+      query = '',
+      tagId = '',
+      tag = '',
+    } = request.query as {
       query?: string;
       tagId?: string;
       tag?: string;
@@ -765,24 +789,31 @@ app.get('/api/holdings', async (request) => {
     const normalizedLabelId = Number(tagId);
     const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
     const normalizedTag = tag.trim();
-    const [futuArtifact, shareworksArtifact, inputSourceBindings, labelsByEmployee, numberByName, canonicalByNumber, linkGroup] =
-      await Promise.all([
-        readLatestWorkflowDataFrameArtifact(db, {
-          workflowCode: 'esop-exercise-record-sync',
-          taskId: 'persist_exercise_record_file',
-          fallbackSheetName: 'Futu BCI Exercises to Date',
-        }),
-        readLatestWorkflowDataFrameArtifact(db, {
-          workflowCode: 'esop-exercise-record-sync',
-          taskId: 'persist_exercise_record_shareworks_file',
-          fallbackSheetName: 'Shareworks Exec Option OS',
-        }),
-        latestWorkflowInputSourceBindings(db, 'esop-exercise-record-sync'),
-        employeeLabelsByNumber(db),
-        employeeNumberByName(db),
-        employeeCanonicalByNumber(db),
-        employeeLinkGroupByNumber(db),
-      ]);
+    const [
+      futuArtifact,
+      shareworksArtifact,
+      inputSourceBindings,
+      labelsByEmployee,
+      numberByName,
+      canonicalByNumber,
+      linkGroup,
+    ] = await Promise.all([
+      readLatestWorkflowDataFrameArtifact(db, {
+        workflowCode: 'esop-exercise-record-sync',
+        taskId: 'persist_exercise_record_file',
+        fallbackSheetName: 'Futu BCI Exercises to Date',
+      }),
+      readLatestWorkflowDataFrameArtifact(db, {
+        workflowCode: 'esop-exercise-record-sync',
+        taskId: 'persist_exercise_record_shareworks_file',
+        fallbackSheetName: 'Shareworks Exec Option OS',
+      }),
+      latestWorkflowInputSourceBindings(db, 'esop-exercise-record-sync'),
+      employeeLabelsByNumber(db),
+      employeeNumberByName(db),
+      employeeCanonicalByNumber(db),
+      employeeLinkGroupByNumber(db),
+    ]);
     const futuRows = (futuArtifact?.rows ?? [])
       .map((row, index) => {
         const employeeNumber = textValue(row['Employee No.']) ?? '';
@@ -815,15 +846,11 @@ app.get('/api/holdings', async (request) => {
         return true;
       })
       .map((row) => mergeShareworksExercise(row));
-    const items = expandByLinkedGroup(
-      [...futuRows, ...shareworksRows],
-      normalizedQuery,
-      canonicalByNumber,
-      (row) =>
-        [row.employeeName, row.employeeNumber, row.grantNumber, row.source]
-          .join(' ')
-          .toLowerCase()
-          .includes(normalizedQuery),
+    const items = expandByLinkedGroup([...futuRows, ...shareworksRows], normalizedQuery, canonicalByNumber, (row) =>
+      [row.employeeName, row.employeeNumber, row.grantNumber, row.source]
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedQuery),
     ).sort(
       (left, right) =>
         left.employeeNumber.localeCompare(right.employeeNumber) ||
@@ -854,8 +881,14 @@ app.get('/api/holdings', async (request) => {
 
   app.get('/api/sold-shares', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
-    const { query = '', employmentStatus = '', tagId = '', tag = '' } = request.query as {
-      query?: string;      employmentStatus?: string;
+    const {
+      query = '',
+      employmentStatus = '',
+      tagId = '',
+      tag = '',
+    } = request.query as {
+      query?: string;
+      employmentStatus?: string;
       tagId?: string;
       tag?: string;
     };
@@ -892,14 +925,10 @@ app.get('/api/holdings', async (request) => {
       normalizedQuery,
       canonicalByNumber,
       (row) =>
-        [
-          row.name,
-          row.employeeNumber,
-          row.futubullId,
-          row.userId,
-          row.employmentStatus,
-          row.relatedPartyIdentity,
-        ].join(' ').toLowerCase().includes(normalizedQuery),
+        [row.name, row.employeeNumber, row.futubullId, row.userId, row.employmentStatus, row.relatedPartyIdentity]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery),
     ).sort((left, right) => left.employeeNumber.localeCompare(right.employeeNumber) || left.id - right.id);
     const sortedRows = sortRowsByNameOrEmpNo(
       rows,
@@ -974,13 +1003,9 @@ app.get('/api/holdings', async (request) => {
       uploadedBy: `Transfer Plan Edit · ${updatedByFromRequest(request as RequestWithAuth)}`,
       folderPrefix: inputStorageFolderPrefix('transfer-plan'),
     });
-    const run = await startEsopPageWorkflow(
-      db,
-      workflowRunStore,
-      workflowRunExecutor,
-      'transfer-plan',
-      { transfer_plan: { fileId: Number(saved.file.id) } },
-    );
+    const run = await startEsopPageWorkflow(db, workflowRunStore, workflowRunExecutor, 'transfer-plan', {
+      transfer_plan: { fileId: Number(saved.file.id) },
+    });
 
     return reply.code(201).send({
       file: toProductFile(saved.file),
@@ -1095,13 +1120,15 @@ app.get('/api/holdings', async (request) => {
       resultFileName: artifact?.fileName ?? null,
       workflowResultFiles: resultFilesFromArtifacts(artifact),
       resultFiles: sourceFilesFromArtifacts(artifact),
-      ...buildPlanSummary((artifact?.rows ?? []).map((row) => ({
-      plan_name: row.plan_name === undefined || row.plan_name === null ? null : String(row.plan_name),
-      granted: row.granted === undefined || row.granted === null ? null : Number(row.granted),
-      exercised: row.exercised === undefined || row.exercised === null ? null : Number(row.exercised),
-      cancelled: row.cancelled === undefined || row.cancelled === null ? null : Number(row.cancelled),
-      outstanding: row.outstanding === undefined || row.outstanding === null ? null : Number(row.outstanding),
-      }))),
+      ...buildPlanSummary(
+        (artifact?.rows ?? []).map((row) => ({
+          plan_name: row.plan_name === undefined || row.plan_name === null ? null : String(row.plan_name),
+          granted: row.granted === undefined || row.granted === null ? null : Number(row.granted),
+          exercised: row.exercised === undefined || row.exercised === null ? null : Number(row.exercised),
+          cancelled: row.cancelled === undefined || row.cancelled === null ? null : Number(row.cancelled),
+          outstanding: row.outstanding === undefined || row.outstanding === null ? null : Number(row.outstanding),
+        })),
+      ),
     };
   });
 
@@ -1137,10 +1164,7 @@ app.get('/api/holdings', async (request) => {
     }
 
     const grid = artifact
-      ? [
-        artifact.columns,
-        ...artifact.rows.map((row) => artifact.columns.map((column) => row[column] ?? null)),
-      ]
+      ? [artifact.columns, ...artifact.rows.map((row) => artifact.columns.map((column) => row[column] ?? null))]
       : [];
     const workbook = parseFivePercentHoldersGrid(grid);
     const holders = applyFivePercentHolderGlobalParameters(workbook, fixedValues);
@@ -1227,9 +1251,7 @@ app.get('/api/holdings', async (request) => {
         }
       }
     }
-    const run = await startDataManagementWorkflow(
-      db, workflowRunStore, workflowRunExecutor, pageKey, sources,
-    );
+    const run = await startDataManagementWorkflow(db, workflowRunStore, workflowRunExecutor, pageKey, sources);
     return reply.code(201).send(workflowRunToExecutionResult(run));
   });
 }

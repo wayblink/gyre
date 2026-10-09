@@ -8,7 +8,8 @@ import { normalizeWorkflowTaskInput } from './inputGuards.js';
  */
 export function normalizeWorkflowTask(value: unknown): WorkflowTask | null {
   if (!isRecord(value)) return null;
-  if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.operatorCode !== 'string') return null;
+  if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.operatorCode !== 'string')
+    return null;
   const inputs: WorkflowTask['inputs'] = {};
   if (isRecord(value.inputs)) {
     for (const [slotName, input] of Object.entries(value.inputs)) {

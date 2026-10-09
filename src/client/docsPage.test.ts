@@ -38,6 +38,9 @@ test('hiding admin pages does not drop any non-admin page', () => {
     const all = visibleDocPages(language, true);
     const nonAdmin = visibleDocPages(language, false);
     const expected = all.filter((doc) => !doc.adminOnly).map((doc) => doc.id);
-    assert.deepEqual(nonAdmin.map((doc) => doc.id), expected);
+    assert.deepEqual(
+      nonAdmin.map((doc) => doc.id),
+      expected,
+    );
   }
 });

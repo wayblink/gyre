@@ -130,7 +130,9 @@ export function prefixPersistExcelFileName(fileName: string, rawPrefix: unknown)
 // Insert a suffix before the extension, underscore-joined (e.g. base.xlsx + 2026_06 -> base_2026_06.xlsx).
 // Symmetric to prefixPersistExcelFileName; empty/whitespace suffix returns the name unchanged.
 export function suffixPersistExcelFileName(fileName: string, rawSuffix: unknown): string {
-  const suffix = String(rawSuffix ?? '').trim().replace(/^_+|_+$/g, '');
+  const suffix = String(rawSuffix ?? '')
+    .trim()
+    .replace(/^_+|_+$/g, '');
   if (!suffix) return fileName;
   const match = /(\.[^.]+)$/i.exec(fileName);
   if (!match) return `${fileName}_${suffix}`;

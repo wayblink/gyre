@@ -74,13 +74,7 @@ export function summaryCapitalizationToWorkbookBuffer(summary: SummarySnapshot):
     header: ['Number', 'Description', 'Common Shares Equivalent', '% of fully diluted', 'Formula'],
   });
 
-  worksheet['!cols'] = [
-    { wch: 10 },
-    { wch: 48 },
-    { wch: 28 },
-    { wch: 20 },
-    { wch: 24 },
-  ];
+  worksheet['!cols'] = [{ wch: 10 }, { wch: 48 }, { wch: 28 }, { wch: 20 }, { wch: 24 }];
 
   const range = XLSX.utils.decode_range(worksheet['!ref'] ?? 'A1');
   for (let rowIndex = range.s.r + 1; rowIndex <= range.e.r; rowIndex += 1) {

@@ -22,11 +22,24 @@ export type FileMoveOutcome = {
 
 type MoveResponse = { file: ProductFileRecord; rewrittenWorkflows: number };
 
-export function createFileMoveDialog({ el, api, escapeHtml, getProductFiles, notify, getLanguage }: FileMoveDialogDeps) {
+export function createFileMoveDialog({
+  el,
+  api,
+  escapeHtml,
+  getProductFiles,
+  notify,
+  getLanguage,
+}: FileMoveDialogDeps) {
   const text = {
     title: { 'zh-CN': '移动文件', 'en-US': 'Move files' },
-    singleSubtitle: { 'zh-CN': '选择目标目录，或填写新的目录路径。', 'en-US': 'Pick a target folder, or enter a new folder path.' },
-    multiSubtitle: { 'zh-CN': '所选文件会一起移动到目标目录。', 'en-US': 'The selected files are moved to the target folder together.' },
+    singleSubtitle: {
+      'zh-CN': '选择目标目录，或填写新的目录路径。',
+      'en-US': 'Pick a target folder, or enter a new folder path.',
+    },
+    multiSubtitle: {
+      'zh-CN': '所选文件会一起移动到目标目录。',
+      'en-US': 'The selected files are moved to the target folder together.',
+    },
     newFolderLabel: { 'zh-CN': '或填写新目录路径', 'en-US': 'Or enter a new folder path' },
     cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
     confirm: { 'zh-CN': '移动', 'en-US': 'Move' },
@@ -98,9 +111,10 @@ export function createFileMoveDialog({ el, api, escapeHtml, getProductFiles, not
     el('fileMoveNewFolderLabel').textContent = tt('newFolderLabel');
     el('btnCancelFileMoveModal').textContent = tt('cancel');
     el('btnConfirmFileMoveModal').textContent = tt('confirm');
-    el('fileMoveModalFiles').innerHTML = targetFiles.length === 1
-      ? `<div class="file-move__file">${escapeHtml(targetFiles[0].logicalPath ?? targetFiles[0].displayPath)}</div>`
-      : `<div class="file-move__file">${escapeHtml(`${tt('selectedFiles')} ${targetFiles.length} ${tt('files')}`)}</div>`;
+    el('fileMoveModalFiles').innerHTML =
+      targetFiles.length === 1
+        ? `<div class="file-move__file">${escapeHtml(targetFiles[0].logicalPath ?? targetFiles[0].displayPath)}</div>`
+        : `<div class="file-move__file">${escapeHtml(`${tt('selectedFiles')} ${targetFiles.length} ${tt('files')}`)}</div>`;
   }
 
   function renderFolderList() {
@@ -114,14 +128,16 @@ export function createFileMoveDialog({ el, api, escapeHtml, getProductFiles, not
         >${escapeHtml(folder)}</button>`,
       )
       .join('');
-    el('fileMoveFolderList').querySelectorAll<HTMLElement>('[data-file-move-folder]').forEach((button) => {
-      button.addEventListener('click', () => {
-        targetFolder = button.dataset.fileMoveFolder ?? '';
-        el<HTMLInputElement>('fileMoveNewFolder').value = '';
-        setError('');
-        renderFolderList();
+    el('fileMoveFolderList')
+      .querySelectorAll<HTMLElement>('[data-file-move-folder]')
+      .forEach((button) => {
+        button.addEventListener('click', () => {
+          targetFolder = button.dataset.fileMoveFolder ?? '';
+          el<HTMLInputElement>('fileMoveNewFolder').value = '';
+          setError('');
+          renderFolderList();
+        });
       });
-    });
   }
 
   function setError(message: string) {

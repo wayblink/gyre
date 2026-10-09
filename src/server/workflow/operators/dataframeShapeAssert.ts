@@ -71,7 +71,8 @@ export const dataframeShapeAssertOperator = defineWorkflowOperator({
   category: 'Validation',
   description: '校验 dataframe 的行数和列数，适合检查提取范围、过滤结果或汇总结果的规模。',
   documentation: {
-    usage: '校验输入 dataframe 的行数和列数。适合检查提取范围是否为空、SQL 结果规模是否符合预期，或防止异常大表继续流转。',
+    usage:
+      '校验输入 dataframe 的行数和列数。适合检查提取范围是否为空、SQL 结果规模是否符合预期，或防止异常大表继续流转。',
     steps: [
       '连接需要校验规模的 dataframe 输入。',
       '分别配置 rowOperator/expectedRows 和 columnOperator/expectedColumns。',
@@ -89,9 +90,21 @@ export const dataframeShapeAssertOperator = defineWorkflowOperator({
   inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'DataFrame', required: true }],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {
-    rowOperator: { type: 'string', label: '行数比较符', required: true, enum: ['any', '>', '>=', '<', '<=', '=', '!='], default: '>=' },
+    rowOperator: {
+      type: 'string',
+      label: '行数比较符',
+      required: true,
+      enum: ['any', '>', '>=', '<', '<=', '=', '!='],
+      default: '>=',
+    },
     expectedRows: { type: 'number', label: '预期行数', required: true, default: 1 },
-    columnOperator: { type: 'string', label: '列数比较符', required: true, enum: ['any', '>', '>=', '<', '<=', '=', '!='], default: '>=' },
+    columnOperator: {
+      type: 'string',
+      label: '列数比较符',
+      required: true,
+      enum: ['any', '>', '>=', '<', '<=', '=', '!='],
+      default: '>=',
+    },
     expectedColumns: { type: 'number', label: '预期列数', required: true, default: 1 },
     failureStrategy: {
       type: 'string',
@@ -100,7 +113,13 @@ export const dataframeShapeAssertOperator = defineWorkflowOperator({
       enum: ['block', 'warning', 'pass-through'],
       default: 'block',
     },
-    failureMessage: { type: 'string', label: '失败提示', required: false, placeholder: 'Assertion failed', default: 'Assertion failed' },
+    failureMessage: {
+      type: 'string',
+      label: '失败提示',
+      required: false,
+      placeholder: 'Assertion failed',
+      default: 'Assertion failed',
+    },
   },
   normalizeTask: normalizeShapeAssertTask,
   async execute(context) {

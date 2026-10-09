@@ -133,12 +133,14 @@ test('resolveWorkflowRuntimeConfiguration drops the legacy cancel/restore fileRe
 
 test('resolveWorkflowRuntimeConfiguration preserves product file path keys', () => {
   const resolved = resolveWorkflowRuntimeConfiguration({
-    tasks: [baseTask({
-      id: 'extract',
-      name: 'Extract',
-      operatorCode: 'sheet.range.extract',
-      params: { fileRef: { $fromRuntime: 'fileRefs.control_book' } },
-    })],
+    tasks: [
+      baseTask({
+        id: 'extract',
+        name: 'Extract',
+        operatorCode: 'sheet.range.extract',
+        params: { fileRef: { $fromRuntime: 'fileRefs.control_book' } },
+      }),
+    ],
     runtimeParamsSchema: {
       fileRefs: {
         type: 'object',
@@ -336,7 +338,10 @@ test('resolveWorkflowRuntimeConfiguration rejects wrong type for nested numeric 
         tasks: [extractTask()],
         runtimeParamsSchema: monthlySchema,
         runtimeParamsDefaults: {},
-        runtimeParameters: { month: '2026-05', fileRefs: { control_book: 'not-a-ref', futu_exercises: {}, option_plans: {} } },
+        runtimeParameters: {
+          month: '2026-05',
+          fileRefs: { control_book: 'not-a-ref', futu_exercises: {}, option_plans: {} },
+        },
       }),
     /Runtime parameter fileRefs\.control_book must be an object/,
   );
@@ -656,7 +661,9 @@ test('resolveWorkflowRuntimeConfiguration falls back to the default monthUndersc
 test('filterWorkflowRuntimeParametersBySchema keeps monthUnderscore only when the child schema declares it', () => {
   const inherited = { month: '2026-06', monthUnderscore: '2026_06', fileRefs: {} };
   assert.deepEqual(
-    filterWorkflowRuntimeParametersBySchema(inherited, { monthUnderscore: { type: 'string', label: 'Month (underscore)' } }),
+    filterWorkflowRuntimeParametersBySchema(inherited, {
+      monthUnderscore: { type: 'string', label: 'Month (underscore)' },
+    }),
     { monthUnderscore: '2026_06' },
   );
   // Without the declaration the inherited value is dropped at the invoke boundary.

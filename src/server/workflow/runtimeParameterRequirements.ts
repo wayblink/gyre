@@ -18,7 +18,10 @@ function setNestedRuntimeField(
   path: string,
   field: WorkflowRuntimeParameterField,
 ): void {
-  const segments = path.split('.').map((segment) => segment.trim()).filter(Boolean);
+  const segments = path
+    .split('.')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
   if (!segments.length) return;
 
   let current = schema;
@@ -43,7 +46,10 @@ function setNestedRuntimeField(
 }
 
 function setNestedRuntimeDefault(defaults: WorkflowRuntimeParameters, path: string, value: unknown): void {
-  const segments = path.split('.').map((segment) => segment.trim()).filter(Boolean);
+  const segments = path
+    .split('.')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
   if (!segments.length) return;
 
   let current: Record<string, unknown> = defaults;
@@ -59,8 +65,14 @@ function setNestedRuntimeDefault(defaults: WorkflowRuntimeParameters, path: stri
   });
 }
 
-function getNestedRuntimeField(schema: WorkflowRuntimeParametersSchema, path: string): WorkflowRuntimeParameterField | undefined {
-  const segments = path.split('.').map((segment) => segment.trim()).filter(Boolean);
+function getNestedRuntimeField(
+  schema: WorkflowRuntimeParametersSchema,
+  path: string,
+): WorkflowRuntimeParameterField | undefined {
+  const segments = path
+    .split('.')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
   if (!segments.length) return undefined;
 
   return segments.reduce<WorkflowRuntimeParameterField | undefined>((current, segment, index) => {
@@ -70,7 +82,10 @@ function getNestedRuntimeField(schema: WorkflowRuntimeParametersSchema, path: st
 }
 
 function getNestedRuntimeDefault(defaults: WorkflowRuntimeParameters, path: string): unknown {
-  const segments = path.split('.').map((segment) => segment.trim()).filter(Boolean);
+  const segments = path
+    .split('.')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
   let current: unknown = defaults;
   for (const segment of segments) {
     if (!isRecord(current) || !(segment in current)) return undefined;
@@ -145,7 +160,10 @@ export function deriveWorkflowRuntimeConfigFromTasks(params: {
 
   for (const task of params.tasks) {
     for (const reference of collectTaskRuntimeReferences(task.params ?? {})) {
-      const segments = reference.runtimePath.split('.').map((segment) => segment.trim()).filter(Boolean);
+      const segments = reference.runtimePath
+        .split('.')
+        .map((segment) => segment.trim())
+        .filter(Boolean);
       if (!segments.length) continue;
       const existing = getNestedRuntimeField(runtimeParamsSchema, reference.runtimePath);
       if (!existing) {

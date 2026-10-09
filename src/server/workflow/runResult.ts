@@ -27,7 +27,10 @@ export function isAssertOperatorCode(operatorCode: string): boolean {
   );
 }
 
-export function isReusableStepOutput(step: WorkflowRunRecord['steps'][number] | null, task: WorkflowTask | null): boolean {
+export function isReusableStepOutput(
+  step: WorkflowRunRecord['steps'][number] | null,
+  task: WorkflowTask | null,
+): boolean {
   if (!step) return false;
   if (!step.result) return false;
   if (step.status !== 'warning') return true;
@@ -39,7 +42,8 @@ export function getRunStatusFromSteps(run: WorkflowRunRecord): WorkflowRunStatus
   if (run.approvals.some((approval) => approval.status === 'pending')) return 'waiting_approval';
   if (run.steps.some((step) => step.status === 'warning')) return 'completed_with_warnings';
   if (run.steps.every((step) => step.status === 'skipped')) return 'skipped';
-  if (run.steps.every((step) => step.status === 'completed' || step.status === 'warning' || step.status === 'skipped')) return 'completed';
+  if (run.steps.every((step) => step.status === 'completed' || step.status === 'warning' || step.status === 'skipped'))
+    return 'completed';
   return 'running';
 }
 
@@ -102,7 +106,7 @@ export function workflowRunToExecutionResult(run: WorkflowRunRecord): WorkflowEx
       const message =
         step.result?.kind === 'assert'
           ? step.result.assertion.failureMessage
-          : step.errorMessage ?? approval?.comment ?? `${step.taskName} completed with warning`;
+          : (step.errorMessage ?? approval?.comment ?? `${step.taskName} completed with warning`);
       return {
         taskId: step.taskId,
         message,
@@ -120,7 +124,9 @@ export function workflowRunToExecutionResult(run: WorkflowRunRecord): WorkflowEx
     failedTaskId,
     blockedTaskIds: run.steps.filter((step) => step.status === 'blocked').map((step) => step.taskId),
     warningTaskIds: run.steps.filter((step) => step.status === 'warning').map((step) => step.taskId),
-    waitingForApprovalTaskIds: run.approvals.filter((approval) => approval.status === 'pending').map((approval) => approval.taskId),
+    waitingForApprovalTaskIds: run.approvals
+      .filter((approval) => approval.status === 'pending')
+      .map((approval) => approval.taskId),
     warnings,
     errorMessage: run.errorMessage,
   };

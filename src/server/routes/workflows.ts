@@ -164,7 +164,9 @@ async function ensureUniqueWorkflowCode(db: RouteContext['db'], baseCode: string
   let candidate = normalizedBase;
   let suffix = 0;
   while (true) {
-    const existing = await db.queryOne<{ id: number }>('select id from workflow_definitions where code = $1', [candidate]);
+    const existing = await db.queryOne<{ id: number }>('select id from workflow_definitions where code = $1', [
+      candidate,
+    ]);
     if (!existing) return candidate;
     suffix += 1;
     candidate = suffix === 1 ? `${normalizedBase}-imported` : `${normalizedBase}-imported-${suffix}`;
@@ -190,7 +192,9 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
 
   app.get('/api/workflows/:id/export', async (request) => {
     const workflowId = Number((request.params as { id: string }).id);
-    const row = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [workflowId]);
+    const row = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [
+      workflowId,
+    ]);
     if (!row) throw notFound('Workflow not found');
     const workflow = toWorkflowDefinition(row);
     return toWorkflowImportExportBundle({
@@ -281,7 +285,9 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
   app.patch('/api/workflows/:id', async (request) => {
     const { id } = request.params as { id: string };
     const workflowId = Number(id);
-    const existing = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [workflowId]);
+    const existing = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [
+      workflowId,
+    ]);
     if (!existing) throw notFound('Workflow not found');
 
     const body = z
@@ -305,9 +311,13 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
     const runtimeConfig = normalizeWorkflowRuntimeConfig({
       tasks: normalizedTasks,
       runtimeParamsSchema:
-        body.runtimeParamsSchema === undefined ? parseJson(existing.runtime_params_schema_json, {}) : body.runtimeParamsSchema,
+        body.runtimeParamsSchema === undefined
+          ? parseJson(existing.runtime_params_schema_json, {})
+          : body.runtimeParamsSchema,
       runtimeParamsDefaults:
-        body.runtimeParamsDefaults === undefined ? parseJson(existing.runtime_params_defaults_json, {}) : body.runtimeParamsDefaults,
+        body.runtimeParamsDefaults === undefined
+          ? parseJson(existing.runtime_params_defaults_json, {})
+          : body.runtimeParamsDefaults,
     });
 
     const row = await db.queryOne<Record<string, unknown>>(
@@ -346,10 +356,14 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
 
   app.post('/api/workflows/preview-task', async (request) => {
     const body = workflowTaskPreviewBodySchema.parse(request.body);
-    const workflowRow = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [body.workflowId]);
+    const workflowRow = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [
+      body.workflowId,
+    ]);
     if (!workflowRow) throw notFound('Workflow not found');
 
-    const sourceTasks = body.tasks ? normalizeWorkflowTasks(body.tasks) : normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
+    const sourceTasks = body.tasks
+      ? normalizeWorkflowTasks(body.tasks)
+      : normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
     const previewTasks = selectWorkflowPreviewTasks(sourceTasks, body.taskId);
     const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
       tasks: previewTasks,
@@ -371,7 +385,9 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
     const { id } = request.params as { id: string };
     const workflowId = Number(id);
     const body = workflowExecuteBodySchema.parse(request.body);
-    const workflowRow = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [workflowId]);
+    const workflowRow = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [
+      workflowId,
+    ]);
     if (!workflowRow) throw notFound('Workflow not found');
 
     // Approvals are recorded before the run is enqueued, so the resolution stays separate from
@@ -431,7 +447,11 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
     const { id, taskId } = request.params as { id: string; taskId: string };
     const runId = Number(id);
     const body = workflowRunRetryBodySchema.parse(request.body ?? {});
-    await workflowRunExecutor.startSingleStepAsync(runId, taskId, body.tasks ? normalizeWorkflowTasks(body.tasks) : undefined);
+    await workflowRunExecutor.startSingleStepAsync(
+      runId,
+      taskId,
+      body.tasks ? normalizeWorkflowTasks(body.tasks) : undefined,
+    );
     return workflowRunToExecutionResult(await workflowRunStore.getRun(runId));
   });
 
@@ -441,4 +461,3 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
     return reply.code(204).send();
   });
 }
-

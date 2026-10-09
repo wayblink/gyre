@@ -189,7 +189,9 @@ class FakeBootstrapDb {
   async transaction<T>(fn: (client: { query: FakeBootstrapDb['query'] }) => Promise<T>): Promise<T> {
     const previous = this.pending;
     let release!: () => void;
-    this.pending = new Promise<void>((resolve) => { release = resolve; });
+    this.pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await previous;
     try {
       return await fn({ query: this.query.bind(this) });

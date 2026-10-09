@@ -56,7 +56,10 @@ export function buildUpsertPlan(params: UpsertTableParams): UpsertPlan {
 
   const conflictAction = updateColumns.length
     ? `do update set ${updateColumns
-        .map((column) => `${quoteIdentifier(column, 'update column')} = excluded.${quoteIdentifier(column, 'update column')}`)
+        .map(
+          (column) =>
+            `${quoteIdentifier(column, 'update column')} = excluded.${quoteIdentifier(column, 'update column')}`,
+        )
         .join(', ')}`
     : 'do nothing';
 

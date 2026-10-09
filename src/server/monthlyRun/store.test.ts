@@ -280,7 +280,11 @@ test('run history labels input files from the workflow definition, falling back 
     },
   };
   db.productFiles = [
-    { id: 10, original_name: 'Futu_Exercises_Base.xlsx', logical_path: 'output/futu-exercises/Futu_Exercises_Base.xlsx' },
+    {
+      id: 10,
+      original_name: 'Futu_Exercises_Base.xlsx',
+      logical_path: 'output/futu-exercises/Futu_Exercises_Base.xlsx',
+    },
     { id: 11, original_name: '员工行权记录.xlsx', logical_path: 'input/2026-06/员工行权记录.xlsx' },
     { id: 12, original_name: 'EQ Control Book.xlsx', logical_path: 'input/2026-06/EQ Control Book.xlsx' },
   ];
@@ -308,9 +312,7 @@ test('applyMonthlyRunPostProcessing mirrors success and points the month summary
 
   await applyMonthlyRunPostProcessing(db, workflowRun());
 
-  assert.deepEqual(db.monthUpdates, [
-    { monthId: 11, fileId: 88, sheetName: 'Capitalization Table (Summary View)' },
-  ]);
+  assert.deepEqual(db.monthUpdates, [{ monthId: 11, fileId: 88, sheetName: 'Capitalization Table (Summary View)' }]);
   assert.deepEqual(db.historyUpdates, [
     {
       id: 1,
@@ -444,8 +446,5 @@ test('deleteMonthlyRunHistory rejects a running record before deleting anything'
     },
   };
 
-  await assert.rejects(
-    () => deleteMonthlyRunHistory(db, 8),
-    /运行中或待审批的历史不能删除/,
-  );
+  await assert.rejects(() => deleteMonthlyRunHistory(db, 8), /运行中或待审批的历史不能删除/);
 });

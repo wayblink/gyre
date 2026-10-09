@@ -44,7 +44,13 @@ function createFakeStore() {
         return existing.id;
       }
       const id = nextId++;
-      rows.push({ id, employeeId: input.employeeId, source: input.source, name: input.name, hasFileEvidence: input.hasFileEvidence });
+      rows.push({
+        id,
+        employeeId: input.employeeId,
+        source: input.source,
+        name: input.name,
+        hasFileEvidence: input.hasFileEvidence,
+      });
       return id;
     },
   };
@@ -78,7 +84,12 @@ test('Futu and Shareworks numbers create independent rows (linked later by merge
 
 test('a manual employee later seen in a file upgrades evidence, keeps the same row', async () => {
   const { store, rows } = createFakeStore();
-  const manualId = await upsertEmployeeByEmployeeId(store, { employeeId: 'K7', source: 'manual', name: '李四', hasFileEvidence: false });
+  const manualId = await upsertEmployeeByEmployeeId(store, {
+    employeeId: 'K7',
+    source: 'manual',
+    name: '李四',
+    hasFileEvidence: false,
+  });
   assert.equal(rows[0].hasFileEvidence, false);
   const seen = await upsertEmployeeByEmployeeId(store, { employeeId: 'K7', source: 'futu', name: '李四' });
   assert.equal(seen, manualId);

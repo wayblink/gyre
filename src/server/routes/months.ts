@@ -7,7 +7,6 @@ import {
 } from '../summary/capitalizationWorkbook.js';
 import { fileStorage } from '../storage.js';
 import { parseJson } from '../utils/json.js';
-import { getMonthlyRunInstance } from '../monthlyRun/instanceStore.js';
 import {
   buildCapitalizationSource,
   getMonth,
@@ -70,9 +69,10 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
       [monthRow.id],
     );
     const summary = parseJson<Record<string, unknown>>(snapshot?.summary_json, {});
-    const monthlyRunInstance = await getMonthlyRunInstance(db, month);
     let sourceFile: Record<string, unknown> | undefined;
-    let capitalizationOverride: Partial<Pick<SummarySnapshot, 'capitalization' | 'totalFullyDiluted' | 'reconciliation'>> | null = null;
+    let capitalizationOverride: Partial<
+      Pick<SummarySnapshot, 'capitalization' | 'totalFullyDiluted' | 'reconciliation'>
+    > | null = null;
 
     if (monthRow.capitalization_source_file_id) {
       sourceFile = await db.queryOne<Record<string, unknown>>('select * from product_files where id = $1', [
@@ -87,7 +87,10 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
           ...(parsed.reconciliation ? { reconciliation: parsed.reconciliation } : {}),
         };
 
-        if (!monthRow.capitalization_source_sheet_name || monthRow.capitalization_source_sheet_name !== parsed.resolvedSheetName) {
+        if (
+          !monthRow.capitalization_source_sheet_name ||
+          monthRow.capitalization_source_sheet_name !== parsed.resolvedSheetName
+        ) {
           await db.execute(
             'update months set capitalization_source_sheet_name = $2, updated_at = current_timestamp where id = $1',
             [monthRow.id, parsed.resolvedSheetName],
@@ -232,4 +235,3 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
     return reply.code(204).send();
   });
 }
-

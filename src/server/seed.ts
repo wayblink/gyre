@@ -3,10 +3,7 @@ import path from 'node:path';
 import XLSX from 'xlsx';
 import { config } from './config.js';
 import type { AppDb, DbClient } from './db.js';
-import {
-  parseFivePercentHoldersGrid,
-  type FivePercentHoldersWorkbook,
-} from './fivePercentHolders/persistence.js';
+import { parseFivePercentHoldersGrid, type FivePercentHoldersWorkbook } from './fivePercentHolders/persistence.js';
 import { FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS } from './dataManagementWorkflow/workflowDefinitions.js';
 import { workflowOperatorDefinitions } from './workflow/operators/registry.js';
 import { loadWorkflowSeedDefinitionsFromDisk } from './workflow/workflowSeedLoader.js';
@@ -124,12 +121,7 @@ function workbookNumber(value: unknown, column: string): number {
 }
 
 export function loadExerciseWorkbook(): ExerciseWorkbookRow[] {
-  const workbookPath = path.join(
-    config.rootDir,
-    'database',
-    'extracted-sheets',
-    'Futu BCI Exercises to Date.xlsx',
-  );
+  const workbookPath = path.join(config.rootDir, 'database', 'extracted-sheets', 'Futu BCI Exercises to Date.xlsx');
   const workbook = readSeedWorkbook(workbookPath);
   const sheet = workbook.Sheets['Futu BCI Exercises to Date'];
   if (!sheet) throw new Error(`Missing Futu BCI Exercises to Date sheet in ${workbookPath}`);
@@ -190,12 +182,7 @@ export function loadSoldSharesWorkbook(): SoldSharesWorkbookRow[] {
 }
 
 export function loadTransferPlanWorkbook(
-  workbookPath = path.join(
-    config.rootDir,
-    'database',
-    'extracted-sheets',
-    '2025 BC Subplan Transfer.xlsx',
-  ),
+  workbookPath = path.join(config.rootDir, 'database', 'extracted-sheets', '2025 BC Subplan Transfer.xlsx'),
 ): TransferPlanWorkbookData {
   const workbook = readSeedWorkbook(workbookPath);
   const sheet = workbook.Sheets['2025 BC Subplan Transfer'];
@@ -240,9 +227,7 @@ export function loadTransferPlanWorkbook(
     .filter((row) => /^K\d+$/.test(asText(row[0]) ?? ''))
     .map((row) => ({
       employeeNumber: asText(row[0]) ?? '',
-      periodValues: Object.fromEntries(
-        periodColumns.map(({ period, column }) => [period, numberAt(row, column)]),
-      ),
+      periodValues: Object.fromEntries(periodColumns.map(({ period, column }) => [period, numberAt(row, column)])),
       total: numberAt(row, totalColumn),
     }));
   const inTotal = numberAt(sourceTotalRow, totalColumn);
@@ -294,14 +279,7 @@ export async function seedTransferPlanData(
         sort_order = excluded.sort_order,
         raw_json = excluded.raw_json,
         updated_at = current_timestamp`,
-      [
-        resolvedSourceFileId,
-        item.period,
-        item.inTotal,
-        item.sourceCancelled,
-        item.sortOrder,
-        JSON.stringify(item),
-      ],
+      [resolvedSourceFileId, item.period, item.inTotal, item.sourceCancelled, item.sortOrder, JSON.stringify(item)],
     );
   }
 }

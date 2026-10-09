@@ -101,10 +101,6 @@ const DEV_AUTH_USER: NonNullable<RequestWithAuth['currentUser']> = {
   last_login_at: null,
 };
 
-function updatedByFromRequest(request: RequestWithAuth): string {
-  return request.currentUser?.username?.trim() || 'system';
-}
-
 function sessionCookieOptions(maxAgeSeconds: number) {
   return {
     httpOnly: true,
@@ -121,7 +117,10 @@ function getSessionTokenFromRequest(request: { headers: Record<string, unknown> 
   return cookies[config.sessionCookieName] ?? null;
 }
 
-async function resolveAuthUser(db: RouteContext['db'], request: { headers: Record<string, unknown> }): Promise<RequestWithAuth['currentUser']> {
+async function resolveAuthUser(
+  db: RouteContext['db'],
+  request: { headers: Record<string, unknown> },
+): Promise<RequestWithAuth['currentUser']> {
   const token = getSessionTokenFromRequest(request);
   if (!token) return null;
   const tokenHash = hashSessionToken(token);
@@ -161,13 +160,19 @@ export async function requireAuth(
 }
 
 /** Used by the global preHandler hook in app.ts for admin-only paths. */
-export function requireAdminUser(request: RequestWithAuth, reply: { code: (statusCode: number) => { send: (payload: unknown) => unknown } }): boolean {
+export function requireAdminUser(
+  request: RequestWithAuth,
+  reply: { code: (statusCode: number) => { send: (payload: unknown) => unknown } },
+): boolean {
   if (request.currentUser?.role === 'admin') return true;
   reply.code(403).send({ error: 'Admin role required', code: 'ADMIN_REQUIRED' });
   return false;
 }
 
-async function currentAuthStatus(db: RouteContext['db'], request: { headers: Record<string, unknown> }): Promise<AuthStatus> {
+async function currentAuthStatus(
+  db: RouteContext['db'],
+  request: { headers: Record<string, unknown> },
+): Promise<AuthStatus> {
   if (config.authDisabled) {
     return toAuthStatus(DEV_AUTH_USER, false);
   }
@@ -180,7 +185,6 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: RouteContext) {
   const { db } = ctx;
 
   app.get('/api/auth/status', async (request) => currentAuthStatus(db, request));
-
 
   app.post('/api/auth/bootstrap', async (request, reply) => {
     const body = authBootstrapSchema.parse(request.body ?? {});
@@ -210,11 +214,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: RouteContext) {
 
     reply.header(
       'Set-Cookie',
-      serializeCookie(
-        config.sessionCookieName,
-        sessionToken,
-        sessionCookieOptions(config.sessionTtlHours * 60 * 60),
-      ),
+      serializeCookie(config.sessionCookieName, sessionToken, sessionCookieOptions(config.sessionTtlHours * 60 * 60)),
     );
 
     return reply.code(201).send(
@@ -245,11 +245,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: RouteContext) {
 
     reply.header(
       'Set-Cookie',
-      serializeCookie(
-        config.sessionCookieName,
-        sessionToken,
-        sessionCookieOptions(config.sessionTtlHours * 60 * 60),
-      ),
+      serializeCookie(config.sessionCookieName, sessionToken, sessionCookieOptions(config.sessionTtlHours * 60 * 60)),
     );
 
     return toAuthStatus(
@@ -272,10 +268,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: RouteContext) {
     if (token) {
       await deleteSessionByHash(db, hashSessionToken(token));
     }
-    reply.header(
-      'Set-Cookie',
-      serializeCookie(config.sessionCookieName, '', sessionCookieOptions(0)),
-    );
+    reply.header('Set-Cookie', serializeCookie(config.sessionCookieName, '', sessionCookieOptions(0)));
     return reply.code(204).send();
   });
 
@@ -370,10 +363,10 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: RouteContext) {
     const nextRole = body.role ?? existing.role;
     const nextActive = body.isActive ?? existing.isActive;
     if (
-      existing.role === 'admin'
-      && existing.isActive
-      && (nextRole !== 'admin' || !nextActive)
-      && (await countActiveAdmins(db, id)) === 0
+      existing.role === 'admin' &&
+      existing.isActive &&
+      (nextRole !== 'admin' || !nextActive) &&
+      (await countActiveAdmins(db, id)) === 0
     ) {
       return reply.code(400).send({ error: '至少需要保留一个可用的管理员' });
     }

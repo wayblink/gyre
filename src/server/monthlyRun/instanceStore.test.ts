@@ -15,11 +15,15 @@ import {
 test('execution state update preserves undefined fields but clears explicit null ids', async () => {
   const executeCalls: Array<{ text: string; params?: unknown[] }> = [];
   const db: MonthlyRunDb = {
-    async query() { return []; },
+    async query() {
+      return [];
+    },
     async queryOne<T>(): Promise<T | undefined> {
       return monthlyRunRow({ latest_workflow_run_id: 45, latest_output_file_id: 99 }) as T;
     },
-    async execute(text: string, params?: unknown[]) { executeCalls.push({ text, params }); },
+    async execute(text: string, params?: unknown[]) {
+      executeCalls.push({ text, params });
+    },
   };
 
   await updateMonthlyRunInstanceExecutionState(db, {
@@ -66,7 +70,11 @@ function instanceRecord(sources: MonthlyRunInstanceRecord['sources']): MonthlyRu
     operator: 'Administrator',
     status: 'draft',
     sources,
-    fixedValues: { optionsOutstandingCullgen: 4_156_815, optionsAvailableCullgen: 10_994, seriesBPreferredStock: 18_486_180 },
+    fixedValues: {
+      optionsOutstandingCullgen: 4_156_815,
+      optionsAvailableCullgen: 10_994,
+      seriesBPreferredStock: 18_486_180,
+    },
     latestWorkflowRunId: null,
     latestOutputFileId: null,
     latestOutputFileName: null,
@@ -80,10 +88,25 @@ function instanceRecord(sources: MonthlyRunInstanceRecord['sources']): MonthlyRu
 
 test('runtime parameters build fileRefs from instance sources, adding sheet only when set and skipping unconfigured sources', () => {
   const instance = instanceRecord({
-    base_control_book: { fileId: 1, fileName: 'control.xlsx', logicalPath: 'input/2026-06/control.xlsx', sheetName: 'EQ Control Book' },
+    base_control_book: {
+      fileId: 1,
+      fileName: 'control.xlsx',
+      logicalPath: 'input/2026-06/control.xlsx',
+      sheetName: 'EQ Control Book',
+    },
     futu_exercises: { fileId: 3, fileName: 'futu.xlsx', logicalPath: 'input/2026-06/futu.xlsx', sheetName: null },
-    option_plans_summary: { fileId: 4, fileName: 'options.xlsx', logicalPath: 'input/2026-06/options.xlsx', sheetName: 'Custom Sheet' },
-    cancel_restore_report: { fileId: 6, fileName: 'cancel.xlsx', logicalPath: 'input/2026-06/cancel.xlsx', sheetName: '取消与恢复明细' },
+    option_plans_summary: {
+      fileId: 4,
+      fileName: 'options.xlsx',
+      logicalPath: 'input/2026-06/options.xlsx',
+      sheetName: 'Custom Sheet',
+    },
+    cancel_restore_report: {
+      fileId: 6,
+      fileName: 'cancel.xlsx',
+      logicalPath: 'input/2026-06/cancel.xlsx',
+      sheetName: '取消与恢复明细',
+    },
     previous_capitalization_summary: { fileId: null, fileName: null, logicalPath: null, sheetName: null },
   });
 
@@ -95,7 +118,11 @@ test('runtime parameters build fileRefs from instance sources, adding sheet only
     base_control_book: { provider: 'product-files', key: 'input/2026-06/control.xlsx', sheet: 'EQ Control Book' },
     futu_exercises: { provider: 'product-files', key: 'input/2026-06/futu.xlsx' },
     option_plans_summary: { provider: 'product-files', key: 'input/2026-06/options.xlsx', sheet: 'Custom Sheet' },
-    incremental_cancel_restore_report: { provider: 'product-files', key: 'input/2026-06/cancel.xlsx', sheet: '取消与恢复明细' },
+    incremental_cancel_restore_report: {
+      provider: 'product-files',
+      key: 'input/2026-06/cancel.xlsx',
+      sheet: '取消与恢复明细',
+    },
   });
   assert.deepEqual(runtime.fixedValues, {
     optionsOutstandingCullgen: 4_156_815,
@@ -224,15 +251,17 @@ function completedHistoryRow(historyId: number, overrides: Record<string, unknow
  * helper's three queries too. Unexpected SQL throws on purpose: a new statement must be wired here
  * deliberately rather than silently returning nothing.
  */
-function planDeleteStub(config: {
-  instance?: Record<string, unknown> | null;
-  historyIds?: number[];
-  historyRow?: (historyId: number) => Record<string, unknown>;
-  sharedOutput?: (historyId: number) => { id: number } | undefined;
-  inputFiles?: Array<Record<string, unknown>>;
-  boundElsewhere?: Array<{ file_id: number }>;
-  failOnWrite?: boolean;
-} = {}) {
+function planDeleteStub(
+  config: {
+    instance?: Record<string, unknown> | null;
+    historyIds?: number[];
+    historyRow?: (historyId: number) => Record<string, unknown>;
+    sharedOutput?: (historyId: number) => { id: number } | undefined;
+    inputFiles?: Array<Record<string, unknown>>;
+    boundElsewhere?: Array<{ file_id: number }>;
+    failOnWrite?: boolean;
+  } = {},
+) {
   const executed: Array<{ sql: string; params: unknown[] }> = [];
   const queried: Array<{ sql: string; params: unknown[] }> = [];
   const removedPaths: string[] = [];
@@ -314,9 +343,18 @@ test('deleteMonthlyRunPlan returns physical paths for cleanup only after the tra
   });
 
   for (const historyId of [7, 9]) {
-    assert.ok(stub.executed.some((call) => /delete from monthly_run_history/i.test(call.sql) && call.params[0] === historyId));
+    assert.ok(
+      stub.executed.some((call) => /delete from monthly_run_history/i.test(call.sql) && call.params[0] === historyId),
+    );
   }
-  assert.ok(stub.executed.some((call) => /delete from product_files where id = any/i.test(call.sql) && Array.isArray(call.params[0]) && (call.params[0] as number[]).join() === '88,89'));
+  assert.ok(
+    stub.executed.some(
+      (call) =>
+        /delete from product_files where id = any/i.test(call.sql) &&
+        Array.isArray(call.params[0]) &&
+        (call.params[0] as number[]).join() === '88,89',
+    ),
+  );
 
   // Physical removal uses file_path, never logical_path.
   assert.deepEqual(stub.removedPaths, []);
@@ -329,7 +367,8 @@ test('deleteMonthlyRunPlan returns physical paths for cleanup only after the tra
 test('deleteMonthlyRunPlan aborts when a history is running and mutates nothing', async () => {
   const stub = planDeleteStub({
     historyIds: [8],
-    historyRow: (historyId) => completedHistoryRow(historyId, { status: 'running', produced_file_id: null, produced_file_path: null }),
+    historyRow: (historyId) =>
+      completedHistoryRow(historyId, { status: 'running', produced_file_id: null, produced_file_path: null }),
     failOnWrite: true,
   });
 
@@ -381,7 +420,11 @@ test('deleteMonthlyRunPlan surfaces the shared-output conflict from the first hi
   // refuses, so the whole cascade fails atomically rather than deleting a still-referenced file.
   const stub = planDeleteStub({
     historyIds: [7, 9],
-    historyRow: (historyId) => completedHistoryRow(historyId, { produced_file_id: 88, produced_file_path: 'product/output/captable/shared.xlsx' }),
+    historyRow: (historyId) =>
+      completedHistoryRow(historyId, {
+        produced_file_id: 88,
+        produced_file_path: 'product/output/captable/shared.xlsx',
+      }),
     sharedOutput: (historyId) => (historyId === 7 ? { id: 9 } : undefined),
   });
 

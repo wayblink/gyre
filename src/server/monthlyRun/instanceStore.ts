@@ -113,7 +113,10 @@ function monthlyRunInstanceToRecord(
     fixedValues: {
       optionsOutstandingCullgen: toNumber(row.options_outstanding_cullgen, DEFAULT_OPTIONS_OUTSTANDING_CULLGEN),
       optionsAvailableCullgen: toNumber(row.options_available_cullgen, DEFAULT_OPTIONS_AVAILABLE_CULLGEN),
-      warrantsConvertiblePreferred: toNumber(row.warrants_convertible_preferred, DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED),
+      warrantsConvertiblePreferred: toNumber(
+        row.warrants_convertible_preferred,
+        DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
+      ),
       seriesBPreferredStock: toNumber(row.series_b_preferred_stock, DEFAULT_SERIES_B_PREFERRED_STOCK),
       cullgenCommonStock: toNumber(row.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK),
       gyre2023ChinaSubplanTotal: toNumber(row.gyre_2023_china_subplan_total, DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL),
@@ -141,7 +144,10 @@ const INSTANCE_SELECT = `select i.*, output_file.original_name as latest_output_
        from monthly_run_instances i
        left join product_files output_file on output_file.id = i.latest_output_file_id`;
 
-export async function getMonthlyRunInstance(db: MonthlyRunDb, monthKey: string): Promise<MonthlyRunInstanceRecord | null> {
+export async function getMonthlyRunInstance(
+  db: MonthlyRunDb,
+  monthKey: string,
+): Promise<MonthlyRunInstanceRecord | null> {
   const row = await db.queryOne<MonthlyRunInstanceRow>(`${INSTANCE_SELECT} where i.month_key = $1`, [monthKey]);
   if (!row) return null;
   const sources = (await loadInstanceSources(db, [Number(row.id)])).get(Number(row.id)) ?? {};
@@ -158,7 +164,10 @@ export async function listMonthlyRunInstances(
       order by i.month_key desc, i.id desc`,
     params.month ? [params.month] : [],
   );
-  const sourcesByInstance = await loadInstanceSources(db, rows.map((row) => Number(row.id)));
+  const sourcesByInstance = await loadInstanceSources(
+    db,
+    rows.map((row) => Number(row.id)),
+  );
   return rows.map((row) => monthlyRunInstanceToRecord(row, sourcesByInstance.get(Number(row.id)) ?? {}));
 }
 
@@ -239,12 +248,24 @@ async function inheritMonthlyFixedValues(
     [monthKey],
   );
   return {
-    optionsOutstandingCullgen: prior ? toNumber(prior.options_outstanding_cullgen, DEFAULT_OPTIONS_OUTSTANDING_CULLGEN) : DEFAULT_OPTIONS_OUTSTANDING_CULLGEN,
-    optionsAvailableCullgen: prior ? toNumber(prior.options_available_cullgen, DEFAULT_OPTIONS_AVAILABLE_CULLGEN) : DEFAULT_OPTIONS_AVAILABLE_CULLGEN,
-    warrantsConvertiblePreferred: prior ? toNumber(prior.warrants_convertible_preferred, DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED) : DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
-    seriesBPreferredStock: prior ? toNumber(prior.series_b_preferred_stock, DEFAULT_SERIES_B_PREFERRED_STOCK) : DEFAULT_SERIES_B_PREFERRED_STOCK,
-    cullgenCommonStock: prior ? toNumber(prior.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK) : DEFAULT_CULLGEN_COMMON_STOCK,
-    gyre2023ChinaSubplanTotal: prior ? toNumber(prior.gyre_2023_china_subplan_total, DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL) : DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL,
+    optionsOutstandingCullgen: prior
+      ? toNumber(prior.options_outstanding_cullgen, DEFAULT_OPTIONS_OUTSTANDING_CULLGEN)
+      : DEFAULT_OPTIONS_OUTSTANDING_CULLGEN,
+    optionsAvailableCullgen: prior
+      ? toNumber(prior.options_available_cullgen, DEFAULT_OPTIONS_AVAILABLE_CULLGEN)
+      : DEFAULT_OPTIONS_AVAILABLE_CULLGEN,
+    warrantsConvertiblePreferred: prior
+      ? toNumber(prior.warrants_convertible_preferred, DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED)
+      : DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
+    seriesBPreferredStock: prior
+      ? toNumber(prior.series_b_preferred_stock, DEFAULT_SERIES_B_PREFERRED_STOCK)
+      : DEFAULT_SERIES_B_PREFERRED_STOCK,
+    cullgenCommonStock: prior
+      ? toNumber(prior.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK)
+      : DEFAULT_CULLGEN_COMMON_STOCK,
+    gyre2023ChinaSubplanTotal: prior
+      ? toNumber(prior.gyre_2023_china_subplan_total, DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL)
+      : DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL,
   };
 }
 
@@ -266,9 +287,15 @@ export async function ensureMonthlyRunInstance(db: MonthlyRunDb, monthKey: strin
      values ($1, $2, $3, 'Administrator', 'draft', $4, $5, $6, $7, $8, $9)
      on conflict (month_key) do update set updated_at = current_timestamp`,
     [
-      month.id, month.month_key, MONTHLY_WORKFLOW_CODE,
-      fixed.optionsOutstandingCullgen, fixed.optionsAvailableCullgen,
-      fixed.warrantsConvertiblePreferred, fixed.seriesBPreferredStock, fixed.cullgenCommonStock, fixed.gyre2023ChinaSubplanTotal,
+      month.id,
+      month.month_key,
+      MONTHLY_WORKFLOW_CODE,
+      fixed.optionsOutstandingCullgen,
+      fixed.optionsAvailableCullgen,
+      fixed.warrantsConvertiblePreferred,
+      fixed.seriesBPreferredStock,
+      fixed.cullgenCommonStock,
+      fixed.gyre2023ChinaSubplanTotal,
     ],
   );
   const created = await getMonthlyRunInstance(db, monthKey);
@@ -305,9 +332,7 @@ export async function upsertMonthlyRunInstance(
       existing.fixedValues.seriesBPreferredStock ??
       DEFAULT_SERIES_B_PREFERRED_STOCK,
     cullgenCommonStock:
-      params.fixedValues?.cullgenCommonStock ??
-      existing.fixedValues.cullgenCommonStock ??
-      DEFAULT_CULLGEN_COMMON_STOCK,
+      params.fixedValues?.cullgenCommonStock ?? existing.fixedValues.cullgenCommonStock ?? DEFAULT_CULLGEN_COMMON_STOCK,
     gyre2023ChinaSubplanTotal:
       params.fixedValues?.gyre2023ChinaSubplanTotal ??
       existing.fixedValues.gyre2023ChinaSubplanTotal ??
@@ -325,9 +350,14 @@ export async function upsertMonthlyRunInstance(
             updated_at = current_timestamp
       where month_key = $1`,
     [
-      monthKey, params.operator ?? existing.operator,
-      nextFixedValues.optionsOutstandingCullgen, nextFixedValues.optionsAvailableCullgen,
-      nextFixedValues.warrantsConvertiblePreferred, nextFixedValues.seriesBPreferredStock, nextFixedValues.cullgenCommonStock, nextFixedValues.gyre2023ChinaSubplanTotal,
+      monthKey,
+      params.operator ?? existing.operator,
+      nextFixedValues.optionsOutstandingCullgen,
+      nextFixedValues.optionsAvailableCullgen,
+      nextFixedValues.warrantsConvertiblePreferred,
+      nextFixedValues.seriesBPreferredStock,
+      nextFixedValues.cullgenCommonStock,
+      nextFixedValues.gyre2023ChinaSubplanTotal,
     ],
   );
 
@@ -338,10 +368,10 @@ export async function upsertMonthlyRunInstance(
       const fileId = binding ? await resolveMonthlyRunSourceFileId(db, binding) : null;
       const sheetName = binding?.sheetName?.trim() || null;
       if (fileId === null && !sheetName) {
-        await db.execute(
-          'delete from monthly_run_instance_sources where instance_id = $1 and source_key = $2',
-          [existing.id, sourceKey],
-        );
+        await db.execute('delete from monthly_run_instance_sources where instance_id = $1 and source_key = $2', [
+          existing.id,
+          sourceKey,
+        ]);
         continue;
       }
       await db.execute(

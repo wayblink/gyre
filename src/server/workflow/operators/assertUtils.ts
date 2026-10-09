@@ -47,10 +47,18 @@ export function compareAssertValues(actual: unknown, expected: unknown, operator
   const expectedComparable = coerceAssertExpectedValue(expected);
   const bothNumbers = typeof actualComparable === 'number' && typeof expectedComparable === 'number';
 
-  if (operator === '>') return bothNumbers ? actualComparable > expectedComparable : String(actualComparable) > String(expectedComparable);
-  if (operator === '>=') return bothNumbers ? actualComparable >= expectedComparable : String(actualComparable) >= String(expectedComparable);
-  if (operator === '<') return bothNumbers ? actualComparable < expectedComparable : String(actualComparable) < String(expectedComparable);
-  if (operator === '<=') return bothNumbers ? actualComparable <= expectedComparable : String(actualComparable) <= String(expectedComparable);
+  if (operator === '>')
+    return bothNumbers ? actualComparable > expectedComparable : String(actualComparable) > String(expectedComparable);
+  if (operator === '>=')
+    return bothNumbers
+      ? actualComparable >= expectedComparable
+      : String(actualComparable) >= String(expectedComparable);
+  if (operator === '<')
+    return bothNumbers ? actualComparable < expectedComparable : String(actualComparable) < String(expectedComparable);
+  if (operator === '<=')
+    return bothNumbers
+      ? actualComparable <= expectedComparable
+      : String(actualComparable) <= String(expectedComparable);
   if (operator === '=') return actualComparable === expectedComparable;
   return actualComparable !== expectedComparable;
 }
@@ -71,7 +79,9 @@ export function buildAssertionResult(params: {
     operator: params.operator ?? '=',
     actualValue: params.actualValue,
     expectedValue: params.expectedValue,
-    failureMessage: params.passed ? String(params.task.params.failureMessage ?? 'Assertion failed') : params.failureMessage,
+    failureMessage: params.passed
+      ? String(params.task.params.failureMessage ?? 'Assertion failed')
+      : params.failureMessage,
     failureStrategy,
     blockExecution: failureStrategy === 'block',
     actualLabel: params.actualLabel,

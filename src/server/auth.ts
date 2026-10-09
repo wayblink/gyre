@@ -88,13 +88,17 @@ export function calculateSessionExpiry(ttlHours: number, now = new Date()): Date
   return new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
 }
 
-export function serializeCookie(name: string, value: string, options: {
-  httpOnly?: boolean;
-  maxAgeSeconds?: number;
-  path?: string;
-  sameSite?: 'Lax' | 'Strict' | 'None';
-  secure?: boolean;
-} = {}): string {
+export function serializeCookie(
+  name: string,
+  value: string,
+  options: {
+    httpOnly?: boolean;
+    maxAgeSeconds?: number;
+    path?: string;
+    sameSite?: 'Lax' | 'Strict' | 'None';
+    secure?: boolean;
+  } = {},
+): string {
   const parts = [`${name}=${encodeURIComponent(value)}`];
   parts.push(`Path=${options.path ?? '/'}`);
   if (options.httpOnly !== false) parts.push('HttpOnly');
@@ -148,12 +152,15 @@ export async function createBootstrapAdmin(
   });
 }
 
-export async function createUser(db: Queryable, params: {
-  username: string;
-  passwordHash: string;
-  displayName: string;
-  role: string;
-}): Promise<AuthUserRecord> {
+export async function createUser(
+  db: Queryable,
+  params: {
+    username: string;
+    passwordHash: string;
+    displayName: string;
+    role: string;
+  },
+): Promise<AuthUserRecord> {
   const row = await db.query<{
     id: number;
     username: string;
@@ -170,7 +177,10 @@ export async function createUser(db: Queryable, params: {
   return { ...(row[0] as AuthUserRecord), email: null, phone: null };
 }
 
-export async function findUserByUsername(db: Queryable, username: string): Promise<(AuthUserRecord & { password_hash: string }) | null> {
+export async function findUserByUsername(
+  db: Queryable,
+  username: string,
+): Promise<(AuthUserRecord & { password_hash: string }) | null> {
   const row = await db.query<{
     id: number;
     username: string;
@@ -187,14 +197,17 @@ export async function findUserByUsername(db: Queryable, username: string): Promi
      where username = $1`,
     [username],
   );
-  return (row[0] as (AuthUserRecord & { password_hash: string })) ?? null;
+  return (row[0] as AuthUserRecord & { password_hash: string }) ?? null;
 }
 
-export async function createSession(db: Queryable, params: {
-  userId: number;
-  sessionTokenHash: string;
-  expiresAt: Date;
-}): Promise<SessionRecord> {
+export async function createSession(
+  db: Queryable,
+  params: {
+    userId: number;
+    sessionTokenHash: string;
+    expiresAt: Date;
+  },
+): Promise<SessionRecord> {
   const row = await db.query<SessionRecord>(
     `insert into app_sessions (user_id, session_token_hash, expires_at)
      values ($1, $2, $3)
@@ -242,10 +255,13 @@ export async function findSessionUserByTokenHash(db: Queryable, tokenHash: strin
   };
 }
 
-export async function touchSession(db: Queryable, params: {
-  tokenHash: string;
-  expiresAt: Date;
-}): Promise<void> {
+export async function touchSession(
+  db: Queryable,
+  params: {
+    tokenHash: string;
+    expiresAt: Date;
+  },
+): Promise<void> {
   await db.query(
     `update app_sessions
      set last_seen_at = current_timestamp,
@@ -374,14 +390,17 @@ export async function countActiveAdmins(db: Queryable, excludeUserId?: number): 
   return Number(rows[0]?.count ?? 0);
 }
 
-export async function createManagedUser(db: Queryable, params: {
-  username: string;
-  password: string;
-  displayName?: string;
-  role?: string;
-  email?: string | null;
-  phone?: string | null;
-}): Promise<ManagedUserAccount> {
+export async function createManagedUser(
+  db: Queryable,
+  params: {
+    username: string;
+    password: string;
+    displayName?: string;
+    role?: string;
+    email?: string | null;
+    phone?: string | null;
+  },
+): Promise<ManagedUserAccount> {
   const username = params.username.trim();
   const displayName = params.displayName?.trim() || username;
   const role = params.role === 'admin' ? 'admin' : 'user';
@@ -407,22 +426,26 @@ export async function createManagedUser(db: Queryable, params: {
   return toManagedUserAccount(rows[0]);
 }
 
-export async function updateManagedUser(db: Queryable, userId: number, params: {
-  username?: string;
-  password?: string;
-  displayName?: string;
-  role?: string;
-  email?: string | null;
-  phone?: string | null;
-  isActive?: boolean;
-}): Promise<ManagedUserAccount> {
+export async function updateManagedUser(
+  db: Queryable,
+  userId: number,
+  params: {
+    username?: string;
+    password?: string;
+    displayName?: string;
+    role?: string;
+    email?: string | null;
+    phone?: string | null;
+    isActive?: boolean;
+  },
+): Promise<ManagedUserAccount> {
   const existing = await getManagedUser(db, userId);
   if (!existing) throw new Error('User not found');
   const username = params.username?.trim() || existing.username;
   const displayName = params.displayName?.trim() || username;
   const role = params.role ?? existing.role;
-  const email = params.email === undefined ? existing.email : (params.email?.trim() || null);
-  const phone = params.phone === undefined ? existing.phone : (params.phone?.trim() || null);
+  const email = params.email === undefined ? existing.email : params.email?.trim() || null;
+  const phone = params.phone === undefined ? existing.phone : params.phone?.trim() || null;
   const isActive = params.isActive ?? existing.isActive;
   const passwordHash = params.password ? await hashPassword(params.password) : null;
   const rows = await db.query<{
@@ -461,12 +484,16 @@ export async function deleteManagedUser(db: Queryable, userId: number): Promise<
   await db.query('delete from app_users where id = $1', [userId]);
 }
 
-export async function updateAccountProfile(db: Queryable, userId: number, params: {
-  username: string;
-  displayName: string;
-  email?: string | null;
-  phone?: string | null;
-}): Promise<PublicAccount> {
+export async function updateAccountProfile(
+  db: Queryable,
+  userId: number,
+  params: {
+    username: string;
+    displayName: string;
+    email?: string | null;
+    phone?: string | null;
+  },
+): Promise<PublicAccount> {
   const username = params.username.trim();
   const displayName = params.displayName.trim() || username;
   const email = params.email?.trim() || null;
@@ -493,10 +520,14 @@ export async function updateAccountProfile(db: Queryable, userId: number, params
   return toPublicAccount(row[0]);
 }
 
-export async function updateAccountPassword(db: Queryable, userId: number, params: {
-  currentPassword: string;
-  newPassword: string;
-}): Promise<void> {
+export async function updateAccountPassword(
+  db: Queryable,
+  userId: number,
+  params: {
+    currentPassword: string;
+    newPassword: string;
+  },
+): Promise<void> {
   const row = await db.query<{
     id: number;
     username: string;

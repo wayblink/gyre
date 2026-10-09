@@ -68,8 +68,9 @@ function parseStructuredFivePercentHoldersGrid(grid: unknown[][]): FivePercentHo
   const sc13Index = columnIndex(['SC13 Filing']);
   const noteIndex = columnIndex(['Note']);
   const asOfDateIndex = columnIndex(['As Of Date']);
-  const fullyDilutedIndex = columnIndexWhere((rawHeader, normalizedHeader) =>
-    normalizedHeader === 'fullydiluted' && !rawHeader.includes('%'));
+  const fullyDilutedIndex = columnIndexWhere(
+    (rawHeader, normalizedHeader) => normalizedHeader === 'fullydiluted' && !rawHeader.includes('%'),
+  );
   const commonStockOsIndex = columnIndex(['Common Stock OS']);
 
   const holders: FivePercentHolderRow[] = [];
@@ -116,7 +117,9 @@ export function parseFivePercentHoldersGrid(grid: unknown[][]): FivePercentHolde
     grid.findIndex((row) => (asText((row ?? [])[col]) ?? '').toLowerCase().includes(needle.toLowerCase()));
 
   const edgarRow = findRow(0, 'edgar');
-  const fullyDilutedRow = grid.findIndex((row) => (asText((row ?? [])[1]) ?? '').toLowerCase().includes('fully diluted'));
+  const fullyDilutedRow = grid.findIndex((row) =>
+    (asText((row ?? [])[1]) ?? '').toLowerCase().includes('fully diluted'),
+  );
   const commonOsRow = grid.findIndex((row) => (asText((row ?? [])[1]) ?? '').toLowerCase().includes('common stock os'));
   const headerRow = findRow(0, 'shareholder');
 
@@ -150,4 +153,3 @@ export function parseFivePercentHoldersGrid(grid: unknown[][]): FivePercentHolde
     holders,
   };
 }
-

@@ -489,9 +489,7 @@ export function toSoldShare(row: SoldShareSourceRow): SoldShareResponseRow {
   };
 }
 
-export function toTransferPlanPeriod(
-  row: TransferPlanPeriodSourceRow,
-): TransferPlanPeriodResponseRow {
+export function toTransferPlanPeriod(row: TransferPlanPeriodSourceRow): TransferPlanPeriodResponseRow {
   const inTotal = toNumber(row.in_total);
   const cancelledQuantity = toNumber(row.cancelled_quantity);
   return {

@@ -34,7 +34,10 @@ export function buildProductFilesTree(
   const root = createFileTreeNode('', '');
 
   files.forEach((file) => {
-    const segments = pathOf(file).split('/').map((segment) => segment.trim()).filter(Boolean);
+    const segments = pathOf(file)
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean);
     const directorySegments = segments.length > 1 ? segments.slice(0, -1) : [];
     let current = root;
 
@@ -55,7 +58,9 @@ export function buildProductFilesTree(
 }
 
 export function countTreeFiles(node: FileTreeNode): number {
-  return node.files.length + Array.from(node.children.values()).reduce((total, child) => total + countTreeFiles(child), 0);
+  return (
+    node.files.length + Array.from(node.children.values()).reduce((total, child) => total + countTreeFiles(child), 0)
+  );
 }
 
 export function compareTreeNode(a: FileTreeNode, b: FileTreeNode): number {
@@ -73,7 +78,10 @@ export function collectProductFileFolders(
 ): string[] {
   const folders = new Set<string>(['input', 'control_book']);
   files.forEach((file) => {
-    const segments = pathOf(file).split('/').map((segment) => segment.trim()).filter(Boolean);
+    const segments = pathOf(file)
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean);
     segments.slice(0, -1).forEach((segment, index, directorySegments) => {
       folders.add(directorySegments.slice(0, index + 1).join('/'));
     });
@@ -96,7 +104,11 @@ function hasControlCharacter(value: string): boolean {
 
 /** Client-side mirror of normalizeProductFolder in src/server/fileIdentity.ts; the server re-normalizes anyway. */
 export function normalizeClientFolder(value: string): string {
-  const raw = String(value ?? '').normalize('NFC').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const raw = String(value ?? '')
+    .normalize('NFC')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '');
   if (!raw) return '';
   const segments = raw.split('/');
   if (segments.some((segment) => !segment || segment === '.' || segment === '..' || hasControlCharacter(segment))) {

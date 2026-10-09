@@ -19,9 +19,9 @@ export function rewriteProductFileKey(
 
     const record = node as Record<string, unknown>;
     if (
-      record.provider === 'product-files'
-      && typeof record.key === 'string'
-      && productFileCollisionKey(record.key) === oldCollisionKey
+      record.provider === 'product-files' &&
+      typeof record.key === 'string' &&
+      productFileCollisionKey(record.key) === oldCollisionKey
     ) {
       changed += 1;
       return { ...record, key: newKey };

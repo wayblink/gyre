@@ -1,16 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import {
-  FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS,
-} from '../dataManagementWorkflow/workflowDefinitions.js';
+import { FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS } from '../dataManagementWorkflow/workflowDefinitions.js';
 import { parseFivePercentHoldersGrid } from '../fivePercentHolders/persistence.js';
 import { toFixedValue } from '../esopPages.js';
 import { toIsoTimestamp } from '../utils/timestamp.js';
-import {
-  isUniqueConstraintViolation,
-  notFound,
-  updatedByFromRequest,
-} from './support.js';
+import { isUniqueConstraintViolation, notFound, updatedByFromRequest } from './support.js';
 import { requireAdminUser } from './auth.js';
 import type { RequestWithAuth } from './support.js';
 import type { RouteContext } from './context.js';
@@ -39,7 +33,10 @@ const globalParameterKeySchema = z
   .trim()
   .min(1)
   .max(120)
-  .regex(/^[A-Za-z][A-Za-z0-9_.-]*$/, 'Key must start with a letter and contain only letters, numbers, dots, dashes, or underscores');
+  .regex(
+    /^[A-Za-z][A-Za-z0-9_.-]*$/,
+    'Key must start with a letter and contain only letters, numbers, dots, dashes, or underscores',
+  );
 
 const globalParameterCreateSchema = z.object({
   key: globalParameterKeySchema,
@@ -79,7 +76,10 @@ const fixedValuePageKeyOrder = [
 export const fivePercentHolderGlobalParameterKeys = Object.values(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS);
 const fivePercentHolderGlobalParameterKeySet = new Set<string>(fivePercentHolderGlobalParameterKeys);
 
-export async function loadLatestFixedValuesByKey(db: RouteContext['db'], keys: readonly string[]): Promise<Map<string, Record<string, unknown>>> {
+export async function loadLatestFixedValuesByKey(
+  db: RouteContext['db'],
+  keys: readonly string[],
+): Promise<Map<string, Record<string, unknown>>> {
   const rows = await db.query<Record<string, unknown>>(
     `select distinct on (key) *
       from global_parameters
@@ -87,9 +87,7 @@ export async function loadLatestFixedValuesByKey(db: RouteContext['db'], keys: r
       order by key, updated_at desc, id desc`,
     [[...keys]],
   );
-  return new Map(rows
-    .filter((row) => String(row.updated_by ?? '') !== 'system')
-    .map((row) => [String(row.key), row]));
+  return new Map(rows.filter((row) => String(row.updated_by ?? '') !== 'system').map((row) => [String(row.key), row]));
 }
 
 export function applyFivePercentHolderGlobalParameters(
@@ -99,16 +97,18 @@ export function applyFivePercentHolderGlobalParameters(
   let holderIndex = 0;
   return workbook.holders.map((row) => {
     if (row.rowType !== 'holder') return row;
-    const commonStockKey = holderIndex === 0
-      ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniCommonStock
-      : holderIndex === 1
-        ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaCommonStock
-        : null;
-    const totalCsesKey = holderIndex === 0
-      ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniTotalCses
-      : holderIndex === 1
-        ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses
-        : null;
+    const commonStockKey =
+      holderIndex === 0
+        ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniCommonStock
+        : holderIndex === 1
+          ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaCommonStock
+          : null;
+    const totalCsesKey =
+      holderIndex === 0
+        ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.gniTotalCses
+        : holderIndex === 1
+          ? FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses
+          : null;
     holderIndex += 1;
     if (!commonStockKey || !totalCsesKey) return row;
     const commonStock = Number(fixedValues.get(commonStockKey)?.value);
@@ -121,7 +121,9 @@ export function applyFivePercentHolderGlobalParameters(
   });
 }
 
-export function hasCompleteFivePercentHolderGlobalParameters(fixedValues: Map<string, Record<string, unknown>>): boolean {
+export function hasCompleteFivePercentHolderGlobalParameters(
+  fixedValues: Map<string, Record<string, unknown>>,
+): boolean {
   return fivePercentHolderGlobalParameterOrder.every((key) => Number.isFinite(Number(fixedValues.get(key)?.value)));
 }
 
@@ -193,7 +195,9 @@ export function registerParameterRoutes(app: FastifyInstance, ctx: RouteContext)
         order by key, updated_at desc, id desc`,
       [[...fivePercentHolderGlobalParameterOrder]],
     );
-    const order: Record<string, number> = Object.fromEntries(fivePercentHolderGlobalParameterOrder.map((key, index) => [key, index]));
+    const order: Record<string, number> = Object.fromEntries(
+      fivePercentHolderGlobalParameterOrder.map((key, index) => [key, index]),
+    );
     const items = rows
       .map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0]))
       .sort((left, right) => {
@@ -218,7 +222,10 @@ export function registerParameterRoutes(app: FastifyInstance, ctx: RouteContext)
     const order: Record<string, number> = Object.fromEntries(fixedValuePageKeyOrder.map((key, index) => [key, index]));
     const items = rows
       .map((row) => toFixedValue(row as Parameters<typeof toFixedValue>[0]))
-      .sort((left, right) => (order[left.key] ?? 2147483647) - (order[right.key] ?? 2147483647) || left.key.localeCompare(right.key));
+      .sort(
+        (left, right) =>
+          (order[left.key] ?? 2147483647) - (order[right.key] ?? 2147483647) || left.key.localeCompare(right.key),
+      );
     return { items };
   });
 
@@ -260,7 +267,13 @@ export function registerParameterRoutes(app: FastifyInstance, ctx: RouteContext)
           and editable = true
           and key <> all($5::text[])
           returning *`,
-      [body.label ?? null, body.value, updatedByFromRequest(request as typeof request & RequestWithAuth), id, fivePercentHolderGlobalParameterKeys],
+      [
+        body.label ?? null,
+        body.value,
+        updatedByFromRequest(request as typeof request & RequestWithAuth),
+        id,
+        fivePercentHolderGlobalParameterKeys,
+      ],
     );
     if (!row) throw notFound('Global Parameter not found or not editable');
     return toFixedValue(row as Parameters<typeof toFixedValue>[0]);
@@ -315,4 +328,3 @@ export function registerParameterRoutes(app: FastifyInstance, ctx: RouteContext)
     return toFixedValue(row as Parameters<typeof toFixedValue>[0]);
   });
 }
-

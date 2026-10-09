@@ -93,8 +93,7 @@ function snapshotToXlsxBlob(univerAPI: any): Blob | null {
 
           if (cell?.v !== undefined && cell?.v !== null) {
             xlsxCell.v = cell.v;
-            xlsxCell.t =
-              typeof cell.v === 'number' ? 'n' : typeof cell.v === 'boolean' ? 'b' : 's';
+            xlsxCell.t = typeof cell.v === 'number' ? 'n' : typeof cell.v === 'boolean' ? 'b' : 's';
           } else if (xlsxCell.f) {
             xlsxCell.t = 'n';
           }

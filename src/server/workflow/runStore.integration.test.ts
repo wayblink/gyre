@@ -31,9 +31,14 @@ function appDbOver(client: Client): AppDb {
     return next;
   };
   const db = {
-    query: (text: string, params: unknown[] = []) => run(async () => (await client.query(text, params as unknown[])).rows),
-    queryOne: (text: string, params: unknown[] = []) => run(async () => (await client.query(text, params as unknown[])).rows[0]),
-    execute: (text: string, params: unknown[] = []) => run(async () => { await client.query(text, params as unknown[]); }),
+    query: (text: string, params: unknown[] = []) =>
+      run(async () => (await client.query(text, params as unknown[])).rows),
+    queryOne: (text: string, params: unknown[] = []) =>
+      run(async () => (await client.query(text, params as unknown[])).rows[0]),
+    execute: (text: string, params: unknown[] = []) =>
+      run(async () => {
+        await client.query(text, params as unknown[]);
+      }),
   };
   return db as unknown as AppDb;
 }
@@ -41,7 +46,10 @@ function appDbOver(client: Client): AppDb {
 // A dataFrame with more than LIGHT_SAMPLE_ROW_COUNT (5) rows plus the heavy cells/matrix the light
 // projection is meant to strip. rows[0] carries a sentinel the monthly page reads (bc adjustment).
 function bigDataFrame(rowCount: number) {
-  const rows = Array.from({ length: rowCount }, (_, i) => ({ n: i, bc_subplan_cancelled_adjustment: i === 0 ? 4242 : i }));
+  const rows = Array.from({ length: rowCount }, (_, i) => ({
+    n: i,
+    bc_subplan_cancelled_adjustment: i === 0 ? 4242 : i,
+  }));
   return {
     columns: ['n', 'bc_subplan_cancelled_adjustment'],
     rows,
@@ -108,7 +116,15 @@ test('getRun light trims step dataframes and artifact dataframe at the SQL layer
         RUN_ID,
         JSON.stringify({
           kind: 'assert',
-          assertion: { passed: true, operator: '>', actualValue: 10, expectedValue: 0, failureMessage: '', failureStrategy: 'block', blockExecution: true },
+          assertion: {
+            passed: true,
+            operator: '>',
+            actualValue: 10,
+            expectedValue: 0,
+            failureMessage: '',
+            failureStrategy: 'block',
+            blockExecution: true,
+          },
           dataFrame: bigDataFrame(ROW_COUNT),
         }),
       ],
@@ -118,7 +134,16 @@ test('getRun light trims step dataframes and artifact dataframe at the SQL layer
     await client.query(
       `insert into workflow_run_artifacts (id, run_id, step_id, task_id, artifact_type, file_id, name, metadata_json)
        values (1, $1, 1, 'calc_option_metrics', 'file', 99, 'out.xlsx', $2::jsonb)`,
-      [RUN_ID, JSON.stringify({ dataframe: bigDataFrame(ROW_COUNT), file: { id: 99 }, rows: ROW_COUNT, columns: 2, range: `A1:B${ROW_COUNT}` })],
+      [
+        RUN_ID,
+        JSON.stringify({
+          dataframe: bigDataFrame(ROW_COUNT),
+          file: { id: 99 },
+          rows: ROW_COUNT,
+          columns: 2,
+          range: `A1:B${ROW_COUNT}`,
+        }),
+      ],
     );
 
     // artifact_created events mirror the artifact metadata (dataframe included) into payload — the
@@ -126,7 +151,14 @@ test('getRun light trims step dataframes and artifact dataframe at the SQL layer
     await client.query(
       `insert into workflow_run_events (id, run_id, step_id, task_id, event_type, level, message, payload_json)
        values (1, $1, 1, 'calc_option_metrics', 'artifact_created', 'info', '', $2::jsonb)`,
-      [RUN_ID, JSON.stringify({ artifactType: 'file', fileId: 99, metadata: { dataframe: bigDataFrame(ROW_COUNT), rows: ROW_COUNT } })],
+      [
+        RUN_ID,
+        JSON.stringify({
+          artifactType: 'file',
+          fileId: 99,
+          metadata: { dataframe: bigDataFrame(ROW_COUNT), rows: ROW_COUNT },
+        }),
+      ],
     );
     await client.query(
       `insert into workflow_run_events (id, run_id, step_id, task_id, event_type, level, message, payload_json)
@@ -148,7 +180,11 @@ test('getRun light trims step dataframes and artifact dataframe at the SQL layer
     assert.deepEqual(lightDf.columns, ['n', 'bc_subplan_cancelled_adjustment'], 'columns preserved');
     assert.equal(lightDf.range.a1Range, `A1:B${ROW_COUNT}`, 'range preserved');
     assert.equal(lightDf.schema?.length, 2, 'schema preserved');
-    assert.equal((lightDf.rows[0] as Record<string, unknown>).bc_subplan_cancelled_adjustment, 4242, 'rows[0] sentinel preserved');
+    assert.equal(
+      (lightDf.rows[0] as Record<string, unknown>).bc_subplan_cancelled_adjustment,
+      4242,
+      'rows[0] sentinel preserved',
+    );
 
     const lightAssert = light.steps.find((s) => s.taskId === 'guard');
     assert.ok(lightAssert?.result && lightAssert.result.kind === 'assert', 'assert step keeps kind');
@@ -160,7 +196,7 @@ test('getRun light trims step dataframes and artifact dataframe at the SQL layer
     assert.ok(!('dataframe' in lightArtifact.metadata), 'artifact dataframe dropped');
     assert.equal(lightArtifact.metadata.rows, ROW_COUNT, 'artifact rows count preserved');
     assert.equal(lightArtifact.metadata.columns, 2, 'artifact columns count preserved');
-    assert.deepEqual((lightArtifact.metadata.file as Record<string, unknown>), { id: 99 }, 'artifact file preserved');
+    assert.deepEqual(lightArtifact.metadata.file as Record<string, unknown>, { id: 99 }, 'artifact file preserved');
 
     // Event columns (type/taskId/message) survive; the heavy payload.metadata blob is dropped.
     const lightArtifactEvent = light.events.find((e) => e.eventType === 'artifact_created');
@@ -168,7 +204,11 @@ test('getRun light trims step dataframes and artifact dataframe at the SQL layer
     assert.ok(!('metadata' in lightArtifactEvent.payload), 'event payload metadata (dataframe carrier) dropped');
     assert.equal(lightArtifactEvent.payload.fileId, 99, 'small event payload fields preserved');
     const lightWarnEvent = light.events.find((e) => e.eventType === 'warning_raised');
-    assert.equal(lightWarnEvent?.message, 'BC subplan below threshold', 'warning message (a column) preserved for monthly page');
+    assert.equal(
+      lightWarnEvent?.message,
+      'BC subplan below threshold',
+      'warning message (a column) preserved for monthly page',
+    );
 
     // --- full path (execution/preview): untouched ---
     const full = await store.getRun(RUN_ID);

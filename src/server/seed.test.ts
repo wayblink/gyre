@@ -36,8 +36,14 @@ test('Exercise seed rows come from the standalone Futu workbook and exclude non-
     deductionSellingQuantity: 1513,
     dealtQuantity: 1513,
   });
-  assert.equal(rows.some((row) => row.name === 'in Total'), false);
-  assert.equal(rows.some((row) => row.employeeNumber === '员工编号'), false);
+  assert.equal(
+    rows.some((row) => row.name === 'in Total'),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.employeeNumber === '员工编号'),
+    false,
+  );
 });
 
 test('Sold Shares seed rows come from the standalone Futu workbook and exclude totals and notes', () => {
@@ -65,8 +71,14 @@ test('Sold Shares seed rows come from the standalone Futu workbook and exclude t
     withholdingTaxCny: 392271.53,
     cashNetProceedsUsd: 29806.77,
   });
-  assert.equal(rows.some((row) => row.name.startsWith('Note:')), false);
-  assert.equal(rows.some((row) => row.employeeNumber === ''), false);
+  assert.equal(
+    rows.some((row) => row.name.startsWith('Note:')),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.employeeNumber === ''),
+    false,
+  );
 });
 
 test('5% Holders sheet parses header context and the >5% ownership rows', () => {
@@ -108,13 +120,16 @@ test('Transfer to Futu seed data comes from the standalone workbook and preserve
     transferToFutu: 518797,
     sortOrder: 0,
   });
-  assert.deepEqual(workbook.periods.find((item) => item.period === '2026-01'), {
-    period: '2026-01',
-    inTotal: 31082,
-    sourceCancelled: -303,
-    transferToFutu: 30779,
-    sortOrder: 2,
-  });
+  assert.deepEqual(
+    workbook.periods.find((item) => item.period === '2026-01'),
+    {
+      period: '2026-01',
+      inTotal: 31082,
+      sourceCancelled: -303,
+      transferToFutu: 30779,
+      sortOrder: 2,
+    },
+  );
   assert.deepEqual(workbook.periods.at(-1), {
     period: '2027-05 Performance part',
     inTotal: 420000,

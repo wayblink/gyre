@@ -92,10 +92,7 @@ export type WorkflowTaskParamInputUsage =
       runtimePath: string;
     };
 
-export function collectWorkflowRuntimeReferences(
-  value: unknown,
-  currentPath = '',
-): WorkflowRuntimeReferenceUsage[] {
+export function collectWorkflowRuntimeReferences(value: unknown, currentPath = ''): WorkflowRuntimeReferenceUsage[] {
   if (isWorkflowRuntimeParameterReference(value)) {
     return [
       {
@@ -120,7 +117,13 @@ export function collectWorkflowTaskParamInputUsages(task: WorkflowTask): Workflo
   if (task.operatorCode === WORKFLOW_INVOKE_CODE) {
     return collectWorkflowRuntimeReferences(task.params.runtimeParameters).flatMap((reference) =>
       reference.runtimePath.startsWith('fileRefs.')
-        ? [{ paramPath: `runtimeParameters.${reference.paramPath}`, kind: 'runtime' as const, runtimePath: reference.runtimePath }]
+        ? [
+            {
+              paramPath: `runtimeParameters.${reference.paramPath}`,
+              kind: 'runtime' as const,
+              runtimePath: reference.runtimePath,
+            },
+          ]
         : [],
     );
   }
@@ -307,7 +310,9 @@ export function getSheetSections(task: WorkflowTask): WorkflowSheetSectionConfig
               ? numericHeaderRowOffset
               : null,
         dataStartRowOffset:
-          record.dataStartRowOffset === null || record.dataStartRowOffset === undefined || record.dataStartRowOffset === ''
+          record.dataStartRowOffset === null ||
+          record.dataStartRowOffset === undefined ||
+          record.dataStartRowOffset === ''
             ? null
             : Number.isFinite(numericDataStartRowOffset)
               ? numericDataStartRowOffset
@@ -347,7 +352,10 @@ export function normalizeSheetSectionsExtractTask(task: WorkflowTask) {
           maxRows: null,
         },
       ];
-  task.params.sectionColumn = typeof task.params.sectionColumn === 'string' && task.params.sectionColumn.trim() ? task.params.sectionColumn : 'section';
+  task.params.sectionColumn =
+    typeof task.params.sectionColumn === 'string' && task.params.sectionColumn.trim()
+      ? task.params.sectionColumn
+      : 'section';
   task.params.sectionIndexColumn =
     typeof task.params.sectionIndexColumn === 'string' && task.params.sectionIndexColumn.trim()
       ? task.params.sectionIndexColumn
@@ -496,7 +504,10 @@ export function normalizeSchemaAssertTask(task: WorkflowTask) {
   if (!isSchemaAssertTask(task)) return;
   task.params.mode = task.params.mode === 'exact' ? 'exact' : 'contains';
   task.params.expectedColumns = Array.isArray(task.params.expectedColumns)
-    ? task.params.expectedColumns.map((item) => String(item ?? '').trim()).filter(Boolean).join(', ')
+    ? task.params.expectedColumns
+        .map((item) => String(item ?? '').trim())
+        .filter(Boolean)
+        .join(', ')
     : String(task.params.expectedColumns ?? '');
   normalizeAssertFailureParams(task);
   task.inputs = {
@@ -512,7 +523,13 @@ export function normalizeSchemaAssertTask(task: WorkflowTask) {
 export function normalizeShapeAssertTask(task: WorkflowTask) {
   if (!isShapeAssertTask(task)) return;
   const normalizeOperator = (value: unknown) =>
-    value === 'any' || value === '>' || value === '>=' || value === '<' || value === '<=' || value === '=' || value === '!='
+    value === 'any' ||
+    value === '>' ||
+    value === '>=' ||
+    value === '<' ||
+    value === '<=' ||
+    value === '=' ||
+    value === '!='
       ? value
       : '>=';
   const normalizeCount = (value: unknown, fallback: number) => {

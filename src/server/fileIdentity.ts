@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex -- the control-character classes are the point: file names and folder paths must not carry them. */
 import path from 'node:path';
 
 function normalizedText(value: string): string {
@@ -14,10 +15,16 @@ export function normalizeProductFileName(value: string): string {
 }
 
 export function normalizeProductFolder(value?: string): string {
-  const raw = normalizedText(String(value ?? '').trim()).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const raw = normalizedText(String(value ?? '').trim())
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '');
   if (!raw) return '';
   const segments = raw.split('/');
-  if (segments.some((segment) => !segment || segment === '.' || segment === '..' || /[\0\u0000-\u001f\u007f]/.test(segment))) {
+  if (
+    segments.some(
+      (segment) => !segment || segment === '.' || segment === '..' || /[\0\u0000-\u001f\u007f]/.test(segment),
+    )
+  ) {
     throw new Error('Invalid folder path');
   }
   return segments.join('/');

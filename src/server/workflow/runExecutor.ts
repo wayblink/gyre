@@ -16,7 +16,8 @@ export class WorkflowRunExecutor {
     schedulerOptions?: WorkflowRunSchedulerOptions,
   ) {
     this.scheduler = new WorkflowRunScheduler(store, runtime, schedulerOptions);
-    this.dispatcher = dispatcher ?? new InProcessWorkflowRunDispatcher((runId, mode) => this.scheduler.execute(runId, mode));
+    this.dispatcher =
+      dispatcher ?? new InProcessWorkflowRunDispatcher((runId, mode) => this.scheduler.execute(runId, mode));
   }
 
   startAsync(runId: number): void {
@@ -48,7 +49,11 @@ export class WorkflowRunExecutor {
     return this.store.getRun(runId);
   }
 
-  async continueAfterApproval(runId: number, taskIds: string[], decision: 'approved' | 'skipped' = 'approved'): Promise<WorkflowRunRecord> {
+  async continueAfterApproval(
+    runId: number,
+    taskIds: string[],
+    decision: 'approved' | 'skipped' = 'approved',
+  ): Promise<WorkflowRunRecord> {
     for (const taskId of taskIds) {
       await this.store.approveWarning(runId, taskId, decision);
     }

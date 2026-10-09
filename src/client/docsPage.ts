@@ -892,7 +892,8 @@ export function createDocsPage({ el, getLanguage, isAdmin }: DocsPageDeps) {
     const groups = groupOrder().filter((group) => pages.some((doc) => doc.group === group));
     el('docNav').innerHTML = groups
       .map((group) => {
-        const items = pages.filter((doc) => doc.group === group)
+        const items = pages
+          .filter((doc) => doc.group === group)
           .map(
             (doc) => `
             <button type="button" class="doc-nav__item${doc.id === activeDocId ? ' is-active' : ''}" data-doc="${doc.id}">

@@ -1,4 +1,9 @@
-import { defineWorkflowOperator, normalizeWorkflowFileReference, normalizeWorkflowTaskDependencies, readWorkflowFile } from './types.js';
+import {
+  defineWorkflowOperator,
+  normalizeWorkflowFileReference,
+  normalizeWorkflowTaskDependencies,
+  readWorkflowFile,
+} from './types.js';
 
 export const sheetOptionalRangeExtractOperator = defineWorkflowOperator({
   code: 'sheet.optional-range.extract',
@@ -16,8 +21,13 @@ export const sheetOptionalRangeExtractOperator = defineWorkflowOperator({
     sheetName: { type: 'string', label: 'Sheet 名称', required: true, default: '' },
   },
   documentation: {
-    usage: '用于可选文件输入。未传文件时不会阻断 workflow，而是输出空 dataframe；传入文件后行为等同普通 range extract。',
-    steps: ['配置 fileRef 为可选 runtime 参数并给默认空对象。', '配置 sheetName/range/headerRow。', '下游 SQL 用 count(*) 判断是否传入了文件。'],
+    usage:
+      '用于可选文件输入。未传文件时不会阻断 workflow，而是输出空 dataframe；传入文件后行为等同普通 range extract。',
+    steps: [
+      '配置 fileRef 为可选 runtime 参数并给默认空对象。',
+      '配置 sheetName/range/headerRow。',
+      '下游 SQL 用 count(*) 判断是否传入了文件。',
+    ],
     example: `{
   "fileRef": { "$fromRuntime": "fileRefs.previous_capitalization_summary", "$default": {} },
   "sheetName": "Capitalization Summary",
@@ -34,7 +44,11 @@ export const sheetOptionalRangeExtractOperator = defineWorkflowOperator({
     const range = String(task.params.range ?? '').trim();
     const rawHeaderRow = task.params.headerRow;
     const headerRow =
-      typeof rawHeaderRow === 'number' && Number.isFinite(rawHeaderRow) ? rawHeaderRow : rawHeaderRow === null ? null : undefined;
+      typeof rawHeaderRow === 'number' && Number.isFinite(rawHeaderRow)
+        ? rawHeaderRow
+        : rawHeaderRow === null
+          ? null
+          : undefined;
     const dropTrailingEmptyRows = task.params.dropTrailingEmptyRows !== false;
 
     if (!fileRef) return runtime.rowsToDataFrame([], { sheetName, a1Range: range });

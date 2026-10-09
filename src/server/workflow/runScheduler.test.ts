@@ -5,12 +5,10 @@ import type {
   WorkflowDataFrame,
   WorkflowExecutionTaskState,
   WorkflowRunApprovalRecord,
-  WorkflowRunArtifactRecord,
   WorkflowRunEventRecord,
   WorkflowRunRecord,
   WorkflowRunStatus,
   WorkflowRunStepRecord,
-  WorkflowRuntimeParameters,
   WorkflowTask,
   WorkflowTaskPreviewResult,
 } from '../../shared/types.js';
@@ -163,7 +161,12 @@ function dataframeResult(dataFrame = testDataFrame): WorkflowTaskPreviewResult {
   return { kind: 'dataframe', dataFrame };
 }
 
-function stepFromTask(runId: number, task: WorkflowTask, status: WorkflowExecutionTaskState, result: WorkflowTaskPreviewResult | null = null) {
+function stepFromTask(
+  runId: number,
+  task: WorkflowTask,
+  status: WorkflowExecutionTaskState,
+  result: WorkflowTaskPreviewResult | null = null,
+) {
   return {
     id: 0,
     runId,
@@ -190,7 +193,14 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
   private nextEventId = 1;
   private nextApprovalId = 1;
 
-  constructor(tasks: WorkflowTask[], seedSteps: Array<{ task: WorkflowTask; status: WorkflowExecutionTaskState; result?: WorkflowTaskPreviewResult | null }> = []) {
+  constructor(
+    tasks: WorkflowTask[],
+    seedSteps: Array<{
+      task: WorkflowTask;
+      status: WorkflowExecutionTaskState;
+      result?: WorkflowTaskPreviewResult | null;
+    }> = [],
+  ) {
     this.run = {
       id: 100,
       workflowId: 1,
@@ -252,9 +262,14 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
   }
 
   async claimStep(_runId: number, task: WorkflowTask): Promise<WorkflowRunStepClaim | null> {
-    const step = this.run.steps.find((item) =>
-      item.taskId === task.id &&
-      (item.status === 'pending' || item.status === 'warning' || item.status === 'blocked' || item.status === 'failed' || item.status === 'skipped')
+    const step = this.run.steps.find(
+      (item) =>
+        item.taskId === task.id &&
+        (item.status === 'pending' ||
+          item.status === 'warning' ||
+          item.status === 'blocked' ||
+          item.status === 'failed' ||
+          item.status === 'skipped'),
     );
     if (!step) return null;
     const lockToken = `lock-${task.id}-${step.attemptCount + 1}`;
@@ -271,7 +286,9 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
   }
 
   async heartbeatStep(stepId: number, lockToken: string): Promise<boolean> {
-    return this.run.steps.some((step) => step.id === stepId && step.lockToken === lockToken && step.status === 'running');
+    return this.run.steps.some(
+      (step) => step.id === stepId && step.lockToken === lockToken && step.status === 'running',
+    );
   }
 
   async releaseExpiredStepLocks(timeoutMs: number, runId?: number): Promise<number> {
@@ -293,7 +310,9 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
     return releasedCount;
   }
 
-  async finishClaimedStep(params: WorkflowRunStepFinishInput & { stepId: number; lockToken: string }): Promise<WorkflowRunStepRecord> {
+  async finishClaimedStep(
+    params: WorkflowRunStepFinishInput & { stepId: number; lockToken: string },
+  ): Promise<WorkflowRunStepRecord> {
     const step = this.run.steps.find((item) => item.id === params.stepId);
     if (!step || step.lockToken !== params.lockToken || step.status !== 'running') {
       throw new Error(`Workflow step ${params.task.id} lock is no longer owned by this worker`);
@@ -308,7 +327,9 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
   }
 
   async requestApproval(runId: number, task: WorkflowTask, message: string): Promise<void> {
-    const existing = this.run.approvals.find((approval) => approval.taskId === task.id && approval.status === 'pending');
+    const existing = this.run.approvals.find(
+      (approval) => approval.taskId === task.id && approval.status === 'pending',
+    );
     if (existing) return;
     this.run.approvals.push({
       id: this.nextApprovalId++,
@@ -344,7 +365,11 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
     }
   }
 
-  async createRunFinishedEvent(runId: number, status: WorkflowRunStatus, payload: Record<string, unknown> = {}): Promise<void> {
+  async createRunFinishedEvent(
+    runId: number,
+    status: WorkflowRunStatus,
+    payload: Record<string, unknown> = {},
+  ): Promise<void> {
     await this.createEvent({ runId, eventType: 'run_finished', message: status, payload: { status, ...payload } });
   }
 
@@ -364,7 +389,14 @@ test('strict task execution requires persisted upstream output', async () => {
   const source = sourceTask();
   const downstream = assertTask();
   await assert.rejects(
-    () => executeWorkflowTaskOutputStrict(downstream, new Map(), new Map(), new Map([source, downstream].map((task) => [task.id, task])), runtime),
+    () =>
+      executeWorkflowTaskOutputStrict(
+        downstream,
+        new Map(),
+        new Map(),
+        new Map([source, downstream].map((task) => [task.id, task])),
+        runtime,
+      ),
     /dependency Source has not produced a persisted output/,
   );
 });
@@ -372,13 +404,19 @@ test('strict task execution requires persisted upstream output', async () => {
 test('warning approval continues the same run without re-running the warning assert step', async () => {
   const source = sourceTask();
   const check = assertTask();
-  const store = new FakeWorkflowRunStore([source, check], [{ task: source, status: 'completed', result: dataframeResult() }]);
+  const store = new FakeWorkflowRunStore(
+    [source, check],
+    [{ task: source, status: 'completed', result: dataframeResult() }],
+  );
   const scheduler = new WorkflowRunScheduler(store, runtime);
 
   await scheduler.execute(store.run.id, { kind: 'all' });
 
   assert.equal(store.run.status, 'waiting_approval');
-  assert.deepEqual(store.run.approvals.map((approval) => approval.taskId), ['assert']);
+  assert.deepEqual(
+    store.run.approvals.map((approval) => approval.taskId),
+    ['assert'],
+  );
   assert.equal(store.run.steps.find((step) => step.taskId === 'assert')?.status, 'warning');
   assert.equal(store.run.steps.find((step) => step.taskId === 'assert')?.attemptCount, 1);
 
@@ -402,7 +440,10 @@ test('warning approval unblocks and runs downstream steps in the same run', asyn
   const source = sourceTask();
   const check = assertTask();
   const output = persistTask({ inputs: { input1: { from: 'assert', slot: 'dataframe' } } });
-  const store = new FakeWorkflowRunStore([source, check, output], [{ task: source, status: 'completed', result: dataframeResult() }]);
+  const store = new FakeWorkflowRunStore(
+    [source, check, output],
+    [{ task: source, status: 'completed', result: dataframeResult() }],
+  );
   const scheduler = new WorkflowRunScheduler(store, runtimeWithSaveSpy);
 
   await scheduler.execute(store.run.id, { kind: 'all' });
@@ -510,7 +551,10 @@ test('single-step retry can replace the current run task snapshot before dispatc
   const executor = new WorkflowRunExecutor(store, runtime, {
     enqueue() {},
   });
-  const updatedSource = sourceTask({ name: 'Updated Source', params: { fileId: 99, sheetName: 'Sheet1', range: 'A1:A1' } });
+  const updatedSource = sourceTask({
+    name: 'Updated Source',
+    params: { fileId: 99, sheetName: 'Sheet1', range: 'A1:A1' },
+  });
 
   await executor.startSingleStepAsync(store.run.id, 'source', [updatedSource]);
 
@@ -576,7 +620,10 @@ test('skip checkpoint decision skips downstream steps and finishes the same run'
   const source = sourceTask();
   const check = assertTask();
   const output = persistTask({ inputs: { input1: { from: 'assert', slot: 'dataframe' } } });
-  const store = new FakeWorkflowRunStore([source, check, output], [{ task: source, status: 'completed', result: dataframeResult() }]);
+  const store = new FakeWorkflowRunStore(
+    [source, check, output],
+    [{ task: source, status: 'completed', result: dataframeResult() }],
+  );
   const scheduler = new WorkflowRunScheduler(store, runtime);
 
   await scheduler.execute(store.run.id, { kind: 'all' });
@@ -613,7 +660,10 @@ test('onRunFinalized does not fire for waiting approval or single-step running s
   const source = sourceTask();
   const check = assertTask();
   const finalizedRuns: WorkflowRunRecord[] = [];
-  const waitingStore = new FakeWorkflowRunStore([source, check], [{ task: source, status: 'completed', result: dataframeResult() }]);
+  const waitingStore = new FakeWorkflowRunStore(
+    [source, check],
+    [{ task: source, status: 'completed', result: dataframeResult() }],
+  );
   const waitingScheduler = new WorkflowRunScheduler(waitingStore, runtime, {
     onRunFinalized: (run) => {
       finalizedRuns.push(run);
@@ -634,7 +684,10 @@ test('onRunFinalized does not fire for waiting approval or single-step running s
     },
   });
   const output = persistTask({ inputs: { input1: { from: 'assert', slot: 'dataframe' } } });
-  const singleStore = new FakeWorkflowRunStore([source, passingCheck, output], [{ task: source, status: 'completed', result: dataframeResult() }]);
+  const singleStore = new FakeWorkflowRunStore(
+    [source, passingCheck, output],
+    [{ task: source, status: 'completed', result: dataframeResult() }],
+  );
   const singleScheduler = new WorkflowRunScheduler(singleStore, runtime, {
     onRunFinalized: (run) => {
       finalizedRuns.push(run);
@@ -681,7 +734,10 @@ test('single-step execution only advances the selected task', async () => {
     },
   });
   const output = persistTask({ inputs: { input1: { from: 'assert', slot: 'dataframe' } } });
-  const store = new FakeWorkflowRunStore([source, check, output], [{ task: source, status: 'completed', result: dataframeResult() }]);
+  const store = new FakeWorkflowRunStore(
+    [source, check, output],
+    [{ task: source, status: 'completed', result: dataframeResult() }],
+  );
   const scheduler = new WorkflowRunScheduler(store, runtime);
 
   await scheduler.execute(store.run.id, { kind: 'single', taskId: 'assert' });
@@ -725,7 +781,10 @@ test('approved warning input guard executes the target operator body instead of 
       },
     },
   });
-  const store = new FakeWorkflowRunStore([source, output], [{ task: source, status: 'completed', result: dataframeResult() }]);
+  const store = new FakeWorkflowRunStore(
+    [source, output],
+    [{ task: source, status: 'completed', result: dataframeResult() }],
+  );
   const scheduler = new WorkflowRunScheduler(store, runtimeWithSaveSpy);
 
   await scheduler.execute(store.run.id, { kind: 'all' });
@@ -788,10 +847,22 @@ test('persist excel preview does not write files but execution does', async () =
     },
   });
   const source = sourceTask();
-  const output = persistTask({ params: { fileName: 'workflow-output.xlsx', folderPrefix: 'output/test-page', sheetName: 'Output Sheet', uploadedBy: 'Workflow' } });
+  const output = persistTask({
+    params: {
+      fileName: 'workflow-output.xlsx',
+      folderPrefix: 'output/test-page',
+      sheetName: 'Output Sheet',
+      uploadedBy: 'Workflow',
+    },
+  });
   const taskMap = new Map([source, output].map((task) => [task.id, task]));
 
-  const preview = await executeWorkflowTaskPreview(output, new Map([['source', testDataFrame]]), taskMap, runtimeWithSaveSpy);
+  const preview = await executeWorkflowTaskPreview(
+    output,
+    new Map([['source', testDataFrame]]),
+    taskMap,
+    runtimeWithSaveSpy,
+  );
   assert.equal(preview.kind, 'file-plan');
   assert.equal(saveCount, 0);
 

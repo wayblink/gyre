@@ -88,14 +88,14 @@ test('keyed merge keeps prior non-blank values when an increment field is blank'
 });
 
 test('keyed merge can expose generic audit columns for downstream checks', () => {
-  const base = rowsToDataFrame(
-    [{ entity_id: 'A', effective_date: '2026-05-01', amount: 10, balance: 100 }],
-    { sheetName: 'Base', a1Range: '' },
-  );
-  const increment = rowsToDataFrame(
-    [{ entity_id: 'A', effective_date: '2026-05-01', amount: 10, balance: 101 }],
-    { sheetName: 'Increment', a1Range: '' },
-  );
+  const base = rowsToDataFrame([{ entity_id: 'A', effective_date: '2026-05-01', amount: 10, balance: 100 }], {
+    sheetName: 'Base',
+    a1Range: '',
+  });
+  const increment = rowsToDataFrame([{ entity_id: 'A', effective_date: '2026-05-01', amount: 10, balance: 101 }], {
+    sheetName: 'Increment',
+    a1Range: '',
+  });
 
   const result = mergeKeyedDataFrames({
     base,

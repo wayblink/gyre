@@ -44,7 +44,13 @@ function decodeSheetRangeRef(sheet: XLSX.WorkSheet, sheetName: string): XLSX.Ran
   return XLSX.utils.decode_range(ref);
 }
 
-function findActualCellBounds(sheet: XLSX.WorkSheet, startRow: number, startCol: number, endRow: number, endCol: number): XLSX.Range {
+function findActualCellBounds(
+  sheet: XLSX.WorkSheet,
+  startRow: number,
+  startCol: number,
+  endRow: number,
+  endCol: number,
+): XLSX.Range {
   let actualEndRow = startRow;
   let actualEndCol = startCol;
   for (const key of Object.keys(sheet)) {
@@ -55,7 +61,8 @@ function findActualCellBounds(sheet: XLSX.WorkSheet, startRow: number, startCol:
     } catch {
       continue;
     }
-    if (cellAddress.r < startRow || cellAddress.r > endRow || cellAddress.c < startCol || cellAddress.c > endCol) continue;
+    if (cellAddress.r < startRow || cellAddress.r > endRow || cellAddress.c < startCol || cellAddress.c > endCol)
+      continue;
     actualEndRow = Math.max(actualEndRow, cellAddress.r);
     actualEndCol = Math.max(actualEndCol, cellAddress.c);
   }
@@ -92,10 +99,11 @@ export type DataFrameWorkbookOptions = {
   sheetName?: string;
 };
 
-export function rowsToDataFrame(rows: Array<Record<string, unknown>>, range?: Partial<WorkflowDataFrame['range']>): WorkflowDataFrame {
-  const columns = Array.from(
-    new Set(rows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0)),
-  );
+export function rowsToDataFrame(
+  rows: Array<Record<string, unknown>>,
+  range?: Partial<WorkflowDataFrame['range']>,
+): WorkflowDataFrame {
+  const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0)));
 
   const normalizedRows = rows.map((row) =>
     Object.fromEntries(columns.map((column) => [column, normalizeDataFrameInputValue(row[column] ?? null, column)])),
@@ -257,15 +265,20 @@ function buildDataFrameCell(
 
 function inferColumnSchema(columns: string[], cells: WorkflowDataFrameCell[][]): WorkflowDataFrameColumnSchema[] {
   return columns.map((column, columnIndex) => {
-    const columnCells = cells.map((row) => row[columnIndex]).filter((cell): cell is WorkflowDataFrameCell => Boolean(cell));
+    const columnCells = cells
+      .map((row) => row[columnIndex])
+      .filter((cell): cell is WorkflowDataFrameCell => Boolean(cell));
     const populatedTypes = new Set(
       columnCells
         .filter((cell) => !cell.isBlank && cell.type !== 'blank' && cell.type !== 'null')
         .map((cell) => cell.type),
     );
-    const formats = Array.from(new Set(columnCells.map((cell) => cell.format).filter((format): format is string => Boolean(format))));
+    const formats = Array.from(
+      new Set(columnCells.map((cell) => cell.format).filter((format): format is string => Boolean(format))),
+    );
     const nullable = columnCells.some((cell) => cell.isBlank || cell.type === 'blank' || cell.type === 'null');
-    const type = populatedTypes.size === 0 ? 'blank' : populatedTypes.size === 1 ? Array.from(populatedTypes)[0] : 'mixed';
+    const type =
+      populatedTypes.size === 0 ? 'blank' : populatedTypes.size === 1 ? Array.from(populatedTypes)[0] : 'mixed';
     return {
       name: column,
       index: columnIndex + 1,
@@ -315,9 +328,7 @@ export function summarizeWorkbook(buffer: Buffer): WorkbookSummary {
       raw: true,
     });
     const columns = Array.from(
-      new Set(
-        jsonRows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0),
-      ),
+      new Set(jsonRows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0)),
     );
 
     return {
@@ -424,7 +435,9 @@ export async function summarizeValidatedWorkbookAsync(buffer: Buffer, fileName: 
 
     worker.once('message', (message: { summary?: WorkbookSummary; error?: string }) => {
       void worker.terminate();
-      finish(() => message.summary ? resolve(message.summary) : reject(new Error(message.error || 'Workbook parsing failed')));
+      finish(() =>
+        message.summary ? resolve(message.summary) : reject(new Error(message.error || 'Workbook parsing failed')),
+      );
     });
     worker.once('error', (error) => finish(() => reject(error)));
     worker.once('exit', (code) => {
@@ -435,12 +448,7 @@ export async function summarizeValidatedWorkbookAsync(buffer: Buffer, fileName: 
   return assertValidWorkbookSummary(summary);
 }
 
-export function previewWorkbookSheet(
-  buffer: Buffer,
-  sheetName: string,
-  limit = 50,
-  offset = 0,
-): WorkbookSheetPreview {
+export function previewWorkbookSheet(buffer: Buffer, sheetName: string, limit = 50, offset = 0): WorkbookSheetPreview {
   const workbook = readWorkbook(buffer);
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) {
@@ -452,9 +460,7 @@ export function previewWorkbookSheet(
     raw: true,
   });
   const columns = Array.from(
-    new Set(
-      jsonRows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0),
-    ),
+    new Set(jsonRows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0)),
   );
 
   return {
@@ -533,7 +539,8 @@ export function extractResolvedSheetRangeAsDataFrame(
       ? readWorksheetRow(sheet, requestedHeaderRow, decodedRange.s.c, decodedRange.e.c)
       : null;
 
-  const headerSource = externalHeaderSource ?? (headerMatrixIndex === null ? matrix[0] ?? [] : matrix[headerMatrixIndex] ?? []);
+  const headerSource =
+    externalHeaderSource ?? (headerMatrixIndex === null ? (matrix[0] ?? []) : (matrix[headerMatrixIndex] ?? []));
   const columns = uniqueColumnNames(headerSource);
   const dataStartIndex = externalHeaderSource ? 0 : headerMatrixIndex === null ? 1 : headerMatrixIndex + 1;
 
@@ -549,10 +556,13 @@ export function extractResolvedSheetRangeAsDataFrame(
   const index = rows.map((_, rowIndex) => startRow + dataStartIndex + rowIndex);
   const cells = dataMatrix.map((_, rowIndex) => {
     const absoluteRowIndex = decodedRange.s.r + dataStartIndex + rowIndex;
-    return columns.map((column, columnIndex) => buildDataFrameCell(sheet, sheetName, absoluteRowIndex, decodedRange.s.c + columnIndex, column));
+    return columns.map((column, columnIndex) =>
+      buildDataFrameCell(sheet, sheetName, absoluteRowIndex, decodedRange.s.c + columnIndex, column),
+    );
   });
   const schema = inferColumnSchema(columns, cells);
-  const effectiveEndRow = dataMatrix.length > 0 ? startRow + dataStartIndex + dataMatrix.length - 1 : startRow + dataStartIndex - 1;
+  const effectiveEndRow =
+    dataMatrix.length > 0 ? startRow + dataStartIndex + dataMatrix.length - 1 : startRow + dataStartIndex - 1;
   const dataframeRange: WorkflowDataFrameRange = {
     sheetName,
     a1Range: XLSX.utils.encode_range({
@@ -649,7 +659,12 @@ function isPercentFormat(format: string): boolean {
 
 function isShareCountColumnName(columnName: string): boolean {
   const normalized = columnName.trim().toLowerCase();
-  return normalized.includes('shares') || normalized.includes('qty') || normalized.includes('quantity') || normalized.includes('outstanding');
+  return (
+    normalized.includes('shares') ||
+    normalized.includes('qty') ||
+    normalized.includes('quantity') ||
+    normalized.includes('outstanding')
+  );
 }
 
 function applyDataFrameWorksheetFormats(worksheet: XLSX.WorkSheet, columns: string[]) {

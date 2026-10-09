@@ -18,7 +18,10 @@ const canonical = new Map<string, number>([
 
 test('empty query returns matched rows unchanged, no group expansion', () => {
   const result = expandByLinkedGroup(rows, '', canonical, () => true);
-  assert.deepEqual(result.map((r) => r.employeeNumber), ['FUTU-1', 'SW-1', 'FUTU-2']);
+  assert.deepEqual(
+    result.map((r) => r.employeeNumber),
+    ['FUTU-1', 'SW-1', 'FUTU-2'],
+  );
 });
 
 test('matching one linked 工号 brings out every record in the same canonical group', () => {
@@ -34,5 +37,8 @@ test('matching the other 工号 of the group expands symmetrically', () => {
 
 test('a 工号 absent from employees falls back to itself (no accidental grouping)', () => {
   const result = expandByLinkedGroup(rows, 'futu-2', new Map(), (r) => r.employeeNumber === 'FUTU-2');
-  assert.deepEqual(result.map((r) => r.employeeNumber), ['FUTU-2']);
+  assert.deepEqual(
+    result.map((r) => r.employeeNumber),
+    ['FUTU-2'],
+  );
 });

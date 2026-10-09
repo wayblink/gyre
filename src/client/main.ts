@@ -1,5 +1,4 @@
 import type {
-  AccountProfile,
   AuthStatus,
   AuthenticatedUser,
   Employee,
@@ -32,6 +31,7 @@ import type {
   ShareworksGrant,
 } from '../shared/types.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
+import type { AccountProfile } from '../shared/types.js';
 import { createFilesPage } from './filesPage.js';
 import { createFilePickerModal } from './filePickerModal.js';
 import { createMonthlyRunPage } from './monthlyRunPage.js';
@@ -92,7 +92,6 @@ let exercisePageSize = 20;
 let soldSharesPage = 1;
 let soldSharesTotal = 0;
 let soldSharesPageSize = 20;
-let transferPlanSourceFileId: number | null = null;
 let transferPlanTableView: TransferPlanTableView = 'summaryRows';
 let transferPlanEditMode = false;
 let employeesPage = 1;
@@ -140,7 +139,6 @@ let monthlyRunInputCollapsed = false;
 let themeSelection: ThemeSelection = getStoredTheme();
 let currentLanguage: AppLanguage = readStoredLanguage();
 let appInitialized = false;
-let currentAccount: AccountProfile | null = null;
 let managedUsers: ManagedUser[] = [];
 let editingManagedUserId: number | null = null;
 let editingFixedValueId: number | null = null;
@@ -274,13 +272,16 @@ function el<T extends HTMLElement>(id: string): T {
 }
 
 function formatFileList(files: string | Array<string | null | undefined> | null | undefined): string {
-  const list = (Array.isArray(files) ? files : [files])
-    .map((file) => String(file ?? '').trim())
-    .filter(Boolean);
+  const list = (Array.isArray(files) ? files : [files]).map((file) => String(file ?? '').trim()).filter(Boolean);
   return list.join(' / ');
 }
 
-function setPageFileMetric(page: PageKey, selector: string, files: string | Array<string | null | undefined> | null | undefined, label: string) {
+function setPageFileMetric(
+  page: PageKey,
+  selector: string,
+  files: string | Array<string | null | undefined> | null | undefined,
+  label: string,
+) {
   const section = document.getElementById(`page-${page}`);
   const nameNode = section?.querySelector<HTMLElement>(selector);
   if (!nameNode) return;
@@ -308,7 +309,9 @@ function productFileDisplayName(file: ProductFileRecord) {
 function resetActivePageSourceFile() {
   const activeSection = document.querySelector<HTMLElement>('.page-section.active');
   activeSection
-    ?.querySelectorAll<HTMLElement>('[data-page-source-file-name], [data-page-result-file-name], [data-page-source-files-name]')
+    ?.querySelectorAll<HTMLElement>(
+      '[data-page-source-file-name], [data-page-result-file-name], [data-page-source-files-name]',
+    )
     .forEach((nameNode) => {
       nameNode.textContent = '-';
       nameNode.removeAttribute('title');
@@ -386,19 +389,18 @@ function renderWorkflowUpdateModalSources() {
     .map((source) => {
       const selectedFileId = workflowUpdateSelectedFiles[source.sourceKey] ?? null;
       const previous = workflowUpdateBindingFor(page, source.sourceKey);
-      const selected = selectedFileId
-        ? filesPage.getProductFiles().find((file) => file.id === selectedFileId)
-        : null;
+      const selected = selectedFileId ? filesPage.getProductFiles().find((file) => file.id === selectedFileId) : null;
       const pickLabel = selected
         ? productFileDisplayName(selected)
         : currentLanguage === 'zh-CN'
           ? '选择文件…'
           : 'Select file…';
-      const ruleNote = page === 'plan-summary'
-        ? currentLanguage === 'zh-CN'
-          ? '说明：仅显示 Outstanding 不为 0 的计划。'
-          : 'Note: only plans with non-zero Outstanding are shown.'
-        : '';
+      const ruleNote =
+        page === 'plan-summary'
+          ? currentLanguage === 'zh-CN'
+            ? '说明：仅显示 Outstanding 不为 0 的计划。'
+            : 'Note: only plans with non-zero Outstanding are shown.'
+          : '';
       return `
         <div class="workflow-update-source-card" data-workflow-update-source="${escapeHtml(source.sourceKey)}">
           <div class="workflow-update-source-card__main">
@@ -418,12 +420,14 @@ function renderWorkflowUpdateModalSources() {
               <span class="workbook-tree__folder-icon" aria-hidden="true"></span>
               <span class="workflow-update-source-card__pick-label">${escapeHtml(pickLabel)}</span>
             </button>
-            ${source.sheet !== undefined || previous?.sheet
-              ? `<label class="workflow-update-source-card__sheet">
+            ${
+              source.sheet !== undefined || previous?.sheet
+                ? `<label class="workflow-update-source-card__sheet">
                   <span class="workflow-update-source-card__sheet-label">Sheet</span>
                   <input class="workflow-update-source-card__sheet-input" type="text" data-workflow-update-sheet="${escapeHtml(source.sourceKey)}" value="${escapeHtml(workflowUpdateSelectedSheets[source.sourceKey] ?? previous?.sheet ?? source.sheet ?? '')}" />
                 </label>`
-              : ''}
+                : ''
+            }
           </div>
         </div>`;
     })
@@ -467,19 +471,26 @@ async function openWorkflowUpdateFilePicker(sourceKey: string) {
   if (result.action === 'pick') {
     const file = filesPage.getProductFiles().find((item) => item.id === result.fileId);
     if (file) {
-      el('workflowUpdateStatus').textContent = `${currentLanguage === 'zh-CN' ? '已选择' : 'Selected'}: ${productFileDisplayName(file)}`;
+      el('workflowUpdateStatus').textContent =
+        `${currentLanguage === 'zh-CN' ? '已选择' : 'Selected'}: ${productFileDisplayName(file)}`;
     }
   }
 }
 
-function workflowUpdateStatusMessage(key: 'idle' | 'starting' | 'running' | 'completed' | 'completedWithWarnings' | 'failed', detail?: string): string {
+function workflowUpdateStatusMessage(
+  key: 'idle' | 'starting' | 'running' | 'completed' | 'completedWithWarnings' | 'failed',
+  detail?: string,
+): string {
   const copy: Record<typeof key, Record<AppLanguage, string>> = {
     idle: {
       'zh-CN': '默认使用上一次成功执行的输入文件；上传新文件后会自动替换当前输入项。',
       'en-US': 'The last successful input files are used by default; uploaded files replace the current input.',
     },
     starting: { 'zh-CN': '正在启动 workflow...', 'en-US': 'Starting workflow...' },
-    running: { 'zh-CN': `Workflow 运行中${detail ? `（#${detail}）` : ''}...`, 'en-US': `Workflow running${detail ? ` (#${detail})` : ''}...` },
+    running: {
+      'zh-CN': `Workflow 运行中${detail ? `（#${detail}）` : ''}...`,
+      'en-US': `Workflow running${detail ? ` (#${detail})` : ''}...`,
+    },
     completed: { 'zh-CN': 'Workflow 更新完成。', 'en-US': 'Workflow update completed.' },
     completedWithWarnings: { 'zh-CN': 'Workflow 完成（包含 Warning）。', 'en-US': 'Workflow completed with warnings.' },
     failed: { 'zh-CN': `Workflow 失败：${detail ?? ''}`, 'en-US': `Workflow failed: ${detail ?? ''}` },
@@ -532,14 +543,18 @@ function renderWorkflowUpdateProgress(run: WorkflowRunRecord) {
   const failedStep = steps.find((item) => item.status === 'failed' || item.status === 'blocked');
   const pendingStep = steps.find((item) => item.status === 'pending');
   const currentStep = failedStep ?? runningStep ?? pendingStep ?? steps[steps.length - 1] ?? null;
-  const displayedPercent = run.status === 'completed' || run.status === 'completed_with_warnings'
-    ? 100
-    : Math.max(percent, run.status === 'running' && total > 0 ? 8 : 0);
+  const displayedPercent =
+    run.status === 'completed' || run.status === 'completed_with_warnings'
+      ? 100
+      : Math.max(percent, run.status === 'running' && total > 0 ? 8 : 0);
 
   progress.classList.remove('hidden', 'is-running', 'is-success', 'is-warning', 'is-error');
   progress.classList.toggle('is-running', run.status === 'running' || run.status === 'pending');
   progress.classList.toggle('is-success', run.status === 'completed');
-  progress.classList.toggle('is-warning', run.status === 'completed_with_warnings' || run.status === 'waiting_approval');
+  progress.classList.toggle(
+    'is-warning',
+    run.status === 'completed_with_warnings' || run.status === 'waiting_approval',
+  );
   progress.classList.toggle('is-error', run.status === 'failed' || run.status === 'skipped');
   label.textContent = currentLanguage === 'zh-CN' ? 'Workflow 进度' : 'Workflow progress';
   bar.setAttribute('aria-valuenow', String(displayedPercent));
@@ -568,7 +583,10 @@ async function openWorkflowUpdateModal(page: WorkflowUpdatePageKey) {
     ]),
   );
   workflowUpdateSelectedSheets = Object.fromEntries(
-    config.sources.map((source) => [source.sourceKey, workflowUpdateBindingFor(page, source.sourceKey)?.sheet ?? source.sheet ?? '']),
+    config.sources.map((source) => [
+      source.sourceKey,
+      workflowUpdateBindingFor(page, source.sourceKey)?.sheet ?? source.sheet ?? '',
+    ]),
   );
   el('workflowUpdateModalTitle').textContent = `Update ${config.workflowName}`;
   el('workflowUpdateModalSubtitle').textContent = config.description;
@@ -616,7 +634,10 @@ function forceCloseWorkflowUpdateModal() {
   closeWorkflowUpdateModal();
 }
 
-async function pollWorkflowUpdateRunUntilFinished(runId: number, onProgress?: (run: WorkflowRunRecord) => void): Promise<WorkflowRunRecord> {
+async function pollWorkflowUpdateRunUntilFinished(
+  runId: number,
+  onProgress?: (run: WorkflowRunRecord) => void,
+): Promise<WorkflowRunRecord> {
   const startedAt = Date.now();
   const timeoutMs = 120_000;
   for (;;) {
@@ -665,12 +686,15 @@ async function confirmWorkflowUpdate() {
   el('workflowUpdateProgress').classList.remove('hidden');
   try {
     const sources = Object.fromEntries(
-      config.sources.map((source) => [source.sourceKey, {
-        fileId: workflowUpdateSelectedFiles[source.sourceKey],
-        ...(workflowUpdateSelectedSheets[source.sourceKey]?.trim()
-          ? { sheet: workflowUpdateSelectedSheets[source.sourceKey].trim() }
-          : {}),
-      }]),
+      config.sources.map((source) => [
+        source.sourceKey,
+        {
+          fileId: workflowUpdateSelectedFiles[source.sourceKey],
+          ...(workflowUpdateSelectedSheets[source.sourceKey]?.trim()
+            ? { sheet: workflowUpdateSelectedSheets[source.sourceKey].trim() }
+            : {}),
+        },
+      ]),
     );
     const result = await api<WorkflowExecutionResult>(workflowUpdateRunEndpoint(page), {
       method: 'POST',
@@ -811,21 +835,33 @@ const uiText: Record<string, Record<AppLanguage, string>> = {
   current: { 'zh-CN': '当前', 'en-US': 'Current' },
   blueDesc: { 'zh-CN': '稳健的默认企业蓝', 'en-US': 'Stable default enterprise blue' },
   tealDesc: { 'zh-CN': '更偏产品和数据工具的青绿色强调', 'en-US': 'Teal accent for product and data tools' },
-  amberDesc: { 'zh-CN': '偏暖的金橙色强调，更接近演示型工作台', 'en-US': 'Warm amber accent for demo-oriented workspaces' },
+  amberDesc: {
+    'zh-CN': '偏暖的金橙色强调，更接近演示型工作台',
+    'en-US': 'Warm amber accent for demo-oriented workspaces',
+  },
   accountInfo: { 'zh-CN': '账号信息', 'en-US': 'Account Information' },
-  accountInfoSubtitle: { 'zh-CN': '管理当前登录账号的基础信息和联系方式', 'en-US': 'Manage the current account profile and contact details' },
+  accountInfoSubtitle: {
+    'zh-CN': '管理当前登录账号的基础信息和联系方式',
+    'en-US': 'Manage the current account profile and contact details',
+  },
   username: { 'zh-CN': '账号名', 'en-US': 'Username' },
   displayName: { 'zh-CN': '显示名', 'en-US': 'Display name' },
   email: { 'zh-CN': '邮箱', 'en-US': 'Email' },
   contact: { 'zh-CN': '联系方式', 'en-US': 'Contact' },
   changePassword: { 'zh-CN': '修改密码', 'en-US': 'Change Password' },
   saveAccount: { 'zh-CN': '保存账号信息', 'en-US': 'Save Account' },
-  changePasswordSubtitle: { 'zh-CN': '请输入原密码，并确认两次新密码一致', 'en-US': 'Enter the current password and confirm the new password twice' },
+  changePasswordSubtitle: {
+    'zh-CN': '请输入原密码，并确认两次新密码一致',
+    'en-US': 'Enter the current password and confirm the new password twice',
+  },
   currentPassword: { 'zh-CN': '当前密码', 'en-US': 'Current password' },
   newPassword: { 'zh-CN': '新密码', 'en-US': 'New password' },
   confirmNewPassword: { 'zh-CN': '确认新密码', 'en-US': 'Confirm new password' },
   updatePassword: { 'zh-CN': '更新密码', 'en-US': 'Update Password' },
-  userManagementSubtitle: { 'zh-CN': '管理员创建、编辑、停用系统用户和角色', 'en-US': 'Admins create, edit, deactivate system users and roles' },
+  userManagementSubtitle: {
+    'zh-CN': '管理员创建、编辑、停用系统用户和角色',
+    'en-US': 'Admins create, edit, deactivate system users and roles',
+  },
   newUser: { 'zh-CN': '新增用户', 'en-US': 'New User' },
   role: { 'zh-CN': '角色', 'en-US': 'Role' },
   status: { 'zh-CN': '状态', 'en-US': 'Status' },
@@ -843,31 +879,66 @@ const uiText: Record<string, Record<AppLanguage, string>> = {
   sourceFiles: { 'zh-CN': 'SourceFiles', 'en-US': 'SourceFiles' },
   resultFile: { 'zh-CN': 'Output File', 'en-US': 'Output File' },
   captableHeroEyebrow: { 'zh-CN': '股本汇总', 'en-US': 'Equity Summary' },
-  captableHeroText: { 'zh-CN': '展示月度 Capitalization Table Summary View，数据来自当前选择的输出文件。', 'en-US': 'View the monthly Capitalization Table Summary using the selected output file.' },
+  captableHeroText: {
+    'zh-CN': '展示月度 Capitalization Table Summary View，数据来自当前选择的输出文件。',
+    'en-US': 'View the monthly Capitalization Table Summary using the selected output file.',
+  },
   grantHeroEyebrow: { 'zh-CN': '授予记录', 'en-US': 'Grant Records' },
-  grantHeroText: { 'zh-CN': '展示 Futu、Shareworks 及合并后的授予明细，数据来自对应 workflow 输出文件。', 'en-US': 'View Futu, Shareworks, and merged grant details from workflow output files.' },
+  grantHeroText: {
+    'zh-CN': '展示 Futu、Shareworks 及合并后的授予明细，数据来自对应 workflow 输出文件。',
+    'en-US': 'View Futu, Shareworks, and merged grant details from workflow output files.',
+  },
   exerciseHeroEyebrow: { 'zh-CN': '行权记录', 'en-US': 'Exercise Records' },
-  exerciseHeroText: { 'zh-CN': '展示 Futu 全部行权记录，数据来自 Files 中的独立工作簿。', 'en-US': 'View all Futu exercise records from the workbook stored in Files.' },
+  exerciseHeroText: {
+    'zh-CN': '展示 Futu 全部行权记录，数据来自 Files 中的独立工作簿。',
+    'en-US': 'View all Futu exercise records from the workbook stored in Files.',
+  },
   soldHeroEyebrow: { 'zh-CN': '卖出记录', 'en-US': 'Sold Share Records' },
-  soldHeroText: { 'zh-CN': '展示 Futu 卖出汇总记录，数据来自 Files 中的独立工作簿。', 'en-US': 'View Futu sold-share summary records from the workbook stored in Files.' },
+  soldHeroText: {
+    'zh-CN': '展示 Futu 卖出汇总记录，数据来自 Files 中的独立工作簿。',
+    'en-US': 'View Futu sold-share summary records from the workbook stored in Files.',
+  },
   transferHeroEyebrow: { 'zh-CN': '2025年计划', 'en-US': '2025 Plan' },
   transferHeroText: {
     'zh-CN': '按月汇总归属记录；取消数量需进入 Edit 模式修改，保存后生成新输入文件并运行 workflow。',
-    'en-US': 'Summarize monthly vesting records. Edit cancellations in Edit mode; saving creates a new input file and reruns the workflow.',
+    'en-US':
+      'Summarize monthly vesting records. Edit cancellations in Edit mode; saving creates a new input file and reruns the workflow.',
   },
   employeeHeroEyebrow: { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
-  employeeHeroText: { 'zh-CN': '员工主数据由员工归集 workflow 从 ESOP 明细输入文件中生成，并支持手工补充。', 'en-US': 'Employee master data is generated from ESOP detail workflows and can be manually supplemented.' },
+  employeeHeroText: {
+    'zh-CN': '员工主数据由员工归集 workflow 从 ESOP 明细输入文件中生成，并支持手工补充。',
+    'en-US': 'Employee master data is generated from ESOP detail workflows and can be manually supplemented.',
+  },
   planHeroEyebrow: { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
-  planHeroText: { 'zh-CN': '按 Plan Name 聚合授予、行权、取消及 outstanding 数量。', 'en-US': 'Aggregate grants, exercises, cancellations, and outstanding quantities by Plan Name.' },
+  planHeroText: {
+    'zh-CN': '按 Plan Name 聚合授予、行权、取消及 outstanding 数量。',
+    'en-US': 'Aggregate grants, exercises, cancellations, and outstanding quantities by Plan Name.',
+  },
   holdersHeroEyebrow: { 'zh-CN': '持股5%以上股东', 'en-US': '5% Holders' },
-  holdersHeroText: { 'zh-CN': '由 Global Parameter 手工维护的 5% holder 数字与 Capitalization Summary 分母计算生成。', 'en-US': 'Generated from manually maintained Global Parameter holder numbers and Capitalization Summary denominators.' },
+  holdersHeroText: {
+    'zh-CN': '由 Global Parameter 手工维护的 5% holder 数字与 Capitalization Summary 分母计算生成。',
+    'en-US':
+      'Generated from manually maintained Global Parameter holder numbers and Capitalization Summary denominators.',
+  },
   fixedHeroEyebrow: { 'zh-CN': '管理可以更改的全局参数', 'en-US': 'Manage Editable Global Parameters' },
-  fixedHeroText: { 'zh-CN': 'Data Management 下的全局参数维护页，用于管理月度流程中可由管理员调整的业务常量。', 'en-US': 'Maintain business constants that admins can adjust in the monthly process.' },
+  fixedHeroText: {
+    'zh-CN': 'Data Management 下的全局参数维护页，用于管理月度流程中可由管理员调整的业务常量。',
+    'en-US': 'Maintain business constants that admins can adjust in the monthly process.',
+  },
   docsHeroEyebrow: { 'zh-CN': '使用手册', 'en-US': 'Docs' },
-  docsHeroText: { 'zh-CN': '系统各页面与工作流的使用说明，按主题分多篇文档。', 'en-US': 'Usage guides for system pages and workflows, organized by topic.' },
+  docsHeroText: {
+    'zh-CN': '系统各页面与工作流的使用说明，按主题分多篇文档。',
+    'en-US': 'Usage guides for system pages and workflows, organized by topic.',
+  },
   esopHeroEyebrow: { 'zh-CN': '股权明细', 'en-US': 'ESOP Detail' },
-  esopHeroText: { 'zh-CN': '股权明细的业务总入口，包含授予、行权、卖出和 2025 转富途计划四类台账。', 'en-US': 'The ESOP detail hub for grants, exercises, sold shares, and the 2025 transfer plan.' },
-  dataManagementHeroText: { 'zh-CN': '数据管理业务入口，维护 5% 股东与全局参数等可由管理员调整的数据。', 'en-US': 'Data management hub for 5% holders and global parameters.' },
+  esopHeroText: {
+    'zh-CN': '股权明细的业务总入口，包含授予、行权、卖出和 2025 转富途计划四类台账。',
+    'en-US': 'The ESOP detail hub for grants, exercises, sold shares, and the 2025 transfer plan.',
+  },
+  dataManagementHeroText: {
+    'zh-CN': '数据管理业务入口，维护 5% 股东与全局参数等可由管理员调整的数据。',
+    'en-US': 'Data management hub for 5% holders and global parameters.',
+  },
 };
 
 const placeholderTranslations: Array<[string, Record<AppLanguage, string>]> = [
@@ -875,7 +946,10 @@ const placeholderTranslations: Array<[string, Record<AppLanguage, string>]> = [
   ['filterHoldingsTag', { 'zh-CN': '按员工标签筛选', 'en-US': 'Filter by employee tag' }],
   ['searchExercises', { 'zh-CN': '按姓名、员工、授予编号搜索...', 'en-US': 'Search by name, employee, grant...' }],
   ['searchSoldShares', { 'zh-CN': '按姓名、员工、账号搜索...', 'en-US': 'Search by name, employee, account...' }],
-  ['searchEmployeesPage', { 'zh-CN': '按姓名、工号、用户 ID 搜索...', 'en-US': 'Search by name, employee no., user id...' }],
+  [
+    'searchEmployeesPage',
+    { 'zh-CN': '按姓名、工号、用户 ID 搜索...', 'en-US': 'Search by name, employee no., user id...' },
+  ],
   ['filterEmployeesPageTag', { 'zh-CN': '按标签筛选', 'en-US': 'Filter by tag' }],
   ['accountEmail', { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' }],
   ['accountPhone', { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' }],
@@ -883,10 +957,16 @@ const placeholderTranslations: Array<[string, Record<AppLanguage, string>]> = [
   ['managedUserDisplayName', { 'zh-CN': '输入显示名', 'en-US': 'Enter display name' }],
   ['managedUserEmail', { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' }],
   ['managedUserPhone', { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' }],
-  ['employeesPageNumber', { 'zh-CN': '输入工号（新增后不可改）', 'en-US': 'Enter employee no. (cannot be changed after creation)' }],
+  [
+    'employeesPageNumber',
+    { 'zh-CN': '输入工号（新增后不可改）', 'en-US': 'Enter employee no. (cannot be changed after creation)' },
+  ],
   ['employeesPageName', { 'zh-CN': '输入员工姓名', 'en-US': 'Enter employee name' }],
   ['employeesPageUserId', { 'zh-CN': '输入用户 ID', 'en-US': 'Enter user id' }],
-  ['employeesMergeTargetNumber', { 'zh-CN': '输入目标员工的工号 / Emp. No.', 'en-US': 'Enter target employee no. / Emp. No.' }],
+  [
+    'employeesMergeTargetNumber',
+    { 'zh-CN': '输入目标员工的工号 / Emp. No.', 'en-US': 'Enter target employee no. / Emp. No.' },
+  ],
 ];
 
 function t(key: keyof typeof uiText): string {
@@ -990,17 +1070,21 @@ function syncLanguageButtons() {
 }
 
 function syncWorkflowActionLabels() {
-  document.querySelectorAll<HTMLElement>('[data-workflow-update-page] [data-workflow-action-label]').forEach((label) => {
-    const button = label.closest<HTMLButtonElement>('[data-workflow-update-page]');
-    if (button?.dataset.workflowUpdatePage === 'five-percent-holders' && fivePercentHoldersEditMode) {
-      label.textContent = t('confirmAndRun');
-      return;
-    }
-    label.textContent = t('update');
-  });
-  document.querySelectorAll<HTMLElement>('[data-workflow-export-page] [data-workflow-action-label]').forEach((label) => {
-    label.textContent = t('export');
-  });
+  document
+    .querySelectorAll<HTMLElement>('[data-workflow-update-page] [data-workflow-action-label]')
+    .forEach((label) => {
+      const button = label.closest<HTMLButtonElement>('[data-workflow-update-page]');
+      if (button?.dataset.workflowUpdatePage === 'five-percent-holders' && fivePercentHoldersEditMode) {
+        label.textContent = t('confirmAndRun');
+        return;
+      }
+      label.textContent = t('update');
+    });
+  document
+    .querySelectorAll<HTMLElement>('[data-workflow-export-page] [data-workflow-action-label]')
+    .forEach((label) => {
+      label.textContent = t('export');
+    });
 }
 
 function applyLanguage() {
@@ -1034,16 +1118,20 @@ function applyLanguage() {
   setAllText('.product-page-hero__metric > span', t('sourceFile'));
   setAllText('[data-page-file-label="source-files"]', t('sourceFiles'));
   setAllText('[data-page-file-label="result-file"]', t('resultFile'));
-  [
-    'btnSearchHoldings',
-    'btnSearchExercises',
-    'btnSearchSoldShares',
-    'btnSearchEmployeesPage',
-  ].forEach((id) => setButtonLabel(id, t('search')));
+  ['btnSearchHoldings', 'btnSearchExercises', 'btnSearchSoldShares', 'btnSearchEmployeesPage'].forEach((id) =>
+    setButtonLabel(id, t('search')),
+  );
   setButtonLabel('btnExport', t('export'));
-  setButtonLabel('btnToggleTransferPlanTableView', transferPlanTableView === 'summaryRows'
-    ? (currentLanguage === 'zh-CN' ? '转置表格' : 'Transpose table')
-    : (currentLanguage === 'zh-CN' ? '恢复横向' : 'Restore horizontal'));
+  setButtonLabel(
+    'btnToggleTransferPlanTableView',
+    transferPlanTableView === 'summaryRows'
+      ? currentLanguage === 'zh-CN'
+        ? '转置表格'
+        : 'Transpose table'
+      : currentLanguage === 'zh-CN'
+        ? '恢复横向'
+        : 'Restore horizontal',
+  );
   setButtonLabel('btnEditTransferPlan', currentLanguage === 'zh-CN' ? '编辑' : 'Edit');
   setButtonLabel('btnSaveTransferPlanEdit', t('confirmAndRun'));
   setButtonLabel('btnCancelTransferPlanEdit', currentLanguage === 'zh-CN' ? '取消' : 'Cancel');
@@ -1054,9 +1142,12 @@ function applyLanguage() {
   setText('#workflowUpdateProgressLabel', currentLanguage === 'zh-CN' ? 'Workflow 进度' : 'Workflow progress');
   setButtonLabel('btnAddEmployeeLabel', currentLanguage === 'zh-CN' ? '新增标签' : 'New Tag');
   setText('#employeeLabelManagementModal .modal-title', currentLanguage === 'zh-CN' ? '标签管理' : 'Label Management');
-  setText('#employeeLabelManagementModal .modal-subtitle', currentLanguage === 'zh-CN'
-    ? '先创建标签，再分配给员工；名称或颜色变更会自动影响所有员工。'
-    : 'Create labels first, then assign them to employees. Name or color changes apply to all employees.');
+  setText(
+    '#employeeLabelManagementModal .modal-subtitle',
+    currentLanguage === 'zh-CN'
+      ? '先创建标签，再分配给员工；名称或颜色变更会自动影响所有员工。'
+      : 'Create labels first, then assign them to employees. Name or color changes apply to all employees.',
+  );
   setAllText('[data-close="employeeLabelManagementModal"].btn', currentLanguage === 'zh-CN' ? '关闭' : 'Close');
   setAllText('#employeesPageModal [data-close="employeesPageModal"].btn', t('cancel'));
   setText('#btnSubmitEmployeesPage', t('save'));
@@ -1111,7 +1202,15 @@ function applyLanguage() {
   setOptionText('managedUserIsActive', 'true', t('active'));
   setOptionText('managedUserIsActive', 'false', t('inactive'));
   const userLabels = document.querySelectorAll<HTMLElement>('#managedUserModal .form-group label');
-  [t('username'), t('displayName'), t('role'), t('email'), t('contact'), editingManagedUserId ? t('optionalPassword') : t('password'), t('status')].forEach((copy, index) => {
+  [
+    t('username'),
+    t('displayName'),
+    t('role'),
+    t('email'),
+    t('contact'),
+    editingManagedUserId ? t('optionalPassword') : t('password'),
+    t('status'),
+  ].forEach((copy, index) => {
     if (userLabels[index]) userLabels[index].textContent = copy;
   });
 
@@ -1123,7 +1222,10 @@ function applyLanguage() {
 
   setText('#btnCloseLinkModalFooter', t('close'));
   setText('#page-plan-summary .card-title', pageTitleFor('plan-summary'));
-  setText('#page-plan-summary .card-subtitle', currentLanguage === 'zh-CN' ? '由股权授予明细聚合生成' : 'Aggregated from equity grant detail');
+  setText(
+    '#page-plan-summary .card-subtitle',
+    currentLanguage === 'zh-CN' ? '由股权授予明细聚合生成' : 'Aggregated from equity grant detail',
+  );
   setText('#page-five-percent-holders .card-title', pageTitleFor('five-percent-holders'));
   setText('#page-fixed-value .card-title', currentLanguage === 'zh-CN' ? '参数' : 'Global Parameter');
   setAllText('.pagination-size-label-text', t('rows'));
@@ -1255,7 +1357,10 @@ function formatTagChips(labels: Array<{ name: string; color: string }>, fallback
     : fallbackTags.map((name) => ({ name, color: DEFAULT_EMPLOYEE_LABEL_COLOR }));
   return visibleLabels.length
     ? `<div class="employee-table-tag-list">${visibleLabels
-        .map((label) => `<span class="employee-table-tag"${employeeLabelStyle(label.color)}>${escapeHtml(label.name)}</span>`)
+        .map(
+          (label) =>
+            `<span class="employee-table-tag"${employeeLabelStyle(label.color)}>${escapeHtml(label.name)}</span>`,
+        )
         .join('')}</div>`
     : '-';
 }
@@ -1319,14 +1424,13 @@ function initSidebarToggle() {
 }
 
 function renderThemeCards() {
-  el('themeColorOptions').innerHTML = COLOR_OPTIONS.map(
-    (option) => {
-      const descByColor: Record<ThemeColorName, string> = {
-        blue: t('blueDesc'),
-        teal: t('tealDesc'),
-        amber: t('amberDesc'),
-      };
-      return `
+  el('themeColorOptions').innerHTML = COLOR_OPTIONS.map((option) => {
+    const descByColor: Record<ThemeColorName, string> = {
+      blue: t('blueDesc'),
+      teal: t('tealDesc'),
+      amber: t('amberDesc'),
+    };
+    return `
       <button
         class="theme-card${themeSelection.color === option.name ? ' active' : ''}"
         type="button"
@@ -1343,8 +1447,7 @@ function renderThemeCards() {
           ${option.swatches.map((color) => `<span class="theme-swatch" style="background-color:${escapeHtml(color)}"></span>`).join('')}
         </span>
       </button>`;
-    },
-  ).join('');
+  }).join('');
 
   document.querySelectorAll<HTMLElement>('[data-theme-color]').forEach((button) => {
     button.addEventListener('click', () => setThemeColor(button.dataset.themeColor as ThemeColorName));
@@ -1728,7 +1831,10 @@ async function initSummaryPage() {
     api<{ output: LatestMonthlyRunOutput | null }>('/api/monthly-runs/latest-output'),
   ]);
   availableMonthOptions = sortAvailableMonths(months);
-  currentMonth = resolveDefaultSummaryMonth(availableMonthOptions.map((item) => item.month), latestOutputResponse.output);
+  currentMonth = resolveDefaultSummaryMonth(
+    availableMonthOptions.map((item) => item.month),
+    latestOutputResponse.output,
+  );
   renderMonthPicker('monthPicker', currentMonth, 'hasCapTableData');
   await refreshSummarySourceFileOptions();
   if (months.length === 0) {
@@ -1760,8 +1866,8 @@ async function initSummaryPage() {
 }
 
 function initPlanSummaryPage() {
-  const picker = el<HTMLInputElement>('planSummaryMonthPicker');
   renderMonthPicker('planSummaryMonthPicker', currentMonth, 'hasPlanSummaryData');
+  const picker = el<HTMLInputElement>('planSummaryMonthPicker');
   picker.value = currentMonth;
   picker.addEventListener('change', () => {
     const month = picker.value;
@@ -1805,14 +1911,20 @@ function renderMonthPicker(inputId: string, selectedMonth: string, dataKey: 'has
     list.push(item);
     grouped.set(year, list);
   });
-  panel.innerHTML = [...grouped.entries()].map(([year, months]) => `
+  panel.innerHTML = [...grouped.entries()]
+    .map(
+      ([year, months]) => `
     <section class="month-picker-year"><strong>${year}</strong><div class="month-picker-grid">
-      ${months.map((item) => {
-        const hasData = Boolean(item[dataKey]);
-        const isSelected = item.month === selectedMonth;
-        return `<button type="button" class="month-picker-option${hasData ? ' has-data' : ''}${isSelected ? ' is-selected' : ''}" data-month-value="${item.month}" aria-pressed="${isSelected}" title="${hasData ? '有可用数据' : '暂无可用数据'}">${Number(item.month.slice(5))}月${hasData ? '<span aria-hidden="true">✓</span>' : ''}</button>`;
-      }).join('')}
-    </div></section>`).join('');
+      ${months
+        .map((item) => {
+          const hasData = Boolean(item[dataKey]);
+          const isSelected = item.month === selectedMonth;
+          return `<button type="button" class="month-picker-option${hasData ? ' has-data' : ''}${isSelected ? ' is-selected' : ''}" data-month-value="${item.month}" aria-pressed="${isSelected}" title="${hasData ? '有可用数据' : '暂无可用数据'}">${Number(item.month.slice(5))}月${hasData ? '<span aria-hidden="true">✓</span>' : ''}</button>`;
+        })
+        .join('')}
+    </div></section>`,
+    )
+    .join('');
   if (trigger.dataset.bound !== 'true') {
     trigger.dataset.bound = 'true';
     trigger.addEventListener('click', () => {
@@ -1886,7 +1998,12 @@ async function renderSummaryPage(month: string) {
     const availableMonths = await fetchAvailableMonths();
     const [data, baselineSummary] = await Promise.all([
       api<SummarySnapshot>(`/api/months/${month}/summary`),
-      loadBaselineSummary(resolveBaselineMonth(availableMonths.map((item) => item.month), month)),
+      loadBaselineSummary(
+        resolveBaselineMonth(
+          availableMonths.map((item) => item.month),
+          month,
+        ),
+      ),
     ]);
     const capitalization = normalizeCapitalizationRows(data.capitalization, data.fixedValues?.seriesBPreferredStock);
     currentSummary = { ...data, capitalization };
@@ -1902,10 +2019,12 @@ async function renderSummaryPage(month: string) {
         <td class="highlight-number">${formatNumber(data.reconciliation.eomBalance)}</td>
       </tr>`;
 
-    const baselineIndex = indexCapitalizationRows(normalizeCapitalizationRows(
-      baselineSummary?.capitalization ?? [],
-      baselineSummary?.fixedValues?.seriesBPreferredStock,
-    ));
+    const baselineIndex = indexCapitalizationRows(
+      normalizeCapitalizationRows(
+        baselineSummary?.capitalization ?? [],
+        baselineSummary?.fixedValues?.seriesBPreferredStock,
+      ),
+    );
     const capBody = el('capitalizationBody');
     capBody.innerHTML = capitalization
       .map((item) => {
@@ -1914,7 +2033,12 @@ async function renderSummaryPage(month: string) {
         }
         const deltas = computeCapitalizationRowDeltas(item, findComparableRow(baselineIndex, item));
         if (item.type === 'cat-sub-label') {
-          const sharesHtml = item.shares === undefined ? '' : item.highlightShares ? `<span class="highlight-yellow">${formatNumber(item.shares)}</span>` : formatNumber(item.shares);
+          const sharesHtml =
+            item.shares === undefined
+              ? ''
+              : item.highlightShares
+                ? `<span class="highlight-yellow">${formatNumber(item.shares)}</span>`
+                : formatNumber(item.shares);
           return `<tr class="cat-sub-label">
             <td></td><td style="text-align:left;">${escapeHtml(item.description)}</td>
             <td class="col-number">${sharesHtml}</td>${renderCapitalizationDeltaCell(deltas.shares)}
@@ -1947,7 +2071,8 @@ async function renderSummaryPage(month: string) {
     resetActivePageSourceFile();
     getCurrentMonthTextNode().textContent = t('noSummaryData');
     el('eomDate').textContent = '-';
-    el('reconciliationBody').innerHTML = `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
+    el('reconciliationBody').innerHTML =
+      `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
     el('capitalizationBody').innerHTML = '';
     applyCapitalizationSourceState(null);
     renderNotes([]);
@@ -1962,7 +2087,9 @@ async function refreshSummarySourceFileOptions() {
   const currentValue = select.value;
   select.innerHTML = [
     `<option value="">${escapeHtml(t('defaultSnapshot'))}</option>`,
-    ...summarySourceFiles.map((file) => `<option value="${file.id}">${escapeHtml(productFileDisplayName(file))}</option>`),
+    ...summarySourceFiles.map(
+      (file) => `<option value="${file.id}">${escapeHtml(productFileDisplayName(file))}</option>`,
+    ),
   ].join('');
   if (currentValue && summarySourceFiles.some((file) => String(file.id) === currentValue)) {
     select.value = currentValue;
@@ -2021,7 +2148,8 @@ function renderNotes(notes: SummarySnapshot['notes']) {
     .join('');
   container.querySelectorAll<HTMLElement>('[data-action="delete"]').forEach((button) => {
     button.addEventListener('click', async () => {
-      if (!(await confirmAction('确定删除此备注吗？', { title: '删除备注', confirmText: '删除', tone: 'danger' }))) return;
+      if (!(await confirmAction('确定删除此备注吗？', { title: '删除备注', confirmText: '删除', tone: 'danger' })))
+        return;
       await api(`/api/notes/${button.dataset.id}`, { method: 'DELETE' });
       await renderSummaryPage(currentMonth);
     });
@@ -2068,18 +2196,27 @@ async function submitNewPlan() {
     notify('请填写月份', { type: 'warning' });
     return;
   }
-  await api<{ instance: MonthlyRunInstanceRecord }>('/api/monthly-runs/instances', { method: 'POST', body: JSON.stringify({ month }) });
+  await api<{ instance: MonthlyRunInstanceRecord }>('/api/monthly-runs/instances', {
+    method: 'POST',
+    body: JSON.stringify({ month }),
+  });
   el('addPlanModal').classList.add('hidden');
   await renderMonthlyPage('');
 }
 
 async function renderMonthlyPage(filterMonth: string) {
-  const data = await api<{ items: MonthlyRunInstanceRecord[] }>(`/api/monthly-runs/instances${filterMonth ? `?month=${encodeURIComponent(filterMonth)}` : ''}`);
+  const data = await api<{ items: MonthlyRunInstanceRecord[] }>(
+    `/api/monthly-runs/instances${filterMonth ? `?month=${encodeURIComponent(filterMonth)}` : ''}`,
+  );
   updatePlans = data.items;
   el('planTotalCount').textContent = String(updatePlans.length);
-  el('planCompletedCount').textContent = String(updatePlans.filter((plan) => plan.status === 'completed' || plan.status === 'completed_with_warnings').length);
+  el('planCompletedCount').textContent = String(
+    updatePlans.filter((plan) => plan.status === 'completed' || plan.status === 'completed_with_warnings').length,
+  );
   el('planInProgressCount').textContent = String(updatePlans.filter((plan) => plan.status === 'running').length);
-  el('planPendingCount').textContent = String(updatePlans.filter((plan) => plan.status === 'draft' || plan.status === 'waiting_approval').length);
+  el('planPendingCount').textContent = String(
+    updatePlans.filter((plan) => plan.status === 'draft' || plan.status === 'waiting_approval').length,
+  );
 
   const tbody = el('monthlyUpdateBody');
   if (updatePlans.length === 0) {
@@ -2103,8 +2240,12 @@ async function renderMonthlyPage(filterMonth: string) {
       </tr>`,
     )
     .join('');
-  tbody.querySelectorAll<HTMLElement>('[data-action="view"]').forEach((button) => button.addEventListener('click', () => void openMonthlyRunPlan(Number(button.dataset.id))));
-  tbody.querySelectorAll<HTMLElement>('[data-action="delete"]').forEach((button) => button.addEventListener('click', () => void deleteUpdatePlan(Number(button.dataset.id))));
+  tbody
+    .querySelectorAll<HTMLElement>('[data-action="view"]')
+    .forEach((button) => button.addEventListener('click', () => void openMonthlyRunPlan(Number(button.dataset.id))));
+  tbody
+    .querySelectorAll<HTMLElement>('[data-action="delete"]')
+    .forEach((button) => button.addEventListener('click', () => void deleteUpdatePlan(Number(button.dataset.id))));
   localizeAppDom();
 }
 
@@ -2264,7 +2405,9 @@ async function initEmployeesPage() {
   el('employeesPageSelectedLabels').addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-remove-employee-label-id]');
     if (!button) return;
-    editingEmployeeLabelIds = editingEmployeeLabelIds.filter((id) => id !== Number(button.dataset.removeEmployeeLabelId));
+    editingEmployeeLabelIds = editingEmployeeLabelIds.filter(
+      (id) => id !== Number(button.dataset.removeEmployeeLabelId),
+    );
     renderEmployeeAssignmentLabels();
   });
   el('employeeLabelPickerMenu').addEventListener('click', (event) => {
@@ -2287,18 +2430,26 @@ async function initEmployeesPage() {
   el<HTMLSelectElement>('employeesPageSizeSelect').addEventListener('change', (event) =>
     changeEmployeesPageSize(Number((event.target as HTMLSelectElement).value)),
   );
-  document.querySelectorAll<HTMLElement>('#employeesPageTable [data-employees-sort]').forEach((header) =>
-    header.addEventListener('click', () => toggleEmployeesSort(header.dataset.employeesSort as 'name' | 'empNo')),
-  );
-  document.querySelectorAll<HTMLElement>('[data-grant-sort]').forEach((header) =>
-    header.addEventListener('click', () => toggleGrantSort(header.dataset.grantSort as 'name' | 'empNo')),
-  );
-  document.querySelectorAll<HTMLElement>('[data-exercise-sort]').forEach((header) =>
-    header.addEventListener('click', () => toggleExerciseSort(header.dataset.exerciseSort as 'name' | 'empNo')),
-  );
-  document.querySelectorAll<HTMLElement>('[data-sold-sort]').forEach((header) =>
-    header.addEventListener('click', () => toggleSoldSharesSort(header.dataset.soldSort as 'name' | 'empNo')),
-  );
+  document
+    .querySelectorAll<HTMLElement>('#employeesPageTable [data-employees-sort]')
+    .forEach((header) =>
+      header.addEventListener('click', () => toggleEmployeesSort(header.dataset.employeesSort as 'name' | 'empNo')),
+    );
+  document
+    .querySelectorAll<HTMLElement>('[data-grant-sort]')
+    .forEach((header) =>
+      header.addEventListener('click', () => toggleGrantSort(header.dataset.grantSort as 'name' | 'empNo')),
+    );
+  document
+    .querySelectorAll<HTMLElement>('[data-exercise-sort]')
+    .forEach((header) =>
+      header.addEventListener('click', () => toggleExerciseSort(header.dataset.exerciseSort as 'name' | 'empNo')),
+    );
+  document
+    .querySelectorAll<HTMLElement>('[data-sold-sort]')
+    .forEach((header) =>
+      header.addEventListener('click', () => toggleSoldSharesSort(header.dataset.soldSort as 'name' | 'empNo')),
+    );
   await loadEmployeeLabels();
   await loadEmployeesPage();
 }
@@ -2329,7 +2480,9 @@ function renderUserManagementTable() {
     body.innerHTML = `<tr><td colspan="9" class="table-empty-cell">${escapeHtml(t('noUsers'))}</td></tr>`;
     return;
   }
-  body.innerHTML = managedUsers.map((user) => `
+  body.innerHTML = managedUsers
+    .map(
+      (user) => `
     <tr data-managed-user-id="${user.id}">
       <td>${escapeHtml(user.username)}</td>
       <td>${escapeHtml(user.displayName)}</td>
@@ -2346,7 +2499,9 @@ function renderUserManagementTable() {
         </div>
       </td>
     </tr>
-  `).join('');
+  `,
+    )
+    .join('');
 
   body.querySelectorAll<HTMLButtonElement>('[data-edit-managed-user]').forEach((button) => {
     button.addEventListener('click', () => openManagedUserModal(Number(button.dataset.editManagedUser)));
@@ -2383,8 +2538,12 @@ function openManagedUserModal(userId?: number) {
   el<HTMLSelectElement>('managedUserIsActive').value = user?.isActive === false ? 'false' : 'true';
   el('managedUserModalTitle').textContent = editingManagedUserId ? t('editUser') : t('createUser');
   el('managedUserModalSubtitle').textContent = editingManagedUserId
-    ? (currentLanguage === 'zh-CN' ? '留空密码则不修改' : 'Leave password blank to keep it unchanged')
-    : (currentLanguage === 'zh-CN' ? '默认角色为 user' : 'Default role is user');
+    ? currentLanguage === 'zh-CN'
+      ? '留空密码则不修改'
+      : 'Leave password blank to keep it unchanged'
+    : currentLanguage === 'zh-CN'
+      ? '默认角色为 user'
+      : 'Default role is user';
   const passwordLabel = document.querySelectorAll<HTMLElement>('#managedUserModal .form-group label')[5];
   if (passwordLabel) passwordLabel.textContent = editingManagedUserId ? t('optionalPassword') : t('password');
   el('btnSubmitManagedUser').textContent = editingManagedUserId ? t('save') : t('createUser');
@@ -2402,12 +2561,16 @@ async function submitManagedUser() {
     isActive: el<HTMLSelectElement>('managedUserIsActive').value === 'true',
   };
   if (!payload.username || !payload.displayName) {
-    notify(currentLanguage === 'zh-CN' ? '账号名和显示名不能为空' : 'Username and display name are required', { type: 'warning' });
+    notify(currentLanguage === 'zh-CN' ? '账号名和显示名不能为空' : 'Username and display name are required', {
+      type: 'warning',
+    });
     return;
   }
   if (!editingManagedUserId) {
     if (!password) {
-      notify(currentLanguage === 'zh-CN' ? '新用户必须设置密码' : 'Password is required for a new user', { type: 'warning' });
+      notify(currentLanguage === 'zh-CN' ? '新用户必须设置密码' : 'Password is required for a new user', {
+        type: 'warning',
+      });
       return;
     }
     payload.password = password;
@@ -2426,9 +2589,10 @@ async function submitManagedUser() {
           body: JSON.stringify(payload),
         });
     const index = managedUsers.findIndex((user) => user.id === response.user.id);
-    managedUsers = index >= 0
-      ? managedUsers.map((user) => (user.id === response.user.id ? response.user : user))
-      : [...managedUsers, response.user];
+    managedUsers =
+      index >= 0
+        ? managedUsers.map((user) => (user.id === response.user.id ? response.user : user))
+        : [...managedUsers, response.user];
     closeManagedUserModal();
     renderUserManagementTable();
     notify(currentLanguage === 'zh-CN' ? '用户已保存' : 'User saved', { type: 'success' });
@@ -2480,7 +2644,6 @@ async function initAccountPage() {
 
 async function loadAccountPage() {
   const data = await api<{ account: AccountProfile }>('/api/account');
-  currentAccount = data.account;
   el<HTMLInputElement>('accountUsername').value = data.account.username;
   el<HTMLInputElement>('accountDisplayName').value = data.account.displayName;
   el<HTMLInputElement>('accountEmail').value = data.account.email ?? '';
@@ -2503,7 +2666,6 @@ async function submitAccountProfile() {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
-    currentAccount = data.account;
     authStatus = authStatus ? { ...authStatus, user: data.account } : authStatus;
     setCurrentUser(data.account);
     notify('账号信息已保存', { type: 'success' });
@@ -2557,7 +2719,6 @@ function closeAccountPasswordModal() {
   el('accountPasswordModal').classList.add('hidden');
 }
 
-
 function pageCountOf(total: number, pageSize: number) {
   return Math.max(1, Math.ceil(total / pageSize));
 }
@@ -2571,30 +2732,78 @@ function paginationSummaryText(start: number, end: number, total: number, unit: 
 }
 
 const PAGINATION_IDS = {
-  holdings: { summary: 'holdingsPaginationSummary', page: 'holdingsPaginationPage', first: 'btnHoldingsFirstPage', prev: 'btnHoldingsPrevPage', next: 'btnHoldingsNextPage', last: 'btnHoldingsLastPage' },
-  employees: { summary: 'employeesPaginationSummary', page: 'employeesPaginationPage', first: 'btnEmployeesFirstPage', prev: 'btnEmployeesPrevPage', next: 'btnEmployeesNextPage', last: 'btnEmployeesLastPage' },
-  exercises: { summary: 'exercisePaginationSummary', page: 'exercisePaginationPage', first: 'btnExercisesFirstPage', prev: 'btnExercisesPrevPage', next: 'btnExercisesNextPage', last: 'btnExercisesLastPage' },
-  soldShares: { summary: 'soldSharesPaginationSummary', page: 'soldSharesPaginationPage', first: 'btnSoldSharesFirstPage', prev: 'btnSoldSharesPrevPage', next: 'btnSoldSharesNextPage', last: 'btnSoldSharesLastPage' },
+  holdings: {
+    summary: 'holdingsPaginationSummary',
+    page: 'holdingsPaginationPage',
+    first: 'btnHoldingsFirstPage',
+    prev: 'btnHoldingsPrevPage',
+    next: 'btnHoldingsNextPage',
+    last: 'btnHoldingsLastPage',
+  },
+  employees: {
+    summary: 'employeesPaginationSummary',
+    page: 'employeesPaginationPage',
+    first: 'btnEmployeesFirstPage',
+    prev: 'btnEmployeesPrevPage',
+    next: 'btnEmployeesNextPage',
+    last: 'btnEmployeesLastPage',
+  },
+  exercises: {
+    summary: 'exercisePaginationSummary',
+    page: 'exercisePaginationPage',
+    first: 'btnExercisesFirstPage',
+    prev: 'btnExercisesPrevPage',
+    next: 'btnExercisesNextPage',
+    last: 'btnExercisesLastPage',
+  },
+  soldShares: {
+    summary: 'soldSharesPaginationSummary',
+    page: 'soldSharesPaginationPage',
+    first: 'btnSoldSharesFirstPage',
+    prev: 'btnSoldSharesPrevPage',
+    next: 'btnSoldSharesNextPage',
+    last: 'btnSoldSharesLastPage',
+  },
 } as const satisfies Record<string, PaginationIds>;
 
 function renderHoldingsPagination(page: number, totalPages: number, total: number) {
   const view = paginationView({ page, pageSize: holdingsPageSize, total, totalPages });
-  renderPaginationControls(el, PAGINATION_IDS.holdings, view, paginationSummaryText(view.start, view.end, total, 'records'));
+  renderPaginationControls(
+    el,
+    PAGINATION_IDS.holdings,
+    view,
+    paginationSummaryText(view.start, view.end, total, 'records'),
+  );
 }
 
 function renderEmployeesPagination(page: number, totalPages: number, total: number) {
   const view = paginationView({ page, pageSize: employeesPageSize, total, totalPages });
-  renderPaginationControls(el, PAGINATION_IDS.employees, view, paginationSummaryText(view.start, view.end, total, 'employees'));
+  renderPaginationControls(
+    el,
+    PAGINATION_IDS.employees,
+    view,
+    paginationSummaryText(view.start, view.end, total, 'employees'),
+  );
 }
 
 function renderExercisePagination(page: number, totalPages: number, total: number) {
   const view = paginationView({ page, pageSize: exercisePageSize, total, totalPages });
-  renderPaginationControls(el, PAGINATION_IDS.exercises, view, paginationSummaryText(view.start, view.end, total, 'records'));
+  renderPaginationControls(
+    el,
+    PAGINATION_IDS.exercises,
+    view,
+    paginationSummaryText(view.start, view.end, total, 'records'),
+  );
 }
 
 function renderSoldSharesPagination(page: number, totalPages: number, total: number) {
   const view = paginationView({ page, pageSize: soldSharesPageSize, total, totalPages });
-  renderPaginationControls(el, PAGINATION_IDS.soldShares, view, paginationSummaryText(view.start, view.end, total, 'records'));
+  renderPaginationControls(
+    el,
+    PAGINATION_IDS.soldShares,
+    view,
+    paginationSummaryText(view.start, view.end, total, 'records'),
+  );
 }
 
 function searchHoldingsPage() {
@@ -2656,9 +2865,18 @@ function changeSoldSharesPageSize(size: number) {
 
 function applyGrantView() {
   const viewCopy: Record<GrantView, { title: string; subtitle: string }> = {
-    futu: { title: 'Futu Grant Record', subtitle: currentLanguage === 'zh-CN' ? 'Futu 授予数据原始格式' : 'Raw Futu grant data' },
-    shareworks: { title: 'Shareworks Grant Record', subtitle: currentLanguage === 'zh-CN' ? 'Options OS Detail 原始格式' : 'Raw Options OS Detail data' },
-    merge: { title: 'Merged Grant Record', subtitle: currentLanguage === 'zh-CN' ? 'Futu + Shareworks 标准化拼表' : 'Standardized Futu + Shareworks merge' },
+    futu: {
+      title: 'Futu Grant Record',
+      subtitle: currentLanguage === 'zh-CN' ? 'Futu 授予数据原始格式' : 'Raw Futu grant data',
+    },
+    shareworks: {
+      title: 'Shareworks Grant Record',
+      subtitle: currentLanguage === 'zh-CN' ? 'Options OS Detail 原始格式' : 'Raw Options OS Detail data',
+    },
+    merge: {
+      title: 'Merged Grant Record',
+      subtitle: currentLanguage === 'zh-CN' ? 'Futu + Shareworks 标准化拼表' : 'Standardized Futu + Shareworks merge',
+    },
   };
   document.querySelectorAll<HTMLButtonElement>('[data-grant-view]').forEach((button) => {
     const active = button.dataset.grantView === activeGrantView;
@@ -2677,9 +2895,24 @@ function applyGrantView() {
 
 function applyExerciseView() {
   const viewCopy: Record<ExerciseView, { title: string; subtitle: string }> = {
-    futu: { title: 'Futu Exercise Records', subtitle: currentLanguage === 'zh-CN' ? 'Futu BCI Exercises to Date 原始格式' : 'Raw Futu BCI Exercises to Date' },
-    shareworks: { title: 'Shareworks Exec Option OS', subtitle: currentLanguage === 'zh-CN' ? 'Executive Awards OS Only 原始格式（逐授予）' : 'Raw Executive Awards OS Only (per grant)' },
-    merge: { title: 'Merged Exercise Records', subtitle: currentLanguage === 'zh-CN' ? 'Futu 行权流水 + Shareworks 逐授予拼接' : 'Futu exercise transactions + Shareworks per-grant rows' },
+    futu: {
+      title: 'Futu Exercise Records',
+      subtitle: currentLanguage === 'zh-CN' ? 'Futu BCI Exercises to Date 原始格式' : 'Raw Futu BCI Exercises to Date',
+    },
+    shareworks: {
+      title: 'Shareworks Exec Option OS',
+      subtitle:
+        currentLanguage === 'zh-CN'
+          ? 'Executive Awards OS Only 原始格式（逐授予）'
+          : 'Raw Executive Awards OS Only (per grant)',
+    },
+    merge: {
+      title: 'Merged Exercise Records',
+      subtitle:
+        currentLanguage === 'zh-CN'
+          ? 'Futu 行权流水 + Shareworks 逐授予拼接'
+          : 'Futu exercise transactions + Shareworks per-grant rows',
+    },
   };
   document.querySelectorAll<HTMLButtonElement>('[data-exercise-view]').forEach((button) => {
     const active = button.dataset.exerciseView === activeExerciseView;
@@ -3119,38 +3352,54 @@ async function renderSoldShares() {
 async function renderTransferPlan() {
   const data = await api<TransferPlanResponse>('/api/transfer-plan');
   setWorkflowPageFiles('transfer-plan', data);
-  transferPlanSourceFileId = data.sourceFileId;
   el('transferPlanSourceName').textContent = data.sourceFileName;
   el('transferPlanInTotal').textContent = formatNumber(data.totals.inTotal);
   el('transferPlanCancelled').textContent = formatNumber(data.totals.cancelledQuantity);
   el('transferPlanTransferred').textContent = formatNumber(data.totals.transferToFutu);
   el('transferPlanDetailCount').textContent = formatNumber(data.detailCount);
 
-  const table = renderTransferPlanSummaryTable(data, transferPlanTableView, { escapeHtml, formatNumber }, {
-    editable: transferPlanEditMode,
-  });
+  const table = renderTransferPlanSummaryTable(
+    data,
+    transferPlanTableView,
+    { escapeHtml, formatNumber },
+    {
+      editable: transferPlanEditMode,
+    },
+  );
   el('transferPlanSummaryHead').innerHTML = table.headHtml;
   el('transferPlanSummaryBody').innerHTML = table.bodyHtml;
-  el('transferPlanSummaryTable').classList.toggle('table-transfer-plan--transposed', transferPlanTableView === 'periodRows');
+  el('transferPlanSummaryTable').classList.toggle(
+    'table-transfer-plan--transposed',
+    transferPlanTableView === 'periodRows',
+  );
   el('btnEditTransferPlan').classList.toggle('hidden', transferPlanEditMode);
   el('btnSaveTransferPlanEdit').classList.toggle('hidden', !transferPlanEditMode);
   el('btnCancelTransferPlanEdit').classList.toggle('hidden', !transferPlanEditMode);
-  document.querySelectorAll<HTMLElement>(
-    '[data-workflow-update-page="transfer-plan"], [data-workflow-export-page="transfer-plan"]',
-  ).forEach((button) => {
-    button.classList.toggle('hidden', transferPlanEditMode);
-  });
+  document
+    .querySelectorAll<HTMLElement>(
+      '[data-workflow-update-page="transfer-plan"], [data-workflow-export-page="transfer-plan"]',
+    )
+    .forEach((button) => {
+      button.classList.toggle('hidden', transferPlanEditMode);
+    });
   el('transferPlanEditStatus').textContent = transferPlanEditMode
-    ? (currentLanguage === 'zh-CN'
+    ? currentLanguage === 'zh-CN'
       ? '编辑模式：仅 Options cancelled/forfeited 可修改。Confirm & Run 后会生成新的输入文件并运行 workflow。'
-      : 'Edit mode: only Options cancelled/forfeited is editable. Confirm & Run creates a new input file and runs the workflow.')
-    : (currentLanguage === 'zh-CN'
+      : 'Edit mode: only Options cancelled/forfeited is editable. Confirm & Run creates a new input file and runs the workflow.'
+    : currentLanguage === 'zh-CN'
       ? '页面按最新 workflow 结果文件渲染；如需调整取消数量，请进入 Edit 后 Confirm & Run。'
-      : 'This page renders the latest workflow result file. Use Edit, then Confirm & Run to adjust cancellations.');
+      : 'This page renders the latest workflow result file. Use Edit, then Confirm & Run to adjust cancellations.';
   const toggleButton = el<HTMLButtonElement>('btnToggleTransferPlanTableView');
-  setButtonLabel('btnToggleTransferPlanTableView', transferPlanTableView === 'summaryRows'
-    ? (currentLanguage === 'zh-CN' ? '转置表格' : 'Transpose table')
-    : (currentLanguage === 'zh-CN' ? '恢复横向' : 'Restore horizontal'));
+  setButtonLabel(
+    'btnToggleTransferPlanTableView',
+    transferPlanTableView === 'summaryRows'
+      ? currentLanguage === 'zh-CN'
+        ? '转置表格'
+        : 'Transpose table'
+      : currentLanguage === 'zh-CN'
+        ? '恢复横向'
+        : 'Restore horizontal',
+  );
   toggleButton.setAttribute('aria-pressed', String(transferPlanTableView === 'periodRows'));
   localizeAppDom();
 }
@@ -3181,9 +3430,10 @@ async function saveTransferPlanEdit() {
 
   saveButton.disabled = true;
   cancelButton.disabled = true;
-  el('transferPlanEditStatus').textContent = currentLanguage === 'zh-CN'
-    ? '正在保存编辑、生成输入文件并运行 workflow...'
-    : 'Saving edits, creating an input file, and running the workflow...';
+  el('transferPlanEditStatus').textContent =
+    currentLanguage === 'zh-CN'
+      ? '正在保存编辑、生成输入文件并运行 workflow...'
+      : 'Saving edits, creating an input file, and running the workflow...';
   openWorkflowRunProgressModal(
     currentLanguage === 'zh-CN' ? 'Transfer Plan Confirm & Run' : 'Transfer Plan Confirm & Run',
     currentLanguage === 'zh-CN'
@@ -3261,7 +3511,9 @@ function renderEmployeeLabelFilter(id: string) {
 
 function renderEmployeeAssignmentLabels() {
   const validLabelIds = new Set(employeeLabels.map((label) => label.id));
-  editingEmployeeLabelIds = editingEmployeeLabelIds.filter((id, index, ids) => validLabelIds.has(id) && ids.indexOf(id) === index);
+  editingEmployeeLabelIds = editingEmployeeLabelIds.filter(
+    (id, index, ids) => validLabelIds.has(id) && ids.indexOf(id) === index,
+  );
   const selectedLabelIds = new Set(editingEmployeeLabelIds);
   const selectedLabels = editingEmployeeLabelIds
     .map((id) => employeeLabels.find((label) => label.id === id))
@@ -3330,8 +3582,12 @@ function openEmployeeLabelModal(id?: number) {
   editingEmployeeLabelId = id ?? null;
   const label = employeeLabels.find((item) => item.id === id);
   el('employeeLabelModalTitle').textContent = label
-    ? (currentLanguage === 'zh-CN' ? '编辑标签' : 'Edit Tag')
-    : (currentLanguage === 'zh-CN' ? '新增标签' : 'New Tag');
+    ? currentLanguage === 'zh-CN'
+      ? '编辑标签'
+      : 'Edit Tag'
+    : currentLanguage === 'zh-CN'
+      ? '新增标签'
+      : 'New Tag';
   el<HTMLInputElement>('employeeLabelName').value = label?.name ?? '';
   el<HTMLInputElement>('employeeLabelColor').value = normalizeEmployeeLabelColor(label?.color);
   renderEmployeeLabelColorPreview();
@@ -3466,8 +3722,7 @@ function toggleSoldSharesSort(by: 'name' | 'empNo') {
 
 function renderEmployeesPageTable() {
   if (employees.length === 0) {
-    el('employeesPageBody').innerHTML =
-      '<tr><td colspan="8" class="table-empty-cell">暂无符合条件的员工</td></tr>';
+    el('employeesPageBody').innerHTML = '<tr><td colspan="8" class="table-empty-cell">暂无符合条件的员工</td></tr>';
     localizeAppDom();
     return;
   }
@@ -3475,7 +3730,8 @@ function renderEmployeesPageTable() {
     .map((item, index) => {
       const sourceLabels: Record<string, string> = { futu: 'Futu', shareworks: 'Shareworks', manual: '手工' };
       const sourceLabel = sourceLabels[item.source] ?? item.source;
-      const sourceClass = item.source === 'manual' ? 'employee-origin-badge--manual' : 'employee-origin-badge--extracted';
+      const sourceClass =
+        item.source === 'manual' ? 'employee-origin-badge--manual' : 'employee-origin-badge--extracted';
       const linkedHtml = item.linkedIdentities.length
         ? item.linkedIdentities
             .map(
@@ -3519,8 +3775,9 @@ function renderEmployeesPageTable() {
   el('employeesPageBody')
     .querySelectorAll<HTMLElement>('[data-action="unlink-employee"]')
     .forEach((button) =>
-      button.addEventListener('click', () =>
-        void unlinkEmployee(Number(button.dataset.sourceId), button.dataset.targetNumber ?? ''),
+      button.addEventListener(
+        'click',
+        () => void unlinkEmployee(Number(button.dataset.sourceId), button.dataset.targetNumber ?? ''),
       ),
     );
   localizeAppDom();
@@ -3550,8 +3807,12 @@ function openEmployeesPageModal(id?: number) {
   editingEmployeeId = id ?? null;
   const item = employees.find((row) => row.id === id);
   el('employeesPageModalTitle').textContent = item
-    ? (currentLanguage === 'zh-CN' ? '编辑员工' : 'Edit Employee')
-    : (currentLanguage === 'zh-CN' ? '新增员工' : 'New Employee');
+    ? currentLanguage === 'zh-CN'
+      ? '编辑员工'
+      : 'Edit Employee'
+    : currentLanguage === 'zh-CN'
+      ? '新增员工'
+      : 'New Employee';
   el('employeesPageNumberRow').style.display = '';
   const numberInput = el<HTMLInputElement>('employeesPageNumber');
   numberInput.value = item?.employeeNumber ?? '';
@@ -3585,7 +3846,10 @@ async function submitEmployeesPage() {
         body: JSON.stringify({ employeeName, userId, labelIds }),
       });
     } else {
-      await api('/api/employees', { method: 'POST', body: JSON.stringify({ employeeId, employeeName, userId, labelIds }) });
+      await api('/api/employees', {
+        method: 'POST',
+        body: JSON.stringify({ employeeId, employeeName, userId, labelIds }),
+      });
     }
   } catch (error) {
     notify((error as Error).message, { type: 'warning' });
@@ -3603,7 +3867,10 @@ async function toggleEmployeeActive(id: number) {
   if (!item) return;
   const nextActive = !item.active;
   const verb = nextActive ? '启用' : '停用';
-  if (!(await confirmAction(`确定${verb}员工【${item.employeeName}】吗？`, { title: `${verb}员工`, confirmText: verb }))) return;
+  if (
+    !(await confirmAction(`确定${verb}员工【${item.employeeName}】吗？`, { title: `${verb}员工`, confirmText: verb }))
+  )
+    return;
   await api(`/api/employees/${id}`, { method: 'PATCH', body: JSON.stringify({ active: nextActive }) });
   await loadEmployeesPage();
 }
@@ -3641,7 +3908,6 @@ async function submitEmployeesMerge() {
 
 async function renderPlanSummaryPage(month: string) {
   renderMonthPicker('planSummaryMonthPicker', month, 'hasPlanSummaryData');
-  const picker = el<HTMLInputElement>('planSummaryMonthPicker');
   const data = await api<PlanSummaryResponse>(`/api/plan-summary?month=${encodeURIComponent(month)}`);
   setWorkflowPageFiles('plan-summary', data);
   el('planSummaryPlanCount').textContent = formatNumber(data.totals.planCount);
@@ -3708,15 +3974,23 @@ function fixedValueByKey(key: string): FixedValueRecord | null {
 
 function fixedValueKeyForHolderCell(holderIndex: number, field: 'commonStock' | 'totalCses'): string | null {
   if (holderIndex === 0) {
-    return field === 'commonStock' ? fivePercentHolderGlobalParameterKeys.gniCommonStock : fivePercentHolderGlobalParameterKeys.gniTotalCses;
+    return field === 'commonStock'
+      ? fivePercentHolderGlobalParameterKeys.gniCommonStock
+      : fivePercentHolderGlobalParameterKeys.gniTotalCses;
   }
   if (holderIndex === 1) {
-    return field === 'commonStock' ? fivePercentHolderGlobalParameterKeys.songjiangMaCommonStock : fivePercentHolderGlobalParameterKeys.songjiangMaTotalCses;
+    return field === 'commonStock'
+      ? fivePercentHolderGlobalParameterKeys.songjiangMaCommonStock
+      : fivePercentHolderGlobalParameterKeys.songjiangMaTotalCses;
   }
   return null;
 }
 
-function renderFivePercentHolderEditableNumber(item: FivePercentHoldersResponse['items'][number], field: 'commonStock' | 'totalCses', holderIndex: number) {
+function renderFivePercentHolderEditableNumber(
+  item: FivePercentHoldersResponse['items'][number],
+  field: 'commonStock' | 'totalCses',
+  holderIndex: number,
+) {
   const key = fixedValueKeyForHolderCell(holderIndex, field);
   const fixedValue = key ? fixedValueByKey(key) : null;
   if (!fivePercentHoldersEditMode || item.rowType !== 'holder' || !key) {
@@ -3746,8 +4020,7 @@ async function renderFivePercentHoldersPage() {
     <div class="stat-chip"><span class="stat-chip__label">Common Stock OS</span><span class="stat-chip__value">${formatNumber(summary.commonStockOs)}</span></div>`;
 
   if (data.items.length === 0) {
-    el('fivePercentHoldersBody').innerHTML =
-      '<tr><td colspan="5" class="table-empty-cell">暂无 5% 股东记录</td></tr>';
+    el('fivePercentHoldersBody').innerHTML = '<tr><td colspan="5" class="table-empty-cell">暂无 5% 股东记录</td></tr>';
     localizeAppDom();
     return;
   }
@@ -3771,16 +4044,18 @@ async function renderFivePercentHoldersPage() {
 }
 
 function readFivePercentHolderGlobalParameterDrafts() {
-  const drafts = Array.from(document.querySelectorAll<HTMLInputElement>('[data-five-percent-fixed-value-key]')).map((input) => {
-    const rawId = input.dataset.fivePercentFixedValueId;
-    const id = rawId ? Number(rawId) : null;
-    const key = String(input.dataset.fivePercentFixedValueKey ?? '');
-    const value = Number(input.value.replace(/,/g, '').trim());
-    if ((id !== null && (!Number.isInteger(id) || id <= 0)) || !key || !Number.isFinite(value)) {
-      throw new Error('请输入有效的 5% Holders 数字');
-    }
-    return { id, key, value };
-  });
+  const drafts = Array.from(document.querySelectorAll<HTMLInputElement>('[data-five-percent-fixed-value-key]')).map(
+    (input) => {
+      const rawId = input.dataset.fivePercentFixedValueId;
+      const id = rawId ? Number(rawId) : null;
+      const key = String(input.dataset.fivePercentFixedValueKey ?? '');
+      const value = Number(input.value.replace(/,/g, '').trim());
+      if ((id !== null && (!Number.isInteger(id) || id <= 0)) || !key || !Number.isFinite(value)) {
+        throw new Error('请输入有效的 5% Holders 数字');
+      }
+      return { id, key, value };
+    },
+  );
   if (drafts.length !== 4) throw new Error('5% Holders 需要编辑四个全局参数');
   return drafts;
 }
@@ -3788,9 +4063,7 @@ function readFivePercentHolderGlobalParameterDrafts() {
 async function runFivePercentHoldersWorkflowWithPreviousSource() {
   const binding = workflowUpdateBindingFor('five-percent-holders', 'capitalization_summary');
   const fileId = Number(binding?.fileId);
-  const sources = Number.isInteger(fileId) && fileId > 0
-    ? { capitalization_summary: { fileId } }
-    : {};
+  const sources = Number.isInteger(fileId) && fileId > 0 ? { capitalization_summary: { fileId } } : {};
   const result = await api<WorkflowExecutionResult>(workflowUpdateRunEndpoint('five-percent-holders'), {
     method: 'POST',
     body: JSON.stringify({ sources }),
@@ -3864,7 +4137,8 @@ async function cancelFivePercentHoldersEdit() {
 async function renderFixedValuePage() {
   const data = await api<{ items: FixedValueRecord[] }>('/api/global-parameters');
   if (data.items.length === 0) {
-    el('fixedValuePageBody').innerHTML = '<tr><td colspan="6" class="table-empty-cell">暂无 Global Parameter 配置</td></tr>';
+    el('fixedValuePageBody').innerHTML =
+      '<tr><td colspan="6" class="table-empty-cell">暂无 Global Parameter 配置</td></tr>';
     localizeAppDom();
     return;
   }
@@ -3879,14 +4153,16 @@ async function renderFixedValuePage() {
         <td>${escapeHtml(item.updatedAt)}</td>
         <td>${escapeHtml(item.updatedBy)}</td>
         <td>
-          ${isAdminUser() && item.editable
-            ? `<div class="action-buttons">
+          ${
+            isAdminUser() && item.editable
+              ? `<div class="action-buttons">
                 <button class="btn btn-secondary btn-sm" data-action="edit-fixed-value" data-id="${item.id}" type="button">edit</button>
                 <button class="btn btn-danger btn-sm" data-action="delete-fixed-value" data-id="${item.id}" type="button" aria-label="删除 ${escapeHtml(item.label)}" title="删除">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
                 </button>
               </div>`
-            : '<span>-</span>'}
+              : '<span>-</span>'
+          }
         </td>
       </tr>`,
     )
@@ -3894,10 +4170,14 @@ async function renderFixedValuePage() {
 
   el('fixedValuePageBody')
     .querySelectorAll<HTMLElement>('[data-action="edit-fixed-value"]')
-    .forEach((button) => button.addEventListener('click', () => void editFixedValue(Number(button.dataset.id), data.items)));
+    .forEach((button) =>
+      button.addEventListener('click', () => void editFixedValue(Number(button.dataset.id), data.items)),
+    );
   el('fixedValuePageBody')
     .querySelectorAll<HTMLElement>('[data-action="delete-fixed-value"]')
-    .forEach((button) => button.addEventListener('click', () => void deleteFixedValue(Number(button.dataset.id), data.items)));
+    .forEach((button) =>
+      button.addEventListener('click', () => void deleteFixedValue(Number(button.dataset.id), data.items)),
+    );
   localizeAppDom();
 }
 
@@ -3990,11 +4270,14 @@ async function deleteFixedValue(id: number, items: FixedValueRecord[]) {
   if (!isAdminUser()) return;
   const item = items.find((row) => row.id === id);
   if (!item) return;
-  if (!(await confirmAction(`确定删除 Global Parameter「${item.label}」吗？此操作不可撤销。`, {
-    title: '删除 Global Parameter',
-    confirmText: '删除',
-    tone: 'danger',
-  }))) return;
+  if (
+    !(await confirmAction(`确定删除 Global Parameter「${item.label}」吗？此操作不可撤销。`, {
+      title: '删除 Global Parameter',
+      confirmText: '删除',
+      tone: 'danger',
+    }))
+  )
+    return;
 
   try {
     await api(`/api/global-parameters/${id}`, { method: 'DELETE' });
@@ -4069,7 +4352,10 @@ async function openLinkModal(key: string) {
     <thead><tr>${detail.columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join('')}</tr></thead>
     <tbody>
       ${detail.rows
-        .map((row) => `<tr>${detail.columns.map((col) => `<td>${typeof row[col.key] === 'number' ? formatNumber(row[col.key]) : escapeHtml(row[col.key] ?? '-')}</td>`).join('')}</tr>`)
+        .map(
+          (row) =>
+            `<tr>${detail.columns.map((col) => `<td>${typeof row[col.key] === 'number' ? formatNumber(row[col.key]) : escapeHtml(row[col.key] ?? '-')}</td>`).join('')}</tr>`,
+        )
         .join('')}
       ${
         detail.summary

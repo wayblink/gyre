@@ -10,10 +10,16 @@ async function buildApp() {
   const { buildApp: build } = await import('../app.js');
   const { createRouteContext } = await import('./context.js');
   const db = {
-    async query() { return []; },
-    async queryOne() { return undefined; },
+    async query() {
+      return [];
+    },
+    async queryOne() {
+      return undefined;
+    },
     async execute() {},
-    async transaction<T>(fn: (tx: unknown) => Promise<T>) { return fn(db); },
+    async transaction<T>(fn: (tx: unknown) => Promise<T>) {
+      return fn(db);
+    },
     async close() {},
   };
   return build(createRouteContext(db as never));
@@ -22,7 +28,15 @@ async function buildApp() {
 test('unauthenticated callers are rejected on every protected route', async () => {
   const app = await buildApp();
 
-  for (const url of ['/api/files', '/api/monthly-runs', '/api/employees', '/api/holdings', '/api/workflows', '/api/admin/users', '/api/global-parameters']) {
+  for (const url of [
+    '/api/files',
+    '/api/monthly-runs',
+    '/api/employees',
+    '/api/holdings',
+    '/api/workflows',
+    '/api/admin/users',
+    '/api/global-parameters',
+  ]) {
     const response = await app.inject({ method: 'GET', url });
     assert.equal(response.statusCode, 401, `${url} must require a session`);
     assert.equal(JSON.parse(response.body).code, 'AUTH_REQUIRED');
@@ -39,7 +53,11 @@ test('the auth surface and health stay reachable without a session', async () =>
   assert.equal((await app.inject({ method: 'GET', url: '/api/health' })).statusCode, 200);
   assert.equal((await app.inject({ method: 'GET', url: '/api/auth/status' })).statusCode, 200);
   // Login with unknown credentials must not leak whether the user exists.
-  const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'nobody', password: 'whatever' } });
+  const login = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { username: 'nobody', password: 'whatever' },
+  });
   assert.equal(login.statusCode, 401);
   await app.close();
 });

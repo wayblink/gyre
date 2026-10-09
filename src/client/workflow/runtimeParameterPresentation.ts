@@ -17,7 +17,9 @@ export function isRuntimeFileParameter(entry: RuntimeParameterPathEntry): boolea
 }
 
 export function isRuntimeInputFileParameter(entry: RuntimeParameterPathEntry): boolean {
-  return isRuntimeFileParameter(entry) || entry.path.startsWith('sheetNames.') || /^fileRefs\.[^.]+\.sheet$/.test(entry.path);
+  return (
+    isRuntimeFileParameter(entry) || entry.path.startsWith('sheetNames.') || /^fileRefs\.[^.]+\.sheet$/.test(entry.path)
+  );
 }
 
 export function shouldRerenderRuntimeDefaultControl(type: string): boolean {
@@ -25,18 +27,18 @@ export function shouldRerenderRuntimeDefaultControl(type: string): boolean {
 }
 
 export function buildRuntimeInputFileItems(entries: RuntimeParameterEntry[]): RuntimeInputFileItem[] {
-  const sheetsBySourceKey = new Map(entries.flatMap((entry) => {
-    if (entry.path.startsWith('sheetNames.')) {
-      return [[entry.path.slice('sheetNames.'.length), entry] as const];
-    }
-    const nestedSheet = entry.path.match(/^fileRefs\.([^.]+)\.sheet$/);
-    return nestedSheet ? [[nestedSheet[1] as string, entry] as const] : [];
-  }));
+  const sheetsBySourceKey = new Map(
+    entries.flatMap((entry) => {
+      if (entry.path.startsWith('sheetNames.')) {
+        return [[entry.path.slice('sheetNames.'.length), entry] as const];
+      }
+      const nestedSheet = entry.path.match(/^fileRefs\.([^.]+)\.sheet$/);
+      return nestedSheet ? [[nestedSheet[1] as string, entry] as const] : [];
+    }),
+  );
 
-  return entries
-    .filter(isRuntimeFileParameter)
-    .map((file) => ({
-      file,
-      sheet: sheetsBySourceKey.get(file.path.slice('fileRefs.'.length)),
-    }));
+  return entries.filter(isRuntimeFileParameter).map((file) => ({
+    file,
+    sheet: sheetsBySourceKey.get(file.path.slice('fileRefs.'.length)),
+  }));
 }

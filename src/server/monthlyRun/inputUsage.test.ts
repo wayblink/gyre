@@ -9,11 +9,26 @@ import {
 } from './inputUsage.js';
 
 test('monthly run input usage marks workflow file runtime rows as used', () => {
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'EQ Control Book' }), 'base_control_book');
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'futu', label: 'Futu BCI Exercises to Date' }), 'futu_exercises');
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Option Plans Summary' }), 'option_plans_summary');
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Options OS Detail by Plan' }), 'options_os_detail_by_plan');
-  assert.equal(monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Detailed Cap Table' }), null);
+  assert.equal(
+    monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'EQ Control Book' }),
+    'base_control_book',
+  );
+  assert.equal(
+    monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'futu', label: 'Futu BCI Exercises to Date' }),
+    'futu_exercises',
+  );
+  assert.equal(
+    monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Option Plans Summary' }),
+    'option_plans_summary',
+  );
+  assert.equal(
+    monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Options OS Detail by Plan' }),
+    'options_os_detail_by_plan',
+  );
+  assert.equal(
+    monthlyRunWorkflowFileRuntimeKeyForRow({ source_group: 'shareworks', label: 'Detailed Cap Table' }),
+    null,
+  );
 });
 
 test('monthly run source usage can be calculated from the merged source file name', () => {

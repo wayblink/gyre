@@ -50,7 +50,9 @@ function timestampVersionTag(date = new Date()): string {
 }
 
 function isOutputFolder(folderPrefix: unknown): boolean {
-  const normalized = String(folderPrefix ?? '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const normalized = String(folderPrefix ?? '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '');
   return normalized === 'output' || normalized.startsWith('output/');
 }
 
@@ -67,7 +69,8 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
   category: 'Output',
   description: '将输入 dataframe 导出为 Excel 文件并写入 Files，供后续下载和预览。',
   documentation: {
-    usage: '把输入 dataframe 写成一个 Excel 文件并保存到 Files。适合作为工作流最终输出节点，也可以用于中间结果落盘审计。',
+    usage:
+      '把输入 dataframe 写成一个 Excel 文件并保存到 Files。适合作为工作流最终输出节点，也可以用于中间结果落盘审计。',
     steps: [
       '连接需要导出的 dataframe 输入。',
       '配置 fileName 和 sheetName；fileName 会自动补齐 .xlsx 后缀。',
@@ -83,7 +86,13 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
   inputSlots: [{ slot: 'input1', type: 'table', contentType: 'application/json', label: 'DataFrame', required: true }],
   outputSlots: [{ slot: 'dataframe', type: 'table', contentType: 'application/json', label: 'DataFrame' }],
   paramsSchema: {
-    fileName: { type: 'string', label: '文件名', required: true, placeholder: 'workflow-output.xlsx', default: 'workflow-output.xlsx' },
+    fileName: {
+      type: 'string',
+      label: '文件名',
+      required: true,
+      placeholder: 'workflow-output.xlsx',
+      default: 'workflow-output.xlsx',
+    },
     fileNamePrefix: { type: 'string', label: '文件名前缀', required: false, placeholder: '2026-05', default: '' },
     fileNameSuffix: { type: 'string', label: '文件名后缀', required: false, placeholder: '2026_06', default: '' },
     folderPrefix: { type: 'string', label: '输出目录', required: false, placeholder: 'output/captable', default: '' },

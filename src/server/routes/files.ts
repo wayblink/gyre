@@ -1,8 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import crypto from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
-import * as XLSX from 'xlsx';
 import type { DbClient } from '../db.js';
 import { fileStorage } from '../storage.js';
 import {
@@ -36,16 +34,6 @@ import type { RouteContext } from './context.js';
  * The product-file mapping/persistence helpers live in support.ts because the workflow runtime
  * (generated workbooks) and the transfer-plan import need the same code paths.
  */
-
-async function removeStoredFilesAfterCommit(filePaths: string[], logger: { error: (obj: unknown, msg?: string) => void }) {
-  for (const filePath of [...new Set(filePaths)]) {
-    try {
-      await fileStorage.remove(filePath);
-    } catch (error) {
-      logger.error({ error, filePath }, 'Post-commit file cleanup failed');
-    }
-  }
-}
 
 async function rewriteProductFileKeyInWorkflows(tx: DbClient, oldKey: string, newKey: string): Promise<number> {
   const rows = await tx.query<{ id: number; tasks_json: unknown; runtime_params_defaults_json: unknown }>(
@@ -95,7 +83,9 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
   const { db } = ctx;
 
   app.get('/api/files', async () => {
-    const rows = await db.query<Record<string, unknown>>('select * from product_files order by created_at desc, id desc');
+    const rows = await db.query<Record<string, unknown>>(
+      'select * from product_files order by created_at desc, id desc',
+    );
     return { files: rows.map(toProductFile) };
   });
 
@@ -115,7 +105,10 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
       } else if (part.fieldname === 'uploadedBy' && typeof part.value === 'string' && part.value.trim()) {
         uploadedBy = part.value.trim();
       } else if (part.fieldname === 'folderPrefix' && typeof part.value === 'string' && part.value.trim()) {
-        folderPrefix = part.value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+        folderPrefix = part.value
+          .trim()
+          .replace(/\\/g, '/')
+          .replace(/^\/+|\/+$/g, '');
       } else if (part.fieldname === 'conflictPolicy' && part.value === 'overwrite') {
         conflictPolicy = 'overwrite';
       }
@@ -271,7 +264,10 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
     reply
       .header('Content-Type', String(file.mime_type ?? 'application/octet-stream'))
       .header('Content-Length', String(buffer.length))
-      .header('Content-Disposition', `inline; filename="${encodeURIComponent(String(file.original_name ?? 'workbook.xlsx'))}"`);
+      .header(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(String(file.original_name ?? 'workbook.xlsx'))}"`,
+      );
 
     return reply.send(buffer);
   });
@@ -338,10 +334,9 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
     const { ids } = productFileBulkDeleteSchema.parse(request.body ?? {});
     const uniqueIds = [...new Set(ids)];
     const files = await db.transaction(async (tx) => {
-      const rows = await tx.query<Record<string, unknown>>(
-        'select * from product_files where id = any($1::int[])',
-        [uniqueIds],
-      );
+      const rows = await tx.query<Record<string, unknown>>('select * from product_files where id = any($1::int[])', [
+        uniqueIds,
+      ]);
       if (rows.length > 0) {
         await tx.execute('delete from product_files where id = any($1::int[])', [uniqueIds]);
       }
@@ -361,4 +356,3 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
     return reply.code(204).send();
   });
 }
-

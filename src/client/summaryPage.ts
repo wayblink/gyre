@@ -1,6 +1,11 @@
 import type { CapitalizationRow, LatestMonthlyRunOutput } from '../shared/types.js';
 
-export type AvailableMonth = { month: string; hasData?: boolean; hasCapTableData?: boolean; hasPlanSummaryData?: boolean };
+export type AvailableMonth = {
+  month: string;
+  hasData?: boolean;
+  hasCapTableData?: boolean;
+  hasPlanSummaryData?: boolean;
+};
 
 export function sortAvailableMonths(months: ReadonlyArray<AvailableMonth>): AvailableMonth[] {
   return [...months].sort((left, right) => right.month.localeCompare(left.month));
@@ -45,7 +50,8 @@ export function normalizeCapitalizationRows(
     shares: value,
     percent: newTotal ? value / newTotal : null,
   };
-  const result = (insertAt >= 0 ? [...normalized.slice(0, insertAt), row, ...normalized.slice(insertAt)] : [...normalized, row]);
+  const result =
+    insertAt >= 0 ? [...normalized.slice(0, insertAt), row, ...normalized.slice(insertAt)] : [...normalized, row];
 
   for (const item of result) {
     if (item === row) continue;
@@ -163,9 +169,8 @@ export function computeCapitalizationDelta(
 
   const sign = difference > 0 ? '+' : '-';
   const magnitude = Math.abs(difference);
-  const text = kind === 'percent'
-    ? `${sign}${magnitude.toFixed(2)}%`
-    : `${sign}${Math.round(magnitude).toLocaleString('en-US')}`;
+  const text =
+    kind === 'percent' ? `${sign}${magnitude.toFixed(2)}%` : `${sign}${Math.round(magnitude).toLocaleString('en-US')}`;
   return { direction: difference > 0 ? 'up' : 'down', value: difference, text };
 }
 

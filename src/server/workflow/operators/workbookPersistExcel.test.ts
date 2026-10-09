@@ -26,10 +26,10 @@ function outputFile(): ProductFileRecord {
 }
 
 test('workbook persist applies configured column formats below a custom header row', async () => {
-  const dataframe = rowsToDataFrame(
-    [{ 'As of Date': 45229, 'Process Date': 45230, Value: 1 }],
-    { sheetName: 'EQ Control Book', a1Range: '' },
-  );
+  const dataframe = rowsToDataFrame([{ 'As of Date': 45229, 'Process Date': 45230, Value: 1 }], {
+    sheetName: 'EQ Control Book',
+    a1Range: '',
+  });
   const task: WorkflowTask = {
     id: 'persist',
     name: 'Persist',

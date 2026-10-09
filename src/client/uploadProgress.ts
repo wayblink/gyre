@@ -118,7 +118,10 @@ export function uploadFormDataWithProgress<T>(
       }
       const percent = Math.round((event.loaded / event.total) * 100);
       setProgress(percent);
-      setText('uploadProgressStatus', readStoredLanguage() === 'en-US' ? `Uploading ${percent}%` : `正在上传 ${percent}%`);
+      setText(
+        'uploadProgressStatus',
+        readStoredLanguage() === 'en-US' ? `Uploading ${percent}%` : `正在上传 ${percent}%`,
+      );
     };
 
     xhr.onload = () => {

@@ -35,7 +35,10 @@ export class AppDb {
     return result.rows;
   }
 
-  async queryOne<T extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []): Promise<T | undefined> {
+  async queryOne<T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    params: unknown[] = [],
+  ): Promise<T | undefined> {
     const result = await this.pool.query<T>(text, params);
     return result.rows[0];
   }
@@ -73,7 +76,10 @@ export class DbClient {
     return result.rows;
   }
 
-  async queryOne<T extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []): Promise<T | undefined> {
+  async queryOne<T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    params: unknown[] = [],
+  ): Promise<T | undefined> {
     const result = await this.client.query<T>(text, params);
     return result.rows[0];
   }

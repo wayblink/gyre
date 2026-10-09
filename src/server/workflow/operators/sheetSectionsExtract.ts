@@ -134,15 +134,20 @@ function makeComputedCell(
 
 function inferColumnSchema(columns: string[], cells: WorkflowDataFrameCell[][]): WorkflowDataFrameColumnSchema[] {
   return columns.map((column, columnIndex) => {
-    const columnCells = cells.map((row) => row[columnIndex]).filter((cell): cell is WorkflowDataFrameCell => Boolean(cell));
+    const columnCells = cells
+      .map((row) => row[columnIndex])
+      .filter((cell): cell is WorkflowDataFrameCell => Boolean(cell));
     const populatedTypes = new Set(
       columnCells
         .filter((cell) => !cell.isBlank && cell.type !== 'blank' && cell.type !== 'null')
         .map((cell) => cell.type),
     );
-    const formats = Array.from(new Set(columnCells.map((cell) => cell.format).filter((format): format is string => Boolean(format))));
+    const formats = Array.from(
+      new Set(columnCells.map((cell) => cell.format).filter((format): format is string => Boolean(format))),
+    );
     const nullable = columnCells.some((cell) => cell.isBlank || cell.type === 'blank' || cell.type === 'null');
-    const type = populatedTypes.size === 0 ? 'blank' : populatedTypes.size === 1 ? Array.from(populatedTypes)[0] : 'mixed';
+    const type =
+      populatedTypes.size === 0 ? 'blank' : populatedTypes.size === 1 ? Array.from(populatedTypes)[0] : 'mixed';
     return {
       name: column,
       index: columnIndex + 1,
@@ -278,7 +283,10 @@ function decodeColumnRef(raw: string | number | null, fallback: number): number 
 function parseRangeColumns(raw: string, sheetRange: XLSX.Range): { startCol: number; endCol: number } {
   const trimmed = raw.trim();
   if (!trimmed) return { startCol: sheetRange.s.c, endCol: sheetRange.e.c };
-  const parts = trimmed.split(':').map((part) => part.trim()).filter(Boolean);
+  const parts = trimmed
+    .split(':')
+    .map((part) => part.trim())
+    .filter(Boolean);
   if (!parts.length) return { startCol: sheetRange.s.c, endCol: sheetRange.e.c };
   const startCol = decodeColumnRef(parts[0], sheetRange.s.c);
   const endCol = decodeColumnRef(parts[1] ?? parts[0], startCol);
@@ -436,7 +444,11 @@ function inferAutoSections(sheet: XLSX.WorkSheet, sheetRange: XLSX.Range): Resol
     const dataStartRowIndex = headerRowIndex + 1;
     const dataEndRowIndex = inferDataEndRow(sheet, dataStartRowIndex, sheetRange, startCol, endCol, null);
     const title = nonEmpty[0].value;
-    const keyBase = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `section_${sections.length + 1}`;
+    const keyBase =
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || `section_${sections.length + 1}`;
     const decoded = {
       s: { r: headerRowIndex, c: startCol },
       e: { r: dataEndRowIndex, c: endCol },
@@ -473,7 +485,8 @@ export const sheetSectionsExtractOperator = defineWorkflowOperator({
   category: 'Input',
   description: '从同一个 Excel Sheet 中提取多个不连续区块，支持固定范围、锚点、空行分段和自动识别表头。',
   documentation: {
-    usage: '从同一个 sheet 中读取多个不连续区块，并合并为一个 dataframe。适合 Option Plans Summary 这种按计划分段展示的表。',
+    usage:
+      '从同一个 sheet 中读取多个不连续区块，并合并为一个 dataframe。适合 Option Plans Summary 这种按计划分段展示的表。',
     steps: [
       '配置 fileRef 和 sheetName。',
       '在 sections 中为每个区块指定 key、title、range 和 headerRow。',
@@ -494,7 +507,13 @@ export const sheetSectionsExtractOperator = defineWorkflowOperator({
     fileRef: { type: 'object', label: '文件引用', required: true, default: null },
     fileId: { type: 'number', label: '文件 ID（兼容）', required: false, default: null },
     sheetName: { type: 'string', label: 'Sheet 名称', required: true, default: '' },
-    sectionMode: { type: 'string', label: '区块发现模式', required: false, enum: ['manual', 'auto'], default: 'manual' },
+    sectionMode: {
+      type: 'string',
+      label: '区块发现模式',
+      required: false,
+      enum: ['manual', 'auto'],
+      default: 'manual',
+    },
     sections: {
       type: 'array',
       label: 'Sections',
@@ -537,7 +556,11 @@ export const sheetSectionsExtractOperator = defineWorkflowOperator({
 
     const sheetRange = getWorksheetRange(sheet);
     const resolvedSections =
-      configuredSections.length > 0 ? resolveConfiguredSections(sheet, sheetRange, configuredSections) : sectionMode === 'auto' ? inferAutoSections(sheet, sheetRange) : [];
+      configuredSections.length > 0
+        ? resolveConfiguredSections(sheet, sheetRange, configuredSections)
+        : sectionMode === 'auto'
+          ? inferAutoSections(sheet, sheetRange)
+          : [];
     if (!resolvedSections.length) {
       throw new Error(`Task ${task.name} requires at least one section range, anchorText, or sectionMode=auto`);
     }
@@ -569,7 +592,11 @@ export const sheetSectionsExtractOperator = defineWorkflowOperator({
               const sectionNumber = sectionMetadata.length + 1;
               groupIndexes.set(groupTitle, sectionNumber);
               sectionMetadata.push({
-                key: groupTitle.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `section_${sectionNumber}`,
+                key:
+                  groupTitle
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '_')
+                    .replace(/^_+|_+$/g, '') || `section_${sectionNumber}`,
                 title: groupTitle,
                 range: dataframe.range,
                 headerRow: section.resolvedHeaderRow,

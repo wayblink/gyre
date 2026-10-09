@@ -59,7 +59,10 @@ test('summary capitalization export writes Number values as numeric cells and om
 });
 
 test('capitalization summary parser keeps total fully diluted row percent from workbook', () => {
-  const parsed = parseCapitalizationSummarySheet(summaryCapitalizationToWorkbookBuffer(summaryFixture()), 'Capitalization Summary');
+  const parsed = parseCapitalizationSummarySheet(
+    summaryCapitalizationToWorkbookBuffer(summaryFixture()),
+    'Capitalization Summary',
+  );
   const totalRow = parsed.capitalization.at(-1);
 
   assert.equal(parsed.totalFullyDiluted, 400);

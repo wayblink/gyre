@@ -3,9 +3,7 @@ import type { WorkflowTaskPreviewResult } from '../../../shared/types.js';
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => String(item ?? '').trim())
-    .filter(Boolean);
+  return value.map((item) => String(item ?? '').trim()).filter(Boolean);
 }
 
 export const dbUpsertOperator = defineWorkflowOperator({

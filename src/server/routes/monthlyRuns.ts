@@ -20,7 +20,11 @@ import {
   upsertMonthlyRunInstance,
   updateMonthlyRunInstanceExecutionState,
 } from '../monthlyRun/instanceStore.js';
-import { monthlyWorkflowSelectionLabel, monthlyWorkflowVersionMismatch, resolveMonthlyWorkflowDefinition } from '../monthlyRun/workflowSelection.js';
+import {
+  monthlyWorkflowSelectionLabel,
+  monthlyWorkflowVersionMismatch,
+  resolveMonthlyWorkflowDefinition,
+} from '../monthlyRun/workflowSelection.js';
 import {
   getOrCreateMonth,
   monthlyRunInputSourceLabels,
@@ -51,7 +55,10 @@ import type { RouteContext } from './context.js';
  * in src/client/monthlyRunPage.ts) and refuses to run when the DB definition moved on.
  */
 
-async function removeStoredFilesAfterCommit(filePaths: string[], logger: { error: (obj: unknown, msg?: string) => void }) {
+async function removeStoredFilesAfterCommit(
+  filePaths: string[],
+  logger: { error: (obj: unknown, msg?: string) => void },
+) {
   for (const filePath of [...new Set(filePaths)]) {
     try {
       await fileStorage.remove(filePath);
@@ -62,7 +69,10 @@ async function removeStoredFilesAfterCommit(filePaths: string[], logger: { error
 }
 
 const monthlyRunListQuerySchema = z.object({
-  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  month: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/)
+    .optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
@@ -72,25 +82,36 @@ const monthlyRunInstanceQuerySchema = z.object({
 
 const monthlyRunInstanceUpsertSchema = z.object({
   operator: z.string().trim().min(1).optional(),
-  sources: z.record(z.string(), z.object({
-    fileId: z.number().int().positive(),
-    logicalPath: z.string().trim().min(1).max(1024).nullable().optional(),
-    fileKey: z.string().trim().min(1).max(1024).nullable().optional(),
-    sheetName: z.string().trim().min(1).max(255).nullable().optional(),
-  }).nullable()).optional(),
+  sources: z
+    .record(
+      z.string(),
+      z
+        .object({
+          fileId: z.number().int().positive(),
+          logicalPath: z.string().trim().min(1).max(1024).nullable().optional(),
+          fileKey: z.string().trim().min(1).max(1024).nullable().optional(),
+          sheetName: z.string().trim().min(1).max(255).nullable().optional(),
+        })
+        .nullable(),
+    )
+    .optional(),
   fixedValues: z.record(z.string(), z.number()).optional(),
 });
 
 const monthlyRunTriggerBodySchema = z.object({
   workflowId: z.number().int().positive().optional(),
   workflowCode: z.string().trim().min(1).optional(),
-  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  month: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/)
+    .optional(),
   operator: z.string().trim().min(1).optional().default('Administrator'),
   // Sent by the Monthly Update page (the workflow definition version its UI was built against).
   expectedWorkflowVersion: z.number().int().positive().optional(),
 });
 
-async function injectPreviousCancelRestoreBase(db: RouteContext['db'], 
+async function injectPreviousCancelRestoreBase(
+  db: RouteContext['db'],
   runtimeParameters: WorkflowRuntimeParameters,
   monthKey: string,
 ): Promise<void> {
@@ -109,7 +130,10 @@ async function injectPreviousCancelRestoreBase(db: RouteContext['db'],
   };
 }
 
-async function assertMonthlyRunInstanceReady(db: RouteContext['db'], instance: MonthlyRunInstanceRecord): Promise<void> {
+async function assertMonthlyRunInstanceReady(
+  db: RouteContext['db'],
+  instance: MonthlyRunInstanceRecord,
+): Promise<void> {
   const sources = await monthlySourceDescriptors(db);
   for (const source of sources) {
     const binding = instance.sources[source.sourceKey];
@@ -130,7 +154,7 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
 
   app.get('/api/monthly-runs', async (request) => {
     const query = monthlyRunListQuerySchema.parse(request.query);
-    return { items: await listMonthlyRuns(db, { ...query, sourceLabels: await monthlyRunInputSourceLabels(db, ) }) };
+    return { items: await listMonthlyRuns(db, { ...query, sourceLabels: await monthlyRunInputSourceLabels(db) }) };
   });
 
   app.get('/api/monthly-runs/instances', async (request): Promise<{ items: MonthlyRunInstanceRecord[] }> => {
@@ -196,7 +220,7 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
 
   app.get('/api/monthly-runs/:id', async (request) => {
     const runId = Number((request.params as { id: string }).id);
-    const history = await getMonthlyRun(db, runId, { sourceLabels: await monthlyRunInputSourceLabels(db, ) });
+    const history = await getMonthlyRun(db, runId, { sourceLabels: await monthlyRunInputSourceLabels(db) });
     if (!history) throw notFound('Monthly run not found');
     return history;
   });
@@ -205,13 +229,15 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
     const body = monthlyRunTriggerBodySchema.parse(request.body ?? {});
     if (!body.month) throw new Error('month is required');
     await getOrCreateMonth(db, body.month);
-    const monthlyRunInstance = (await getMonthlyRunInstance(db, body.month)) ?? (await ensureMonthlyRunInstance(db, body.month));
+    const monthlyRunInstance =
+      (await getMonthlyRunInstance(db, body.month)) ?? (await ensureMonthlyRunInstance(db, body.month));
 
     await assertMonthlyRunInstanceReady(db, monthlyRunInstance);
     // fixedValues are now per-month, sourced from the instance (monthlyRunInstanceToRuntimeParameters
     // already carries all 6). New months inherit the prior month's values; the very first month was
     // seeded from global_parameters. We no longer overwrite them from the global table here.
-    const resolvedRuntimeParameters: WorkflowRuntimeParameters = monthlyRunInstanceToRuntimeParameters(monthlyRunInstance);
+    const resolvedRuntimeParameters: WorkflowRuntimeParameters =
+      monthlyRunInstanceToRuntimeParameters(monthlyRunInstance);
 
     // Previous Capitalization Summary 由业务自动引入：若上一个月的月度执行已产出汇总表，则用它作为
     // 本源（用于校验本月 EQ Control Book 的 Last Month）；无则置空、跳过对账校验。该源在 UI 隐藏。
@@ -260,7 +286,8 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
       runtimeFileRefs && typeof runtimeFileRefs === 'object' && !Array.isArray(runtimeFileRefs)
         ? Number(
             ((runtimeFileRefs as Record<string, unknown>).control_book as Record<string, unknown> | undefined)?.id ??
-              ((Object.values(runtimeFileRefs)[0] as Record<string, unknown> | undefined)?.id ?? null),
+              (Object.values(runtimeFileRefs)[0] as Record<string, unknown> | undefined)?.id ??
+              null,
           )
         : null;
     const history = await createMonthlyRunHistory(db, {
@@ -300,7 +327,7 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
 
   app.post('/api/monthly-runs/:id/approvals', async (request) => {
     const historyId = Number((request.params as { id: string }).id);
-    const history = await getMonthlyRun(db, historyId, { sourceLabels: await monthlyRunInputSourceLabels(db, ) });
+    const history = await getMonthlyRun(db, historyId, { sourceLabels: await monthlyRunInputSourceLabels(db) });
     if (!history) throw notFound('Monthly run not found');
     if (!history.workflowRunId) throw new Error('Monthly run has no workflow run attached');
     const body = workflowApprovalBodySchema.parse(request.body ?? {});
@@ -328,4 +355,3 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
     }
   });
 }
-

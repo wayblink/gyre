@@ -6,7 +6,11 @@ import type {
   WorkflowTask,
   WorkflowTaskPreviewResult,
 } from '../../shared/types.js';
-import type { WorkflowOperatorExecutionContext, WorkflowOperatorExecuteResult, WorkflowOperatorRuntime } from './operators/types.js';
+import type {
+  WorkflowOperatorExecutionContext,
+  WorkflowOperatorExecuteResult,
+  WorkflowOperatorRuntime,
+} from './operators/types.js';
 import { workflowOperatorDefinitionByCode } from './operators/registry.js';
 import { evaluateWorkflowInputGuards, type WorkflowEvaluatedInputGuard } from './inputGuards.js';
 
@@ -150,7 +154,9 @@ export async function evaluateTaskInputGuards(
     }
     const upstreamDataFrame = executed.get(upstreamTask.id);
     if (!upstreamDataFrame) {
-      throw new Error(`Task ${task.name} input ${inputSlot} depends on ${upstreamTask.name}, but its output is not available`);
+      throw new Error(
+        `Task ${task.name} input ${inputSlot} depends on ${upstreamTask.name}, but its output is not available`,
+      );
     }
     results.push(
       ...(await evaluateWorkflowInputGuards({
@@ -200,8 +206,15 @@ export async function executeWorkflowTaskOutput(
   }
 
   const operator = getOperatorOrThrow(task);
-  const context = createExecutionContext(task, executed, taskMap, runtime, (upstreamTask) =>
-    executeWorkflowTaskOutput(upstreamTask, executed, taskResults, taskMap, runtime, options).then((output) => output.dataFrame),
+  const context = createExecutionContext(
+    task,
+    executed,
+    taskMap,
+    runtime,
+    (upstreamTask) =>
+      executeWorkflowTaskOutput(upstreamTask, executed, taskResults, taskMap, runtime, options).then(
+        (output) => output.dataFrame,
+      ),
     options,
   );
   const output = toWorkflowTaskExecutionOutput(await operator.execute(context));
@@ -247,13 +260,20 @@ export async function executeWorkflowTaskOutputStrict(
   }
 
   const operator = getOperatorOrThrow(task);
-  const context = createExecutionContext(task, executed, taskMap, runtime, async (upstreamTask) => {
-    const upstreamDataFrame = executed.get(upstreamTask.id);
-    if (!upstreamDataFrame) {
-      throw new Error(`Task ${task.name} input depends on ${upstreamTask.name}, but its output is not available`);
-    }
-    return upstreamDataFrame;
-  }, options);
+  const context = createExecutionContext(
+    task,
+    executed,
+    taskMap,
+    runtime,
+    async (upstreamTask) => {
+      const upstreamDataFrame = executed.get(upstreamTask.id);
+      if (!upstreamDataFrame) {
+        throw new Error(`Task ${task.name} input depends on ${upstreamTask.name}, but its output is not available`);
+      }
+      return upstreamDataFrame;
+    },
+    options,
+  );
   const output = toWorkflowTaskExecutionOutput(await operator.execute(context));
   executed.set(task.id, output.dataFrame);
   taskResults.set(task.id, output.result);
@@ -281,8 +301,12 @@ export async function executeWorkflowTaskPreview(
   options: WorkflowExecutionOptions = {},
 ): Promise<WorkflowTaskPreviewResult> {
   const operator = getOperatorOrThrow(task);
-  const context = createExecutionContext(task, executed, taskMap, runtime, (upstreamTask) =>
-    executeWorkflowTaskPreviewDataFrame(upstreamTask, executed, taskMap, runtime, options),
+  const context = createExecutionContext(
+    task,
+    executed,
+    taskMap,
+    runtime,
+    (upstreamTask) => executeWorkflowTaskPreviewDataFrame(upstreamTask, executed, taskMap, runtime, options),
     options,
   );
 
@@ -314,10 +338,14 @@ export async function executeWorkflowDefinition(
   const orderedTasks = getWorkflowExecutionOrder(tasks);
   const taskMap = new Map(orderedTasks.map((task) => [task.id, task]));
   const executed = new Map<string, WorkflowDataFrame>(
-    Object.entries(options?.initialDataFrames ?? {}).filter((entry): entry is [string, WorkflowDataFrame] => Boolean(entry[0] && entry[1])),
+    Object.entries(options?.initialDataFrames ?? {}).filter((entry): entry is [string, WorkflowDataFrame] =>
+      Boolean(entry[0] && entry[1]),
+    ),
   );
   const taskResults = new Map<string, WorkflowTaskPreviewResult>();
-  const approvedWarningTaskIds = new Set((options?.approvedWarningTaskIds ?? []).map((taskId) => String(taskId).trim()).filter(Boolean));
+  const approvedWarningTaskIds = new Set(
+    (options?.approvedWarningTaskIds ?? []).map((taskId) => String(taskId).trim()).filter(Boolean),
+  );
   const taskStates: Record<string, WorkflowExecutionTaskState> = Object.fromEntries(
     orderedTasks.map((task) => [task.id, 'pending' as WorkflowExecutionTaskState]),
   );
@@ -474,11 +502,16 @@ export async function executeWorkflowDefinition(
       if (operator.preview) {
         try {
           lastResult = await operator.preview(
-            createExecutionContext(task, executed, taskMap, runtime, (upstreamTask) =>
-              executeWorkflowTaskPreviewDataFrame(upstreamTask, executed, taskMap, runtime, {
-                runtimeParameters: options?.runtimeParameters,
-                invocationStack: options?.invocationStack,
-              }),
+            createExecutionContext(
+              task,
+              executed,
+              taskMap,
+              runtime,
+              (upstreamTask) =>
+                executeWorkflowTaskPreviewDataFrame(upstreamTask, executed, taskMap, runtime, {
+                  runtimeParameters: options?.runtimeParameters,
+                  invocationStack: options?.invocationStack,
+                }),
               {
                 runtimeParameters: options?.runtimeParameters,
                 invocationStack: options?.invocationStack,

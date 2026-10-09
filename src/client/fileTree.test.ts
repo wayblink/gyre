@@ -34,10 +34,15 @@ function fileFixture(overrides: Partial<ProductFileRecord> & { id: number }): Pr
 }
 
 test('product file tree paths fall back through displayPath, storedName, originalName', () => {
-  assert.equal(productFileTreePath(fileFixture({ id: 1, displayPath: 'input\\2026-05\\a.xlsx' })), 'input/2026-05/a.xlsx');
+  assert.equal(
+    productFileTreePath(fileFixture({ id: 1, displayPath: 'input\\2026-05\\a.xlsx' })),
+    'input/2026-05/a.xlsx',
+  );
   assert.equal(productFileTreePath(fileFixture({ id: 2, displayPath: '', storedName: 'stored.xlsx' })), 'stored.xlsx');
   assert.equal(
-    productFileLogicalTreePath(fileFixture({ id: 3, displayPath: 'output/captable/x.xlsx', logicalPath: 'input/2026-06/x.xlsx' })),
+    productFileLogicalTreePath(
+      fileFixture({ id: 3, displayPath: 'output/captable/x.xlsx', logicalPath: 'input/2026-06/x.xlsx' }),
+    ),
     'input/2026-06/x.xlsx',
   );
 });
@@ -53,10 +58,16 @@ test('the tree groups files by folder and keeps root level files', () => {
   const root = buildProductFilesTree(files);
 
   assert.deepEqual(Array.from(root.children.keys()).sort(), ['input', 'output']);
-  assert.deepEqual(root.files.map((file) => file.id), [4]);
+  assert.deepEqual(
+    root.files.map((file) => file.id),
+    [4],
+  );
   const may = root.children.get('input')?.children.get('2026-05');
   assert.equal(may?.path, 'input/2026-05');
-  assert.deepEqual(may?.files.map((file) => file.id), [1, 2]);
+  assert.deepEqual(
+    may?.files.map((file) => file.id),
+    [1, 2],
+  );
   assert.equal(countTreeFiles(root), 4);
   assert.equal(countTreeFiles(root.children.get('input')!), 2);
 });
@@ -77,7 +88,13 @@ test('folder collection returns sorted ancestor folders and always offers input 
     fileFixture({ id: 2, displayPath: 'output/captable/summary.xlsx', logicalPath: 'output/captable/summary.xlsx' }),
   ];
 
-  assert.deepEqual(collectProductFileFolders(files), ['control_book', 'input', 'input/2026-05', 'output', 'output/captable']);
+  assert.deepEqual(collectProductFileFolders(files), [
+    'control_book',
+    'input',
+    'input/2026-05',
+    'output',
+    'output/captable',
+  ]);
   assert.deepEqual(collectProductFileFolders([]), ['control_book', 'input']);
   assert.equal(productFileFolder(files[1]), 'output/captable');
 });

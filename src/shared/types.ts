@@ -490,7 +490,8 @@ export type WorkflowDataFrameRange = {
   endCol: number;
 };
 
-export type WorkflowDataFrameCellType = 'string' | 'number' | 'boolean' | 'date' | 'error' | 'blank' | 'null' | 'unknown';
+export type WorkflowDataFrameCellType =
+  'string' | 'number' | 'boolean' | 'date' | 'error' | 'blank' | 'null' | 'unknown';
 
 export type WorkflowDataFrameSource = {
   kind: 'excel' | 'computed';
@@ -563,10 +564,7 @@ export type WorkflowSqlTableBinding = {
 export type WorkflowAssertOperator = '>' | '>=' | '<' | '<=' | '=' | '!=';
 export type WorkflowAssertFailureStrategy = 'block' | 'warning' | 'pass-through';
 export type WorkflowInputGuardType =
-  | 'dataframe.assert'
-  | 'dataframe.sql.assert'
-  | 'dataframe.schema.assert'
-  | 'dataframe.shape.assert';
+  'dataframe.assert' | 'dataframe.sql.assert' | 'dataframe.schema.assert' | 'dataframe.shape.assert';
 
 export type WorkflowAssertionResult = {
   passed: boolean;
@@ -794,13 +792,7 @@ export type WorkflowTaskPreviewResult =
     };
 
 export type WorkflowExecutionTaskState =
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'blocked'
-  | 'warning'
-  | 'skipped';
+  'pending' | 'running' | 'completed' | 'failed' | 'blocked' | 'warning' | 'skipped';
 
 export type WorkflowExecutionWarning = {
   taskId: string;
@@ -835,13 +827,7 @@ export type WorkflowExecuteRequest = {
 };
 
 export type WorkflowRunStatus =
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'completed_with_warnings'
-  | 'waiting_approval'
-  | 'failed'
-  | 'skipped';
+  'pending' | 'running' | 'completed' | 'completed_with_warnings' | 'waiting_approval' | 'failed' | 'skipped';
 
 export type WorkflowRunEventRecord = {
   id: number;
@@ -1048,4 +1034,3 @@ export type MonthlyRunSourceConfigResponse = {
   sources: MonthlyRunSourceDefinition[];
   fixedValues: MonthlyRunFixedValueDefinition[];
 };
-

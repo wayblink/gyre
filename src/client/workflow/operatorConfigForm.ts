@@ -28,10 +28,17 @@ function fieldValue(task: WorkflowTask, key: string, field: WorkflowOperatorPara
 }
 
 function fieldHint(field: WorkflowOperatorParamField, escapeHtml: (text: unknown) => string) {
-  return field.description ? `<div class="workflow-structured__section-subtitle">${escapeHtml(field.description)}</div>` : '';
+  return field.description
+    ? `<div class="workflow-structured__section-subtitle">${escapeHtml(field.description)}</div>`
+    : '';
 }
 
-function renderInputField(key: string, field: WorkflowOperatorParamField, value: unknown, escapeHtml: (text: unknown) => string) {
+function renderInputField(
+  key: string,
+  field: WorkflowOperatorParamField,
+  value: unknown,
+  escapeHtml: (text: unknown) => string,
+) {
   const required = field.required ? '<span class="workflow-generic-param__required">*</span>' : '';
   const label = `<label class="workflow-structured__label" for="workflowGenericParam-${escapeHtml(key)}">${escapeHtml(field.label)}${required}</label>`;
   const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
@@ -44,7 +51,10 @@ function renderInputField(key: string, field: WorkflowOperatorParamField, value:
         ${label}
         <select class="search-input workflow-select" ${commonAttrs}>
           ${field.enum
-            .map((item) => `<option value="${escapeHtml(item)}"${item === currentValue ? ' selected' : ''}>${escapeHtml(item)}</option>`)
+            .map(
+              (item) =>
+                `<option value="${escapeHtml(item)}"${item === currentValue ? ' selected' : ''}>${escapeHtml(item)}</option>`,
+            )
             .join('')}
         </select>
         ${fieldHint(field, escapeHtml)}
@@ -63,7 +73,10 @@ function renderInputField(key: string, field: WorkflowOperatorParamField, value:
   }
 
   if (field.type === 'array' || field.type === 'object') {
-    const textValue = Array.isArray(value) || (value && typeof value === 'object') ? JSON.stringify(value, null, 2) : String(value ?? '');
+    const textValue =
+      Array.isArray(value) || (value && typeof value === 'object')
+        ? JSON.stringify(value, null, 2)
+        : String(value ?? '');
     const expectedLabel = field.type === 'array' ? 'array' : 'object';
     return `
       <div class="workflow-generic-param">
@@ -124,13 +137,21 @@ export function renderOperatorConfigForm({
   `;
 
   container.querySelectorAll<HTMLElement>('[data-workflow-generic-param]').forEach((input) => {
-    const eventName = input instanceof HTMLSelectElement || (input instanceof HTMLInputElement && input.type === 'checkbox') ? 'change' : 'input';
+    const eventName =
+      input instanceof HTMLSelectElement || (input instanceof HTMLInputElement && input.type === 'checkbox')
+        ? 'change'
+        : 'input';
     input.addEventListener(eventName, onChange);
   });
   return true;
 }
 
-export function syncOperatorConfigForm({ container, operator, task, excludedParamKeys }: SyncOperatorConfigFormOptions) {
+export function syncOperatorConfigForm({
+  container,
+  operator,
+  task,
+  excludedParamKeys,
+}: SyncOperatorConfigFormOptions) {
   const schema = operator?.paramsSchema ?? {};
   let hasInvalidValue = false;
 
@@ -148,7 +169,9 @@ export function syncOperatorConfigForm({ container, operator, task, excludedPara
     }
 
     const rawValue =
-      input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement ? input.value.trim() : '';
+      input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement
+        ? input.value.trim()
+        : '';
 
     if (field.type === 'number') {
       task.params[key] = rawValue === '' ? null : Number(rawValue);

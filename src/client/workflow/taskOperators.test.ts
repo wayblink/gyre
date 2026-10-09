@@ -151,7 +151,9 @@ function buildWorkbookPersistTask(inputSlot: string, from: string): WorkflowTask
 }
 
 // workbook.persist.excel only declares input1, but binds inputs via sheets[].inputSlot.
-const workbookPersistOperator = { inputSlots: [{ slot: 'input1' }] } as unknown as Parameters<typeof getTaskInputSlots>[1];
+const workbookPersistOperator = { inputSlots: [{ slot: 'input1' }] } as unknown as Parameters<
+  typeof getTaskInputSlots
+>[1];
 
 test('workbook persist excel reports its custom sheets slot so the incoming edge renders', () => {
   const task = buildWorkbookPersistTask('control_book', 'merge_control_book');

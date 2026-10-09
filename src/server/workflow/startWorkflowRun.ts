@@ -40,10 +40,9 @@ export async function loadActiveWorkflowDefinition(
   workflowCode: string,
 ): Promise<Record<string, unknown> | null> {
   return (
-    (await db.queryOne(
-      "select * from workflow_definitions where code = $1 and status = 'active' limit 1",
-      [workflowCode],
-    )) ?? null
+    (await db.queryOne("select * from workflow_definitions where code = $1 and status = 'active' limit 1", [
+      workflowCode,
+    ])) ?? null
   );
 }
 

@@ -39,7 +39,10 @@ test('union concatenates rows from all inputs preserving order', async () => {
   const a = rowsToDataFrame([{ name: '韩林', empNo: 'K1' }]);
   const b = rowsToDataFrame([{ name: 'Han Lin', empNo: '100015' }]);
   const out = await runUnion({ input1: a, input2: b });
-  assert.deepEqual(out.rows.map((row) => row.name), ['韩林', 'Han Lin']);
+  assert.deepEqual(
+    out.rows.map((row) => row.name),
+    ['韩林', 'Han Lin'],
+  );
   assert.deepEqual(out.columns, ['name', 'empNo']);
 });
 
@@ -54,11 +57,17 @@ test('union aligns heterogeneous columns by name and fills gaps with null', asyn
 });
 
 test('union with distinct removes fully-identical rows', async () => {
-  const a = rowsToDataFrame([{ name: '张三', empNo: 'K9' }, { name: '李四', empNo: 'K8' }]);
+  const a = rowsToDataFrame([
+    { name: '张三', empNo: 'K9' },
+    { name: '李四', empNo: 'K8' },
+  ]);
   const b = rowsToDataFrame([{ name: '张三', empNo: 'K9' }]);
   const out = await runUnion({ input1: a, input2: b }, { distinct: true });
   assert.equal(out.rows.length, 2);
-  assert.deepEqual(out.rows.map((row) => row.name), ['张三', '李四']);
+  assert.deepEqual(
+    out.rows.map((row) => row.name),
+    ['张三', '李四'],
+  );
 });
 
 test('union without distinct keeps duplicate rows (UNION ALL semantics)', async () => {
@@ -72,7 +81,10 @@ test('union orders slots numerically (input2 before input10)', async () => {
   const s2 = rowsToDataFrame([{ tag: 'two' }]);
   const s10 = rowsToDataFrame([{ tag: 'ten' }]);
   const out = await runUnion({ input10: s10, input2: s2 });
-  assert.deepEqual(out.rows.map((row) => row.tag), ['two', 'ten']);
+  assert.deepEqual(
+    out.rows.map((row) => row.tag),
+    ['two', 'ten'],
+  );
 });
 
 test('union throws when no input slot is bound', async () => {
