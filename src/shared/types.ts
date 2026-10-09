@@ -1065,6 +1065,8 @@ export type MonthlyRunTriggerRequest = {
   workflowCode?: string;
   month?: string;
   operator?: string;
+  /** Monthly workflow version the UI was built against; the server rejects a mismatch. */
+  expectedWorkflowVersion?: number;
 };
 
 export type MonthlyRunTriggerResponse = {
@@ -1089,6 +1091,8 @@ export type MonthlyRunPlanDeleteResult = {
 export type MonthlyRunSourceConfigResponse = {
   workflowCode: string;
   workflowName: string;
+  /** Version of the monthly workflow definition row currently stored in the DB. */
+  workflowVersion: number;
   sources: MonthlyRunSourceDefinition[];
   fixedValues: MonthlyRunFixedValueDefinition[];
 };

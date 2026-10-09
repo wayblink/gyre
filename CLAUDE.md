@@ -17,3 +17,14 @@
 - 新增或修改工作流：改 DB（工作流编辑页面 / SQL / API）；若要让新环境也带上，跑 `scripts/export-workflows.ts` 重新导出 JSON 种子并提交。
 
 > 代码中已无任何工作流的 `tasks` / `runtime_params_schema` / sources 定义。保留项：通用算子（`src/server/workflow/operators/`）、工作流引擎、JSON 种子加载器、页面路由映射、以及"从 DB 读取并执行 / 推导页面输入源"的通用逻辑。
+
+### 例外：月度工作流的"版本号"硬编码在前端（唯一允许的硬编码）
+
+工作流定义本身仍然只存 DB，但月度更新页面（`src/client/monthlyRunPage.ts`）硬编码了一个
+`MONTHLY_WORKFLOW_VERSION`，即它渲染输入源所依据的 `workflow_definitions.version`：
+
+- `GET /api/monthly-runs/source-config` 返回 DB 里的 `workflowVersion`，前端与 `MONTHLY_WORKFLOW_VERSION` 比对；不一致时不渲染输入源、弹出错误并禁止打开配置弹窗。
+- `POST /api/monthly-runs` 由前端带上 `expectedWorkflowVersion`，服务端再与 DB 版本比对，不一致直接 409 拒绝执行。
+- 单测（`src/client/monthlyRunPage.test.ts`）断言 `MONTHLY_WORKFLOW_VERSION` 等于 `database/workflows/gyre-captable-summary-v2.json` 的 `version`，所以改了 DB 工作流不同步前端会在测试阶段就失败。
+
+因此：**修改月度工作流定义后，必须同时 bump `workflow_definitions.version` 和 `MONTHLY_WORKFLOW_VERSION`**，否则月度页面会报版本不匹配。

@@ -77,7 +77,7 @@ import {
   upsertMonthlyRunInstance,
   updateMonthlyRunInstanceExecutionState,
 } from './monthlyRun/instanceStore.js';
-import { monthlyWorkflowSelectionLabel, resolveMonthlyWorkflowDefinition } from './monthlyRun/workflowSelection.js';
+import { monthlyWorkflowSelectionLabel, monthlyWorkflowVersionMismatch, resolveMonthlyWorkflowDefinition } from './monthlyRun/workflowSelection.js';
 import { monthlySourcesFromSchema } from './monthlyRun/sourceSchema.js';
 import {
   buildPlanSummary,
@@ -278,6 +278,8 @@ const monthlyRunTriggerBodySchema = z.object({
   workflowCode: z.string().trim().min(1).optional(),
   month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   operator: z.string().trim().min(1).optional().default('Administrator'),
+  // Sent by the Monthly Update page (the workflow definition version its UI was built against).
+  expectedWorkflowVersion: z.number().int().positive().optional(),
 });
 
 const workflowPortableDefinitionSchema = z.object({
@@ -2464,12 +2466,13 @@ async function registerRoutes() {
 
   app.get('/api/monthly-runs/source-config', async (): Promise<MonthlyRunSourceConfigResponse> => {
     const row = await db.queryOne<Record<string, unknown>>(
-      "select name, runtime_params_schema_json from workflow_definitions where code = $1 and status = 'active' limit 1",
+      "select name, version, runtime_params_schema_json from workflow_definitions where code = $1 and status = 'active' limit 1",
       [MONTHLY_WORKFLOW_CODE],
     );
     return {
       workflowCode: MONTHLY_WORKFLOW_CODE,
       workflowName: row?.name ? String(row.name) : MONTHLY_WORKFLOW_CODE,
+      workflowVersion: Number(row?.version ?? 0),
       sources: monthlySourcesFromSchema(row?.runtime_params_schema_json),
       fixedValues: [],
     };
@@ -2520,6 +2523,16 @@ async function registerRoutes() {
       workflowCode: body.workflowCode,
     });
     if (!workflowRow) throw notFound(`Workflow ${monthlyWorkflowSelectionLabel(body)} not found`);
+
+    // The Monthly Update UI pins the workflow definition version it renders inputs for. A DB
+    // definition edited without a matching UI change would otherwise run against inputs the page
+    // never showed (or silently skip inputs it now requires), so reject the mismatch up front.
+    const versionMismatch = monthlyWorkflowVersionMismatch(workflowRow, body.expectedWorkflowVersion);
+    if (versionMismatch) {
+      throw conflict(
+        `Monthly workflow version mismatch: the UI expects workflow definition v${versionMismatch.expected}, but the database holds v${versionMismatch.actual}. Update the workflow definition (or the UI) so both versions match before running Monthly Update.`,
+      );
+    }
 
     const storedTasks = normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
     const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({

@@ -67,6 +67,30 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
   return source.description;
 }
 
+/**
+ * Version of the monthly workflow definition (DB table `workflow_definitions.version`) this Monthly
+ * Update page was built against. The definition itself lives in the database only (see CLAUDE.md);
+ * the version pinned here is the guard that keeps the page and the definition in sync: whenever the
+ * DB definition changes (new/renamed/removed input sources, different constants), bump its version
+ * and this constant together. A mismatch blocks the page and the run instead of silently rendering
+ * inputs the workflow no longer reads.
+ */
+export const MONTHLY_WORKFLOW_VERSION = 17;
+
+/**
+ * Compares the workflow definition version reported by the API against the version this page was
+ * built against. Returns the mismatch details (or null when they match) so callers can surface a
+ * bilingual error message.
+ */
+export function monthlyWorkflowVersionMismatch(
+  actualVersion: unknown,
+  expectedVersion: number = MONTHLY_WORKFLOW_VERSION,
+): { expected: number; actual: number } | null {
+  const actual = Number(actualVersion);
+  if (Number.isInteger(actual) && actual === expectedVersion) return null;
+  return { expected: expectedVersion, actual: Number.isInteger(actual) ? actual : 0 };
+}
+
 // The 5 remaining monthly fixed values, maintained per-month (each month inherits the prior month's values).
 // Labels mirror the workflow constants so the Monthly Update page and workflow stay in sync.
 export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
@@ -354,6 +378,8 @@ export function createMonthlyRunPage({
   const runClient = createWorkflowRunClient(api);
   let files: ProductFileRecord[] = [];
   let monthlyWorkflowCode = '';
+  /** Set when the DB monthly workflow definition version differs from MONTHLY_WORKFLOW_VERSION. */
+  let workflowVersionMismatch: { expected: number; actual: number } | null = null;
   let sourceDefinitions: MonthlyRunSourceDefinition[] = [];
   let currentInstance: MonthlyRunInstanceRecord | null = null;
   let selectedSources: Record<string, MonthlyRunSourceBinding> = {};
@@ -422,6 +448,10 @@ export function createMonthlyRunPage({
     removedConfigSuffix: { 'zh-CN': '的 Uploaded file 配置', 'en-US': '' },
     chooseFileFor: { 'zh-CN': '请先为', 'en-US': 'Please select a file for' },
     completeSourceConfig: { 'zh-CN': '请先完成 source 配置', 'en-US': 'Complete source configuration first' },
+    workflowVersionMismatch: {
+      'zh-CN': '月度更新工作流版本不匹配：前端 UI 基于 v{expected} 编写，数据库中的工作流定义为 v{actual}。请先更新数据库中的工作流定义或前端代码，使两边版本一致后再执行。',
+      'en-US': 'Monthly workflow version mismatch: this UI was built for workflow definition v{expected}, but the database holds v{actual}. Update the workflow definition (or the UI) so both versions match before running Monthly Update.',
+    },
     submittingRun: { 'zh-CN': '正在提交 Monthly Update...', 'en-US': 'Submitting Monthly Update...' },
     submittedRun: { 'zh-CN': 'Monthly Update 已提交', 'en-US': 'Monthly Update submitted' },
     emptyRunState: { 'zh-CN': '执行后会在这里显示节点状态。', 'en-US': 'Node status will appear here after execution.' },
@@ -510,10 +540,22 @@ export function createMonthlyRunPage({
   async function refreshSourceConfig() {
     const data = await api<MonthlyRunSourceConfigResponse>('/api/monthly-runs/source-config');
     monthlyWorkflowCode = data.workflowCode;
-    sourceDefinitions = data.sources;
+    workflowVersionMismatch = monthlyWorkflowVersionMismatch(data.workflowVersion);
+    sourceDefinitions = workflowVersionMismatch ? [] : data.sources;
     ensureSelectedSourceBindings();
+    if (workflowVersionMismatch) {
+      // Never render sources for a definition this page does not know: the rows would not match the
+      // workflow the server would actually run. Surface the mismatch and block execution instead.
+      notify(formatWorkflowVersionMismatch(workflowVersionMismatch), { type: 'error' });
+    }
     renderSourceInfo();
     renderBusinessDefinedInputConfiguration();
+  }
+
+  function formatWorkflowVersionMismatch(mismatch: { expected: number; actual: number }): string {
+    return tt('workflowVersionMismatch')
+      .replace('{expected}', String(mismatch.expected))
+      .replace('{actual}', String(mismatch.actual));
   }
 
   async function refreshInstance() {
@@ -823,6 +865,9 @@ export function createMonthlyRunPage({
   }
 
   function renderBusinessDefinedSourceRows() {
+    if (workflowVersionMismatch) {
+      return `<tr><td colspan="5" class="table-empty-cell" style="color:#b91c1c;">${escapeHtml(formatWorkflowVersionMismatch(workflowVersionMismatch))}</td></tr>`;
+    }
     const sources = getMonthlyRunVisibleSources(sourceDefinitions);
     if (!sources.length) return `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(tt('noInputDefinitions'))}</td></tr>`;
     return sources
@@ -934,6 +979,10 @@ export function createMonthlyRunPage({
 
   function renderSourceInfo() {
     const info = el('monthlyRunSourceInfo');
+    if (workflowVersionMismatch) {
+      info.innerHTML = `<span style="color:#b91c1c;">${escapeHtml(formatWorkflowVersionMismatch(workflowVersionMismatch))}</span>`;
+      return;
+    }
     if (!sourceDefinitions.length) {
       info.innerHTML = `<span>${escapeHtml(tt('loadingSourceConfig'))}</span>`;
       return;
@@ -955,6 +1004,11 @@ export function createMonthlyRunPage({
   }
 
   function openSourceModal(focusSourceKey?: string) {
+    if (workflowVersionMismatch) {
+      // No inputs can be configured for a definition this page does not know.
+      notify(formatWorkflowVersionMismatch(workflowVersionMismatch), { type: 'error' });
+      return;
+    }
     activeSourceModalKey = focusSourceKey && sourceDefinitions.some((source) => source.sourceKey === focusSourceKey)
       ? focusSourceKey
       : null;
@@ -1266,6 +1320,10 @@ export function createMonthlyRunPage({
       notify(tt('selectMonth'), { type: 'warning' });
       return;
     }
+    if (workflowVersionMismatch) {
+      notify(formatWorkflowVersionMismatch(workflowVersionMismatch), { type: 'error' });
+      return;
+    }
     if (!sourceDefinitions.every((source) => {
       const binding = selectedSources[source.sourceKey];
       if (source.required && !binding?.fileId) return false;
@@ -1290,6 +1348,7 @@ export function createMonthlyRunPage({
         method: 'POST',
         body: JSON.stringify({
           workflowCode: monthlyWorkflowCode,
+          expectedWorkflowVersion: MONTHLY_WORKFLOW_VERSION,
           month,
           operator: currentInstance?.operator ?? 'Administrator',
         }),

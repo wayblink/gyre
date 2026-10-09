@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
@@ -11,6 +12,8 @@ import {
   getMonthlyRunWarningTaskIds,
   isRunPanelStaleForMonth,
   MONTHLY_FIXED_VALUE_DEFS,
+  MONTHLY_WORKFLOW_VERSION,
+  monthlyWorkflowVersionMismatch,
   resolveMonthlyRunPreviewFileId,
   retainAvailableSourceBindings,
 } from './monthlyRunPage.js';
@@ -364,4 +367,54 @@ test('monthly constants are rendered on the main Monthly Update page and saved r
 
   assert.equal(MONTHLY_FIXED_VALUE_DEFS.length, 5);
   assert.equal(MONTHLY_FIXED_VALUE_DEFS.some((definition) => definition.key === 'seriesBPreferredStock'), false);
+});
+
+test('monthly page pins the monthly workflow definition version and rejects a mismatch', () => {
+  // The definition itself stays in the DB (CLAUDE.md); the page only pins the version it renders
+  // inputs for. A DB definition edited without bumping this constant must fail loudly.
+  const seed = JSON.parse(readFileSync(
+    path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'),
+    'utf8',
+  )) as { version: number };
+  assert.equal(MONTHLY_WORKFLOW_VERSION, seed.version);
+  assert.ok(MONTHLY_WORKFLOW_VERSION > 0);
+
+  assert.equal(monthlyWorkflowVersionMismatch(MONTHLY_WORKFLOW_VERSION), null);
+  assert.equal(monthlyWorkflowVersionMismatch(String(MONTHLY_WORKFLOW_VERSION)), null);
+  assert.deepEqual(monthlyWorkflowVersionMismatch(MONTHLY_WORKFLOW_VERSION + 1), {
+    expected: MONTHLY_WORKFLOW_VERSION,
+    actual: MONTHLY_WORKFLOW_VERSION + 1,
+  });
+  assert.deepEqual(monthlyWorkflowVersionMismatch(MONTHLY_WORKFLOW_VERSION - 1), {
+    expected: MONTHLY_WORKFLOW_VERSION,
+    actual: MONTHLY_WORKFLOW_VERSION - 1,
+  });
+  // A missing/unknown version can never be confirmed to match.
+  assert.deepEqual(monthlyWorkflowVersionMismatch(undefined), { expected: MONTHLY_WORKFLOW_VERSION, actual: 0 });
+});
+
+test('monthly page blocks rendering and execution while the workflow version is out of sync', () => {
+  const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+
+  // The API reports the DB definition version; the page compares it against its pinned version.
+  const refresh = source.match(/async function refreshSourceConfig\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  assert.match(refresh, /monthlyWorkflowVersionMismatch\(data\.workflowVersion\)/);
+  assert.match(refresh, /sourceDefinitions = workflowVersionMismatch \? \[\] : data\.sources;/);
+  assert.match(refresh, /notify\(formatWorkflowVersionMismatch\(workflowVersionMismatch\), \{ type: 'error' \}\)/);
+
+  // No source rows are rendered for a definition this page does not know.
+  const rows = source.match(/function renderBusinessDefinedSourceRows\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  assert.match(rows, /if \(workflowVersionMismatch\) \{/);
+
+  // Execution is blocked instead of running against unknown inputs, and the pinned version is
+  // sent along so the server can reject a stale client too.
+  const trigger = source.match(/async function triggerMonthlyRun\(\)[\s\S]*?\n  \}/)?.[0] ?? '';
+  assert.ok(
+    trigger.indexOf('if (workflowVersionMismatch)') < trigger.indexOf("api<MonthlyRunTriggerResponse>('/api/monthly-runs'"),
+    'the version guard must run before the run is submitted',
+  );
+  assert.match(trigger, /expectedWorkflowVersion: MONTHLY_WORKFLOW_VERSION/);
+
+  assert.match(source, /workflowVersionMismatch: \{/);
+  assert.match(source, /let workflowVersionMismatch: \{ expected: number; actual: number \} \| null = null;/);
 });
