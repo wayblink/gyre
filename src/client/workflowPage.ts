@@ -68,6 +68,19 @@ import {
 } from './workflow/runtimeParameterPresentation.js';
 import { normalizeWorkflowSqlText } from './workflow/sqlFormat.js';
 import * as dagLayout from './workflow/dagLayout.js';
+import {
+  cloneJson,
+  createRuntimeDefaultsDisplay,
+  flattenWorkflowRuntimeSchema,
+  getNestedValueAtPath,
+  runtimeProductFileId as runtimeProductFileIdWithFiles,
+  setWorkflowRuntimeDefaultFileId as setWorkflowRuntimeDefaultFileIdWithFiles,
+  setWorkflowRuntimeDefaultString,
+  stringifyWorkflowJson,
+  syncRuntimeDefaultControlToWorkflow as syncRuntimeDefaultControlWithFiles,
+  workflowRuntimeDefaultFileId as workflowRuntimeDefaultFileIdWithFiles,
+  workflowRuntimeDefaultString,
+} from './workflow/runtimeDefaults.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
@@ -109,6 +122,23 @@ export function createWorkflowPage({
   function productFileDisplayName(file: ProductFileRecord) {
     return file.displayName || file.originalName;
   }
+
+  // Runtime-default helpers live in their own module; these wrappers bind the product-file lookup so
+  // the call sites below keep their original argument shape.
+  const files = () => getProductFiles();
+  const syncRuntimeDefaultControl = (
+    workflow: WorkflowDefinition,
+    control: HTMLInputElement | HTMLSelectElement,
+  ): boolean => syncRuntimeDefaultControlWithFiles(workflow, control, files);
+  const runtimeDefaultFileId = (workflow: WorkflowDefinition, runtimePath: string): number | null =>
+    workflowRuntimeDefaultFileIdWithFiles(workflow, runtimePath, files);
+  const setRuntimeDefaultFileId = (workflow: WorkflowDefinition, runtimePath: string, fileId: number | null): void =>
+    setWorkflowRuntimeDefaultFileIdWithFiles(workflow, runtimePath, fileId, files);
+  const runtimeFileId = (value: unknown): number | null => runtimeProductFileIdWithFiles(value, files);
+  const formatRuntimeDefaultDisplay = createRuntimeDefaultsDisplay({
+    getProductFiles: files,
+    productFileDisplayName,
+  });
 
   // DAG geometry/layout lives in its own module; these aliases keep the call sites below unchanged.
   const {
@@ -657,10 +687,6 @@ export function createWorkflowPage({
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
-  function cloneJson<T>(value: T): T {
-    return JSON.parse(JSON.stringify(value)) as T;
-  }
-
   async function exportWorkflow(workflowId: number | null = activeWorkflowId) {
     const workflow = workflowDefinitions.find((item) => item.id === workflowId) ?? null;
     if (!workflow) {
@@ -954,191 +980,16 @@ export function createWorkflowPage({
     return { paramInputs };
   }
 
-  function getNestedValueAtPath(source: Record<string, unknown>, path: string): unknown {
-    return path
-      .split('.')
-      .map((segment) => segment.trim())
-      .filter(Boolean)
-      .reduce<unknown>((current, segment) => {
-        if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
-        return (current as Record<string, unknown>)[segment];
-      }, source);
-  }
-
-  function setNestedValueAtPath(source: Record<string, unknown>, path: string, value: unknown) {
-    const segments = path
-      .split('.')
-      .map((segment) => segment.trim())
-      .filter(Boolean);
-    if (!segments.length) return;
-    let current: Record<string, unknown> = source;
-    segments.slice(0, -1).forEach((segment) => {
-      const existing = current[segment];
-      if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
-        current[segment] = {};
-      }
-      current = current[segment] as Record<string, unknown>;
-    });
-    current[segments[segments.length - 1] as string] = value;
-  }
-
-  function flattenWorkflowRuntimeSchema(
-    schema: WorkflowDefinition['runtimeParamsSchema'],
-    parentPath = '',
-  ): RuntimeParameterEntry[] {
-    return Object.entries(schema ?? {}).flatMap(([key, field]) => {
-      const nextPath = parentPath ? `${parentPath}.${key}` : key;
-      if (field.type === 'object' && field.properties) {
-        const nested = flattenWorkflowRuntimeSchema(field.properties, nextPath);
-        if (!nextPath.startsWith('fileRefs.')) return nested;
-        return [
-          {
-            path: nextPath,
-            required: field.required === true,
-            type: field.type,
-            label: field.label ?? nextPath,
-          },
-          ...nested,
-        ];
-      }
-      return [
-        {
-          path: nextPath,
-          required: field.required === true,
-          type: field.type,
-          label: field.label ?? nextPath,
-        },
-      ];
-    });
-  }
-
-  function formatRuntimeSummaryValue(value: unknown): string {
-    if (value === undefined) return '未设置默认值';
-    if (value === null) return 'null';
-    if (typeof value === 'string') return value || '""';
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  }
-
-  function stringifyWorkflowJson(value: unknown): string {
-    return JSON.stringify(value ?? {}, null, 2);
-  }
-
-  function runtimeProductFileId(value: unknown): number | null {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-    const record = value as Record<string, unknown>;
-    if (record.provider !== 'product-files') return null;
-    const fileKey = String(record.key ?? '').trim();
-    if (fileKey)
-      return getProductFiles().find((file) => (file.logicalPath ?? file.displayPath) === fileKey)?.id ?? null;
-    const fileId = Number(record.id);
-    return Number.isInteger(fileId) && fileId > 0 ? fileId : null;
-  }
-
-  function workflowRuntimeDefaultFileId(workflow: WorkflowDefinition, runtimePath: string): number | null {
-    return runtimeProductFileId(
-      getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, runtimePath),
-    );
-  }
-
-  function setWorkflowRuntimeDefaultFileId(workflow: WorkflowDefinition, runtimePath: string, fileId: number | null) {
-    const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
-    const existing = getNestedValueAtPath(defaults, runtimePath);
-    const existingRecord =
-      existing && typeof existing === 'object' && !Array.isArray(existing) ? (existing as Record<string, unknown>) : {};
-    const file = fileId ? getProductFiles().find((item) => item.id === fileId) : null;
-    setNestedValueAtPath(
-      defaults,
-      runtimePath,
-      file
-        ? {
-            ...existingRecord,
-            provider: 'product-files',
-            key: file.logicalPath ?? file.displayPath,
-            id: undefined,
-          }
-        : undefined,
-    );
-    workflow.runtimeParamsDefaults = defaults;
-  }
-
-  function workflowRuntimeDefaultString(workflow: WorkflowDefinition, runtimePath: string): string {
-    const value = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, runtimePath);
-    return typeof value === 'string' ? value : '';
-  }
-
-  function setWorkflowRuntimeDefaultString(workflow: WorkflowDefinition, runtimePath: string, value: string) {
-    const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
-    setNestedValueAtPath(defaults, runtimePath, value || undefined);
-    workflow.runtimeParamsDefaults = defaults;
-  }
-
-  function readRuntimeDefaultControlValue(
-    control: HTMLInputElement | HTMLSelectElement,
-    currentValue: unknown,
-  ): unknown {
-    const type = control.dataset.runtimeDefaultType ?? '';
-    const rawValue = control.value.trim();
-    if (rawValue === '') return undefined;
-    if (type === 'number') return Number(rawValue);
-    if (type === 'boolean') return rawValue === 'true';
-    if (type === 'fileRef') {
-      const existing =
-        currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue)
-          ? (currentValue as Record<string, unknown>)
-          : {};
-      const nextFileId = Number(rawValue);
-      const file = getProductFiles().find((item) => item.id === nextFileId);
-      const nextFileKey = file?.logicalPath ?? file?.displayPath;
-      const sameFile = existing.key === nextFileKey && existing.provider === 'product-files';
-      return {
-        ...(sameFile ? existing : {}),
-        provider: 'product-files',
-        key: nextFileKey,
-      };
-    }
-    return rawValue;
-  }
-
-  function syncRuntimeDefaultControlToWorkflow(
-    workflow: WorkflowDefinition,
-    control: HTMLInputElement | HTMLSelectElement,
-  ): boolean {
-    const path = control.dataset.runtimeDefaultPath ?? '';
-    if (!path) return false;
-
-    const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
-    const currentValue = getNestedValueAtPath(defaults, path);
-    const value = readRuntimeDefaultControlValue(control, currentValue);
-    setNestedValueAtPath(defaults, path, value);
-    workflow.runtimeParamsDefaults = defaults;
-    return true;
-  }
-
   function syncVisibleRuntimeDefaultsToWorkflow(workflow: WorkflowDefinition): boolean {
     const container = el('workflowRuntimeParamsSummary');
     let changed = false;
     container
       .querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]')
       .forEach((control) => {
-        changed = syncRuntimeDefaultControlToWorkflow(workflow, control) || changed;
+        changed = syncRuntimeDefaultControl(workflow, control) || changed;
       });
     if (changed) resetWorkflowRunState(workflow.id);
     return changed;
-  }
-
-  function formatRuntimeDefaultDisplay(entry: { path: string; type: string }, value: unknown): string {
-    if (isRuntimeFileParameter(entry)) {
-      const fileId = runtimeProductFileId(value);
-      if (!fileId) return '未设置默认文件';
-      const file = getProductFiles().find((item) => item.id === fileId);
-      return file ? `${productFileDisplayName(file)} (#${fileId})` : `File #${fileId}`;
-    }
-    return formatRuntimeSummaryValue(value);
   }
 
   function getRuntimeParameterLabel(path: string): string {
@@ -1157,7 +1008,7 @@ export function createWorkflowPage({
   function renderRuntimeDefaultEditor(entry: { path: string; type: string }, value: unknown) {
     const pathAttr = escapeHtml(entry.path);
     if (isRuntimeFileParameter(entry)) {
-      const currentValue = runtimeProductFileId(value);
+      const currentValue = runtimeFileId(value);
       const file = currentValue ? getProductFiles().find((item) => item.id === currentValue) : undefined;
       const label = file ? productFileDisplayName(file) : '未设置默认文件';
       const detail = file ? `${file.logicalPath ?? file.displayPath} · #${file.id}` : '点击选择文件';
@@ -1204,7 +1055,7 @@ export function createWorkflowPage({
     fileEntry: RuntimeParameterEntry,
     sheetEntry: RuntimeParameterEntry,
   ) {
-    const fileId = workflowRuntimeDefaultFileId(workflow, fileEntry.path);
+    const fileId = runtimeDefaultFileId(workflow, fileEntry.path);
     const currentSheet = getNestedValueAtPath(
       workflow.runtimeParamsDefaults as Record<string, unknown>,
       sheetEntry.path,
@@ -1288,7 +1139,7 @@ export function createWorkflowPage({
   async function hydrateRuntimeSheetControl(control: HTMLSelectElement, workflow: WorkflowDefinition) {
     const filePath = control.dataset.runtimeSheetFilePath ?? '';
     const sheetPath = control.dataset.runtimeDefaultPath ?? '';
-    const fileId = workflowRuntimeDefaultFileId(workflow, filePath);
+    const fileId = runtimeDefaultFileId(workflow, filePath);
     if (!fileId || !sheetPath) return;
     try {
       const detail = await api<ProductFileDetail>(`/api/files/${fileId}`);
@@ -1322,7 +1173,7 @@ export function createWorkflowPage({
       return;
     }
 
-    const fileId = workflowRuntimeDefaultFileId(workflow, filePath);
+    const fileId = runtimeDefaultFileId(workflow, filePath);
     if (!fileId) {
       sheetSelect.innerHTML = '<option value="">Select a file first</option>';
       sheetSelect.disabled = true;
@@ -1355,7 +1206,7 @@ export function createWorkflowPage({
   function syncRuntimeDefaultFromControl(control: HTMLInputElement | HTMLSelectElement) {
     const workflow = getActiveWorkflow();
     if (!workflow) return;
-    if (!syncRuntimeDefaultControlToWorkflow(workflow, control)) return;
+    if (!syncRuntimeDefaultControl(workflow, control)) return;
     resetWorkflowRunState(workflow.id);
     if (shouldRerenderRuntimeDefaultControl(control.dataset.runtimeDefaultType ?? '')) {
       renderWorkflowRuntimeParamsSummary(workflow);
@@ -2734,11 +2585,8 @@ export function createWorkflowPage({
 
     structured.classList.remove('hidden');
 
-    const workflow = getActiveWorkflow();
     const fileSelect = el<HTMLSelectElement>('workflowPreviewFileId');
     const runtimeFilePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
-    const runtimeDefaultFileId =
-      workflow && runtimeFilePath ? workflowRuntimeDefaultFileId(workflow, runtimeFilePath) : null;
     fileSelect.innerHTML = [
       `<option value="">${runtimeFilePath ? '未设置默认文件' : '请选择文件'}</option>`,
       ...getProductFiles().map(
@@ -2999,7 +2847,7 @@ export function createWorkflowPage({
       const selected = fileSelect.value;
       const runtimePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
       if (workflow && runtimePath) {
-        setWorkflowRuntimeDefaultFileId(workflow, runtimePath, selected ? Number(selected) : null);
+        setRuntimeDefaultFileId(workflow, runtimePath, selected ? Number(selected) : null);
         task.params.fileRef = { $fromRuntime: runtimePath };
         delete task.params.fileId;
       } else {
@@ -3025,7 +2873,7 @@ export function createWorkflowPage({
       const selected = fileSelect.value;
       const runtimePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
       if (workflow && runtimePath) {
-        setWorkflowRuntimeDefaultFileId(workflow, runtimePath, selected ? Number(selected) : null);
+        setRuntimeDefaultFileId(workflow, runtimePath, selected ? Number(selected) : null);
         task.params.fileRef = { $fromRuntime: runtimePath };
         delete task.params.fileId;
       } else {

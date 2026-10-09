@@ -756,6 +756,7 @@ test('workflow task editor exposes a taller SQL editor with normalization contro
 
 test('workflow runtime parameter controls are synchronized before save and execute', () => {
   const workflowSource = readFileSync(new URL('./workflowPage.ts', import.meta.url), 'utf8');
+  const runtimeDefaultsSource = readFileSync(new URL('./workflow/runtimeDefaults.ts', import.meta.url), 'utf8');
 
   assert.match(workflowSource, /function syncVisibleRuntimeDefaultsToWorkflow\(workflow: WorkflowDefinition\)/);
   assert.match(
@@ -766,8 +767,8 @@ test('workflow runtime parameter controls are synchronized before save and execu
     workflowSource,
     /async function saveWorkflow\(\)[\s\S]*?workflow\.name = name;[\s\S]*?syncVisibleRuntimeDefaultsToWorkflow\(workflow\);/,
   );
-  assert.match(workflowSource, /const sameFile = existing\.key === nextFileKey/);
-  assert.match(workflowSource, /\.\.\.\(sameFile \? existing : \{\}\)/);
+  assert.match(runtimeDefaultsSource, /const sameFile = existing\.key === nextFileKey/);
+  assert.match(runtimeDefaultsSource, /\.\.\.\(sameFile \? existing : \{\}\)/);
   assert.match(workflowSource, /expectedUpdatedAt: workflow\.updatedAt/);
   assert.match(workflowSource, /if \(isWorkflowPersisting\) throw new Error\('工作流配置正在保存，请稍候'\)/);
   assert.doesNotMatch(workflowSource, /sanitizeWorkflowFileReferences/);
