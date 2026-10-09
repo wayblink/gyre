@@ -97,9 +97,16 @@ export async function resolveWorkflowRunPlan(params: {
   runtimeParameters?: WorkflowRuntimeParameters;
 }): Promise<{ tasks: WorkflowTask[]; runtimeParameters: WorkflowRuntimeParameters }> {
   const { db, workflow, sources = {}, runtimeParameters } = params;
+  const boundFileRefs = buildFileRefsFromBindings(await resolveWorkflowSourceBindings(db, sources)).fileRefs;
+  // Merge per source key instead of replacing `fileRefs` wholesale: callers that pass their bindings
+  // through `runtimeParameters` (Monthly Update resolves the instance's saved sources to file keys
+  // itself) must not have them wiped by a caller that passes none through `sources`.
   const resolvedRuntimeParameters: WorkflowRuntimeParameters = {
     ...(runtimeParameters ?? {}),
-    ...buildFileRefsFromBindings(await resolveWorkflowSourceBindings(db, sources)),
+    fileRefs: {
+      ...((runtimeParameters?.fileRefs as Record<string, unknown> | undefined) ?? {}),
+      ...boundFileRefs,
+    },
   };
   return resolveWorkflowRuntimeConfiguration({
     tasks: normalizeWorkflowTasks(parseJson<WorkflowTask[]>(workflow.tasks_json, [])),
