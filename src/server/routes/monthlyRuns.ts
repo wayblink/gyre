@@ -30,6 +30,7 @@ import {
   monthlyRunInputSourceLabels,
   monthlySourceDescriptors,
   notFound,
+  parseIdParam,
   previousMonthKey,
 } from './support.js';
 import { resolveWorkflowRunPlan } from '../workflow/startWorkflowRun.js';
@@ -219,7 +220,7 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
   }));
 
   app.get('/api/monthly-runs/:id', async (request) => {
-    const runId = Number((request.params as { id: string }).id);
+    const runId = parseIdParam((request.params as { id: string }).id, 'monthly run id');
     const history = await getMonthlyRun(db, runId, { sourceLabels: await monthlyRunInputSourceLabels(db) });
     if (!history) throw notFound('Monthly run not found');
     return history;
@@ -326,7 +327,7 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
   });
 
   app.post('/api/monthly-runs/:id/approvals', async (request) => {
-    const historyId = Number((request.params as { id: string }).id);
+    const historyId = parseIdParam((request.params as { id: string }).id, 'monthly run id');
     const history = await getMonthlyRun(db, historyId, { sourceLabels: await monthlyRunInputSourceLabels(db) });
     if (!history) throw notFound('Monthly run not found');
     if (!history.workflowRunId) throw new Error('Monthly run has no workflow run attached');
@@ -340,7 +341,7 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
   });
 
   app.delete('/api/monthly-runs/:id', async (request, reply) => {
-    const historyId = Number((request.params as { id: string }).id);
+    const historyId = parseIdParam((request.params as { id: string }).id, 'monthly run id');
     try {
       const operation = await db.transaction((tx) => deleteMonthlyRunHistory(tx, historyId));
       if (!operation) throw notFound('Monthly run not found');

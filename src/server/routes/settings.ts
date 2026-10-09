@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { asBoolean, notFound } from './support.js';
+import { asBoolean, notFound, parseIdParam } from './support.js';
 import type { RouteContext } from './context.js';
 import type { EmployeeMapping, ShareholderTag, TrackedPlan } from '../../shared/types.js';
 
@@ -57,7 +57,9 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: RouteContext) 
   });
 
   app.delete('/api/settings/employee-mappings/:id', async (request, reply) => {
-    await db.execute('delete from employee_mappings where id = $1', [Number((request.params as { id: string }).id)]);
+    await db.execute('delete from employee_mappings where id = $1', [
+      parseIdParam((request.params as { id: string }).id, 'employee_mapping id'),
+    ]);
     return reply.code(204).send();
   });
 
@@ -92,7 +94,9 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: RouteContext) 
   });
 
   app.delete('/api/settings/tracked-plans/:id', async (request, reply) => {
-    await db.execute('delete from tracked_plans where id = $1', [Number((request.params as { id: string }).id)]);
+    await db.execute('delete from tracked_plans where id = $1', [
+      parseIdParam((request.params as { id: string }).id, 'tracked_plan id'),
+    ]);
     return reply.code(204).send();
   });
 
@@ -138,7 +142,9 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: RouteContext) 
   });
 
   app.delete('/api/settings/shareholders/:id', async (request, reply) => {
-    await db.execute('delete from shareholder_tags where id = $1', [Number((request.params as { id: string }).id)]);
+    await db.execute('delete from shareholder_tags where id = $1', [
+      parseIdParam((request.params as { id: string }).id, 'shareholder_tag id'),
+    ]);
     return reply.code(204).send();
   });
 }

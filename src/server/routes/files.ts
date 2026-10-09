@@ -19,6 +19,7 @@ import {
   inputStorageFolderPrefix,
   normalizeProductFileStoragePrefix,
   notFound,
+  parseIdParam,
   productFileDisplayPath,
   saveProductWorkbook,
   toProductFile,
@@ -198,7 +199,7 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
   });
 
   app.post('/api/files/:id/move', async (request, reply) => {
-    const fileId = Number((request.params as { id: string }).id);
+    const fileId = parseIdParam((request.params as { id: string }).id, 'file id');
     const file = await getProductFileOrThrow(db, fileId);
     const body = productFileMoveSchema.parse(request.body ?? {});
     const originalName = String(file.original_name);

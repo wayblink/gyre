@@ -11,7 +11,7 @@ import { selectWorkflowPreviewTasks } from '../workflow/previewTask.js';
 import { resolveWorkflowRunPlan } from '../workflow/startWorkflowRun.js';
 import { normalizeWorkflowTask, normalizeWorkflowTasks } from '../workflow/tasks.js';
 import { workflowRunToExecutionResult } from '../workflow/runResult.js';
-import { badRequest, conflict, notFound } from './support.js';
+import { badRequest, conflict, notFound, parseIdParam } from './support.js';
 import { parseJson } from '../utils/json.js';
 import { toIsoTimestamp } from '../utils/timestamp.js';
 import { resolveWorkflowRuntimeConfiguration } from '../workflow/runtimeParameters.js';
@@ -191,7 +191,7 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
   });
 
   app.get('/api/workflows/:id/export', async (request) => {
-    const workflowId = Number((request.params as { id: string }).id);
+    const workflowId = parseIdParam((request.params as { id: string }).id, 'workflow id');
     const row = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [
       workflowId,
     ]);
@@ -414,13 +414,13 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
   });
 
   app.get('/api/workflow-runs/:id', async (request) => {
-    const runId = Number((request.params as { id: string }).id);
+    const runId = parseIdParam((request.params as { id: string }).id, 'workflow run id');
     const light = (request.query as { light?: string } | undefined)?.light;
     return workflowRunStore.getRun(runId, { light: light === '1' || light === 'true' });
   });
 
   app.post('/api/workflow-runs/:id/approvals', async (request) => {
-    const runId = Number((request.params as { id: string }).id);
+    const runId = parseIdParam((request.params as { id: string }).id, 'workflow run id');
     const body = workflowApprovalBodySchema.parse(request.body ?? {});
     const taskIds = body.taskIds?.length ? body.taskIds : body.taskId ? [body.taskId] : [];
     if (!taskIds.length) {
@@ -431,13 +431,13 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
   });
 
   app.post('/api/workflow-runs/:id/cancel', async (request) => {
-    const runId = Number((request.params as { id: string }).id);
+    const runId = parseIdParam((request.params as { id: string }).id, 'workflow run id');
     const run = await workflowRunExecutor.cancelRun(runId);
     return workflowRunToExecutionResult(run);
   });
 
   app.post('/api/workflow-runs/:id/retry-unfinished', async (request) => {
-    const runId = Number((request.params as { id: string }).id);
+    const runId = parseIdParam((request.params as { id: string }).id, 'workflow run id');
     const body = workflowRunRetryBodySchema.parse(request.body ?? {});
     await workflowRunExecutor.retryUnfinishedAsync(runId, body.tasks ? normalizeWorkflowTasks(body.tasks) : undefined);
     return workflowRunToExecutionResult(await workflowRunStore.getRun(runId));

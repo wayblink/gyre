@@ -269,6 +269,44 @@ test('workflow run endpoints report a missing run as 404', async () => {
   await app.close();
 });
 
+test('a malformed path id is rejected as 400 instead of reaching the database', async () => {
+  const { app, calls } = await buildTestApp([HEALTH]);
+
+  for (const url of [
+    '/api/workflow-runs/recent',
+    '/api/workflow-runs/1.5',
+    '/api/workflow-runs/-1',
+    '/api/workflow-runs/0',
+  ]) {
+    const response = await app.inject({ method: 'GET', url });
+    assert.equal(response.statusCode, 400, `${url} should be a client error`);
+    assert.match(JSON.parse(response.body).error, /Invalid workflow run id/);
+  }
+
+  // The rejection must happen before any query: a NaN id used to reach Postgres and surface as a
+  // 500 (`invalid input syntax for type integer`).
+  assert.equal(
+    calls.filter((call) => /from workflow_runs/i.test(call.text)).length,
+    0,
+    'a malformed id must not query the database',
+  );
+  await app.close();
+});
+
+test('numeric path ids still reach the handler', async () => {
+  const { app, calls } = await buildTestApp([{ match: /from workflow_runs/, one: undefined }]);
+
+  const response = await app.inject({ method: 'GET', url: '/api/workflow-runs/42' });
+
+  assert.equal(response.statusCode, 404);
+  assert.equal(JSON.parse(response.body).error, 'Workflow run not found');
+  assert.ok(
+    calls.some((call) => /from workflow_runs/i.test(call.text) && call.params?.[0] === 42),
+    'the numeric id should be passed through to the query',
+  );
+  await app.close();
+});
+
 test('link details resolve their stored payload', async () => {
   const { app } = await buildTestApp([
     {

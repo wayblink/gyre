@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { normalizeEmployeeSourceFilter, normalizeExternalNumber } from '../employees.js';
-import { normalizeEmployeeLabelColor, notFound, parseTags } from './support.js';
+import { normalizeEmployeeLabelColor, notFound, parseIdParam, parseTags } from './support.js';
 import { badRequest, latestWorkflowInputSourceBindings } from './support.js';
 import { parseJson } from '../utils/json.js';
 import type { EmployeeLabelRef } from './support.js';
@@ -203,7 +203,7 @@ export function registerEmployeeRoutes(app: FastifyInstance, ctx: RouteContext) 
   });
 
   app.patch('/api/employee-labels/:id', async (request) => {
-    const labelId = Number((request.params as { id: string }).id);
+    const labelId = parseIdParam((request.params as { id: string }).id, 'employee label id');
     const body = z
       .object({
         name: z.string().trim().min(1).optional(),
@@ -233,7 +233,7 @@ export function registerEmployeeRoutes(app: FastifyInstance, ctx: RouteContext) 
   });
 
   app.delete('/api/employee-labels/:id', async (request, reply) => {
-    const labelId = Number((request.params as { id: string }).id);
+    const labelId = parseIdParam((request.params as { id: string }).id, 'employee label id');
     await db.execute('delete from employee_label where id = $1', [labelId]);
     return reply.code(204).send();
   });
@@ -342,7 +342,7 @@ export function registerEmployeeRoutes(app: FastifyInstance, ctx: RouteContext) 
   });
 
   app.patch('/api/employees/:id', async (request) => {
-    const employeeId = Number((request.params as { id: string }).id);
+    const employeeId = parseIdParam((request.params as { id: string }).id, 'employee id');
     const body = z
       .object({
         employeeName: z.string().trim().min(1).optional(),

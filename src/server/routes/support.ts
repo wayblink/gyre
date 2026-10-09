@@ -118,6 +118,21 @@ export function conflict(message: string) {
   return error;
 }
 
+/**
+ * Parse a positive-integer path parameter.
+ *
+ * `Number('recent')` is NaN, which used to travel straight into the SQL layer and surface as a 500
+ * (`invalid input syntax for type integer`). A malformed id is a client error, so it is rejected
+ * here with a 400 instead of leaking a database error.
+ */
+export function parseIdParam(value: unknown, label = 'id'): number {
+  const id = Number(String(value ?? '').trim());
+  if (!Number.isInteger(id) || id <= 0) {
+    throw badRequest(`Invalid ${label}: expected a positive integer`);
+  }
+  return id;
+}
+
 export function isUniqueConstraintViolation(error: unknown): boolean {
   return (
     typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === '23505'
