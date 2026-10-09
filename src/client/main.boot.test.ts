@@ -454,3 +454,26 @@ test('the workflow page renders the DAG nodes and the dependency edge', async ()
     'clicking a node should activate it',
   );
 });
+
+test('switching the UI language re-labels the shell', async () => {
+  const window = await bootApp();
+  const doc = window.document;
+
+  const navText = () => doc.querySelector('.nav-item[data-page="grant-record"] .nav-text')?.textContent ?? '';
+  const searchButton = () => doc.getElementById('btnSearchHoldings')?.textContent ?? '';
+  const paginationLabel = () => doc.querySelector('.pagination-size-label-text')?.textContent ?? '';
+
+  assert.equal(doc.documentElement.lang, 'zh-CN');
+  const zhNav = navText();
+  const zhSearch = searchButton();
+  const zhRows = paginationLabel();
+  assert.ok(zhNav.length > 0 && zhSearch.length > 0, 'Chinese labels should render');
+
+  doc.querySelector<HTMLButtonElement>('[data-language="en-US"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 120));
+
+  assert.equal(doc.documentElement.lang, 'en-US');
+  assert.notEqual(navText(), zhNav, 'nav labels should switch');
+  assert.notEqual(searchButton(), zhSearch, 'button labels should switch');
+  assert.notEqual(paginationLabel(), zhRows, 'pagination labels should switch');
+});

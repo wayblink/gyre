@@ -567,33 +567,184 @@ const uiText: Record<string, Record<AppLanguage, string>> = {
   transferPlanConfirmAndRun: { 'zh-CN': 'Transfer Plan Confirm & Run', 'en-US': 'Transfer Plan Confirm & Run' },
 };
 
-const placeholderTranslations: Array<[string, Record<AppLanguage, string>]> = [
-  ['searchHolder', { 'zh-CN': '按姓名、计划、授予编号搜索...', 'en-US': 'Search by name, plan, grant...' }],
-  ['filterHoldingsTag', { 'zh-CN': '按员工标签筛选', 'en-US': 'Filter by employee tag' }],
-  ['searchExercises', { 'zh-CN': '按姓名、员工、授予编号搜索...', 'en-US': 'Search by name, employee, grant...' }],
-  ['searchSoldShares', { 'zh-CN': '按姓名、员工、账号搜索...', 'en-US': 'Search by name, employee, account...' }],
-  [
-    'searchEmployeesPage',
-    { 'zh-CN': '按姓名、工号、用户 ID 搜索...', 'en-US': 'Search by name, employee no., user id...' },
-  ],
-  ['filterEmployeesPageTag', { 'zh-CN': '按标签筛选', 'en-US': 'Filter by tag' }],
-  ['accountEmail', { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' }],
-  ['accountPhone', { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' }],
-  ['managedUserUsername', { 'zh-CN': '输入登录账号', 'en-US': 'Enter login username' }],
-  ['managedUserDisplayName', { 'zh-CN': '输入显示名', 'en-US': 'Enter display name' }],
-  ['managedUserEmail', { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' }],
-  ['managedUserPhone', { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' }],
-  [
-    'employeesPageNumber',
-    { 'zh-CN': '输入工号（新增后不可改）', 'en-US': 'Enter employee no. (cannot be changed after creation)' },
-  ],
-  ['employeesPageName', { 'zh-CN': '输入员工姓名', 'en-US': 'Enter employee name' }],
-  ['employeesPageUserId', { 'zh-CN': '输入用户 ID', 'en-US': 'Enter user id' }],
-  [
-    'employeesMergeTargetNumber',
-    { 'zh-CN': '输入目标员工的工号 / Emp. No.', 'en-US': 'Enter target employee no. / Emp. No.' },
-  ],
+type UiTextKey = keyof typeof uiText;
+
+type LanguageBinding =
+  | { kind: 'text'; selector: string; key: UiTextKey }
+  | { kind: 'allText'; selector: string; key: UiTextKey | '' }
+  | { kind: 'button'; id: string; key: UiTextKey }
+  | { kind: 'option'; id: string; value: string; key: UiTextKey }
+  | { kind: 'placeholder'; id: string; copy: Record<AppLanguage, string> }
+  | { kind: 'hero'; page: PageKey; key: UiTextKey }
+  | { kind: 'searchLabels'; page: PageKey; keys: UiTextKey[] }
+  | { kind: 'pageTitle'; selector: string; page: PageKey };
+
+/**
+ * Declarative map of "when the language changes, write this copy into these nodes".
+ *
+ * applyLanguage() used to be ~150 hand-written DOM statements, so every new label meant another
+ * line buried in the middle of it. These entries are applied in order by applyLanguageBindings();
+ * the imperative tail of applyLanguage() keeps only what depends on live state (editing mode, the
+ * transposed transfer-plan table, pagination re-renders).
+ */
+const LANGUAGE_BINDINGS: LanguageBinding[] = [
+  { kind: 'text', selector: '.nav-section-label', key: 'devTools' },
+  { kind: 'text', selector: '#btnAccountPage', key: 'account' },
+  { kind: 'text', selector: '#btnLogout', key: 'logout' },
+  { kind: 'hero', page: 'esop-detail', key: 'esopHeroText' },
+  { kind: 'hero', page: 'grant-record', key: 'grantHeroText' },
+  { kind: 'hero', page: 'exercise-record', key: 'exerciseHeroText' },
+  { kind: 'hero', page: 'sold-shares', key: 'soldHeroText' },
+  { kind: 'hero', page: 'transfer-plan', key: 'transferHeroText' },
+  { kind: 'hero', page: 'employee-management', key: 'employeeHeroText' },
+  { kind: 'hero', page: 'plan-summary', key: 'planHeroText' },
+  { kind: 'hero', page: 'five-percent-holders', key: 'holdersHeroText' },
+  { kind: 'hero', page: 'docs', key: 'docsHeroText' },
+  { kind: 'hero', page: 'captable', key: 'captableHeroText' },
+  { kind: 'allText', selector: '.product-page-hero__metric > span', key: 'sourceFile' },
+  { kind: 'allText', selector: '[data-page-file-label="source-files"]', key: 'sourceFiles' },
+  { kind: 'allText', selector: '[data-page-file-label="result-file"]', key: 'resultFile' },
+  { kind: 'button', id: 'btnExport', key: 'export' },
+  { kind: 'button', id: 'btnEditTransferPlan', key: 'edit' },
+  { kind: 'button', id: 'btnSaveTransferPlanEdit', key: 'confirmAndRun' },
+  { kind: 'button', id: 'btnCancelTransferPlanEdit', key: 'cancel' },
+  { kind: 'button', id: 'btnAddEmployeesPage', key: 'newEmployee' },
+  { kind: 'button', id: 'btnManageEmployeeLabels', key: 'manageLabels' },
+  { kind: 'text', selector: '#btnCancelWorkflowUpdateModal', key: 'cancel' },
+  { kind: 'text', selector: '#btnConfirmWorkflowUpdate', key: 'confirmAndRun' },
+  { kind: 'text', selector: '#workflowUpdateProgressLabel', key: 'workflowProgress' },
+  { kind: 'button', id: 'btnAddEmployeeLabel', key: 'newTag' },
+  { kind: 'text', selector: '#employeeLabelManagementModal .modal-title', key: 'labelManagementTitle' },
+  { kind: 'text', selector: '#employeeLabelManagementModal .modal-subtitle', key: 'employeeLabelModalSubtitle' },
+  { kind: 'allText', selector: '[data-close="employeeLabelManagementModal"].btn', key: 'close' },
+  { kind: 'allText', selector: '#employeesPageModal [data-close="employeesPageModal"].btn', key: 'cancel' },
+  { kind: 'text', selector: '#btnSubmitEmployeesPage', key: 'save' },
+  { kind: 'allText', selector: '#employeesMergeModal [data-close="employeesMergeModal"].btn', key: 'cancel' },
+  { kind: 'text', selector: '#btnSubmitEmployeesMerge', key: 'link' },
+  { kind: 'searchLabels', page: 'captable', keys: ['month'] },
+  { kind: 'searchLabels', page: 'grant-record', keys: ['search', 'tag', 'incentiveType'] },
+  { kind: 'searchLabels', page: 'exercise-record', keys: ['search', 'tag', 'grantYear'] },
+  { kind: 'searchLabels', page: 'sold-shares', keys: ['search', 'tag', 'employmentStatus'] },
+  { kind: 'searchLabels', page: 'employee-management', keys: ['search', 'tag'] },
+  { kind: 'option', id: 'capitalizationSourceFile', value: '', key: 'defaultSnapshot' },
+  { kind: 'option', id: 'filterGrantType', value: '', key: 'allTypes' },
+  { kind: 'option', id: 'filterHoldingsTag', value: '', key: 'allTags' },
+  { kind: 'option', id: 'filterExerciseTag', value: '', key: 'allTags' },
+  { kind: 'option', id: 'filterSoldSharesTag', value: '', key: 'allTags' },
+  { kind: 'option', id: 'filterEmployeesPageTag', value: '', key: 'allTags' },
+  { kind: 'text', selector: '#settingsLanguageTitle', key: 'language' },
+  { kind: 'text', selector: '#settingsLanguageSubtitle', key: 'languageSubtitle' },
+  { kind: 'text', selector: '#settingsLanguageLabel', key: 'uiLanguage' },
+  { kind: 'text', selector: '#page-settings .settings-quick-card:nth-of-type(2) .card-title', key: 'colorTheme' },
+  {
+    kind: 'text',
+    selector: '#page-settings .settings-quick-card:nth-of-type(2) .card-subtitle',
+    key: 'colorThemeSubtitle',
+  },
+  {
+    kind: 'text',
+    selector: '#page-settings .settings-quick-card:nth-of-type(2) .settings-placeholder__label',
+    key: 'colorScheme',
+  },
+  { kind: 'text', selector: '#page-account .card-title', key: 'accountInfo' },
+  { kind: 'text', selector: '#page-account .card-subtitle', key: 'accountInfoSubtitle' },
+  { kind: 'text', selector: '#btnOpenChangePasswordModal', key: 'changePassword' },
+  { kind: 'text', selector: '#btnSaveAccountProfile', key: 'saveAccount' },
+  { kind: 'text', selector: '#accountPasswordModal .modal-title', key: 'changePassword' },
+  { kind: 'text', selector: '#accountPasswordModal .card-subtitle', key: 'changePasswordSubtitle' },
+  { kind: 'text', selector: '#btnChangeAccountPassword', key: 'updatePassword' },
+  { kind: 'allText', selector: '[data-close="accountPasswordModal"].btn', key: 'cancel' },
+  { kind: 'text', selector: '#page-user-management .card-subtitle', key: 'userManagementSubtitle' },
+  { kind: 'text', selector: '#btnOpenManagedUserModal', key: 'newUser' },
+  { kind: 'allText', selector: '[data-close="managedUserModal"].btn', key: 'cancel' },
+  { kind: 'option', id: 'managedUserIsActive', value: 'true', key: 'active' },
+  { kind: 'option', id: 'managedUserIsActive', value: 'false', key: 'inactive' },
+  { kind: 'text', selector: 'label.auth-field span', key: 'authUsername' },
+  { kind: 'text', selector: '#btnCloseLinkModalFooter', key: 'close' },
+  { kind: 'text', selector: '#page-plan-summary .card-subtitle', key: 'planSummarySubtitle' },
+  { kind: 'text', selector: '#page-fixed-value .card-title', key: 'globalParameterTitle' },
+  { kind: 'allText', selector: '.pagination-size-label-text', key: 'rows' },
+  { kind: 'allText', selector: '[id$="FirstPage"]', key: 'first' },
+  { kind: 'allText', selector: '[id$="PrevPage"]', key: 'previous' },
+  { kind: 'allText', selector: '[id$="NextPage"]', key: 'next' },
+  { kind: 'allText', selector: '[id$="LastPage"]', key: 'last' },
+  { kind: 'button', id: 'btnSearchHoldings', key: 'search' },
+  { kind: 'button', id: 'btnSearchExercises', key: 'search' },
+  { kind: 'button', id: 'btnSearchSoldShares', key: 'search' },
+  { kind: 'button', id: 'btnSearchEmployeesPage', key: 'search' },
+  { kind: 'pageTitle', selector: '#page-user-management .card-title', page: 'user-management' },
+  { kind: 'pageTitle', selector: '#page-plan-summary .card-title', page: 'plan-summary' },
+  { kind: 'pageTitle', selector: '#page-five-percent-holders .card-title', page: 'five-percent-holders' },
+  { kind: 'allText', selector: '#page-account label', key: '' },
+
+  {
+    kind: 'placeholder',
+    id: 'searchHolder',
+    copy: { 'zh-CN': '按姓名、计划、授予编号搜索...', 'en-US': 'Search by name, plan, grant...' },
+  },
+  {
+    kind: 'placeholder',
+    id: 'filterHoldingsTag',
+    copy: { 'zh-CN': '按员工标签筛选', 'en-US': 'Filter by employee tag' },
+  },
+  {
+    kind: 'placeholder',
+    id: 'searchExercises',
+    copy: { 'zh-CN': '按姓名、员工、授予编号搜索...', 'en-US': 'Search by name, employee, grant...' },
+  },
+  {
+    kind: 'placeholder',
+    id: 'searchSoldShares',
+    copy: { 'zh-CN': '按姓名、员工、账号搜索...', 'en-US': 'Search by name, employee, account...' },
+  },
+  { kind: 'placeholder', id: 'filterEmployeesPageTag', copy: { 'zh-CN': '按标签筛选', 'en-US': 'Filter by tag' } },
+  { kind: 'placeholder', id: 'accountEmail', copy: { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' } },
+  { kind: 'placeholder', id: 'accountPhone', copy: { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' } },
+  {
+    kind: 'placeholder',
+    id: 'managedUserUsername',
+    copy: { 'zh-CN': '输入登录账号', 'en-US': 'Enter login username' },
+  },
+  { kind: 'placeholder', id: 'managedUserDisplayName', copy: { 'zh-CN': '输入显示名', 'en-US': 'Enter display name' } },
+  { kind: 'placeholder', id: 'managedUserEmail', copy: { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' } },
+  { kind: 'placeholder', id: 'managedUserPhone', copy: { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' } },
+  { kind: 'placeholder', id: 'employeesPageName', copy: { 'zh-CN': '输入员工姓名', 'en-US': 'Enter employee name' } },
+  { kind: 'placeholder', id: 'employeesPageUserId', copy: { 'zh-CN': '输入用户 ID', 'en-US': 'Enter user id' } },
 ];
+
+function applyLanguageBindings() {
+  for (const binding of LANGUAGE_BINDINGS) {
+    switch (binding.kind) {
+      case 'text':
+        setText(binding.selector, t(binding.key));
+        break;
+      case 'allText':
+        setAllText(binding.selector, binding.key ? t(binding.key) : '');
+        break;
+      case 'button':
+        setButtonLabel(binding.id, t(binding.key));
+        break;
+      case 'option':
+        setOptionText(binding.id, binding.value, t(binding.key));
+        break;
+      case 'placeholder':
+        setPlaceholder(binding.id, binding.copy[currentLanguage]);
+        break;
+      case 'hero':
+        setPageHero(binding.page, binding.key);
+        break;
+      case 'searchLabels':
+        setSearchLabels(
+          binding.page,
+          binding.keys.map((key) => t(key)),
+        );
+        break;
+      case 'pageTitle':
+        setText(binding.selector, pageTitleFor(binding.page));
+        break;
+    }
+  }
+}
 
 function t(key: keyof typeof uiText): string {
   return uiText[key][currentLanguage] ?? uiText[key]['zh-CN'];
@@ -731,96 +882,20 @@ function applyLanguage() {
       node.setAttribute('title', pageTitleFor(page));
     }
   });
-  setText('.nav-section-label', t('devTools'));
-  setText('#btnAccountPage', t('account'));
-  setText('#btnLogout', t('logout'));
 
-  setPageHero('esop-detail', 'esopHeroText');
-  setPageHero('grant-record', 'grantHeroText');
-  setPageHero('exercise-record', 'exerciseHeroText');
-  setPageHero('sold-shares', 'soldHeroText');
-  setPageHero('transfer-plan', 'transferHeroText');
-  setPageHero('employee-management', 'employeeHeroText');
-  setPageHero('plan-summary', 'planHeroText');
-  setPageHero('five-percent-holders', 'holdersHeroText');
-  setPageHero('docs', 'docsHeroText');
-  setPageHero('captable', 'captableHeroText');
+  applyLanguageBindings();
 
-  setAllText('.product-page-hero__metric > span', t('sourceFile'));
-  setAllText('[data-page-file-label="source-files"]', t('sourceFiles'));
-  setAllText('[data-page-file-label="result-file"]', t('resultFile'));
-  ['btnSearchHoldings', 'btnSearchExercises', 'btnSearchSoldShares', 'btnSearchEmployeesPage'].forEach((id) =>
-    setButtonLabel(id, t('search')),
-  );
-  setButtonLabel('btnExport', t('export'));
+  // Labels that depend on live page state stay imperative.
   setButtonLabel(
     'btnToggleTransferPlanTableView',
     transferPlanTableView === 'summaryRows' ? t('transposeTable') : t('restoreHorizontal'),
   );
-  setButtonLabel('btnEditTransferPlan', t('edit'));
-  setButtonLabel('btnSaveTransferPlanEdit', t('confirmAndRun'));
-  setButtonLabel('btnCancelTransferPlanEdit', t('cancel'));
-  setButtonLabel('btnAddEmployeesPage', t('newEmployee'));
-  setButtonLabel('btnManageEmployeeLabels', t('manageLabels'));
-  setText('#btnCancelWorkflowUpdateModal', t('cancel'));
-  setText('#btnConfirmWorkflowUpdate', t('confirmAndRun'));
-  setText('#workflowUpdateProgressLabel', t('workflowProgress'));
-  setButtonLabel('btnAddEmployeeLabel', t('newTag'));
-  setText('#employeeLabelManagementModal .modal-title', t('labelManagementTitle'));
-  setText('#employeeLabelManagementModal .modal-subtitle', t('employeeLabelModalSubtitle'));
-  setAllText('[data-close="employeeLabelManagementModal"].btn', t('close'));
-  setAllText('#employeesPageModal [data-close="employeesPageModal"].btn', t('cancel'));
-  setText('#btnSubmitEmployeesPage', t('save'));
-  setAllText('#employeesMergeModal [data-close="employeesMergeModal"].btn', t('cancel'));
-  setText('#btnSubmitEmployeesMerge', t('link'));
-  setSearchLabels('captable', [t('month')]);
-  setSearchLabels('grant-record', [t('search'), t('tag'), t('incentiveType')]);
-  setSearchLabels('exercise-record', [t('search'), t('tag'), t('grantYear')]);
-  setSearchLabels('sold-shares', [t('search'), t('tag'), t('employmentStatus')]);
-  setSearchLabels('employee-management', [t('search'), t('tag')]);
-  setOptionText('capitalizationSourceFile', '', t('defaultSnapshot'));
-  setOptionText('filterGrantType', '', t('allTypes'));
-  setOptionText('filterHoldingsTag', '', t('allTags'));
-  setOptionText('filterExerciseTag', '', t('allTags'));
-  setOptionText('filterSoldSharesTag', '', t('allTags'));
-  setOptionText('filterEmployeesPageTag', '', t('allTags'));
   syncCurrentViewInfoText();
-
-  placeholderTranslations.forEach(([id, copy]) => setPlaceholder(id, copy[currentLanguage]));
-
-  setText('#settingsLanguageTitle', t('language'));
-  setText('#settingsLanguageSubtitle', t('languageSubtitle'));
-  setText('#settingsLanguageLabel', t('uiLanguage'));
-  setText('#page-settings .settings-quick-card:nth-of-type(2) .card-title', t('colorTheme'));
-  setText('#page-settings .settings-quick-card:nth-of-type(2) .card-subtitle', t('colorThemeSubtitle'));
-  setText('#page-settings .settings-quick-card:nth-of-type(2) .settings-placeholder__label', t('colorScheme'));
-
-  setText('#page-account .card-title', t('accountInfo'));
-  setText('#page-account .card-subtitle', t('accountInfoSubtitle'));
-  setAllText('#page-account label', '');
-  const accountLabels = document.querySelectorAll<HTMLElement>('#page-account .form-group label');
-  [t('username'), t('displayName'), t('email'), t('contact')].forEach((copy, index) => {
-    if (accountLabels[index]) accountLabels[index].textContent = copy;
-  });
-  setText('#btnOpenChangePasswordModal', t('changePassword'));
-  setText('#btnSaveAccountProfile', t('saveAccount'));
-  setText('#accountPasswordModal .modal-title', t('changePassword'));
-  setText('#accountPasswordModal .card-subtitle', t('changePasswordSubtitle'));
-  const passwordLabels = document.querySelectorAll<HTMLElement>('#accountPasswordModal .form-group label');
-  [t('currentPassword'), t('newPassword'), t('confirmNewPassword')].forEach((copy, index) => {
-    if (passwordLabels[index]) passwordLabels[index].textContent = copy;
-  });
-  setText('#btnChangeAccountPassword', t('updatePassword'));
-  setAllText('[data-close="accountPasswordModal"].btn', t('cancel'));
 
   setText('#page-user-management .card-title', pageTitleFor('user-management'));
   setText('#page-user-management .card-subtitle', t('userManagementSubtitle'));
-  setText('#btnOpenManagedUserModal', t('newUser'));
   setText('#managedUserModalTitle', editingManagedUserId ? t('editUser') : t('createUser'));
   setText('#btnSubmitManagedUser', editingManagedUserId ? t('save') : t('createUser'));
-  setAllText('[data-close="managedUserModal"].btn', t('cancel'));
-  setOptionText('managedUserIsActive', 'true', t('active'));
-  setOptionText('managedUserIsActive', 'false', t('inactive'));
   const userLabels = document.querySelectorAll<HTMLElement>('#managedUserModal .form-group label');
   [
     t('username'),
@@ -840,16 +915,15 @@ function applyLanguage() {
     if (authLabels[index]) authLabels[index].textContent = copy;
   });
 
-  setText('#btnCloseLinkModalFooter', t('close'));
-  setText('#page-plan-summary .card-title', pageTitleFor('plan-summary'));
-  setText('#page-plan-summary .card-subtitle', t('planSummarySubtitle'));
-  setText('#page-five-percent-holders .card-title', pageTitleFor('five-percent-holders'));
-  setText('#page-fixed-value .card-title', t('globalParameterTitle'));
-  setAllText('.pagination-size-label-text', t('rows'));
-  setAllText('[id$="FirstPage"]', t('first'));
-  setAllText('[id$="PrevPage"]', t('previous'));
-  setAllText('[id$="NextPage"]', t('next'));
-  setAllText('[id$="LastPage"]', t('last'));
+  const accountLabels = document.querySelectorAll<HTMLElement>('#page-account .form-group label');
+  [t('username'), t('displayName'), t('email'), t('contact')].forEach((copy, index) => {
+    if (accountLabels[index]) accountLabels[index].textContent = copy;
+  });
+  const passwordLabels = document.querySelectorAll<HTMLElement>('#accountPasswordModal .form-group label');
+  [t('currentPassword'), t('newPassword'), t('confirmNewPassword')].forEach((copy, index) => {
+    if (passwordLabels[index]) passwordLabels[index].textContent = copy;
+  });
+
   renderHoldingsPagination(holdingsPage, pageCountOf(holdingsTotal, holdingsPageSize), holdingsTotal);
   renderExercisePagination(exercisePage, pageCountOf(exerciseTotal, exercisePageSize), exerciseTotal);
   renderSoldSharesPagination(soldSharesPage, pageCountOf(soldSharesTotal, soldSharesPageSize), soldSharesTotal);

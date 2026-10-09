@@ -747,14 +747,15 @@ test('workflow editor toolbar exposes export alongside execute save and delete',
 
 test('workflow task editor exposes a taller SQL editor with normalization controls', () => {
   const workflowSource = readFileSync(new URL('./workflowPage.ts', import.meta.url), 'utf8');
+  const sqlFormatSource = readFileSync(new URL('./workflow/sqlFormat.ts', import.meta.url), 'utf8');
 
   assert.match(html, /id="btnNormalizeWorkflowSql"[\s\S]*规范化 SQL/);
   assert.match(html, /id="workflowSqlInput" class="workflow-code-input workflow-code-input--sql"/);
   assert.match(html, /id="btnNormalizeWorkflowSqlFullscreen"[\s\S]*规范化 SQL/);
   assert.match(css, /\.workflow-code-input--sql\s*\{[\s\S]*min-height:\s*260px;/);
-  assert.match(workflowSource, /function formatSqlExpressionList/);
-  assert.match(workflowSource, /function splitSqlTopLevelList/);
-  assert.match(workflowSource, /function formatSqlCondition/);
+  assert.match(sqlFormatSource, /function formatSqlExpressionList/);
+  assert.match(sqlFormatSource, /function splitSqlTopLevelList/);
+  assert.match(sqlFormatSource, /function formatSqlCondition/);
 });
 
 test('workflow runtime parameter controls are synchronized before save and execute', () => {
@@ -1050,7 +1051,8 @@ test('page size selectors survive language switches because only the label text 
     assert.match(label, new RegExp(`id="${sizeSelects[index]}"`));
   });
 
-  assert.match(mainSource, /setAllText\('\.pagination-size-label-text', t\('rows'\)\)/);
+  assert.match(mainSource, /kind: 'allText', selector: '\.pagination-size-label-text', key: 'rows'/);
+  assert.doesNotMatch(mainSource, /selector: '\.pagination-size-label'/);
   assert.doesNotMatch(mainSource, /setAllText\('\.pagination-size-label',/);
   assert.doesNotMatch(mainSource, /setText\('\.pagination-size-label',/);
 });
@@ -1096,8 +1098,11 @@ test('main.ts renders every bilingual string through the translation table', () 
   assert.match(source, /function tp\(key: keyof typeof uiText, params: Record<string, string \| number>\): string \{/);
   assert.match(source, /confirmDeleteUser: \{ 'zh-CN': '确定删除用户【\{username\}】吗？'/);
 
-  // applyLanguage() must stay a list of t()/setText() calls, not a pile of inline ternaries.
+  // applyLanguage() is now data-driven: a declarative binding table plus an imperative tail that
+  // only handles state-dependent labels, and neither may fall back to inline ternaries.
   const applyLanguage = source.match(/function applyLanguage\(\)[\s\S]*?\n\}/)?.[0] ?? '';
   assert.doesNotMatch(applyLanguage, /=== 'zh-CN'/);
-  assert.match(applyLanguage, /setButtonLabel\('btnEditTransferPlan', t\('edit'\)\)/);
+  assert.match(source, /function applyLanguageBindings\(\)/);
+  assert.match(source, /\{ kind: 'button', id: 'btnEditTransferPlan', key: 'edit' \}/);
+  assert.match(source, /kind: 'allText', selector: '\.pagination-size-label-text', key: 'rows'/);
 });
