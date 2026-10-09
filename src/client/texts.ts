@@ -191,6 +191,53 @@ export const TEXTS = {
     unlink: { 'zh-CN': '取消关联', 'en-US': 'Unlink' },
     unlinked: { 'zh-CN': '已取消关联', 'en-US': 'Unlinked' },
     confirmDeleteUser: { 'zh-CN': '确定删除用户【{username}】吗？', 'en-US': 'Delete user {username}?' },
+    managedUserSubtitleEdit: { 'zh-CN': '留空密码则不修改', 'en-US': 'Leave password blank to keep it unchanged' },
+    managedUserSubtitleCreate: { 'zh-CN': '默认角色为 user', 'en-US': 'Default role is user' },
+    exerciseViewShareworksSubtitle: {
+      'zh-CN': 'Executive Awards OS Only 原始格式（逐授予）',
+      'en-US': 'Raw Executive Awards OS Only (per grant)',
+    },
+    exerciseViewMergeSubtitle: {
+      'zh-CN': 'Futu 行权流水 + Shareworks 逐授予拼接',
+      'en-US': 'Futu exercise transactions + Shareworks per-grant rows',
+    },
+    transferPlanEditStatusEditing: {
+      'zh-CN': '编辑模式：仅 Options cancelled/forfeited 可修改。Confirm & Run 后会生成新的输入文件并运行 workflow。',
+      'en-US':
+        'Edit mode: only Options cancelled/forfeited is editable. Confirm & Run creates a new input file and runs the workflow.',
+    },
+    transferPlanEditStatusIdle: {
+      'zh-CN': '页面按最新 workflow 结果文件渲染；如需调整取消数量，请进入 Edit 后 Confirm & Run。',
+      'en-US':
+        'This page renders the latest workflow result file. Use Edit, then Confirm & Run to adjust cancellations.',
+    },
+    paginationSummaryRecords: {
+      'zh-CN': '显示 {start}-{end}，共 {total} 条记录',
+      'en-US': 'Showing {start}-{end} of {total} records',
+    },
+    paginationSummaryRecordsEmpty: { 'zh-CN': '共 0 条记录', 'en-US': '0 records' },
+    paginationSummaryEmployees: {
+      'zh-CN': '显示 {start}-{end}，共 {total} 名员工',
+      'en-US': 'Showing {start}-{end} of {total} employees',
+    },
+    paginationSummaryEmployeesEmpty: { 'zh-CN': '共 0 名员工', 'en-US': '0 employees' },
+    transferPlanSavingStatus: {
+      'zh-CN': '正在保存编辑、生成输入文件并运行 workflow...',
+      'en-US': 'Saving edits, creating an input file, and running the workflow...',
+    },
+    transferPlanProgressSubtitle: {
+      'zh-CN': '正在根据编辑内容生成新的输入文件，并运行 Transfer Plan workflow。',
+      'en-US': 'Creating a new input file from your edits and running the Transfer Plan workflow.',
+    },
+    employeeLabelModalTitleEdit: { 'zh-CN': '编辑标签', 'en-US': 'Edit Tag' },
+    employeeLabelModalTitleCreate: { 'zh-CN': '新增标签', 'en-US': 'New Tag' },
+    employeesPageModalTitleEdit: { 'zh-CN': '编辑员工', 'en-US': 'Edit Employee' },
+    employeesPageModalTitleCreate: { 'zh-CN': '新增员工', 'en-US': 'New Employee' },
+    employeeUnlinkConfirm: {
+      'zh-CN': '确认取消该关联？取消后该编号恢复为独立员工，不影响授予/行权/卖出等任何业务记录。',
+      'en-US':
+        'Unlink this identity? It becomes a standalone employee again; grant/exercise/sale records are unaffected.',
+    },
     transposeTable: { 'zh-CN': '转置表格', 'en-US': 'Transpose table' },
     restoreHorizontal: { 'zh-CN': '恢复横向', 'en-US': 'Restore horizontal' },
     employeeLabelModalSubtitle: {
@@ -513,6 +560,20 @@ export type TextNamespace = keyof typeof TEXTS;
 export type TextKey<N extends TextNamespace> = keyof (typeof TEXTS)[N];
 
 type AnyEntry = Record<AppLanguage, string>;
+
+/**
+ * Reads one entry and substitutes `{name}` placeholders.
+ *
+ * Messages that carry a value (a username in a confirmation, a count in a summary) need this; the
+ * substitution used to be a private helper in main.ts, which meant every other module either
+ * duplicated the replace() call or built the sentence by concatenation.
+ */
+export function createTextFormatter<N extends TextNamespace>(namespace: N) {
+  const read = createTexts(namespace);
+  return function tp(key: TextKey<N>, params: Record<string, string | number>, language: AppLanguage): string {
+    return read(key, language).replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name] ?? ''));
+  };
+}
 
 /** Reads one entry, falling back to Chinese (and then to the key) so a gap is visible, not blank. */
 export function createTexts<N extends TextNamespace>(namespace: N) {

@@ -480,3 +480,85 @@ test('switching the UI language re-labels the shell', async () => {
   assert.notEqual(searchButton(), zhSearch, 'button labels should switch');
   assert.notEqual(paginationLabel(), zhRows, 'pagination labels should switch');
 });
+
+const ADMIN_USERS = {
+  users: [
+    {
+      id: 1,
+      username: 'admin',
+      displayName: 'Admin',
+      role: 'admin',
+      isActive: true,
+      lastLoginAt: '2026-10-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      email: 'admin@example.com',
+      phone: null,
+    },
+    {
+      id: 2,
+      username: 'viewer',
+      displayName: 'Viewer',
+      role: 'user',
+      isActive: false,
+      lastLoginAt: null,
+      createdAt: '2026-02-01T00:00:00.000Z',
+      email: null,
+      phone: null,
+    },
+  ],
+};
+
+test('the user management page renders its table and opens the edit modal', async () => {
+  const window = await bootApp([...API_STUBS, { match: /\/api\/admin\/users$/, respond: ADMIN_USERS }], 120);
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('.nav-item[data-page="user-management"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  const rows = [...doc.querySelectorAll('#userManagementBody tr[data-managed-user-id]')];
+  assert.deepEqual(
+    rows.map((row) => row.getAttribute('data-managed-user-id')),
+    ['1', '2'],
+    'both users should render',
+  );
+  assert.ok(rows[1].textContent?.includes('停用'), 'an inactive user should be labelled as such');
+  assert.ok(doc.querySelector('[data-edit-managed-user="1"]'), 'edit button missing');
+
+  // Editing prefills the modal and switches its title to the edit copy.
+  doc.querySelector<HTMLButtonElement>('[data-edit-managed-user="1"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.ok(!doc.getElementById('managedUserModal')?.classList.contains('hidden'), 'modal should open');
+  assert.equal(doc.getElementById('managedUserModalTitle')?.textContent, '编辑用户');
+  assert.equal((doc.getElementById('managedUserUsername') as HTMLInputElement | null)?.value, 'admin');
+
+  // Creating resets it back to the create copy.
+  doc.querySelector<HTMLButtonElement>('[data-close="managedUserModal"]')?.click();
+  doc.querySelector<HTMLButtonElement>('#btnOpenManagedUserModal')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(doc.getElementById('managedUserModalTitle')?.textContent, '创建用户');
+  assert.equal((doc.getElementById('managedUserUsername') as HTMLInputElement | null)?.value, '');
+});
+
+test('switching the language relabels the user management table and modal', async () => {
+  const window = await bootApp([...API_STUBS, { match: /\/api\/admin\/users$/, respond: ADMIN_USERS }], 120);
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('.nav-item[data-page="user-management"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const zhHeader = doc.querySelector('[data-user-management-label="username"]')?.textContent;
+
+  doc.querySelector<HTMLButtonElement>('[data-language="en-US"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
+  assert.notEqual(
+    doc.querySelector('[data-user-management-label="username"]')?.textContent,
+    zhHeader,
+    'table headers should switch language',
+  );
+  assert.equal(doc.querySelector('[data-user-management-label="username"]')?.textContent, 'Username');
+  // Rows re-render too, so a status label follows the language.
+  assert.ok(
+    [...doc.querySelectorAll('#userManagementBody tr')].some((row) => row.textContent?.includes('Inactive')),
+    'status labels should switch language',
+  );
+});

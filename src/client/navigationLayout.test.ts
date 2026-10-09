@@ -1070,8 +1070,8 @@ test('pagination summaries are localized and refresh when the language changes',
   }
 
   assert.match(mainSource, /function paginationSummaryText\(/);
-  assert.match(mainSource, /条记录/);
-  assert.match(mainSource, /名员工/);
+  assert.match(textsSource, /paginationSummaryRecords: \{[\s\S]*?条记录/);
+  assert.match(textsSource, /paginationSummaryEmployees: \{[\s\S]*?名员工/);
 
   // A language switch only calls applyLanguage(), so the summaries must be re-rendered there
   // or they keep the previous language until the next data load.
@@ -1086,16 +1086,21 @@ test('main.ts renders every bilingual string through the translation table', () 
 
   // Inline `currentLanguage === 'zh-CN' ? ... : ...` ternaries bypass the translation table: the
   // string is invisible to translators and to any future i18n tooling. Every bilingual string must
-  // go through t()/tp().
-  assert.doesNotMatch(source, /currentLanguage === 'zh-CN' \?/);
-  assert.doesNotMatch(source, /currentLanguage === 'en-US' \?/);
+  // go through t()/tp(). The pattern allows whitespace (including newlines) before the `?`, which
+  // prettier inserts for nested ternaries — without it a wrapped ternary slips through.
+  assert.doesNotMatch(source, /currentLanguage === 'zh-CN'\s*\?/);
+  assert.doesNotMatch(source, /currentLanguage === 'en-US'\s*\?/);
+  assert.doesNotMatch(source, /lang\(\) === 'zh-CN'\s*\?/);
+  assert.doesNotMatch(source, /lang\(\) === 'en-US'\s*\?/);
 
   // The table stays the single source of truth (now the merged table in texts.ts), and messages
   // carrying a value use tp().
   assert.match(textsSource, /export const TEXTS = \{/);
   assert.match(textsSource, /confirmDeleteUser: \{ 'zh-CN': '确定删除用户【\{username\}】吗？'/);
   assert.match(source, /const t = \(key: UiTextKey\) => texts\(key, currentLanguage\)/);
-  assert.match(source, /function tp\(key: UiTextKey, params: Record<string, string \| number>\): string \{/);
+  // Parameterized messages go through the shared formatter in texts.ts.
+  assert.match(source, /const tp = \(key: UiTextKey, params: Record<string, string \| number>\) => tpMain\(/);
+  assert.match(textsSource, /export function createTextFormatter/);
 
   // applyLanguage() is now data-driven: a declarative binding table plus an imperative tail that
   // only handles state-dependent labels, and neither may fall back to inline ternaries.

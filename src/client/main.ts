@@ -9,7 +9,6 @@ import type {
   Holding,
   LinkDetail,
   LatestMonthlyRunOutput,
-  ManagedUser,
   MergedExercise,
   MergedGrant,
   MonthlyRunInstanceRecord,
@@ -32,9 +31,11 @@ import { createFilesPage } from './filesPage.js';
 import { createFilePickerModal } from './filePickerModal.js';
 import { createMonthlyRunPage } from './monthlyRunPage.js';
 import { createWorkflowUpdateModal, type WorkflowUpdatePageKey } from './workflowUpdateModal.js';
-import { createTexts, TEXTS, type TextKey } from './texts.js';
+import { createUserManagementPage } from './userManagementPage.js';
+import { createTexts, createTextFormatter, TEXTS, type TextKey } from './texts.js';
 
 const texts = createTexts('main');
+const tpMain = createTextFormatter('main');
 
 /** Page titles keyed by page; the values live in the merged translation table. */
 const pageTitleTranslations = TEXTS.pageTitles as Record<PageKey, Record<AppLanguage, string>>;
@@ -142,8 +143,6 @@ let monthlyRunInputCollapsed = false;
 let themeSelection: ThemeSelection = getStoredTheme();
 let currentLanguage: AppLanguage = readStoredLanguage();
 let appInitialized = false;
-let managedUsers: ManagedUser[] = [];
-let editingManagedUserId: number | null = null;
 let editingFixedValueId: number | null = null;
 
 let editingEmployeeId: number | null = null;
@@ -242,6 +241,18 @@ const workflowUpdateModal = createWorkflowUpdateModal({
   openFilePicker: (options) => filePicker.open(options),
   productFileDisplayName,
   refreshPage: (page) => refreshWorkflowUpdatePage(page),
+});
+
+const userManagementPage = createUserManagementPage({
+  el,
+  api,
+  escapeHtml,
+  notify,
+  confirmAction,
+  getLanguage: () => currentLanguage,
+  formatDateTime,
+  isAdmin: isAdminUser,
+  redirectToDefaultPage: () => navigateToPage(DEFAULT_PAGE),
 });
 
 const monthlyRunPage = createMonthlyRunPage({
@@ -544,11 +555,7 @@ function applyLanguageBindings() {
 }
 
 const t = (key: UiTextKey) => texts(key, currentLanguage);
-
-/** Same as t(), with `{placeholder}` substitution for messages that carry a value. */
-function tp(key: UiTextKey, params: Record<string, string | number>): string {
-  return t(key).replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name] ?? ''));
-}
+const tp = (key: UiTextKey, params: Record<string, string | number>) => tpMain(key, params, currentLanguage);
 
 function pageTitleFor(page: PageKey): string {
   return pageTitleTranslations[page]?.[currentLanguage] ?? pageTitles[page];
@@ -689,18 +696,8 @@ function applyLanguage() {
 
   setText('#page-user-management .card-title', pageTitleFor('user-management'));
   setText('#page-user-management .card-subtitle', t('userManagementSubtitle'));
-  setText('#managedUserModalTitle', editingManagedUserId ? t('editUser') : t('createUser'));
-  setText('#btnSubmitManagedUser', editingManagedUserId ? t('save') : t('createUser'));
   const userLabels = document.querySelectorAll<HTMLElement>('#managedUserModal .form-group label');
-  [
-    t('username'),
-    t('displayName'),
-    t('role'),
-    t('email'),
-    t('contact'),
-    editingManagedUserId ? t('optionalPassword') : t('password'),
-    t('status'),
-  ].forEach((copy, index) => {
+  [t('username'), t('displayName'), t('role'), t('email'), t('contact'), t('status')].forEach((copy, index) => {
     if (userLabels[index]) userLabels[index].textContent = copy;
   });
 
@@ -723,7 +720,7 @@ function applyLanguage() {
   renderExercisePagination(exercisePage, pageCountOf(exerciseTotal, exercisePageSize), exerciseTotal);
   renderSoldSharesPagination(soldSharesPage, pageCountOf(soldSharesTotal, soldSharesPageSize), soldSharesTotal);
   renderEmployeesPagination(employeesPage, pageCountOf(employeesTotal, employeesPageSize), employeesTotal);
-  renderUserManagementTable();
+  userManagementPage.applyLanguage();
 
   const activePage = getPageFromLocation();
   el('pageTitle').textContent = pageTitleFor(activePage);
@@ -1151,7 +1148,7 @@ async function activatePage(page: PageKey) {
     }
 
     if (page === 'user-management') {
-      await loadUserManagementPage();
+      await userManagementPage.load();
     }
 
     if (page === 'grant-record') {
@@ -1935,183 +1932,6 @@ async function initEmployeesPage() {
   await loadEmployeesPage();
 }
 
-function managedUserStatusLabel(user: ManagedUser): string {
-  return user.isActive ? t('active') : t('inactive');
-}
-
-function renderUserManagementTable() {
-  const headerLabels: Record<string, string> = {
-    username: t('username'),
-    displayName: t('displayName'),
-    role: t('role'),
-    status: t('status'),
-    email: t('email'),
-    contact: t('contact'),
-    lastLogin: t('lastLogin'),
-    createdAt: t('createdAt'),
-    actions: t('actions'),
-  };
-  document.querySelectorAll<HTMLElement>('[data-user-management-label]').forEach((node) => {
-    const key = node.dataset.userManagementLabel ?? '';
-    node.textContent = headerLabels[key] ?? node.textContent ?? '';
-  });
-
-  const body = el<HTMLTableSectionElement>('userManagementBody');
-  if (!managedUsers.length) {
-    body.innerHTML = `<tr><td colspan="9" class="table-empty-cell">${escapeHtml(t('noUsers'))}</td></tr>`;
-    return;
-  }
-  body.innerHTML = managedUsers
-    .map(
-      (user) => `
-    <tr data-managed-user-id="${user.id}">
-      <td>${escapeHtml(user.username)}</td>
-      <td>${escapeHtml(user.displayName)}</td>
-      <td>${escapeHtml(user.role)}</td>
-      <td>${escapeHtml(managedUserStatusLabel(user))}</td>
-      <td>${escapeHtml(user.email ?? '-')}</td>
-      <td>${escapeHtml(user.phone ?? '-')}</td>
-      <td>${escapeHtml(user.lastLoginAt ? formatDateTime(user.lastLoginAt) : '-')}</td>
-      <td>${escapeHtml(formatDateTime(user.createdAt))}</td>
-      <td>
-        <div class="action-buttons">
-          <button class="btn btn-secondary btn-sm" type="button" data-edit-managed-user="${user.id}">${escapeHtml(t('edit'))}</button>
-          <button class="btn btn-danger btn-sm" type="button" data-delete-managed-user="${user.id}">${escapeHtml(t('delete'))}</button>
-        </div>
-      </td>
-    </tr>
-  `,
-    )
-    .join('');
-
-  body.querySelectorAll<HTMLButtonElement>('[data-edit-managed-user]').forEach((button) => {
-    button.addEventListener('click', () => openManagedUserModal(Number(button.dataset.editManagedUser)));
-  });
-  body.querySelectorAll<HTMLButtonElement>('[data-delete-managed-user]').forEach((button) => {
-    button.addEventListener('click', () => void deleteUserManagementUser(Number(button.dataset.deleteManagedUser)));
-  });
-}
-
-async function loadUserManagementPage() {
-  if (!isAdminUser()) {
-    await navigateToPage(DEFAULT_PAGE);
-    return;
-  }
-  const data = await api<{ users: ManagedUser[] }>('/api/admin/users');
-  managedUsers = data.users;
-  renderUserManagementTable();
-}
-
-function closeManagedUserModal() {
-  el('managedUserModal').classList.add('hidden');
-  editingManagedUserId = null;
-}
-
-function openManagedUserModal(userId?: number) {
-  const user = managedUsers.find((item) => item.id === userId) ?? null;
-  editingManagedUserId = user?.id ?? null;
-  el<HTMLInputElement>('managedUserUsername').value = user?.username ?? '';
-  el<HTMLInputElement>('managedUserDisplayName').value = user?.displayName ?? '';
-  el<HTMLSelectElement>('managedUserRole').value = user?.role ?? 'user';
-  el<HTMLInputElement>('managedUserEmail').value = user?.email ?? '';
-  el<HTMLInputElement>('managedUserPhone').value = user?.phone ?? '';
-  el<HTMLInputElement>('managedUserPassword').value = '';
-  el<HTMLSelectElement>('managedUserIsActive').value = user?.isActive === false ? 'false' : 'true';
-  el('managedUserModalTitle').textContent = editingManagedUserId ? t('editUser') : t('createUser');
-  el('managedUserModalSubtitle').textContent = editingManagedUserId
-    ? currentLanguage === 'zh-CN'
-      ? '留空密码则不修改'
-      : 'Leave password blank to keep it unchanged'
-    : currentLanguage === 'zh-CN'
-      ? '默认角色为 user'
-      : 'Default role is user';
-  const passwordLabel = document.querySelectorAll<HTMLElement>('#managedUserModal .form-group label')[5];
-  if (passwordLabel) passwordLabel.textContent = editingManagedUserId ? t('optionalPassword') : t('password');
-  el('btnSubmitManagedUser').textContent = editingManagedUserId ? t('save') : t('createUser');
-  el('managedUserModal').classList.remove('hidden');
-}
-
-async function submitManagedUser() {
-  const password = el<HTMLInputElement>('managedUserPassword').value;
-  const payload: Record<string, unknown> = {
-    username: el<HTMLInputElement>('managedUserUsername').value.trim(),
-    displayName: el<HTMLInputElement>('managedUserDisplayName').value.trim(),
-    role: el<HTMLSelectElement>('managedUserRole').value,
-    email: el<HTMLInputElement>('managedUserEmail').value.trim() || null,
-    phone: el<HTMLInputElement>('managedUserPhone').value.trim() || null,
-    isActive: el<HTMLSelectElement>('managedUserIsActive').value === 'true',
-  };
-  if (!payload.username || !payload.displayName) {
-    notify(t('usernameAndDisplayNameRequired'), {
-      type: 'warning',
-    });
-    return;
-  }
-  if (!editingManagedUserId) {
-    if (!password) {
-      notify(t('newUserPasswordRequired'), {
-        type: 'warning',
-      });
-      return;
-    }
-    payload.password = password;
-  } else if (password) {
-    payload.password = password;
-  }
-
-  try {
-    const response = editingManagedUserId
-      ? await api<{ user: ManagedUser }>(`/api/admin/users/${editingManagedUserId}`, {
-          method: 'PATCH',
-          body: JSON.stringify(payload),
-        })
-      : await api<{ user: ManagedUser }>('/api/admin/users', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
-    const index = managedUsers.findIndex((user) => user.id === response.user.id);
-    managedUsers =
-      index >= 0
-        ? managedUsers.map((user) => (user.id === response.user.id ? response.user : user))
-        : [...managedUsers, response.user];
-    closeManagedUserModal();
-    renderUserManagementTable();
-    notify(t('userSaved'), { type: 'success' });
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-  }
-}
-
-async function deleteUserManagementUser(userId: number) {
-  const user = managedUsers.find((item) => item.id === userId);
-  if (!user) return;
-  const confirmed = await confirmAction(tp('confirmDeleteUser', { username: user.username }), {
-    title: t('delete'),
-    confirmText: t('delete'),
-    tone: 'danger',
-  });
-  if (!confirmed) return;
-  try {
-    await api(`/api/admin/users/${userId}`, { method: 'DELETE' });
-    managedUsers = managedUsers.filter((item) => item.id !== userId);
-    renderUserManagementTable();
-    notify(t('userDeleted'), { type: 'success' });
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-  }
-}
-
-async function initUserManagementPage() {
-  el('btnOpenManagedUserModal').addEventListener('click', () => openManagedUserModal());
-  el('btnSubmitManagedUser').addEventListener('click', () => void submitManagedUser());
-  document.querySelectorAll<HTMLElement>('[data-close="managedUserModal"]').forEach((button) => {
-    button.addEventListener('click', closeManagedUserModal);
-  });
-  el('managedUserModal').addEventListener('click', (event) => {
-    if (event.target === el('managedUserModal')) closeManagedUserModal();
-  });
-}
-
 async function initAccountPage() {
   el('btnSaveAccountProfile').addEventListener('click', () => void submitAccountProfile());
   el('btnOpenChangePasswordModal').addEventListener('click', openAccountPasswordModal);
@@ -2206,11 +2026,8 @@ function pageCountOf(total: number, pageSize: number) {
 }
 
 function paginationSummaryText(start: number, end: number, total: number, unit: 'records' | 'employees') {
-  if (currentLanguage === 'zh-CN') {
-    const noun = unit === 'employees' ? '名员工' : '条记录';
-    return total === 0 ? `共 0 ${noun}` : `显示 ${start}-${end}，共 ${total} ${noun}`;
-  }
-  return total === 0 ? `0 ${unit}` : `Showing ${start}-${end} of ${total} ${unit}`;
+  if (total === 0) return t(unit === 'employees' ? 'paginationSummaryEmployeesEmpty' : 'paginationSummaryRecordsEmpty');
+  return tp(unit === 'employees' ? 'paginationSummaryEmployees' : 'paginationSummaryRecords', { start, end, total });
 }
 
 const PAGINATION_IDS = {
@@ -2383,17 +2200,11 @@ function applyExerciseView() {
     },
     shareworks: {
       title: 'Shareworks Exec Option OS',
-      subtitle:
-        currentLanguage === 'zh-CN'
-          ? 'Executive Awards OS Only 原始格式（逐授予）'
-          : 'Raw Executive Awards OS Only (per grant)',
+      subtitle: t('exerciseViewShareworksSubtitle'),
     },
     merge: {
       title: 'Merged Exercise Records',
-      subtitle:
-        currentLanguage === 'zh-CN'
-          ? 'Futu 行权流水 + Shareworks 逐授予拼接'
-          : 'Futu exercise transactions + Shareworks per-grant rows',
+      subtitle: t('exerciseViewMergeSubtitle'),
     },
   };
   document.querySelectorAll<HTMLButtonElement>('[data-exercise-view]').forEach((button) => {
@@ -2865,22 +2676,12 @@ async function renderTransferPlan() {
       button.classList.toggle('hidden', transferPlanEditMode);
     });
   el('transferPlanEditStatus').textContent = transferPlanEditMode
-    ? currentLanguage === 'zh-CN'
-      ? '编辑模式：仅 Options cancelled/forfeited 可修改。Confirm & Run 后会生成新的输入文件并运行 workflow。'
-      : 'Edit mode: only Options cancelled/forfeited is editable. Confirm & Run creates a new input file and runs the workflow.'
-    : currentLanguage === 'zh-CN'
-      ? '页面按最新 workflow 结果文件渲染；如需调整取消数量，请进入 Edit 后 Confirm & Run。'
-      : 'This page renders the latest workflow result file. Use Edit, then Confirm & Run to adjust cancellations.';
+    ? t('transferPlanEditStatusEditing')
+    : t('transferPlanEditStatusIdle');
   const toggleButton = el<HTMLButtonElement>('btnToggleTransferPlanTableView');
   setButtonLabel(
     'btnToggleTransferPlanTableView',
-    transferPlanTableView === 'summaryRows'
-      ? currentLanguage === 'zh-CN'
-        ? '转置表格'
-        : 'Transpose table'
-      : currentLanguage === 'zh-CN'
-        ? '恢复横向'
-        : 'Restore horizontal',
+    transferPlanTableView === 'summaryRows' ? t('transposeTable') : t('restoreHorizontal'),
   );
   toggleButton.setAttribute('aria-pressed', String(transferPlanTableView === 'periodRows'));
   localizeAppDom();
@@ -2912,16 +2713,8 @@ async function saveTransferPlanEdit() {
 
   saveButton.disabled = true;
   cancelButton.disabled = true;
-  el('transferPlanEditStatus').textContent =
-    currentLanguage === 'zh-CN'
-      ? '正在保存编辑、生成输入文件并运行 workflow...'
-      : 'Saving edits, creating an input file, and running the workflow...';
-  workflowUpdateModal.openProgressModal(
-    t('transferPlanConfirmAndRun'),
-    currentLanguage === 'zh-CN'
-      ? '正在根据编辑内容生成新的输入文件，并运行 Transfer Plan workflow。'
-      : 'Creating a new input file from your edits and running the Transfer Plan workflow.',
-  );
+  el('transferPlanEditStatus').textContent = t('transferPlanSavingStatus');
+  workflowUpdateModal.openProgressModal(t('transferPlanConfirmAndRun'), t('transferPlanProgressSubtitle'));
   try {
     const result = await api<WorkflowExecutionResult>('/api/transfer-plan/edits', {
       method: 'POST',
@@ -3064,12 +2857,8 @@ function openEmployeeLabelModal(id?: number) {
   editingEmployeeLabelId = id ?? null;
   const label = employeeLabels.find((item) => item.id === id);
   el('employeeLabelModalTitle').textContent = label
-    ? currentLanguage === 'zh-CN'
-      ? '编辑标签'
-      : 'Edit Tag'
-    : currentLanguage === 'zh-CN'
-      ? '新增标签'
-      : 'New Tag';
+    ? t('employeeLabelModalTitleEdit')
+    : t('employeeLabelModalTitleCreate');
   el<HTMLInputElement>('employeeLabelName').value = label?.name ?? '';
   el<HTMLInputElement>('employeeLabelColor').value = normalizeEmployeeLabelColor(label?.color);
   renderEmployeeLabelColorPreview();
@@ -3267,15 +3056,10 @@ function renderEmployeesPageTable() {
 
 async function unlinkEmployee(sourceId: number, targetNumber: string): Promise<void> {
   if (!sourceId || !targetNumber) return;
-  const confirmed = await confirmAction(
-    currentLanguage === 'zh-CN'
-      ? '确认取消该关联？取消后该编号恢复为独立员工，不影响授予/行权/卖出等任何业务记录。'
-      : 'Unlink this identity? It becomes a standalone employee again; grant/exercise/sale records are unaffected.',
-    {
-      title: t('unlink'),
-      confirmText: t('unlink'),
-    },
-  );
+  const confirmed = await confirmAction(t('employeeUnlinkConfirm'), {
+    title: t('unlink'),
+    confirmText: t('unlink'),
+  });
   if (!confirmed) return;
   await api(`/api/employees/${encodeURIComponent(targetNumber)}/unlink`, {
     method: 'POST',
@@ -3289,12 +3073,8 @@ function openEmployeesPageModal(id?: number) {
   editingEmployeeId = id ?? null;
   const item = employees.find((row) => row.id === id);
   el('employeesPageModalTitle').textContent = item
-    ? currentLanguage === 'zh-CN'
-      ? '编辑员工'
-      : 'Edit Employee'
-    : currentLanguage === 'zh-CN'
-      ? '新增员工'
-      : 'New Employee';
+    ? t('employeesPageModalTitleEdit')
+    : t('employeesPageModalTitleCreate');
   el('employeesPageNumberRow').style.display = '';
   const numberInput = el<HTMLInputElement>('employeesPageNumber');
   numberInput.value = item?.employeeNumber ?? '';
@@ -3878,7 +3658,7 @@ async function initializeApp() {
   await initTransferPlanPage();
   await initEmployeesPage();
   initWorkflowUpdateModal();
-  await initUserManagementPage();
+  userManagementPage.bindEvents();
   await initAccountPage();
   await initSettingsPage();
   initLinkModal();
