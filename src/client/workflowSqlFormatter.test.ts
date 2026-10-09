@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { normalizeWorkflowSqlText } from './workflowPage.js';
+import { normalizeWorkflowSqlText } from './workflow/sqlFormat.js';
 
 test('normalizeWorkflowSqlText formats select lists and clauses for readability', () => {
   const formatted = normalizeWorkflowSqlText(

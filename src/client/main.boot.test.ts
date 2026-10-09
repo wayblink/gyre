@@ -346,3 +346,111 @@ test('the workflow update modal runs the page workflow and reports progress', as
   );
   assert.ok(doc.getElementById('workflowUpdateModal')?.classList.contains('hidden'), 'the modal closes on success');
 });
+
+const WORKFLOW_STUBS: FetchStub[] = [
+  { match: /\/api\/workflows$/, respond: { items: [], total: 0 } },
+  { match: /\/api\/operators$/, respond: { items: [] } },
+  { match: /\/api\/workflow-runs$/, respond: { items: [], total: 0 } },
+  { match: /\/api\/files$/, respond: { files: [] } },
+];
+
+test('the workflow page boots and renders an empty canvas state', async () => {
+  const window = await bootApp([...API_STUBS, ...WORKFLOW_STUBS], 120);
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('.nav-item[data-page="workflow"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  assert.ok(doc.getElementById('page-workflow')?.classList.contains('active'), 'workflow page not active');
+  assert.ok(
+    lastRequests.some((request) => request.url.includes('/api/workflows')),
+    'the workflow page should load its workflow list',
+  );
+  // The canvas shell must exist even with no workflows selected.
+  assert.ok(doc.getElementById('workflowDag'), 'workflow canvas missing');
+  assert.ok(doc.getElementById('workflowRunPanel'), 'workflow run panel missing');
+  assert.ok(doc.getElementById('workflowTaskEditor'), 'task editor missing');
+  // The operator palette is grouped by category, so an empty list must not throw.
+  assert.ok(doc.getElementById('workflowOperators'), 'operator palette missing');
+});
+
+const WORKFLOW_WITH_TASKS = {
+  items: [
+    {
+      id: 9,
+      code: 'demo-dag',
+      name: 'Demo DAG',
+      description: 'two tasks, one edge',
+      status: 'draft',
+      version: 1,
+      runtimeParamsSchema: { parameters: [], inputFiles: [] },
+      runtimeParamsDefaults: {},
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+      tasks: [
+        {
+          id: 'load',
+          name: 'Load grants',
+          operatorCode: 'read_excel',
+          operatorVersion: '1.0.0',
+          description: '',
+          x: 40,
+          y: 40,
+          params: {},
+          inputs: { grants: { fromTask: null, fromSlot: null, fileId: null, sheet: null } },
+          dependsOn: [],
+        },
+        {
+          id: 'transform',
+          name: 'Transform grants',
+          operatorCode: 'sql_transform',
+          operatorVersion: '1.0.0',
+          description: '',
+          x: 360,
+          y: 120,
+          params: {},
+          inputs: { source: { fromTask: 'load', fromSlot: 'grants', fileId: null, sheet: null } },
+          dependsOn: ['load'],
+        },
+      ],
+    },
+  ],
+  total: 1,
+};
+
+test('the workflow page renders the DAG nodes and the dependency edge', async () => {
+  const window = await bootApp(
+    [
+      ...API_STUBS,
+      ...WORKFLOW_STUBS,
+      { match: /\/api\/workflows$/, respond: WORKFLOW_WITH_TASKS },
+      { match: /\/api\/operators$/, respond: { items: [] } },
+    ],
+    120,
+  );
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('.nav-item[data-page="workflow"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  const nodes = [...doc.querySelectorAll('.workflow-node[data-task-id]')];
+  assert.deepEqual(
+    nodes.map((node) => node.getAttribute('data-task-id')).sort(),
+    ['load', 'transform'],
+    'both tasks should render as DAG nodes',
+  );
+  assert.match(
+    doc.querySelector('.workflow-dag__edges')?.innerHTML ?? '',
+    /workflow-edge__path/,
+    'the dependency should render as an edge',
+  );
+  // Selecting a node drives the inspector.
+  nodes
+    .find((node) => node.getAttribute('data-task-id') === 'transform')
+    ?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.ok(
+    doc.querySelector('.workflow-node[data-task-id="transform"]')?.classList.contains('is-active'),
+    'clicking a node should activate it',
+  );
+});
