@@ -9,7 +9,6 @@ import type {
   WorkflowRunRecord,
   WorkflowRunStatus,
   WorkflowRunStepRecord,
-  WorkflowRuntimeParameters,
   WorkflowTask,
   WorkflowTaskPreviewResult,
 } from '../../shared/types.js';

@@ -67,12 +67,12 @@ test('monthly workflow version guard is skipped when the caller pins no version'
 });
 
 test('monthly run API reports the workflow definition version and rejects a stale client', () => {
-  const server = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../routes/monthlyRuns.ts', import.meta.url), 'utf8');
 
   // The Monthly Update page needs the DB definition version to compare against the version it
   // pins, and the trigger endpoint needs the client's pinned version to reject a stale UI.
-  assert.match(server, /workflowVersion: Number\(row\?\.version \?\? 0\),/);
-  assert.match(server, /expectedWorkflowVersion: z\.number\(\)\.int\(\)\.positive\(\)\.optional\(\),/);
-  assert.match(server, /monthlyWorkflowVersionMismatch\(workflowRow, body\.expectedWorkflowVersion\)/);
-  assert.match(server, /Monthly workflow version mismatch/);
+  assert.match(routes, /workflowVersion: Number\(row\?\.version \?\? 0\),/);
+  assert.match(routes, /expectedWorkflowVersion: z\.number\(\)\.int\(\)\.positive\(\)\.optional\(\),/);
+  assert.match(routes, /monthlyWorkflowVersionMismatch\(workflowRow, body\.expectedWorkflowVersion\)/);
+  assert.match(routes, /Monthly workflow version mismatch/);
 });

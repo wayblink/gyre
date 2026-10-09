@@ -193,7 +193,7 @@ test('files browser can move single files and selections to another folder', () 
 });
 
 test('moving a product file repoints workflow references stored by logical path', () => {
-  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/routes/files.ts', import.meta.url), 'utf8');
   assert.match(serverSource, /app\.post\('\/api\/files\/:id\/move'/);
   assert.match(serverSource, /rewriteProductFileKeyInWorkflows\(tx, oldLogicalPath, logicalPath\)/);
   assert.match(serverSource, /code: 'FILE_ALREADY_EXISTS'/);
@@ -331,7 +331,7 @@ test('Grant Record workflow uses the Shareworks source workbook contract', () =>
 
 test('Grant Record employee tag filter is wired through label ids for every grant source', () => {
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
-  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/routes/dataPages.ts', import.meta.url), 'utf8');
 
   assert.match(html, /id="filterHoldingsTag"/);
   assert.match(mainSource, /renderEmployeeLabelFilter\('filterHoldingsTag'\)/);
@@ -340,16 +340,21 @@ test('Grant Record employee tag filter is wired through label ids for every gran
   assert.match(mainSource, /\/api\/grants\/merge\?query=.*tagId=/);
   assert.match(mainSource, /\/api\/holdings\?month=.*tagId=/);
 
-  assert.match(serverSource, /async function employeeLabelsByNumber\(\)/);
-  assert.match(serverSource, /coalesce\(e\.merged_into_id, e\.id\) as canonical_employee_id/);
-  assert.match(serverSource, /app\.get\('\/api\/grants\/shareworks'/);
+  // The label map itself lives in routes/support.ts; every grant source must resolve it.
+  const supportSource = readFileSync(new URL('../server/routes/support.ts', import.meta.url), 'utf8');
+  assert.match(supportSource, /async function employeeLabelsByNumber\(db: AppDb\)/);
+  assert.match(supportSource, /coalesce\(e\.merged_into_id, e\.id\) as canonical_employee_id/);
+  for (const apiPath of ['/api/holdings', '/api/grants/shareworks', '/api/grants/merge']) {
+    assert.match(serverSource, new RegExp(`app\\.get\\('${apiPath.replace(/\//g, '\\/')}'`));
+  }
+  assert.match(serverSource, /employeeLabelsByNumber\(db\)/);
   assert.match(serverSource, /labelIdFilter && !row\.labelIds\.includes\(labelIdFilter\)/);
   assert.doesNotMatch(serverSource, /const shareworksRows =\s*normalizedTag === ''/);
 });
 
 test('Exercise and Sold Shares employee tag filters are wired through label ids', () => {
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
-  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/routes/dataPages.ts', import.meta.url), 'utf8');
 
   assert.match(html, /id="filterExerciseTag"/);
   assert.match(html, /id="filterSoldSharesTag"/);
@@ -387,7 +392,7 @@ test('Exercise Record exposes file-backed filters, table, and pagination', () =>
 
 test('Exercise Record exposes Futu / Shareworks / Merge source tabs like Grant Record', () => {
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
-  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/routes/dataPages.ts', import.meta.url), 'utf8');
   const exercisePage = html.match(/id="page-exercise-record"[\s\S]*?id="page-sold-shares"/)?.[0] ?? '';
 
   // DOM: three sub-tabs + three panels, each with its own table body.
@@ -421,7 +426,9 @@ test('Exercise Record exposes Futu / Shareworks / Merge source tabs like Grant R
   assert.match(serverSource, /app\.get\('\/api\/exercises\/shareworks'/);
   assert.match(serverSource, /app\.get\('\/api\/exercises\/merge'/);
   assert.match(serverSource, /function shareworksExerciseFromWorkflowRow\(/);
-  assert.match(serverSource, /function employeeNumberByName\(/);
+  const employeesSource = readFileSync(new URL('../server/routes/employees.ts', import.meta.url), 'utf8');
+  assert.match(employeesSource, /async function employeeNumberByName\(db: RouteContext\['db'\]\)/);
+  assert.match(serverSource, /employeeNumberByName\(db\)/);
   assert.match(serverSource, /taskId: 'persist_exercise_record_shareworks_file'/);
 
   // Workflow definition (DB-owned, exported to seed JSON) carries the Shareworks source + tasks.
@@ -723,7 +730,7 @@ test('admin-only tools are gated by role and labelled "Admin Only"', () => {
 test('Global Parameter exposes administrator-only create and delete controls', () => {
   const fixedValuePage = pageSection('fixed-value', 'docs');
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
-  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/routes/parameters.ts', import.meta.url), 'utf8');
 
   assert.match(fixedValuePage, /<h2>Global Parameter<\/h2>/);
   assert.match(fixedValuePage, /<h3 class="card-title">参数<\/h3>/);
@@ -861,13 +868,14 @@ test('workflow update and export actions include svg icons and stable labels', (
 
 test('Employee Management update runs the employee data-management workflow and exposes failures', () => {
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
-  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/routes/dataPages.ts', import.meta.url), 'utf8');
 
   assert.match(mainSource, /'employee-management': 'data-management'/);
   assert.match(mainSource, /page === 'employee-management' \? 'employee' : page/);
   assert.match(mainSource, /else if \(page === 'employee-management'\) \{\s*await loadEmployeesPage\(\);/);
   assert.match(mainSource, /workflowUpdateStatusMessage\('failed', \(error as Error\)\.message\)/);
-  assert.match(serverSource, /latestWorkflowInputSourceBindings\('employee-import'\)/);
+  const employeesSource2 = readFileSync(new URL('../server/routes/employees.ts', import.meta.url), 'utf8');
+  assert.match(employeesSource2, /latestWorkflowInputSourceBindings\(db, 'employee-import'\)/);
   assert.match(serverSource, /workflowSourceBindings: inputSourceBindings/);
 });
 
@@ -903,7 +911,7 @@ test('5% Holders edit mode exposes localized Confirm & Run and Cancel actions', 
 
 test('Global Parameter editing uses the application modal instead of a browser prompt', () => {
   const fixedValueSection = pageSection('fixed-value', 'docs');
-  const serverSource = readFileSync(new URL('../server/server.ts', import.meta.url), 'utf8');
+  const serverSource = readFileSync(new URL('../server/routes/parameters.ts', import.meta.url), 'utf8');
 
   assert.match(fixedValueSection, /id="fixedValueEditModal"[\s\S]*class="modal-container global-parameter-modal"/);
   assert.match(fixedValueSection, /id="fixedValueEditKey"[^>]*readonly/);
