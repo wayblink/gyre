@@ -260,7 +260,11 @@ export function getMonthlyRunFileCandidatesForSource<
   return result;
 }
 
-function sourceBindingsFromInstance(instance: MonthlyRunInstanceRecord): Record<string, MonthlyRunSourceBinding> {
+function sourceBindingsFromInstance(
+  instance: MonthlyRunInstanceRecord | null,
+): Record<string, MonthlyRunSourceBinding> {
+  // A failed/empty instance response used to take the whole page down on `instance.sources`.
+  if (!instance?.sources) return {};
   return Object.fromEntries(
     Object.entries(instance.sources)
       .filter(([, value]) => typeof value.fileId === 'number' && value.fileId > 0)
