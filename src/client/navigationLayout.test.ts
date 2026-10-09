@@ -610,7 +610,6 @@ test('workflow update modal picks input files through the shared tree file picke
 });
 
 test('workflow update modal gives the sheet input the shared form-control structure', () => {
-  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const cssSource = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
 
   assert.match(workflowUpdateModalSource, /workflow-update-source-card__sheet-label/);
@@ -620,7 +619,6 @@ test('workflow update modal gives the sheet input the shared form-control struct
 });
 
 test('plan summary update modal explains the non-zero Outstanding filter', () => {
-  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const workflowSource = readFileSync(
     new URL('../../database/workflows/plan-summary-sync.json', import.meta.url),
     'utf8',
@@ -640,7 +638,6 @@ test('plan summary update modal explains the non-zero Outstanding filter', () =>
 });
 
 test('workflow update modal renders run progress while polling workflow status', () => {
-  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const cssSource = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
 
   assert.match(workflowUpdateModalSource, /function renderProgress\(run: WorkflowRunRecord\)/);
@@ -746,7 +743,6 @@ test('workflow editor toolbar exposes export alongside execute save and delete',
 });
 
 test('workflow task editor exposes a taller SQL editor with normalization controls', () => {
-  const workflowSource = readFileSync(new URL('./workflowPage.ts', import.meta.url), 'utf8');
   const sqlFormatSource = readFileSync(new URL('./workflow/sqlFormat.ts', import.meta.url), 'utf8');
 
   assert.match(html, /id="btnNormalizeWorkflowSql"[\s\S]*规范化 SQL/);

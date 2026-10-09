@@ -397,7 +397,7 @@ const WORKFLOW_WITH_TASKS = {
           x: 40,
           y: 40,
           params: {},
-          inputs: { grants: { fromTask: null, fromSlot: null, fileId: null, sheet: null } },
+          inputs: { grants: { from: '', slot: '' } },
           dependsOn: [],
         },
         {
@@ -409,7 +409,7 @@ const WORKFLOW_WITH_TASKS = {
           x: 360,
           y: 120,
           params: {},
-          inputs: { source: { fromTask: 'load', fromSlot: 'grants', fileId: null, sheet: null } },
+          inputs: { source: { from: 'load', slot: 'output' } },
           dependsOn: ['load'],
         },
       ],
@@ -434,15 +434,11 @@ test('the workflow page renders the DAG nodes and the dependency edge', async ()
   await new Promise((resolve) => setTimeout(resolve, 350));
 
   const nodes = [...doc.querySelectorAll('.workflow-node[data-task-id]')];
+  assert.ok(doc.querySelector('.workflow-dag__edges'), 'edge layer missing');
   assert.deepEqual(
     nodes.map((node) => node.getAttribute('data-task-id')).sort(),
     ['load', 'transform'],
     'both tasks should render as DAG nodes',
-  );
-  assert.match(
-    doc.querySelector('.workflow-dag__edges')?.innerHTML ?? '',
-    /workflow-edge__path/,
-    'the dependency should render as an edge',
   );
   // Selecting a node drives the inspector.
   nodes
@@ -453,6 +449,13 @@ test('the workflow page renders the DAG nodes and the dependency edge', async ()
     doc.querySelector('.workflow-node[data-task-id="transform"]')?.classList.contains('is-active'),
     'clicking a node should activate it',
   );
+  // The data binding must render as an edge between the two handles (jsdom has no layout, so the
+  // path is degenerate — what matters is that the edge exists and names the target slot).
+  const edges = [...doc.querySelectorAll('.workflow-dag__edges .workflow-edge')];
+  assert.equal(edges.length, 1, `expected one data edge, got ${edges.length}`);
+  assert.equal(edges[0].getAttribute('data-edge-target-task-id'), 'transform');
+  assert.equal(edges[0].getAttribute('data-edge-target-slot'), 'source');
+  assert.match(edges[0].querySelector('.workflow-edge__path')?.getAttribute('d') ?? '', /^M /);
 });
 
 test('switching the UI language re-labels the shell', async () => {

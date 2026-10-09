@@ -67,6 +67,7 @@ import {
   type RuntimeParameterEntry,
 } from './workflow/runtimeParameterPresentation.js';
 import { normalizeWorkflowSqlText } from './workflow/sqlFormat.js';
+import * as dagLayout from './workflow/dagLayout.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
@@ -109,15 +110,21 @@ export function createWorkflowPage({
     return file.displayName || file.originalName;
   }
 
-  const WORKFLOW_NODE_WIDTH = 300;
-  const WORKFLOW_NODE_HEADER_BASE_HEIGHT = 64;
-  const WORKFLOW_SLOT_ROW_MIN_HEIGHT = 34;
-  const WORKFLOW_SLOT_LINE_HEIGHT = 13;
-  const WORKFLOW_SLOT_COLUMN_GAP = 6;
-  const WORKFLOW_CANVAS_PADDING = 48;
-  const WORKFLOW_LAYOUT_COLUMN_GAP = 120;
-  const WORKFLOW_LAYOUT_ROW_GAP = 56;
+  // DAG geometry/layout lives in its own module; these aliases keep the call sites below unchanged.
+  const {
+    getWorkflowTaskMap,
+    getWorkflowControlDependencies,
+    getWorkflowExecutionOrder,
+    getWorkflowNodeBadge,
+    getWorkflowNodeHeight,
+    getEdgePath,
+    applyAutoLayoutToWorkflow,
+  } = dagLayout;
+  const getWorkflowCanvasSize = (workflow: WorkflowDefinition) =>
+    dagLayout.getWorkflowCanvasSize(workflow, getWorkflowOperator);
+
   const WORKFLOW_DRAG_THRESHOLD = 4;
+  const { WORKFLOW_CANVAS_PADDING } = dagLayout;
   const WORKFLOW_PREVIEW_PAGE_SIZE = 20;
   const WORKFLOW_ZOOM_MIN = 0.5;
   const WORKFLOW_ZOOM_MAX = 1.5;
@@ -457,20 +464,6 @@ export function createWorkflowPage({
     renderWorkflowEditor();
   }
 
-  function getWorkflowCanvasSize(workflow: WorkflowDefinition) {
-    const operatorsByTaskId = new Map(workflow.tasks.map((task) => [task.id, getWorkflowOperator(task)]));
-    return {
-      width: Math.max(960, ...workflow.tasks.map((task) => task.x + WORKFLOW_NODE_WIDTH + WORKFLOW_CANVAS_PADDING * 2)),
-      height: Math.max(
-        620,
-        ...workflow.tasks.map(
-          (task) =>
-            task.y + getWorkflowNodeHeight(task, operatorsByTaskId.get(task.id) ?? null) + WORKFLOW_CANVAS_PADDING * 2,
-        ),
-      ),
-    };
-  }
-
   function fitWorkflowCanvas() {
     const workflow = getActiveWorkflow();
     if (!workflow) {
@@ -589,7 +582,7 @@ export function createWorkflowPage({
     if (!workflowDefinitions.find((item) => item.id === workflowRunState.workflowId)) {
       resetWorkflowRunState(activeWorkflowId);
     }
-    applyAutoLayoutToWorkflow(getActiveWorkflow());
+    applyAutoLayoutToWorkflow(getActiveWorkflow(), getWorkflowOperator);
     renderWorkflowList();
     renderWorkflowEditor();
   }
@@ -959,71 +952,6 @@ export function createWorkflowPage({
   function getTaskParameterInputUsages(task: WorkflowTask) {
     const paramInputs = collectWorkflowTaskParamInputUsages(task);
     return { paramInputs };
-  }
-
-  function estimateWorkflowTextLines(value: unknown, charsPerLine: number) {
-    const text = String(value ?? '').trim();
-    if (!text) return 1;
-    return Math.max(1, Math.ceil(text.length / charsPerLine));
-  }
-
-  function getWorkflowNodeBadge(operator: WorkflowOperator | null) {
-    const category = operator?.category ?? 'Transform';
-    const code =
-      category === 'Input'
-        ? 'input'
-        : category === 'Output'
-          ? 'output'
-          : category === 'Validation'
-            ? 'validation'
-            : 'transform';
-    return {
-      code,
-      label: operator?.code ?? 'unknown.operator',
-      title: operator ? `${operator.name} · ${operator.code}` : 'Unknown operator',
-    };
-  }
-
-  function getWorkflowNodeSlotRows(task: WorkflowTask, operator?: WorkflowOperator | null) {
-    const { paramInputs } = getTaskParameterInputUsages(task);
-    const inputSlots = getTaskInputSlots(task, operator).map((slot) => {
-      const binding = task.inputs?.[slot];
-      return {
-        name: slot,
-        binding: binding?.from ? `${binding.from}.${binding.slot}` : 'Not connected',
-      };
-    });
-    const paramRows = paramInputs.map((usage) => ({
-      name: usage.paramPath,
-      binding: usage.kind === 'runtime' ? usage.runtimePath : getWorkflowFileLabel(usage.fileId),
-    }));
-    const inputs = [...inputSlots, ...paramRows];
-    const outputs = getTaskOutputSlots(task, operator).map((slot) => ({ name: slot, binding: '' }));
-    return {
-      inputs,
-      outputs,
-      rowCount: Math.max(inputs.length, outputs.length, 1),
-    };
-  }
-
-  function estimateWorkflowSlotHeight(row: { name: string; binding: string }) {
-    const nameLines = estimateWorkflowTextLines(row.name, 20);
-    const bindingLines = row.binding ? estimateWorkflowTextLines(row.binding, 18) : 0;
-    const contentLines = nameLines + bindingLines;
-    return Math.max(WORKFLOW_SLOT_ROW_MIN_HEIGHT, contentLines * WORKFLOW_SLOT_LINE_HEIGHT + 10);
-  }
-
-  function getWorkflowNodeHeight(task: WorkflowTask, operator?: WorkflowOperator | null) {
-    const { inputs, outputs, rowCount } = getWorkflowNodeSlotRows(task, operator);
-    const taskNameHeight = estimateWorkflowTextLines(task.name, 24) * 16;
-    const metaHeight = estimateWorkflowTextLines(task.id, 42) * 12;
-    const slotHeight = Array.from({ length: rowCount }).reduce<number>((sum, _, index) => {
-      const inputHeight = inputs[index] ? estimateWorkflowSlotHeight(inputs[index]) : WORKFLOW_SLOT_ROW_MIN_HEIGHT;
-      const outputHeight = outputs[index] ? estimateWorkflowSlotHeight(outputs[index]) : WORKFLOW_SLOT_ROW_MIN_HEIGHT;
-      return sum + Math.max(inputHeight, outputHeight);
-    }, 0);
-    const slotGaps = Math.max(0, rowCount - 1) * WORKFLOW_SLOT_COLUMN_GAP;
-    return WORKFLOW_NODE_HEADER_BASE_HEIGHT + taskNameHeight + metaHeight + slotHeight + slotGaps;
   }
 
   function getNestedValueAtPath(source: Record<string, unknown>, path: string): unknown {
@@ -1565,11 +1493,6 @@ export function createWorkflowPage({
     control.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  function getEdgePath(startX: number, startY: number, endX: number, endY: number) {
-    const deltaX = Math.max((endX - startX) * 0.45, 48);
-    return `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`;
-  }
-
   function cssEscape(value: string) {
     if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
       return CSS.escape(value);
@@ -1737,76 +1660,6 @@ export function createWorkflowPage({
     renderWorkflowEditor();
   }
 
-  function getWorkflowTaskMap(workflow: WorkflowDefinition) {
-    return new Map(workflow.tasks.map((task) => [task.id, task]));
-  }
-
-  function getWorkflowDependencyIds(task: WorkflowTask) {
-    const inputDependencies = Object.values(task.inputs ?? {})
-      .map((input) => String(input?.from ?? '').trim())
-      .filter(Boolean);
-    const controlDependencies = Array.isArray(task.dependsOn)
-      ? task.dependsOn.map((taskId) => String(taskId ?? '').trim()).filter(Boolean)
-      : [];
-    return Array.from(new Set([...inputDependencies, ...controlDependencies])).filter((taskId) => taskId !== task.id);
-  }
-
-  function getWorkflowControlDependencies(task: WorkflowTask) {
-    const inputDependencies = new Set(
-      Object.values(task.inputs ?? {})
-        .map((input) => String(input?.from ?? '').trim())
-        .filter(Boolean),
-    );
-    return (Array.isArray(task.dependsOn) ? task.dependsOn : [])
-      .map((taskId) => String(taskId ?? '').trim())
-      .filter((taskId) => taskId && taskId !== task.id && !inputDependencies.has(taskId));
-  }
-
-  function getWorkflowExecutionOrder(workflow: WorkflowDefinition): WorkflowTask[] {
-    const taskMap = getWorkflowTaskMap(workflow);
-    const inDegree = new Map<string, number>();
-    const outgoing = new Map<string, string[]>();
-
-    workflow.tasks.forEach((task) => {
-      inDegree.set(task.id, 0);
-      outgoing.set(task.id, []);
-    });
-
-    workflow.tasks.forEach((task) => {
-      getWorkflowDependencyIds(task).forEach((from) => {
-        if (!from || !taskMap.has(from) || from === task.id) return;
-        outgoing.get(from)?.push(task.id);
-        inDegree.set(task.id, (inDegree.get(task.id) ?? 0) + 1);
-      });
-    });
-
-    const queue = workflow.tasks
-      .filter((task) => (inDegree.get(task.id) ?? 0) === 0)
-      .sort((left, right) => left.x - right.x || left.y - right.y || left.id.localeCompare(right.id))
-      .map((task) => task.id);
-    const ordered: WorkflowTask[] = [];
-    const visited = new Set<string>();
-
-    while (queue.length) {
-      const taskId = queue.shift()!;
-      if (visited.has(taskId)) continue;
-      visited.add(taskId);
-      const task = taskMap.get(taskId);
-      if (task) ordered.push(task);
-      for (const downstreamId of outgoing.get(taskId) ?? []) {
-        inDegree.set(downstreamId, (inDegree.get(downstreamId) ?? 0) - 1);
-        if ((inDegree.get(downstreamId) ?? 0) === 0) queue.push(downstreamId);
-      }
-    }
-
-    workflow.tasks
-      .filter((task) => !visited.has(task.id))
-      .sort((left, right) => left.x - right.x || left.y - right.y || left.id.localeCompare(right.id))
-      .forEach((task) => ordered.push(task));
-
-    return ordered;
-  }
-
   function getWorkflowRunTaskState(taskId: string): WorkflowExecutionTaskState | null {
     if (!activeWorkflowId || workflowRunState.workflowId !== activeWorkflowId || !workflowRunState.isOpen) return null;
     if (workflowRunState.activeTaskId === taskId) return 'running';
@@ -1967,85 +1820,8 @@ export function createWorkflowPage({
     localizeWorkflowDom();
   }
 
-  function applyAutoLayoutToWorkflow(workflow: WorkflowDefinition | null) {
-    if (!workflow || workflow.tasks.length <= 1) return false;
-    const taskMap = getWorkflowTaskMap(workflow);
-    const inDegree = new Map<string, number>();
-    const outgoing = new Map<string, string[]>();
-    const depth = new Map<string, number>();
-
-    workflow.tasks.forEach((task) => {
-      inDegree.set(task.id, 0);
-      outgoing.set(task.id, []);
-      depth.set(task.id, 0);
-    });
-
-    workflow.tasks.forEach((task) => {
-      getWorkflowDependencyIds(task).forEach((from) => {
-        if (!from || !taskMap.has(from) || from === task.id) return;
-        outgoing.get(from)?.push(task.id);
-        inDegree.set(task.id, (inDegree.get(task.id) ?? 0) + 1);
-      });
-    });
-
-    const queue = workflow.tasks
-      .filter((task) => (inDegree.get(task.id) ?? 0) === 0)
-      .sort((left, right) => left.id.localeCompare(right.id))
-      .map((task) => task.id);
-    const visited = new Set<string>();
-
-    while (queue.length) {
-      const taskId = queue.shift()!;
-      visited.add(taskId);
-      const currentDepth = depth.get(taskId) ?? 0;
-      for (const downstreamId of outgoing.get(taskId) ?? []) {
-        depth.set(downstreamId, Math.max(depth.get(downstreamId) ?? 0, currentDepth + 1));
-        inDegree.set(downstreamId, (inDegree.get(downstreamId) ?? 0) - 1);
-        if ((inDegree.get(downstreamId) ?? 0) === 0) {
-          queue.push(downstreamId);
-        }
-      }
-    }
-
-    workflow.tasks.forEach((task) => {
-      if (!visited.has(task.id)) {
-        const fallbackDepth = getWorkflowDependencyIds(task).some((dependencyId) => taskMap.has(dependencyId)) ? 1 : 0;
-        depth.set(task.id, Math.max(depth.get(task.id) ?? 0, fallbackDepth));
-      }
-    });
-
-    const columns = new Map<number, WorkflowTask[]>();
-    workflow.tasks.forEach((task) => {
-      const column = depth.get(task.id) ?? 0;
-      const items = columns.get(column) ?? [];
-      items.push(task);
-      columns.set(column, items);
-    });
-
-    Array.from(columns.entries())
-      .sort((left, right) => left[0] - right[0])
-      .forEach(([column, tasks]) => {
-        tasks
-          .sort((left, right) => left.y - right.y || left.x - right.x || left.id.localeCompare(right.id))
-          .forEach((task, rowIndex) => {
-            task.x = WORKFLOW_CANVAS_PADDING + column * (WORKFLOW_NODE_WIDTH + WORKFLOW_LAYOUT_COLUMN_GAP);
-            task.y =
-              WORKFLOW_CANVAS_PADDING +
-              tasks
-                .slice(0, rowIndex)
-                .reduce(
-                  (sum, current) =>
-                    sum + getWorkflowNodeHeight(current, getWorkflowOperator(current)) + WORKFLOW_LAYOUT_ROW_GAP,
-                  0,
-                );
-          });
-      });
-
-    return true;
-  }
-
   function autoLayoutActiveWorkflow() {
-    if (!applyAutoLayoutToWorkflow(getActiveWorkflow())) return;
+    if (!applyAutoLayoutToWorkflow(getActiveWorkflow(), getWorkflowOperator)) return;
     activeWorkflowPreview = null;
     workflowPreviewPage = 1;
     fitWorkflowCanvas();
