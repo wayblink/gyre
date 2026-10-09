@@ -706,3 +706,66 @@ test('the 5% holders page swaps its numbers for inline inputs in edit mode', asy
     'cancelling must not persist anything',
   );
 });
+
+test('the workflow runtime parameter panel renders its groups and file pickers', async () => {
+  const window = await bootApp(
+    [
+      ...API_STUBS,
+      ...WORKFLOW_STUBS,
+      { match: /\/api\/workflows$/, respond: WORKFLOW_WITH_TASKS },
+      { match: /\/api\/operators$/, respond: { items: [] } },
+      {
+        // Give the workflow a runtime schema so the panel has something to render.
+        match: /\/api\/workflows$/,
+        respond: {
+          items: [
+            {
+              ...WORKFLOW_WITH_TASKS.items[0],
+              runtimeParamsSchema: {
+                sheetName: { type: 'string', label: 'Sheet' },
+                pageSize: { type: 'number', label: 'Page size' },
+                strict: { type: 'boolean', label: 'Strict' },
+                fileRefs: {
+                  type: 'object',
+                  label: 'Files',
+                  properties: {
+                    grants: { type: 'object', label: 'Grants file' },
+                  },
+                },
+              },
+              runtimeParamsDefaults: { sheetName: 'Grants', pageSize: 50, strict: true },
+            },
+          ],
+          total: 1,
+        },
+      },
+    ],
+    120,
+  );
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('.nav-item[data-page="workflow"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 350));
+
+  const summary = doc.getElementById('workflowRuntimeParamsSummary');
+  assert.ok(summary, 'runtime params summary missing');
+  assert.ok(!summary.classList.contains('hidden'), 'the panel should be visible');
+  // One control per parameter, typed by its schema entry.
+  const controls = [...doc.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]')];
+  assert.deepEqual(controls.map((control) => control.dataset.runtimeDefaultType).sort(), [
+    'boolean',
+    'fileRef',
+    'number',
+    'string',
+  ]);
+  assert.equal(
+    (controls.find((control) => control.dataset.runtimeDefaultType === 'string') as HTMLInputElement)?.value,
+    'Grants',
+    'the default value should be prefilled',
+  );
+  // The raw JSON view carries both halves.
+  assert.match(doc.querySelector('[data-workflow-runtime-json="schema"]')?.textContent ?? '', /"sheetName"/);
+  assert.match(doc.querySelector('[data-workflow-runtime-json="defaults"]')?.textContent ?? '', /"pageSize": 50/);
+  // The fileRef parameter renders the picker trigger, not a bare hidden input only.
+  assert.ok(doc.querySelector('[data-file-pick-open]'), 'file pick trigger missing');
+});

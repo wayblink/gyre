@@ -2,7 +2,6 @@ import type {
   WorkflowExecutionResult,
   WorkflowExecutionTaskState,
   WorkflowRunState,
-  ProductFileDetail,
   ProductFileRecord,
   WorkflowAssertFailureStrategy,
   WorkflowAssertionResult,
@@ -56,30 +55,20 @@ import {
   normalizeSqlTask,
   normalizeTaskDependencies,
 } from './workflow/taskOperators.js';
-import {
-  buildRuntimeInputFileItems,
-  isRuntimeFileParameter,
-  isRuntimeInputFileParameter,
-  shouldRerenderRuntimeDefaultControl,
-  type RuntimeInputFileItem,
-  type RuntimeParameterEntry,
-} from './workflow/runtimeParameterPresentation.js';
 import { normalizeWorkflowSqlText } from './workflow/sqlFormat.js';
 import * as dagLayout from './workflow/dagLayout.js';
 import * as taskParams from './workflow/taskParams.js';
 import { createWorkflowRunPanel, workflowRunTaskState } from './workflow/runPanel.js';
+import { createRuntimeParamsPanel } from './workflow/runtimeParamsPanel.js';
 import {
   cloneJson,
   createRuntimeDefaultsDisplay,
   flattenWorkflowRuntimeSchema,
-  getNestedValueAtPath,
   runtimeProductFileId as runtimeProductFileIdWithFiles,
   setWorkflowRuntimeDefaultFileId as setWorkflowRuntimeDefaultFileIdWithFiles,
   setWorkflowRuntimeDefaultString,
-  stringifyWorkflowJson,
   syncRuntimeDefaultControlToWorkflow as syncRuntimeDefaultControlWithFiles,
   workflowRuntimeDefaultFileId as workflowRuntimeDefaultFileIdWithFiles,
-  workflowRuntimeDefaultString,
 } from './workflow/runtimeDefaults.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
@@ -151,6 +140,41 @@ export function createWorkflowPage({
   const getSqlInputSlots = (task: WorkflowTask) => taskParams.getSqlInputSlots(task);
   const getCustomParamKeys = (task: WorkflowTask) => taskParams.getCustomParamKeys(task);
   const hasCustomStructuredParams = (task: WorkflowTask) => taskParams.hasCustomStructuredParams(task);
+
+  // The runtime-parameters panel owns its own rendering, control sync and sheet hydration.
+  const runtimeParamsPanel = createRuntimeParamsPanel(
+    {
+      el,
+      api,
+      escapeHtml,
+      notify,
+      getProductFiles: files,
+      productFileDisplayName,
+      openFilePicker: (options) => filePicker.open(options),
+    },
+    {
+      getWorkflow: getActiveWorkflow,
+      getActiveTaskId: () => activeWorkflowTaskId,
+      getCollapsed: () => isWorkflowRuntimeParamsCollapsed,
+      setCollapsed: (collapsed: boolean) => {
+        isWorkflowRuntimeParamsCollapsed = collapsed;
+      },
+      localizeDom: localizeWorkflowDom,
+      resetRunState: (workflowId: number) => resetWorkflowRunState(workflowId),
+      rerenderEditor: renderWorkflowEditor,
+      runtimeFileId,
+      runtimeDefaultFileId,
+      setRuntimeDefaultFileId,
+      syncRuntimeDefaultControl,
+      formatRuntimeDefaultDisplay,
+      formatRuntimeFileSelectionLabel,
+      hydrateSheetControl: (control, workflow) => runtimeParamsPanel.hydrateSheetControl(control, workflow),
+    },
+  );
+  const renderWorkflowRuntimeParamsSummary = (workflow: WorkflowDefinition | null) =>
+    runtimeParamsPanel.render(workflow);
+  const hydrateStructuredRuntimeSheetControl = (task: WorkflowTask) =>
+    runtimeParamsPanel.hydrateStructuredSheetControl(task);
 
   // The run panel is a pure projection of the run state onto the DOM.
   const runPanel = createWorkflowRunPanel({
@@ -1010,345 +1034,6 @@ export function createWorkflowPage({
   function formatRuntimeFileSelectionLabel(runtimePath: string): string {
     const label = getRuntimeParameterLabel(runtimePath);
     return label === runtimePath ? `Default file · ${runtimePath}` : `Default file · ${label}`;
-  }
-
-  function renderRuntimeDefaultEditor(entry: { path: string; type: string }, value: unknown) {
-    const pathAttr = escapeHtml(entry.path);
-    if (isRuntimeFileParameter(entry)) {
-      const currentValue = runtimeFileId(value);
-      const file = currentValue ? getProductFiles().find((item) => item.id === currentValue) : undefined;
-      const label = file ? productFileDisplayName(file) : '未设置默认文件';
-      const detail = file ? `${file.logicalPath ?? file.displayPath} · #${file.id}` : '点击选择文件';
-      return `
-        <div class="workflow-runtime-summary__filepick" data-file-pick>
-          <input type="hidden" class="workflow-runtime-summary__control" value="${currentValue ?? ''}" data-runtime-default-path="${pathAttr}" data-runtime-default-type="fileRef">
-          <button type="button" class="workflow-runtime-summary__filepick-trigger" data-file-pick-open title="${escapeHtml(detail)}">
-            <span class="workflow-runtime-summary__filepick-name">${escapeHtml(label)}</span>
-            <span class="workflow-runtime-summary__filepick-path">${escapeHtml(detail)}</span>
-          </button>
-        </div>`;
-    }
-    if (entry.type === 'number') {
-      return `<input class="workflow-runtime-summary__control" type="number" value="${escapeHtml(value ?? '')}" data-runtime-default-path="${pathAttr}" data-runtime-default-type="number">`;
-    }
-    if (entry.type === 'boolean') {
-      return `
-        <select class="workflow-runtime-summary__control" data-runtime-default-path="${pathAttr}" data-runtime-default-type="boolean">
-          <option value="">No default</option>
-          <option value="true"${value === true ? ' selected' : ''}>true</option>
-          <option value="false"${value === false ? ' selected' : ''}>false</option>
-        </select>`;
-    }
-    return `<input class="workflow-runtime-summary__control" value="${escapeHtml(value ?? '')}" data-runtime-default-path="${pathAttr}" data-runtime-default-type="string">`;
-  }
-
-  function renderWorkflowRuntimeParameterItem(workflow: WorkflowDefinition, entry: RuntimeParameterEntry) {
-    const rawDefaultValue = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, entry.path);
-    const defaultValue = formatRuntimeDefaultDisplay(entry, rawDefaultValue);
-    return `
-      <div class="workflow-runtime-summary__item">
-        <div class="workflow-runtime-summary__item-top">
-          <span class="workflow-runtime-summary__path">${escapeHtml(entry.path)}</span>
-          <span class="workflow-runtime-summary__type">${escapeHtml(entry.type)}</span>
-          ${entry.required ? '<span class="workflow-runtime-summary__required">required</span>' : ''}
-        </div>
-        <div class="workflow-runtime-summary__default">default: ${escapeHtml(defaultValue)}</div>
-        ${renderRuntimeDefaultEditor(entry, rawDefaultValue)}
-      </div>`;
-  }
-
-  function renderRuntimeSheetEditor(
-    workflow: WorkflowDefinition,
-    fileEntry: RuntimeParameterEntry,
-    sheetEntry: RuntimeParameterEntry,
-  ) {
-    const fileId = runtimeDefaultFileId(workflow, fileEntry.path);
-    const currentSheet = getNestedValueAtPath(
-      workflow.runtimeParamsDefaults as Record<string, unknown>,
-      sheetEntry.path,
-    );
-    const currentSheetName = typeof currentSheet === 'string' ? currentSheet : '';
-    const options = fileId
-      ? `<option value="${escapeHtml(currentSheetName)}">Loading sheets...</option>`
-      : '<option value="">Select a file first</option>';
-    return `
-      <label class="workflow-runtime-summary__linked-field">
-        <span>${escapeHtml(sheetEntry.label)}</span>
-        <select
-          class="workflow-runtime-summary__control"
-          data-runtime-default-path="${escapeHtml(sheetEntry.path)}"
-          data-runtime-default-type="string"
-          data-runtime-sheet-file-path="${escapeHtml(fileEntry.path)}"
-          ${fileId ? '' : 'disabled'}
-        >${options}</select>
-      </label>`;
-  }
-
-  function renderWorkflowRuntimeInputFileItem(workflow: WorkflowDefinition, item: RuntimeInputFileItem) {
-    const fileDefault = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, item.file.path);
-    return `
-      <div class="workflow-runtime-summary__item workflow-runtime-summary__item--input-source">
-        <div class="workflow-runtime-summary__item-top">
-          <span class="workflow-runtime-summary__path">${escapeHtml(item.file.label)}</span>
-          <span class="workflow-runtime-summary__type">${item.sheet ? 'file + sheet' : 'file'}</span>
-          ${item.file.required || item.sheet?.required ? '<span class="workflow-runtime-summary__required">required</span>' : ''}
-        </div>
-        <div class="workflow-runtime-summary__technical-path">
-          ${escapeHtml(item.file.path)}${item.sheet ? ` · ${escapeHtml(item.sheet.path)}` : ''}
-        </div>
-        <label class="workflow-runtime-summary__linked-field">
-          <span>Workbook</span>
-          ${renderRuntimeDefaultEditor(item.file, fileDefault)}
-        </label>
-        ${item.sheet ? renderRuntimeSheetEditor(workflow, item.file, item.sheet) : ''}
-      </div>`;
-  }
-
-  function renderWorkflowRuntimeParameterGroup(
-    title: string,
-    description: string,
-    entries: Array<{ path: string; required: boolean; type: string; label: string }>,
-    workflow: WorkflowDefinition,
-  ) {
-    if (!entries.length) return '';
-    return `
-      <section class="workflow-runtime-summary__group">
-        <div class="workflow-runtime-summary__group-header">
-          <div>
-            <div class="workflow-runtime-summary__group-title">${escapeHtml(title)}</div>
-            <div class="workflow-runtime-summary__group-description">${escapeHtml(description)}</div>
-          </div>
-          <span class="workflow-runtime-summary__group-count">${entries.length}</span>
-        </div>
-        <div class="workflow-runtime-summary__list">
-          ${entries.map((entry) => renderWorkflowRuntimeParameterItem(workflow, entry)).join('')}
-        </div>
-      </section>`;
-  }
-
-  function renderWorkflowRuntimeInputFilesGroup(items: RuntimeInputFileItem[], workflow: WorkflowDefinition) {
-    if (!items.length) return '';
-    return `
-      <section class="workflow-runtime-summary__group">
-        <div class="workflow-runtime-summary__group-header">
-          <div>
-            <div class="workflow-runtime-summary__group-title">Input Sources 输入源</div>
-            <div class="workflow-runtime-summary__group-description">Each workbook is configured together with its related Sheet when required.</div>
-          </div>
-          <span class="workflow-runtime-summary__group-count">${items.length}</span>
-        </div>
-        <div class="workflow-runtime-summary__list">
-          ${items.map((item) => renderWorkflowRuntimeInputFileItem(workflow, item)).join('')}
-        </div>
-      </section>`;
-  }
-
-  async function hydrateRuntimeSheetControl(control: HTMLSelectElement, workflow: WorkflowDefinition) {
-    const filePath = control.dataset.runtimeSheetFilePath ?? '';
-    const sheetPath = control.dataset.runtimeDefaultPath ?? '';
-    const fileId = runtimeDefaultFileId(workflow, filePath);
-    if (!fileId || !sheetPath) return;
-    try {
-      const detail = await api<ProductFileDetail>(`/api/files/${fileId}`);
-      if (!control.isConnected) return;
-      const current = getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, sheetPath);
-      const currentName = typeof current === 'string' ? current : '';
-      control.innerHTML = [
-        '<option value="">Select sheet</option>',
-        ...detail.sheets.map(
-          (sheet) => `<option value="${escapeHtml(sheet.sheetName)}">${escapeHtml(sheet.sheetName)}</option>`,
-        ),
-      ].join('');
-      control.value = detail.sheets.some((sheet) => sheet.sheetName === currentName) ? currentName : '';
-      control.disabled = false;
-    } catch {
-      if (!control.isConnected) return;
-      control.innerHTML = '<option value="">Unable to load sheets</option>';
-      control.disabled = true;
-    }
-  }
-
-  async function hydrateStructuredRuntimeSheetControl(task: WorkflowTask) {
-    const workflow = getActiveWorkflow();
-    if (!workflow || !isWorkflowRuntimeParameterReference(task.params.sheetName)) return;
-    const sheetPath = task.params.sheetName.$fromRuntime;
-    const filePath = getWorkflowFileParamRuntimePath(task.params.fileRef ?? task.params.fileId);
-    const sheetSelect = el<HTMLSelectElement>('workflowPreviewSheetSelect');
-    if (!filePath) {
-      sheetSelect.innerHTML = '<option value="">Select a runtime file first</option>';
-      sheetSelect.disabled = true;
-      return;
-    }
-
-    const fileId = runtimeDefaultFileId(workflow, filePath);
-    if (!fileId) {
-      sheetSelect.innerHTML = '<option value="">Select a file first</option>';
-      sheetSelect.disabled = true;
-      return;
-    }
-
-    const currentSheet =
-      workflowRuntimeDefaultString(workflow, sheetPath) ||
-      (typeof task.params.sheetName.$default === 'string' ? task.params.sheetName.$default : '');
-    sheetSelect.innerHTML = `<option value="${escapeHtml(currentSheet)}">Loading sheets...</option>`;
-    sheetSelect.disabled = true;
-    try {
-      const detail = await api<ProductFileDetail>(`/api/files/${fileId}`);
-      if (!sheetSelect.isConnected || getActiveWorkflowTask()?.id !== task.id) return;
-      sheetSelect.innerHTML = [
-        '<option value="">Select sheet</option>',
-        ...detail.sheets.map(
-          (sheet) => `<option value="${escapeHtml(sheet.sheetName)}">${escapeHtml(sheet.sheetName)}</option>`,
-        ),
-      ].join('');
-      sheetSelect.value = detail.sheets.some((sheet) => sheet.sheetName === currentSheet) ? currentSheet : '';
-      sheetSelect.disabled = false;
-    } catch {
-      if (!sheetSelect.isConnected) return;
-      sheetSelect.innerHTML = '<option value="">Unable to load sheets</option>';
-      sheetSelect.disabled = true;
-    }
-  }
-
-  function syncRuntimeDefaultFromControl(control: HTMLInputElement | HTMLSelectElement) {
-    const workflow = getActiveWorkflow();
-    if (!workflow) return;
-    if (!syncRuntimeDefaultControl(workflow, control)) return;
-    resetWorkflowRunState(workflow.id);
-    if (shouldRerenderRuntimeDefaultControl(control.dataset.runtimeDefaultType ?? '')) {
-      renderWorkflowRuntimeParamsSummary(workflow);
-    }
-  }
-
-  function applyRuntimeJsonFromTextareas() {
-    const workflow = getActiveWorkflow();
-    if (!workflow) return;
-    try {
-      const schema = JSON.parse(
-        (document.querySelector('[data-workflow-runtime-json="schema"]') as HTMLTextAreaElement | null)?.value || '{}',
-      ) as WorkflowDefinition['runtimeParamsSchema'];
-      const defaults = JSON.parse(
-        (document.querySelector('[data-workflow-runtime-json="defaults"]') as HTMLTextAreaElement | null)?.value ||
-          '{}',
-      ) as WorkflowDefinition['runtimeParamsDefaults'];
-      workflow.runtimeParamsSchema = schema;
-      workflow.runtimeParamsDefaults = defaults;
-      resetWorkflowRunState(workflow.id);
-      renderWorkflowEditor();
-      notify('Runtime parameters 已应用，点击 Save 后保存到工作流', { type: 'success' });
-    } catch (error) {
-      notify(`Runtime parameters JSON 格式错误：${(error as Error).message}`, { type: 'error' });
-    }
-  }
-
-  function renderWorkflowRuntimeParamsSummary(workflow: WorkflowDefinition | null) {
-    const container = el('workflowRuntimeParamsSummary');
-    if (!workflow) {
-      container.classList.add('hidden');
-      container.innerHTML = '';
-      return;
-    }
-
-    const entries = flattenWorkflowRuntimeSchema(workflow.runtimeParamsSchema);
-    const fileEntries = entries.filter((entry) => isRuntimeInputFileParameter(entry));
-    const constantEntries = entries.filter((entry) => !isRuntimeInputFileParameter(entry));
-    const inputFileItems = buildRuntimeInputFileItems(fileEntries);
-    const groupedEntriesHtml = [
-      renderWorkflowRuntimeParameterGroup(
-        'Constants 常量',
-        'Workflow execution constants and fixed business values.',
-        constantEntries,
-        workflow,
-      ),
-      renderWorkflowRuntimeInputFilesGroup(inputFileItems, workflow),
-    ].join('');
-
-    container.classList.remove('hidden');
-    container.classList.toggle('is-collapsed', isWorkflowRuntimeParamsCollapsed);
-    container.innerHTML = `
-      <div class="workflow-runtime-summary__header">
-        <button
-          class="workflow-runtime-summary__toggle"
-          type="button"
-          aria-expanded="${String(!isWorkflowRuntimeParamsCollapsed)}"
-          data-workflow-runtime-toggle
-        >
-          <span class="workflow-runtime-summary__chevron" aria-hidden="true">▸</span>
-          <span class="workflow-runtime-summary__title">运行时参数</span>
-          <span class="workflow-runtime-summary__summary">${entries.length} 项参数</span>
-        </button>
-        <button class="btn btn-secondary btn-sm workflow-runtime-summary__apply" type="button" data-workflow-runtime-json-apply>应用 JSON</button>
-      </div>
-      <div class="workflow-runtime-summary__body">
-        ${
-          entries.length
-            ? `<div class="workflow-runtime-summary__groups">${groupedEntriesHtml}</div>`
-            : '<div class="workflow-runtime-summary__empty">暂无运行时参数配置</div>'
-        }
-        <details class="workflow-runtime-summary__raw">
-          <summary>运行时参数 JSON</summary>
-          <div class="workflow-runtime-summary__raw-grid">
-            <label>
-              <span>schema</span>
-              <textarea class="workflow-runtime-summary__raw-textarea" spellcheck="false" data-workflow-runtime-json="schema">${escapeHtml(
-                stringifyWorkflowJson(workflow.runtimeParamsSchema),
-              )}</textarea>
-            </label>
-            <label>
-              <span>defaults</span>
-              <textarea class="workflow-runtime-summary__raw-textarea" spellcheck="false" data-workflow-runtime-json="defaults">${escapeHtml(
-                stringifyWorkflowJson(workflow.runtimeParamsDefaults),
-              )}</textarea>
-            </label>
-          </div>
-        </details>
-      </div>
-    `;
-
-    container.querySelector<HTMLElement>('[data-workflow-runtime-toggle]')?.addEventListener('click', () => {
-      isWorkflowRuntimeParamsCollapsed = !isWorkflowRuntimeParamsCollapsed;
-      renderWorkflowRuntimeParamsSummary(workflow);
-    });
-
-    container
-      .querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-runtime-default-path]')
-      .forEach((control) => {
-        control.addEventListener('change', () => syncRuntimeDefaultFromControl(control));
-        control.addEventListener('input', () => {
-          if (control instanceof HTMLInputElement) syncRuntimeDefaultFromControl(control);
-        });
-      });
-    container.querySelectorAll<HTMLSelectElement>('[data-runtime-sheet-file-path]').forEach((control) => {
-      void hydrateRuntimeSheetControl(control, workflow);
-    });
-    container.querySelectorAll<HTMLElement>('[data-file-pick-open]').forEach((trigger) => {
-      trigger.addEventListener('click', () => void openRuntimeFilePicker(trigger));
-    });
-    container
-      .querySelector<HTMLElement>('[data-workflow-runtime-json-apply]')
-      ?.addEventListener('click', applyRuntimeJsonFromTextareas);
-    localizeWorkflowDom();
-  }
-
-  /**
-   * The picker only writes the file id into the hidden control and fires `change`, so the existing
-   * sync → re-render → sheet hydration path stays the single source of truth.
-   */
-  async function openRuntimeFilePicker(trigger: HTMLElement) {
-    const control = trigger
-      .closest('[data-file-pick]')
-      ?.querySelector<HTMLInputElement>('input[data-runtime-default-type="fileRef"]');
-    if (!control) return;
-    const currentFileId = control.value ? Number(control.value) : null;
-    const result = await filePicker.open({
-      titleKey: 'defaultFileTitle',
-      currentFileId,
-      allowClear: true,
-      uploadFolderPrefix: 'input',
-    });
-    if (!result) return;
-    control.value = result.action === 'pick' ? String(result.fileId) : '';
-    control.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   function cssEscape(value: string) {

@@ -172,12 +172,14 @@ test('workflow editor picks files through a tree picker that can upload and move
   assert.match(fileRow, /id="workflowPreviewFilePickTrigger"/);
 
   assert.match(workflowPageSource, /createFilePickerModal\(/);
-  assert.match(workflowPageSource, /data-file-pick-open/);
+  // The runtime-parameters panel renders the hidden fileRef control and drives the picker itself.
+  const runtimePanelSource = readFileSync(new URL('./workflow/runtimeParamsPanel.ts', import.meta.url), 'utf8');
+  assert.match(runtimePanelSource, /data-file-pick-open/);
   assert.match(
-    workflowPageSource,
+    runtimePanelSource,
     /type="hidden" class="workflow-runtime-summary__control"[^`]*data-runtime-default-type="fileRef"/,
   );
-  assert.match(workflowPageSource, /control\.dispatchEvent\(new Event\('change', \{ bubbles: true \}\)\)/);
+  assert.match(runtimePanelSource, /control\.dispatchEvent\(new Event\('change', \{ bubbles: true \}\)\)/);
   assert.match(
     filePickerModalSource,
     /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/,
