@@ -35,6 +35,7 @@ import type { AccountProfile } from '../shared/types.js';
 import { createFilesPage } from './filesPage.js';
 import { createFilePickerModal } from './filePickerModal.js';
 import { createMonthlyRunPage } from './monthlyRunPage.js';
+import { createWorkflowUpdateModal, type WorkflowUpdatePageKey } from './workflowUpdateModal.js';
 import {
   applyThemeSelection,
   COLOR_OPTIONS,
@@ -149,41 +150,6 @@ let editingEmployeeLabelIds: number[] = [];
 let mergeSourceEmployeeId: number | null = null;
 const DEFAULT_EMPLOYEE_LABEL_COLOR = '#2563eb';
 
-type WorkflowUpdatePageKey =
-  | 'grant-record'
-  | 'exercise-record'
-  | 'sold-shares'
-  | 'transfer-plan'
-  | 'employee-management'
-  | 'plan-summary'
-  | 'five-percent-holders';
-
-type WorkflowUpdateKind = 'esop' | 'data-management';
-
-const workflowUpdatePageKinds: Record<WorkflowUpdatePageKey, WorkflowUpdateKind> = {
-  'grant-record': 'esop',
-  'exercise-record': 'esop',
-  'sold-shares': 'esop',
-  'transfer-plan': 'esop',
-  'employee-management': 'data-management',
-  'plan-summary': 'data-management',
-  'five-percent-holders': 'data-management',
-};
-
-const workflowSourceBindingsByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowPageSourceBinding[]>> = {};
-const workflowResultFilesByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowResultFileBinding[]>> = {};
-let workflowUpdateConfigs: Partial<Record<WorkflowUpdatePageKey, WorkflowPageConfig>> = {};
-let activeWorkflowUpdatePage: WorkflowUpdatePageKey | null = null;
-let workflowUpdateSelectedFiles: Record<string, number | null> = {};
-let workflowUpdateSelectedSheets: Record<string, string> = {};
-let workflowUpdateModalCloseLocked = false;
-const workflowUpdateReachedStepStatuses = new Set<WorkflowExecutionTaskState>([
-  'completed',
-  'failed',
-  'blocked',
-  'warning',
-  'skipped',
-]);
 const fivePercentHolderGlobalParameterKeys = {
   gniCommonStock: 'fivePercentHoldersGniCommonStock',
   gniTotalCses: 'fivePercentHoldersGniTotalCses',
@@ -242,6 +208,38 @@ const docsPage = createDocsPage({
   el,
   getLanguage: () => currentLanguage,
   isAdmin: () => isAdminUser(),
+});
+
+/** Re-render the page whose workflow just ran (the modal calls back into this). */
+async function refreshWorkflowUpdatePage(page: WorkflowUpdatePageKey) {
+  if (page === 'grant-record') {
+    await renderHoldingsPage(currentMonth);
+  } else if (page === 'exercise-record') {
+    await renderExerciseRecords();
+  } else if (page === 'sold-shares') {
+    await renderSoldShares();
+  } else if (page === 'transfer-plan') {
+    await renderTransferPlan();
+  } else if (page === 'employee-management') {
+    await loadEmployeesPage();
+  } else if (page === 'plan-summary') {
+    await renderPlanSummaryPage(currentMonth);
+  } else if (page === 'five-percent-holders') {
+    await renderFivePercentHoldersPage();
+  }
+}
+
+const workflowUpdateModal = createWorkflowUpdateModal({
+  el,
+  api,
+  escapeHtml,
+  notify,
+  getLanguage: () => currentLanguage,
+  getProductFiles: () => filesPage.getProductFiles(),
+  refreshProductFiles: () => filesPage.refreshProductFiles(),
+  openFilePicker: (options) => filePicker.open(options),
+  productFileDisplayName,
+  refreshPage: (page) => refreshWorkflowUpdatePage(page),
 });
 
 const monthlyRunPage = createMonthlyRunPage({
@@ -336,414 +334,9 @@ function setWorkflowPageFiles(
 ) {
   setPageResultFiles(page, responseResultFiles(response));
   setPageInputSourceFiles(page, response.sourceFiles ?? []);
-  if (isWorkflowUpdatePage(page)) {
-    if (response.workflowSourceBindings) workflowSourceBindingsByPage[page] = response.workflowSourceBindings;
-    if (response.workflowResultFiles) workflowResultFilesByPage[page] = response.workflowResultFiles;
+  if (workflowUpdateModal.isWorkflowUpdatePage(page)) {
+    workflowUpdateModal.rememberPageData(page, response);
   }
-}
-
-function isWorkflowUpdatePage(page: string): page is WorkflowUpdatePageKey {
-  return Object.prototype.hasOwnProperty.call(workflowUpdatePageKinds, page);
-}
-
-function workflowUpdateConfigEndpoint(kind: WorkflowUpdateKind) {
-  return kind === 'esop' ? '/api/esop-workflows' : '/api/data-management-workflows';
-}
-
-function workflowUpdateRunEndpoint(page: WorkflowUpdatePageKey) {
-  const kind = workflowUpdatePageKinds[page];
-  const apiPageKey = page === 'employee-management' ? 'employee' : page;
-  return kind === 'esop'
-    ? `/api/esop-workflows/${apiPageKey}/runs`
-    : `/api/data-management-workflows/${apiPageKey}/runs`;
-}
-
-async function loadWorkflowUpdateConfigs() {
-  const [esop, dataManagement] = await Promise.all([
-    api<{ items: WorkflowPageConfig[] }>(workflowUpdateConfigEndpoint('esop')),
-    api<{ items: WorkflowPageConfig[] }>(workflowUpdateConfigEndpoint('data-management')),
-  ]);
-  workflowUpdateConfigs = Object.fromEntries(
-    [...esop.items, ...dataManagement.items]
-      .map((config) => (config.pageKey === 'employee' ? { ...config, pageKey: 'employee-management' } : config))
-      .filter((config) => isWorkflowUpdatePage(config.pageKey))
-      .map((config) => [config.pageKey, config]),
-  ) as Partial<Record<WorkflowUpdatePageKey, WorkflowPageConfig>>;
-}
-
-function getWorkflowUpdateConfig(page: WorkflowUpdatePageKey): WorkflowPageConfig {
-  const config = workflowUpdateConfigs[page];
-  if (!config) throw new Error(`Missing workflow config for ${page}`);
-  return config;
-}
-
-function workflowUpdateBindingFor(page: WorkflowUpdatePageKey, sourceKey: string): WorkflowPageSourceBinding | null {
-  return workflowSourceBindingsByPage[page]?.find((binding) => binding.sourceKey === sourceKey) ?? null;
-}
-
-function renderWorkflowUpdateModalSources() {
-  const page = activeWorkflowUpdatePage;
-  if (!page) return;
-  const config = getWorkflowUpdateConfig(page);
-  el('workflowUpdateSourceList').innerHTML = config.sources
-    .map((source) => {
-      const selectedFileId = workflowUpdateSelectedFiles[source.sourceKey] ?? null;
-      const previous = workflowUpdateBindingFor(page, source.sourceKey);
-      const selected = selectedFileId ? filesPage.getProductFiles().find((file) => file.id === selectedFileId) : null;
-      const pickLabel = selected
-        ? productFileDisplayName(selected)
-        : currentLanguage === 'zh-CN'
-          ? '选择文件…'
-          : 'Select file…';
-      const ruleNote =
-        page === 'plan-summary'
-          ? currentLanguage === 'zh-CN'
-            ? '说明：仅显示 Outstanding 不为 0 的计划。'
-            : 'Note: only plans with non-zero Outstanding are shown.'
-          : '';
-      return `
-        <div class="workflow-update-source-card" data-workflow-update-source="${escapeHtml(source.sourceKey)}">
-          <div class="workflow-update-source-card__main">
-            <div class="workflow-update-source-card__title">${escapeHtml(source.label)}</div>
-            <div class="workflow-update-source-card__meta">Source key: ${escapeHtml(source.sourceKey)}</div>
-            <div class="workflow-update-source-card__meta">Previous: ${escapeHtml(previous?.fileName ?? 'Not set')}</div>
-            ${ruleNote ? `<div class="workflow-update-source-card__note">${escapeHtml(ruleNote)}</div>` : ''}
-          </div>
-          <div class="workflow-update-source-card__controls">
-            <button
-              class="btn btn-secondary workflow-update-source-card__pick"
-              type="button"
-              data-workflow-update-file-pick="${escapeHtml(source.sourceKey)}"
-              aria-haspopup="dialog"
-              title="${t('chooseFromFilesCenter')}"
-            >
-              <span class="workbook-tree__folder-icon" aria-hidden="true"></span>
-              <span class="workflow-update-source-card__pick-label">${escapeHtml(pickLabel)}</span>
-            </button>
-            ${
-              source.sheet !== undefined || previous?.sheet
-                ? `<label class="workflow-update-source-card__sheet">
-                  <span class="workflow-update-source-card__sheet-label">Sheet</span>
-                  <input class="workflow-update-source-card__sheet-input" type="text" data-workflow-update-sheet="${escapeHtml(source.sourceKey)}" value="${escapeHtml(workflowUpdateSelectedSheets[source.sourceKey] ?? previous?.sheet ?? source.sheet ?? '')}" />
-                </label>`
-                : ''
-            }
-          </div>
-        </div>`;
-    })
-    .join('');
-
-  el('workflowUpdateSourceList')
-    .querySelectorAll<HTMLButtonElement>('[data-workflow-update-file-pick]')
-    .forEach((button) => {
-      button.addEventListener('click', () => {
-        const sourceKey = button.dataset.workflowUpdateFilePick;
-        if (!sourceKey) return;
-        void openWorkflowUpdateFilePicker(sourceKey);
-      });
-    });
-  el('workflowUpdateSourceList')
-    .querySelectorAll<HTMLInputElement>('[data-workflow-update-sheet]')
-    .forEach((input) => {
-      input.addEventListener('input', () => {
-        const sourceKey = input.dataset.workflowUpdateSheet;
-        if (sourceKey) workflowUpdateSelectedSheets[sourceKey] = input.value;
-      });
-    });
-}
-
-/**
- * Opens the shared folder-grouped tree picker (same UI as the Files Center / Workflow page) so the
- * ESOP update modal no longer relies on a flat native <select>. Uploads and moves happen inside the
- * picker; here we only write the chosen file id back into the selection state and re-render.
- */
-async function openWorkflowUpdateFilePicker(sourceKey: string) {
-  const currentFileId = workflowUpdateSelectedFiles[sourceKey] ?? null;
-  const result = await filePicker.open({
-    titleKey: 'fileSourceTitle',
-    currentFileId,
-    allowClear: true,
-    uploadFolderPrefix: 'input',
-  });
-  if (!result) return;
-  workflowUpdateSelectedFiles[sourceKey] = result.action === 'pick' ? result.fileId : null;
-  renderWorkflowUpdateModalSources();
-  if (result.action === 'pick') {
-    const file = filesPage.getProductFiles().find((item) => item.id === result.fileId);
-    if (file) {
-      el('workflowUpdateStatus').textContent = `${t('selected')}: ${productFileDisplayName(file)}`;
-    }
-  }
-}
-
-function workflowUpdateStatusMessage(
-  key: 'idle' | 'starting' | 'running' | 'completed' | 'completedWithWarnings' | 'failed',
-  detail?: string,
-): string {
-  const copy: Record<typeof key, Record<AppLanguage, string>> = {
-    idle: {
-      'zh-CN': '默认使用上一次成功执行的输入文件；上传新文件后会自动替换当前输入项。',
-      'en-US': 'The last successful input files are used by default; uploaded files replace the current input.',
-    },
-    starting: { 'zh-CN': '正在启动 workflow...', 'en-US': 'Starting workflow...' },
-    running: {
-      'zh-CN': `Workflow 运行中${detail ? `（#${detail}）` : ''}...`,
-      'en-US': `Workflow running${detail ? ` (#${detail})` : ''}...`,
-    },
-    completed: { 'zh-CN': 'Workflow 更新完成。', 'en-US': 'Workflow update completed.' },
-    completedWithWarnings: { 'zh-CN': 'Workflow 完成（包含 Warning）。', 'en-US': 'Workflow completed with warnings.' },
-    failed: { 'zh-CN': `Workflow 失败：${detail ?? ''}`, 'en-US': `Workflow failed: ${detail ?? ''}` },
-  };
-  return copy[key][currentLanguage];
-}
-
-function workflowUpdateStepStatusText(status: WorkflowExecutionTaskState | 'not_started'): string {
-  const copy: Record<WorkflowExecutionTaskState | 'not_started', Record<AppLanguage, string>> = {
-    pending: { 'zh-CN': '等待中', 'en-US': 'Pending' },
-    running: { 'zh-CN': '运行中', 'en-US': 'Running' },
-    completed: { 'zh-CN': '已完成', 'en-US': 'Completed' },
-    failed: { 'zh-CN': '失败', 'en-US': 'Failed' },
-    blocked: { 'zh-CN': '已阻塞', 'en-US': 'Blocked' },
-    warning: { 'zh-CN': '需确认', 'en-US': 'Warning' },
-    skipped: { 'zh-CN': '已跳过', 'en-US': 'Skipped' },
-    not_started: { 'zh-CN': '等待启动', 'en-US': 'Waiting to start' },
-  };
-  return copy[status][currentLanguage];
-}
-
-function resetWorkflowUpdateProgress() {
-  const progress = el('workflowUpdateProgress');
-  const bar = el('workflowUpdateProgressBar');
-  const fill = el<HTMLElement>('workflowUpdateProgressFill');
-  const text = el('workflowUpdateProgressText');
-  const step = el('workflowUpdateProgressStep');
-  const label = el('workflowUpdateProgressLabel');
-  progress.classList.add('hidden');
-  progress.classList.remove('is-running', 'is-success', 'is-warning', 'is-error');
-  bar.setAttribute('aria-valuenow', '0');
-  fill.style.width = '0%';
-  text.textContent = '0 / 0';
-  label.textContent = t('workflowProgress');
-  step.textContent = workflowUpdateStepStatusText('not_started');
-}
-
-function renderWorkflowUpdateProgress(run: WorkflowRunRecord) {
-  const progress = el('workflowUpdateProgress');
-  const bar = el('workflowUpdateProgressBar');
-  const fill = el<HTMLElement>('workflowUpdateProgressFill');
-  const text = el('workflowUpdateProgressText');
-  const step = el('workflowUpdateProgressStep');
-  const label = el('workflowUpdateProgressLabel');
-  const steps = run.steps ?? [];
-  const total = Math.max(steps.length, run.tasksSnapshot?.length ?? 0);
-  const reached = steps.filter((item) => workflowUpdateReachedStepStatuses.has(item.status)).length;
-  const percent = total > 0 ? Math.round((reached / total) * 100) : 0;
-  const runningStep = steps.find((item) => item.status === 'running');
-  const failedStep = steps.find((item) => item.status === 'failed' || item.status === 'blocked');
-  const pendingStep = steps.find((item) => item.status === 'pending');
-  const currentStep = failedStep ?? runningStep ?? pendingStep ?? steps[steps.length - 1] ?? null;
-  const displayedPercent =
-    run.status === 'completed' || run.status === 'completed_with_warnings'
-      ? 100
-      : Math.max(percent, run.status === 'running' && total > 0 ? 8 : 0);
-
-  progress.classList.remove('hidden', 'is-running', 'is-success', 'is-warning', 'is-error');
-  progress.classList.toggle('is-running', run.status === 'running' || run.status === 'pending');
-  progress.classList.toggle('is-success', run.status === 'completed');
-  progress.classList.toggle(
-    'is-warning',
-    run.status === 'completed_with_warnings' || run.status === 'waiting_approval',
-  );
-  progress.classList.toggle('is-error', run.status === 'failed' || run.status === 'skipped');
-  label.textContent = t('workflowProgress');
-  bar.setAttribute('aria-valuenow', String(displayedPercent));
-  fill.style.width = `${displayedPercent}%`;
-  text.textContent = total > 0 ? `${Math.min(reached, total)} / ${total}` : '0 / 0';
-
-  if (currentStep) {
-    const status = workflowUpdateStepStatusText(currentStep.status);
-    const error = currentStep.errorMessage ? ` · ${currentStep.errorMessage}` : '';
-    step.textContent = `${status}: ${currentStep.taskName}${error}`;
-  } else {
-    step.textContent = workflowUpdateStepStatusText('not_started');
-  }
-}
-
-async function openWorkflowUpdateModal(page: WorkflowUpdatePageKey) {
-  await loadWorkflowUpdateConfigs();
-  await filesPage.refreshProductFiles();
-  const config = getWorkflowUpdateConfig(page);
-  activeWorkflowUpdatePage = page;
-  workflowUpdateModalCloseLocked = false;
-  workflowUpdateSelectedFiles = Object.fromEntries(
-    config.sources.map((source) => [
-      source.sourceKey,
-      workflowUpdateBindingFor(page, source.sourceKey)?.fileId ?? null,
-    ]),
-  );
-  workflowUpdateSelectedSheets = Object.fromEntries(
-    config.sources.map((source) => [
-      source.sourceKey,
-      workflowUpdateBindingFor(page, source.sourceKey)?.sheet ?? source.sheet ?? '',
-    ]),
-  );
-  el('workflowUpdateModalTitle').textContent = `Update ${config.workflowName}`;
-  el('workflowUpdateModalSubtitle').textContent = config.description;
-  el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage('idle');
-  el('workflowUpdateSourceList').classList.remove('hidden');
-  el('btnConfirmWorkflowUpdate').classList.remove('hidden');
-  el('btnCancelWorkflowUpdateModal').classList.remove('hidden');
-  el('btnCloseWorkflowUpdateModal').classList.remove('hidden');
-  resetWorkflowUpdateProgress();
-  renderWorkflowUpdateModalSources();
-  el('workflowUpdateModal').classList.remove('hidden');
-}
-
-function openWorkflowRunProgressModal(title: string, subtitle: string) {
-  activeWorkflowUpdatePage = null;
-  workflowUpdateSelectedFiles = {};
-  workflowUpdateSelectedSheets = {};
-  workflowUpdateModalCloseLocked = true;
-  el('workflowUpdateModalTitle').textContent = title;
-  el('workflowUpdateModalSubtitle').textContent = subtitle;
-  el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage('starting');
-  el('workflowUpdateSourceList').innerHTML = '';
-  el('workflowUpdateSourceList').classList.add('hidden');
-  el('btnConfirmWorkflowUpdate').classList.add('hidden');
-  el('btnCancelWorkflowUpdateModal').classList.add('hidden');
-  el('btnCloseWorkflowUpdateModal').classList.add('hidden');
-  resetWorkflowUpdateProgress();
-  el('workflowUpdateProgress').classList.remove('hidden');
-  el('workflowUpdateModal').classList.remove('hidden');
-}
-
-function closeWorkflowUpdateModal() {
-  if (workflowUpdateModalCloseLocked) return;
-  el('workflowUpdateModal').classList.add('hidden');
-  activeWorkflowUpdatePage = null;
-  workflowUpdateSelectedFiles = {};
-  el('workflowUpdateSourceList').classList.remove('hidden');
-  el('btnConfirmWorkflowUpdate').classList.remove('hidden');
-  el('btnCancelWorkflowUpdateModal').classList.remove('hidden');
-  el('btnCloseWorkflowUpdateModal').classList.remove('hidden');
-}
-
-function forceCloseWorkflowUpdateModal() {
-  workflowUpdateModalCloseLocked = false;
-  closeWorkflowUpdateModal();
-}
-
-async function pollWorkflowUpdateRunUntilFinished(
-  runId: number,
-  onProgress?: (run: WorkflowRunRecord) => void,
-): Promise<WorkflowRunRecord> {
-  const startedAt = Date.now();
-  const timeoutMs = 120_000;
-  for (;;) {
-    await new Promise((resolve) => window.setTimeout(resolve, 600));
-    const run = await api<WorkflowRunRecord>(`/api/workflow-runs/${runId}`);
-    onProgress?.(run);
-    if (isWorkflowRunTerminalStatus(run.status)) return run;
-    if (Date.now() - startedAt > timeoutMs) {
-      throw new Error(`Workflow run #${runId} did not finish within ${Math.round(timeoutMs / 1000)}s`);
-    }
-  }
-}
-
-async function refreshWorkflowUpdatePage(page: WorkflowUpdatePageKey) {
-  if (page === 'grant-record') {
-    await renderHoldingsPage(currentMonth);
-  } else if (page === 'exercise-record') {
-    await renderExerciseRecords();
-  } else if (page === 'sold-shares') {
-    await renderSoldShares();
-  } else if (page === 'transfer-plan') {
-    await renderTransferPlan();
-  } else if (page === 'employee-management') {
-    await loadEmployeesPage();
-  } else if (page === 'plan-summary') {
-    await renderPlanSummaryPage(currentMonth);
-  } else if (page === 'five-percent-holders') {
-    await renderFivePercentHoldersPage();
-  }
-}
-
-async function confirmWorkflowUpdate() {
-  const page = activeWorkflowUpdatePage;
-  if (!page) return;
-  const config = getWorkflowUpdateConfig(page);
-  const missing = config.sources.find((source) => !workflowUpdateSelectedFiles[source.sourceKey]);
-  if (missing) {
-    notify(`请选择或上传 ${missing.label}`, { type: 'warning' });
-    return;
-  }
-
-  const confirmButton = el<HTMLButtonElement>('btnConfirmWorkflowUpdate');
-  confirmButton.disabled = true;
-  el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage('starting');
-  resetWorkflowUpdateProgress();
-  el('workflowUpdateProgress').classList.remove('hidden');
-  try {
-    const sources = Object.fromEntries(
-      config.sources.map((source) => [
-        source.sourceKey,
-        {
-          fileId: workflowUpdateSelectedFiles[source.sourceKey],
-          ...(workflowUpdateSelectedSheets[source.sourceKey]?.trim()
-            ? { sheet: workflowUpdateSelectedSheets[source.sourceKey].trim() }
-            : {}),
-        },
-      ]),
-    );
-    const result = await api<WorkflowExecutionResult>(workflowUpdateRunEndpoint(page), {
-      method: 'POST',
-      body: JSON.stringify({ sources }),
-    });
-    const runId = result.run?.id;
-    if (!runId) throw new Error('Workflow run was not created');
-    if (result.run) renderWorkflowUpdateProgress(result.run);
-    el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage('running', String(runId));
-    const run = await pollWorkflowUpdateRunUntilFinished(runId, renderWorkflowUpdateProgress);
-    if (run.status !== 'completed' && run.status !== 'completed_with_warnings') {
-      throw new Error(run.errorMessage ?? `Workflow ended with status ${run.status}`);
-    }
-    renderWorkflowUpdateProgress(run);
-    await filesPage.refreshProductFiles();
-    await refreshWorkflowUpdatePage(page);
-    el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage(
-      run.status === 'completed_with_warnings' ? 'completedWithWarnings' : 'completed',
-    );
-    notify(run.status === 'completed_with_warnings' ? 'Workflow 完成（包含 Warning）' : 'Workflow 更新完成', {
-      type: run.status === 'completed_with_warnings' ? 'warning' : 'success',
-    });
-    closeWorkflowUpdateModal();
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-    el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage('failed', (error as Error).message);
-  } finally {
-    confirmButton.disabled = false;
-  }
-}
-
-function downloadWorkflowResultFiles(page: WorkflowUpdatePageKey) {
-  const files = workflowResultFilesByPage[page] ?? [];
-  if (files.length === 0) {
-    notify('当前页面没有可导出的文件', { type: 'warning' });
-    return;
-  }
-  files.forEach((file, index) => {
-    window.setTimeout(() => {
-      const link = document.createElement('a');
-      link.href = `/api/files/${file.fileId}/content`;
-      link.download = file.fileName || `result-file-${file.fileId}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    }, index * 150);
-  });
-  notify(files.length === 1 ? '开始导出文件' : `开始导出 ${files.length} 个文件`, {
-    type: 'success',
-  });
 }
 
 function isAdminUser(): boolean {
@@ -2336,28 +1929,23 @@ function initWorkflowUpdateModal() {
   document.querySelectorAll<HTMLButtonElement>('[data-workflow-update-page]').forEach((button) => {
     button.addEventListener('click', () => {
       const page = button.dataset.workflowUpdatePage ?? '';
-      if (!isWorkflowUpdatePage(page)) return;
+      if (!workflowUpdateModal.isWorkflowUpdatePage(page)) return;
       if (page === 'five-percent-holders') {
         void handleFivePercentHoldersUpdateClick();
         return;
       }
-      void openWorkflowUpdateModal(page);
+      void workflowUpdateModal.openModal(page);
     });
   });
   document.querySelectorAll<HTMLButtonElement>('[data-workflow-export-page]').forEach((button) => {
     button.addEventListener('click', () => {
       const page = button.dataset.workflowExportPage ?? '';
-      if (!isWorkflowUpdatePage(page)) return;
-      downloadWorkflowResultFiles(page);
+      if (!workflowUpdateModal.isWorkflowUpdatePage(page)) return;
+      workflowUpdateModal.downloadResultFiles(page);
     });
   });
   el('btnCancelFivePercentHoldersEdit').addEventListener('click', () => void cancelFivePercentHoldersEdit());
-  el('btnCloseWorkflowUpdateModal').addEventListener('click', closeWorkflowUpdateModal);
-  el('btnCancelWorkflowUpdateModal').addEventListener('click', closeWorkflowUpdateModal);
-  el('btnConfirmWorkflowUpdate').addEventListener('click', () => void confirmWorkflowUpdate());
-  el('workflowUpdateModal').addEventListener('click', (event) => {
-    if (event.target === el('workflowUpdateModal')) closeWorkflowUpdateModal();
-  });
+  workflowUpdateModal.bindEvents();
 }
 
 async function initExercisePage() {
@@ -3459,7 +3047,7 @@ async function saveTransferPlanEdit() {
     currentLanguage === 'zh-CN'
       ? '正在保存编辑、生成输入文件并运行 workflow...'
       : 'Saving edits, creating an input file, and running the workflow...';
-  openWorkflowRunProgressModal(
+  workflowUpdateModal.openProgressModal(
     t('transferPlanConfirmAndRun'),
     currentLanguage === 'zh-CN'
       ? '正在根据编辑内容生成新的输入文件，并运行 Transfer Plan workflow。'
@@ -3472,14 +3060,14 @@ async function saveTransferPlanEdit() {
     });
     const runId = result.run?.id;
     if (!runId) throw new Error('Workflow run was not created');
-    if (result.run) renderWorkflowUpdateProgress(result.run);
-    el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage('running', String(runId));
-    const run = await pollWorkflowUpdateRunUntilFinished(runId, renderWorkflowUpdateProgress);
+    if (result.run) workflowUpdateModal.renderProgress(result.run);
+    el('workflowUpdateStatus').textContent = workflowUpdateModal.statusMessage('running', String(runId));
+    const run = await workflowUpdateModal.pollRunUntilFinished(runId, (run) => workflowUpdateModal.renderProgress(run));
     if (run.status !== 'completed' && run.status !== 'completed_with_warnings') {
       throw new Error(run.errorMessage ?? `Workflow ended with status ${run.status}`);
     }
-    renderWorkflowUpdateProgress(run);
-    el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage(
+    workflowUpdateModal.renderProgress(run);
+    el('workflowUpdateStatus').textContent = workflowUpdateModal.statusMessage(
       run.status === 'completed_with_warnings' ? 'completedWithWarnings' : 'completed',
     );
     transferPlanEditMode = false;
@@ -3488,13 +3076,13 @@ async function saveTransferPlanEdit() {
     notify(run.status === 'completed_with_warnings' ? 'Workflow 完成（包含 Warning）' : 'Transfer Plan 已更新', {
       type: run.status === 'completed_with_warnings' ? 'warning' : 'success',
     });
-    forceCloseWorkflowUpdateModal();
+    workflowUpdateModal.forceCloseModal();
   } catch (error) {
     notify((error as Error).message, { type: 'error' });
     el('transferPlanEditStatus').textContent = (error as Error).message;
-    el('workflowUpdateStatus').textContent = workflowUpdateStatusMessage('failed', (error as Error).message);
+    el('workflowUpdateStatus').textContent = workflowUpdateModal.statusMessage('failed', (error as Error).message);
     el('workflowUpdateProgress').classList.add('is-error');
-    workflowUpdateModalCloseLocked = false;
+    workflowUpdateModal.setCloseLocked(false);
     el('btnCloseWorkflowUpdateModal').classList.remove('hidden');
   } finally {
     saveButton.disabled = false;
@@ -4086,16 +3674,16 @@ function readFivePercentHolderGlobalParameterDrafts() {
 }
 
 async function runFivePercentHoldersWorkflowWithPreviousSource() {
-  const binding = workflowUpdateBindingFor('five-percent-holders', 'capitalization_summary');
+  const binding = workflowUpdateModal.bindingFor('five-percent-holders', 'capitalization_summary');
   const fileId = Number(binding?.fileId);
   const sources = Number.isInteger(fileId) && fileId > 0 ? { capitalization_summary: { fileId } } : {};
-  const result = await api<WorkflowExecutionResult>(workflowUpdateRunEndpoint('five-percent-holders'), {
+  const result = await api<WorkflowExecutionResult>(workflowUpdateModal.runEndpoint('five-percent-holders'), {
     method: 'POST',
     body: JSON.stringify({ sources }),
   });
   const runId = result.run?.id;
   if (!runId) throw new Error('Workflow run was not created');
-  const run = await pollWorkflowUpdateRunUntilFinished(runId);
+  const run = await workflowUpdateModal.pollRunUntilFinished(runId);
   if (run.status !== 'completed' && run.status !== 'completed_with_warnings') {
     throw new Error(run.errorMessage ?? `Workflow ended with status ${run.status}`);
   }

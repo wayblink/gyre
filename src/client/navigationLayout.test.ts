@@ -11,6 +11,8 @@ const uploadProgressSource = readFileSync(new URL('./uploadProgress.ts', import.
 const workbookViewerSource = readFileSync(new URL('./univer/createWorkbookViewer.ts', import.meta.url), 'utf8');
 const docsPageSource = readFileSync(new URL('./docsPage.ts', import.meta.url), 'utf8');
 const filePickerSource = readFileSync(new URL('./filePickerModal.ts', import.meta.url), 'utf8');
+/** The workflow-update modal moved out of main.ts into its own module. */
+const workflowUpdateModalSource = readFileSync(new URL('./workflowUpdateModal.ts', import.meta.url), 'utf8');
 const grantRecordWorkflow = JSON.parse(
   readFileSync(new URL('../../database/workflows/esop-grant-record-sync.json', import.meta.url), 'utf8'),
 ) as {
@@ -586,15 +588,18 @@ test('workflow update modal picks input files through the shared tree file picke
   assert.match(mainSource, /import \{ createFilePickerModal \} from ['"]\.\/filePickerModal\.js['"]/);
 
   // The source card must render a trigger that opens the tree picker, not a native <select>.
-  assert.match(mainSource, /data-workflow-update-file-pick=/);
-  assert.doesNotMatch(mainSource, /data-workflow-update-file-select=/);
-  assert.doesNotMatch(mainSource, /function workflowUpdateFileOptions\(/);
+  assert.match(workflowUpdateModalSource, /data-workflow-update-file-pick=/);
+  assert.doesNotMatch(workflowUpdateModalSource, /data-workflow-update-file-select=/);
+  assert.doesNotMatch(workflowUpdateModalSource, /function workflowUpdateFileOptions\(/);
 
   // Opening the picker and writing the result back into the selection state.
-  assert.match(mainSource, /function openWorkflowUpdateFilePicker\(sourceKey: string\)/);
-  assert.match(mainSource, /filePicker\.open\(\{/);
-  assert.match(mainSource, /workflowUpdateSelectedFiles\[sourceKey\] = /);
-  assert.match(mainSource, /renderWorkflowUpdateModalSources\(\)/);
+  assert.match(workflowUpdateModalSource, /titleKey: 'fileSourceTitle'/);
+  assert.match(workflowUpdateModalSource, /deps\.openFilePicker\(\{/);
+  assert.match(
+    workflowUpdateModalSource,
+    /selectedFiles\[sourceKey\] = result\.action === 'pick' \? result\.fileId : null;/,
+  );
+  assert.match(workflowUpdateModalSource, /renderSources\(\)/);
 
   // Sanity: the shared picker really is a folder-grouped, expandable tree.
   assert.match(filePickerSource, /buildProductFilesTree\(/);
@@ -608,8 +613,8 @@ test('workflow update modal gives the sheet input the shared form-control struct
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const cssSource = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
 
-  assert.match(mainSource, /workflow-update-source-card__sheet-label/);
-  assert.match(mainSource, /workflow-update-source-card__sheet-input/);
+  assert.match(workflowUpdateModalSource, /workflow-update-source-card__sheet-label/);
+  assert.match(workflowUpdateModalSource, /workflow-update-source-card__sheet-input/);
   assert.match(cssSource, /\.workflow-update-source-card__sheet-input\s*\{/);
   assert.match(cssSource, /\.workflow-update-source-card__sheet-input:focus\s*\{/);
 });
@@ -625,8 +630,8 @@ test('plan summary update modal explains the non-zero Outstanding filter', () =>
     'utf8',
   );
 
-  assert.match(mainSource, /only plans with non-zero Outstanding are shown/);
-  assert.match(mainSource, /仅显示 Outstanding 不为 0 的计划/);
+  assert.match(workflowUpdateModalSource, /only plans with non-zero Outstanding are shown/);
+  assert.match(workflowUpdateModalSource, /仅显示 Outstanding 不为 0 的计划/);
   assert.match(workflowSource, /having sum\(case when \[key\] = 'Awards Outstanding'/);
   assert.match(workflowSource, /Outstanding 不为 0/);
   assert.match(optionSummarySource, /coalesce\(lookup\.sorting,.*coalesce\(base\.sorting/);
@@ -638,12 +643,12 @@ test('workflow update modal renders run progress while polling workflow status',
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const cssSource = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
 
-  assert.match(mainSource, /function renderWorkflowUpdateProgress\(run: WorkflowRunRecord\)/);
-  assert.match(mainSource, /pollWorkflowUpdateRunUntilFinished\(runId, renderWorkflowUpdateProgress\)/);
-  assert.match(mainSource, /function openWorkflowRunProgressModal/);
-  assert.match(mainSource, /workflowUpdateModalCloseLocked = true/);
-  assert.match(mainSource, /workflowUpdateProgressFill/);
-  assert.match(mainSource, /workflowUpdateReachedStepStatuses/);
+  assert.match(workflowUpdateModalSource, /function renderProgress\(run: WorkflowRunRecord\)/);
+  assert.match(workflowUpdateModalSource, /pollRunUntilFinished\(runId, renderProgress\)/);
+  assert.match(workflowUpdateModalSource, /function openProgressModal/);
+  assert.match(workflowUpdateModalSource, /closeLocked = true;/);
+  assert.match(workflowUpdateModalSource, /workflowUpdateProgressFill/);
+  assert.match(workflowUpdateModalSource, /reachedStepStatuses/);
   assert.match(cssSource, /\.workflow-update-progress__track/);
   assert.match(cssSource, /\.workflow-update-progress\.is-error/);
 });
@@ -958,10 +963,10 @@ test('Employee Management update runs the employee data-management workflow and 
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const serverSource = readFileSync(new URL('../server/routes/dataPages.ts', import.meta.url), 'utf8');
 
-  assert.match(mainSource, /'employee-management': 'data-management'/);
-  assert.match(mainSource, /page === 'employee-management' \? 'employee' : page/);
+  assert.match(workflowUpdateModalSource, /'employee-management': 'data-management'/);
+  assert.match(workflowUpdateModalSource, /page === 'employee-management' \? 'employee' : page/);
   assert.match(mainSource, /else if \(page === 'employee-management'\) \{\s*await loadEmployeesPage\(\);/);
-  assert.match(mainSource, /workflowUpdateStatusMessage\('failed', \(error as Error\)\.message\)/);
+  assert.match(workflowUpdateModalSource, /statusMessage\('failed', \(error as Error\)\.message\)/);
   const employeesSource2 = readFileSync(new URL('../server/routes/employees.ts', import.meta.url), 'utf8');
   assert.match(employeesSource2, /latestWorkflowInputSourceBindings\(db, 'employee-import'\)/);
   assert.match(serverSource, /workflowSourceBindings: inputSourceBindings/);

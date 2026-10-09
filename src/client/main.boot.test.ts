@@ -108,10 +108,11 @@ const FALLBACK = {
 };
 
 let bootCount = 0;
+let lastRequests: Array<{ url: string; method: string }> = [];
 
 async function bootApp(stubs = API_STUBS, settleMs = 250) {
   const window = installAppDom();
-  installFetch(stubs, { fallback: FALLBACK });
+  lastRequests = installFetch(stubs, { fallback: FALLBACK }).calls;
   // A cache-busting query re-executes main.ts for each test: the module wires itself to the DOM
   // that exists when it is imported, so every test needs a fresh instance.
   bootCount += 1;
@@ -245,4 +246,103 @@ test('the workflow update modal opens for a workflow-backed page', async () => {
   const modal = window.document.getElementById('workflowUpdateModal');
   assert.ok(!modal?.classList.contains('hidden'), 'the update modal must open');
   assert.match(window.document.getElementById('workflowUpdateSourceList')?.textContent ?? '', /Futu Grants/);
+});
+
+const GRANT_RECORD_CONFIG = {
+  items: [
+    {
+      pageKey: 'grant-record',
+      workflowCode: 'esop-grant-record-sync',
+      workflowName: 'Grant Record Sync',
+      description: 'Sync grants',
+      sources: [{ sourceKey: 'futu_grants', label: 'Futu Grants', sheet: null }],
+      resultFiles: [],
+    },
+  ],
+};
+
+const PRODUCT_FILE = {
+  id: 501,
+  originalName: 'grants.xlsx',
+  displayName: 'grants.xlsx',
+  storedName: 'grants-stored.xlsx',
+  displayPath: '/Futu/grants.xlsx',
+  fileExt: '.xlsx',
+  fileSizeBytes: 2048,
+  mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  checksum: 'c'.repeat(64),
+  storageBackend: 'local',
+  workbookSheetCount: 2,
+  workbookRowCount: 100,
+  uploadedBy: 'Admin',
+  createdAt: '2026-09-01T00:00:00.000Z',
+};
+
+test('the workflow update modal refuses to run while a source file is missing', async () => {
+  const window = await bootApp([...API_STUBS, { match: /\/api\/esop-workflows$/, respond: GRANT_RECORD_CONFIG }], 80);
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('[data-workflow-update-page="grant-record"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.ok(
+    doc.querySelector('[data-workflow-update-file-pick="futu_grants"]'),
+    'the modal should list the workflow source',
+  );
+
+  doc.querySelector<HTMLButtonElement>('#btnConfirmWorkflowUpdate')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+
+  assert.ok(!lastRequests.some((request) => request.url.includes('/runs')), 'must not start a run');
+  assert.ok(!doc.getElementById('workflowUpdateModal')?.classList.contains('hidden'), 'the modal stays open');
+});
+
+test('the workflow update modal runs the page workflow and reports progress', async () => {
+  const window = await bootApp(
+    [
+      ...API_STUBS,
+      { match: /\/api\/esop-workflows$/, respond: GRANT_RECORD_CONFIG },
+      { match: /\/api\/files$/, respond: { files: [PRODUCT_FILE] } },
+      {
+        match: /\/api\/esop-workflows\/grant-record\/runs$/,
+        respond: { run: { id: 77, status: 'running', steps: [] } },
+      },
+      {
+        match: /\/api\/workflow-runs\/77$/,
+        respond: { id: 77, status: 'completed', steps: [], tasksSnapshot: [] },
+      },
+    ],
+    80,
+  );
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('[data-workflow-update-page="grant-record"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  doc.querySelector<HTMLButtonElement>('[data-workflow-update-file-pick="futu_grants"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+
+  // The file picker is a real DOM modal: expand the folder that holds the file, highlight the row,
+  // then confirm the selection.
+  doc.querySelector<HTMLElement>('[data-picker-dir-path="Futu"]')?.click();
+  doc.querySelector<HTMLElement>('[data-picker-file-id="501"]')?.click();
+  doc.querySelector<HTMLButtonElement>('#btnConfirmWorkflowFilePicker')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.match(
+    doc.getElementById('workflowUpdateStatus')?.textContent ?? '',
+    /grants\.xlsx/,
+    'the picked file should be echoed back into the modal',
+  );
+
+  doc.querySelector<HTMLButtonElement>('#btnConfirmWorkflowUpdate')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  const runRequest = lastRequests.find(
+    (request) => request.method === 'POST' && request.url.includes('/api/esop-workflows/grant-record/runs'),
+  );
+  assert.ok(runRequest, 'the workflow run should be started');
+  assert.match(
+    doc.getElementById('workflowUpdateStatus')?.textContent ?? '',
+    /完成|completed/i,
+    'the modal should report the finished run',
+  );
+  assert.ok(doc.getElementById('workflowUpdateModal')?.classList.contains('hidden'), 'the modal closes on success');
 });
