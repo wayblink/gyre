@@ -1,6 +1,9 @@
 import type { ProductFileRecord } from '../shared/types.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import type { AppLanguage } from './i18n.js';
+import { createTexts, type TextKey } from './texts.js';
+
+const t = createTexts('filePicker');
 import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
 import {
   buildProductFilesTree,
@@ -52,40 +55,7 @@ export function createFilePickerModal({
   confirmAction,
   getLanguage,
 }: FilePickerModalDeps) {
-  const text = {
-    title: { 'zh-CN': '选择文件', 'en-US': 'Select file' },
-    defaultFileTitle: { 'zh-CN': '选择默认文件', 'en-US': 'Select default file' },
-    fileSourceTitle: { 'zh-CN': '选择文件来源', 'en-US': 'Select file source' },
-    subtitle: {
-      'zh-CN': '点击选择文件，也可以上传新文件或把文件移动到其他目录。',
-      'en-US': 'Click a file to select it. You can also upload a new file or move a file to another folder.',
-    },
-    searchPlaceholder: { 'zh-CN': '搜索文件…', 'en-US': 'Search files…' },
-    upload: { 'zh-CN': '上传新文件', 'en-US': 'Upload' },
-    move: { 'zh-CN': '移动', 'en-US': 'Move' },
-    clear: { 'zh-CN': '不使用文件', 'en-US': 'No file' },
-    cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
-    confirm: { 'zh-CN': '选择', 'en-US': 'Select' },
-    moveTitle: { 'zh-CN': '移动到目录', 'en-US': 'Move to folder' },
-    newFolderLabel: { 'zh-CN': '或填写新目录路径', 'en-US': 'Or enter a new folder path' },
-    moveConfirm: { 'zh-CN': '确认移动', 'en-US': 'Move' },
-    empty: { 'zh-CN': '暂无文件', 'en-US': 'No files' },
-    noSearchResults: { 'zh-CN': '没有匹配的文件', 'en-US': 'No matching files' },
-    invalidFolder: { 'zh-CN': '目录路径不合法', 'en-US': 'Invalid folder path' },
-    sameFolder: { 'zh-CN': '文件已经在该目录中', 'en-US': 'The file already lives in that folder' },
-    moved: { 'zh-CN': '文件已移动', 'en-US': 'File moved' },
-    movedWorkflows: { 'zh-CN': '个工作流的引用已同步更新', 'en-US': 'workflow(s) had their references updated' },
-    moveFailed: { 'zh-CN': '移动文件失败', 'en-US': 'Failed to move the file' },
-    overwriteTitle: { 'zh-CN': '文件已存在', 'en-US': 'File already exists' },
-    overwriteConfirm: { 'zh-CN': '覆盖', 'en-US': 'Overwrite' },
-    uploadFailed: { 'zh-CN': '上传失败', 'en-US': 'Upload failed' },
-    uploaded: { 'zh-CN': '文件已上传', 'en-US': 'File uploaded' },
-  } satisfies Record<string, Record<AppLanguage, string>>;
-
-  function tt(key: keyof typeof text): string {
-    const language = getLanguage?.() ?? 'zh-CN';
-    return text[key][language] ?? text[key]['zh-CN'];
-  }
+  const tt = (key: TextKey<'filePicker'>) => t(key, getLanguage?.() ?? 'zh-CN');
 
   let pending: ((result: FilePickerResult | null) => void) | null = null;
   let options: FilePickerOpenOptions = {};
@@ -396,7 +366,7 @@ export function createFilePickerModal({
       if (overwrite) form.append('conflictPolicy', 'overwrite');
       return uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
         fileName: file.name,
-        title: { 'zh-CN': '正在上传文件', 'en-US': 'Uploading file' },
+        title: tt('uploadingTitle'),
       });
     };
 

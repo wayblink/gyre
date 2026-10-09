@@ -1,6 +1,9 @@
 import type { ProductFileDetail, ProductFileRecord } from '../shared/types.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import type { AppLanguage } from './i18n.js';
+import { createTexts, type TextKey } from './texts.js';
+
+const t = createTexts('files');
 import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
 import { createFileMoveDialog } from './fileMoveDialog.js';
 import {
@@ -79,66 +82,13 @@ export function createFilesPage({
   let filesViewControlsBound = false;
   let filesSearchBound = false;
   const collapsedTreeDirectoryPaths = new Set<string>();
-  const text = {
-    count: { 'zh-CN': '个', 'en-US': 'items' },
-    chooseFile: {
-      'zh-CN': '选择左侧文件后可在页面内查看完整 Excel 工作簿。',
-      'en-US': 'Select a file on the left to view the full Excel workbook here.',
-    },
-    noFiles: { 'zh-CN': '尚未上传任何文件', 'en-US': 'No files uploaded yet' },
-    noSearchResults: { 'zh-CN': '没有匹配的文件', 'en-US': 'No matching files' },
-    listView: { 'zh-CN': '列表视图', 'en-US': 'List view' },
-    treeView: { 'zh-CN': '树状视图', 'en-US': 'Tree view' },
-    switchToListView: { 'zh-CN': '切换到列表视图', 'en-US': 'Switch to list view' },
-    switchToTreeView: { 'zh-CN': '切换到树状视图', 'en-US': 'Switch to tree view' },
-    editFileName: { 'zh-CN': '编辑文件名', 'en-US': 'Edit file name' },
-    downloadFile: { 'zh-CN': '下载文件', 'en-US': 'Download file' },
-    deleteFile: { 'zh-CN': '删除文件', 'en-US': 'Delete file' },
-    deleteSelectedFiles: { 'zh-CN': '批量删除', 'en-US': 'Delete selected' },
-    moveFile: { 'zh-CN': '移动到其他目录', 'en-US': 'Move to another folder' },
-    moveSelectedFiles: { 'zh-CN': '批量移动', 'en-US': 'Move selected' },
-    selectedFiles: { 'zh-CN': '已选择', 'en-US': 'selected' },
-    selectAllFiles: { 'zh-CN': '全选文件', 'en-US': 'Select all files' },
-    deleteSelectedConfirm: {
-      'zh-CN': '确定删除选中的文件吗？此操作不可撤销。',
-      'en-US': 'Delete the selected files? This action cannot be undone.',
-    },
-    fileName: { 'zh-CN': '文件名', 'en-US': 'File name' },
-    saving: { 'zh-CN': '保存中...', 'en-US': 'Saving...' },
-    save: { 'zh-CN': '保存', 'en-US': 'Save' },
-    edit: { 'zh-CN': '编辑', 'en-US': 'Edit' },
-    cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
-    readOnlyMode: { 'zh-CN': '只读预览', 'en-US': 'Read-only preview' },
-    editingMode: { 'zh-CN': '编辑中', 'en-US': 'Editing' },
-    readOnlyHint: {
-      'zh-CN': '预览状态不可编辑，点击「编辑」后可修改',
-      'en-US': 'Preview is read-only; click Edit to make changes',
-    },
-    discardEditTitle: { 'zh-CN': '放弃编辑', 'en-US': 'Discard changes' },
-    discardEditConfirm: { 'zh-CN': '确定放弃未保存的修改吗？', 'en-US': 'Discard unsaved changes?' },
-    discardEdit: { 'zh-CN': '放弃修改', 'en-US': 'Discard' },
-    saved: { 'zh-CN': '文件已保存', 'en-US': 'File saved' },
-    loading: { 'zh-CN': '加载中...', 'en-US': 'Loading...' },
-    loadingFile: { 'zh-CN': '正在加载文件...', 'en-US': 'Loading file...' },
-    fileLoadFailed: { 'zh-CN': '文件加载失败', 'en-US': 'Failed to load file' },
-    cannotOpenFile: { 'zh-CN': '无法打开该文件：', 'en-US': 'Cannot open this file: ' },
-    exportUnavailable: { 'zh-CN': '当前工作簿无法导出', 'en-US': 'The current workbook cannot be exported' },
-    saveFailed: { 'zh-CN': '保存失败', 'en-US': 'Save failed' },
-    deleteTitle: { 'zh-CN': '删除文件', 'en-US': 'Delete file' },
-    deleteConfirm: { 'zh-CN': '确定删除文件', 'en-US': 'Delete file' },
-    deleteConfirmSuffix: { 'zh-CN': '吗？', 'en-US': '?' },
-    emptyFileName: { 'zh-CN': '文件名不能为空', 'en-US': 'File name cannot be empty' },
-    renameFailed: { 'zh-CN': '修改文件名失败', 'en-US': 'Failed to rename file' },
-    updatedAt: { 'zh-CN': '更新时间', 'en-US': 'Updated' },
-    createdAt: { 'zh-CN': '创建时间', 'en-US': 'Created' },
-  } satisfies Record<string, Record<AppLanguage, string>>;
 
   function lang(): AppLanguage {
     return getLanguage?.() ?? 'zh-CN';
   }
 
-  function tt(key: keyof typeof text): string {
-    return text[key][lang()] ?? text[key]['zh-CN'];
+  function tt(key: TextKey<'files'>): string {
+    return t(key, lang());
   }
 
   function isFilesPageActive(): boolean {
@@ -177,7 +127,7 @@ export function createFilesPage({
       if (overwrite) form.append('conflictPolicy', 'overwrite');
       return uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
         fileName: file.name,
-        title: { 'zh-CN': '正在上传文件', 'en-US': 'Uploading file' },
+        title: tt('uploadingTitle'),
       });
     };
     let data;
@@ -894,8 +844,8 @@ export function createFilesPage({
       await uploadFormDataWithProgress(`/api/files/${currentProductFileDetail.file.id}/content`, form, {
         method: 'PUT',
         fileName: currentProductFileDetail.file.originalName,
-        title: { 'zh-CN': '正在保存文件', 'en-US': 'Saving file' },
-        completedText: { 'zh-CN': '保存完成', 'en-US': 'Save completed' },
+        title: tt('savingTitle'),
+        completedText: tt('savingCompleted'),
       });
       productFileSaving = false;
       productFileEditing = false;

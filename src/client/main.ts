@@ -32,6 +32,12 @@ import { createFilesPage } from './filesPage.js';
 import { createFilePickerModal } from './filePickerModal.js';
 import { createMonthlyRunPage } from './monthlyRunPage.js';
 import { createWorkflowUpdateModal, type WorkflowUpdatePageKey } from './workflowUpdateModal.js';
+import { createTexts, TEXTS, type TextKey } from './texts.js';
+
+const texts = createTexts('main');
+
+/** Page titles keyed by page; the values live in the merged translation table. */
+const pageTitleTranslations = TEXTS.pageTitles as Record<PageKey, Record<AppLanguage, string>>;
 import {
   applyThemeSelection,
   COLOR_OPTIONS,
@@ -354,223 +360,15 @@ function applyRoleVisibility() {
   docsPage.render();
 }
 
-const pageTitleTranslations: Record<PageKey, Record<AppLanguage, string>> = {
-  captable: { 'zh-CN': '股权汇总', 'en-US': 'CapTable' },
-  monthly: { 'zh-CN': '月度更新', 'en-US': 'Monthly Update' },
-  monthlyrun: { 'zh-CN': '月度更新', 'en-US': 'Monthly Update' },
-  'esop-detail': { 'zh-CN': 'ESOP 明细', 'en-US': 'ESOP Detail' },
-  'grant-record': { 'zh-CN': '授予记录', 'en-US': 'Grant Record' },
-  'exercise-record': { 'zh-CN': '行权记录', 'en-US': 'Exercise Record' },
-  'sold-shares': { 'zh-CN': '卖出记录', 'en-US': 'Sold Shares' },
-  'transfer-plan': { 'zh-CN': '2025 转仓至 Futu', 'en-US': '2025 Transfer to Futu' },
-  'employee-management': { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
-  'plan-summary': { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
-  'five-percent-holders': { 'zh-CN': '5% 股东', 'en-US': '5% Holders' },
-  'fixed-value': { 'zh-CN': '全局参数', 'en-US': 'Global Parameter' },
-  'data-management': { 'zh-CN': '数据管理', 'en-US': 'Data Management' },
-  files: { 'zh-CN': '文件中心', 'en-US': 'Files' },
-  workflow: { 'zh-CN': '工作流', 'en-US': 'Workflow' },
-  'user-management': { 'zh-CN': '用户管理', 'en-US': 'User Management' },
-  docs: { 'zh-CN': '使用手册', 'en-US': 'Docs' },
-  holdings: { 'zh-CN': '持仓明细', 'en-US': 'Holdings' },
-  employees: { 'zh-CN': '员工列表', 'en-US': 'Employees' },
-  account: { 'zh-CN': '账号设置', 'en-US': 'Account Settings' },
-  settings: { 'zh-CN': '系统设置', 'en-US': 'Settings' },
-};
-
-const uiText: Record<string, Record<AppLanguage, string>> = {
-  authUsername: { 'zh-CN': '用户名', 'en-US': 'Username' },
-  authPassword: { 'zh-CN': '密码', 'en-US': 'Password' },
-  authDisplayName: { 'zh-CN': '显示名称', 'en-US': 'Display name' },
-  authBootstrapSecret: { 'zh-CN': '初始化密钥', 'en-US': 'Bootstrap secret' },
-  login: { 'zh-CN': '登录', 'en-US': 'Log in' },
-  createAndLogin: { 'zh-CN': '创建并登录', 'en-US': 'Create and log in' },
-  collapseSidebar: { 'zh-CN': '收起导航栏', 'en-US': 'Collapse sidebar' },
-  expandSidebar: { 'zh-CN': '展开导航栏', 'en-US': 'Expand sidebar' },
-  devTools: { 'zh-CN': '仅管理员', 'en-US': 'Admin Only' },
-  account: { 'zh-CN': '账号', 'en-US': 'Account' },
-  logout: { 'zh-CN': '退出登录', 'en-US': 'Log out' },
-  search: { 'zh-CN': '搜索', 'en-US': 'Search' },
-  tag: { 'zh-CN': '标签', 'en-US': 'Tag' },
-  incentiveType: { 'zh-CN': '激励类型', 'en-US': 'Incentive Type' },
-  allTypes: { 'zh-CN': '全部类型', 'en-US': 'All Types' },
-  grantYear: { 'zh-CN': '授予年份', 'en-US': 'Grant Year' },
-  employmentStatus: { 'zh-CN': '在职状态', 'en-US': 'Employment Status' },
-  month: { 'zh-CN': '月份', 'en-US': 'Month' },
-  defaultSnapshot: { 'zh-CN': '默认快照数据', 'en-US': 'Default snapshot data' },
-  currentView: { 'zh-CN': '当前视图：', 'en-US': 'Current view: ' },
-  noSummaryData: { 'zh-CN': '暂无汇总数据', 'en-US': 'No summary data' },
-  export: { 'zh-CN': '导出', 'en-US': 'Export' },
-  update: { 'zh-CN': '更新', 'en-US': 'Update' },
-  confirmAndRun: { 'zh-CN': '确认并运行', 'en-US': 'Confirm & Run' },
-  save: { 'zh-CN': '保存', 'en-US': 'Save' },
-  delete: { 'zh-CN': '删除', 'en-US': 'Delete' },
-  actions: { 'zh-CN': '操作', 'en-US': 'Actions' },
-  rows: { 'zh-CN': '行数', 'en-US': 'Rows' },
-  first: { 'zh-CN': '« 首页', 'en-US': '« First' },
-  previous: { 'zh-CN': '上一页', 'en-US': 'Previous' },
-  next: { 'zh-CN': '下一页', 'en-US': 'Next' },
-  last: { 'zh-CN': '末页 »', 'en-US': 'Last »' },
-  language: { 'zh-CN': '语言', 'en-US': 'Language' },
-  languageSubtitle: { 'zh-CN': '切换界面显示语言', 'en-US': 'Switch the interface language' },
-  uiLanguage: { 'zh-CN': '界面语言', 'en-US': 'Interface language' },
-  colorTheme: { 'zh-CN': '配色', 'en-US': 'Color Theme' },
-  colorThemeSubtitle: { 'zh-CN': '控制品牌主色与强调色倾向', 'en-US': 'Control the brand and accent color' },
-  colorScheme: { 'zh-CN': '配色方案', 'en-US': 'Color scheme' },
-  current: { 'zh-CN': '当前', 'en-US': 'Current' },
-  blueDesc: { 'zh-CN': '稳健的默认企业蓝', 'en-US': 'Stable default enterprise blue' },
-  tealDesc: { 'zh-CN': '更偏产品和数据工具的青绿色强调', 'en-US': 'Teal accent for product and data tools' },
-  amberDesc: {
-    'zh-CN': '偏暖的金橙色强调，更接近演示型工作台',
-    'en-US': 'Warm amber accent for demo-oriented workspaces',
-  },
-  accountInfo: { 'zh-CN': '账号信息', 'en-US': 'Account Information' },
-  accountInfoSubtitle: {
-    'zh-CN': '管理当前登录账号的基础信息和联系方式',
-    'en-US': 'Manage the current account profile and contact details',
-  },
-  username: { 'zh-CN': '账号名', 'en-US': 'Username' },
-  displayName: { 'zh-CN': '显示名', 'en-US': 'Display name' },
-  email: { 'zh-CN': '邮箱', 'en-US': 'Email' },
-  contact: { 'zh-CN': '联系方式', 'en-US': 'Contact' },
-  changePassword: { 'zh-CN': '修改密码', 'en-US': 'Change Password' },
-  saveAccount: { 'zh-CN': '保存账号信息', 'en-US': 'Save Account' },
-  changePasswordSubtitle: {
-    'zh-CN': '请输入原密码，并确认两次新密码一致',
-    'en-US': 'Enter the current password and confirm the new password twice',
-  },
-  currentPassword: { 'zh-CN': '当前密码', 'en-US': 'Current password' },
-  newPassword: { 'zh-CN': '新密码', 'en-US': 'New password' },
-  confirmNewPassword: { 'zh-CN': '确认新密码', 'en-US': 'Confirm new password' },
-  updatePassword: { 'zh-CN': '更新密码', 'en-US': 'Update Password' },
-  userManagementSubtitle: {
-    'zh-CN': '管理员创建、编辑、停用系统用户和角色',
-    'en-US': 'Admins create, edit, deactivate system users and roles',
-  },
-  newUser: { 'zh-CN': '新增用户', 'en-US': 'New User' },
-  role: { 'zh-CN': '角色', 'en-US': 'Role' },
-  status: { 'zh-CN': '状态', 'en-US': 'Status' },
-  lastLogin: { 'zh-CN': '最后登录', 'en-US': 'Last Login' },
-  createdAt: { 'zh-CN': '创建时间', 'en-US': 'Created At' },
-  active: { 'zh-CN': '启用', 'en-US': 'Active' },
-  inactive: { 'zh-CN': '停用', 'en-US': 'Inactive' },
-  allTags: { 'zh-CN': '全部标签', 'en-US': 'All Tags' },
-  password: { 'zh-CN': '密码', 'en-US': 'Password' },
-  optionalPassword: { 'zh-CN': '密码（留空则不修改）', 'en-US': 'Password (leave blank to keep)' },
-  createUser: { 'zh-CN': '创建用户', 'en-US': 'Create User' },
-  editUser: { 'zh-CN': '编辑用户', 'en-US': 'Edit User' },
-  noUsers: { 'zh-CN': '暂无用户', 'en-US': 'No users' },
-  sourceFile: { 'zh-CN': 'SourceFile', 'en-US': 'SourceFile' },
-  sourceFiles: { 'zh-CN': 'SourceFiles', 'en-US': 'SourceFiles' },
-  resultFile: { 'zh-CN': 'Output File', 'en-US': 'Output File' },
-  captableHeroEyebrow: { 'zh-CN': '股本汇总', 'en-US': 'Equity Summary' },
-  captableHeroText: {
-    'zh-CN': '展示月度 Capitalization Table Summary View，数据来自当前选择的输出文件。',
-    'en-US': 'View the monthly Capitalization Table Summary using the selected output file.',
-  },
-  grantHeroEyebrow: { 'zh-CN': '授予记录', 'en-US': 'Grant Records' },
-  grantHeroText: {
-    'zh-CN': '展示 Futu、Shareworks 及合并后的授予明细，数据来自对应 workflow 输出文件。',
-    'en-US': 'View Futu, Shareworks, and merged grant details from workflow output files.',
-  },
-  exerciseHeroEyebrow: { 'zh-CN': '行权记录', 'en-US': 'Exercise Records' },
-  exerciseHeroText: {
-    'zh-CN': '展示 Futu 全部行权记录，数据来自 Files 中的独立工作簿。',
-    'en-US': 'View all Futu exercise records from the workbook stored in Files.',
-  },
-  soldHeroEyebrow: { 'zh-CN': '卖出记录', 'en-US': 'Sold Share Records' },
-  soldHeroText: {
-    'zh-CN': '展示 Futu 卖出汇总记录，数据来自 Files 中的独立工作簿。',
-    'en-US': 'View Futu sold-share summary records from the workbook stored in Files.',
-  },
-  transferHeroEyebrow: { 'zh-CN': '2025年计划', 'en-US': '2025 Plan' },
-  transferHeroText: {
-    'zh-CN': '按月汇总归属记录；取消数量需进入 Edit 模式修改，保存后生成新输入文件并运行 workflow。',
-    'en-US':
-      'Summarize monthly vesting records. Edit cancellations in Edit mode; saving creates a new input file and reruns the workflow.',
-  },
-  employeeHeroEyebrow: { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
-  employeeHeroText: {
-    'zh-CN': '员工主数据由员工归集 workflow 从 ESOP 明细输入文件中生成，并支持手工补充。',
-    'en-US': 'Employee master data is generated from ESOP detail workflows and can be manually supplemented.',
-  },
-  planHeroEyebrow: { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
-  planHeroText: {
-    'zh-CN': '按 Plan Name 聚合授予、行权、取消及 outstanding 数量。',
-    'en-US': 'Aggregate grants, exercises, cancellations, and outstanding quantities by Plan Name.',
-  },
-  holdersHeroEyebrow: { 'zh-CN': '持股5%以上股东', 'en-US': '5% Holders' },
-  holdersHeroText: {
-    'zh-CN': '由 Global Parameter 手工维护的 5% holder 数字与 Capitalization Summary 分母计算生成。',
-    'en-US':
-      'Generated from manually maintained Global Parameter holder numbers and Capitalization Summary denominators.',
-  },
-  fixedHeroEyebrow: { 'zh-CN': '管理可以更改的全局参数', 'en-US': 'Manage Editable Global Parameters' },
-  fixedHeroText: {
-    'zh-CN': 'Data Management 下的全局参数维护页，用于管理月度流程中可由管理员调整的业务常量。',
-    'en-US': 'Maintain business constants that admins can adjust in the monthly process.',
-  },
-  docsHeroEyebrow: { 'zh-CN': '使用手册', 'en-US': 'Docs' },
-  docsHeroText: {
-    'zh-CN': '系统各页面与工作流的使用说明，按主题分多篇文档。',
-    'en-US': 'Usage guides for system pages and workflows, organized by topic.',
-  },
-  esopHeroEyebrow: { 'zh-CN': '股权明细', 'en-US': 'ESOP Detail' },
-  esopHeroText: {
-    'zh-CN': '股权明细的业务总入口，包含授予、行权、卖出和 2025 转富途计划四类台账。',
-    'en-US': 'The ESOP detail hub for grants, exercises, sold shares, and the 2025 transfer plan.',
-  },
-  dataManagementHeroText: {
-    'zh-CN': '数据管理业务入口，维护 5% 股东与全局参数等可由管理员调整的数据。',
-    'en-US': 'Data management hub for 5% holders and global parameters.',
-  },
-  chooseFromFilesCenter: { 'zh-CN': '从文件中心选择', 'en-US': 'Choose from the Files Center' },
-  selected: { 'zh-CN': '已选择', 'en-US': 'Selected' },
-  workflowProgress: { 'zh-CN': 'Workflow 进度', 'en-US': 'Workflow progress' },
-  edit: { 'zh-CN': '编辑', 'en-US': 'Edit' },
-  cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
-  newEmployee: { 'zh-CN': '新增员工', 'en-US': 'New Employee' },
-  manageLabels: { 'zh-CN': '标签管理', 'en-US': 'Manage Labels' },
-  labelManagementTitle: { 'zh-CN': '标签管理', 'en-US': 'Label Management' },
-  newTag: { 'zh-CN': '新增标签', 'en-US': 'New Tag' },
-  close: { 'zh-CN': '关闭', 'en-US': 'Close' },
-  link: { 'zh-CN': '关联', 'en-US': 'Link' },
-  planSummarySubtitle: { 'zh-CN': '由股权授予明细聚合生成', 'en-US': 'Aggregated from equity grant detail' },
-  globalParameterTitle: { 'zh-CN': '参数', 'en-US': 'Global Parameter' },
-  usernameAndDisplayNameRequired: {
-    'zh-CN': '账号名和显示名不能为空',
-    'en-US': 'Username and display name are required',
-  },
-  newUserPasswordRequired: { 'zh-CN': '新用户必须设置密码', 'en-US': 'Password is required for a new user' },
-  userSaved: { 'zh-CN': '用户已保存', 'en-US': 'User saved' },
-  userDeleted: { 'zh-CN': '用户已删除', 'en-US': 'User deleted' },
-  rawFutuGrantData: { 'zh-CN': 'Futu 授予数据原始格式', 'en-US': 'Raw Futu grant data' },
-  rawOptionsOsDetail: { 'zh-CN': 'Options OS Detail 原始格式', 'en-US': 'Raw Options OS Detail data' },
-  standardizedFutuShareworksMerge: {
-    'zh-CN': 'Futu + Shareworks 标准化拼表',
-    'en-US': 'Standardized Futu + Shareworks merge',
-  },
-  rawFutuBciExercises: { 'zh-CN': 'Futu BCI Exercises to Date 原始格式', 'en-US': 'Raw Futu BCI Exercises to Date' },
-  unlink: { 'zh-CN': '取消关联', 'en-US': 'Unlink' },
-  unlinked: { 'zh-CN': '已取消关联', 'en-US': 'Unlinked' },
-  confirmDeleteUser: { 'zh-CN': '确定删除用户【{username}】吗？', 'en-US': 'Delete user {username}?' },
-  transposeTable: { 'zh-CN': '转置表格', 'en-US': 'Transpose table' },
-  restoreHorizontal: { 'zh-CN': '恢复横向', 'en-US': 'Restore horizontal' },
-  employeeLabelModalSubtitle: {
-    'zh-CN': '先创建标签，再分配给员工；名称或颜色变更会自动影响所有员工。',
-    'en-US': 'Create labels first, then assign them to employees. Name or color changes apply to all employees.',
-  },
-  transferPlanConfirmAndRun: { 'zh-CN': 'Transfer Plan Confirm & Run', 'en-US': 'Transfer Plan Confirm & Run' },
-};
-
-type UiTextKey = keyof typeof uiText;
+/** Keys of the `main` namespace in src/client/texts.ts. */
+type UiTextKey = TextKey<'main'>;
 
 type LanguageBinding =
   | { kind: 'text'; selector: string; key: UiTextKey }
   | { kind: 'allText'; selector: string; key: UiTextKey | '' }
   | { kind: 'button'; id: string; key: UiTextKey }
   | { kind: 'option'; id: string; value: string; key: UiTextKey }
-  | { kind: 'placeholder'; id: string; copy: Record<AppLanguage, string> }
+  | { kind: 'placeholder'; id: string; key: UiTextKey }
   | { kind: 'hero'; page: PageKey; key: UiTextKey }
   | { kind: 'searchLabels'; page: PageKey; keys: UiTextKey[] }
   | { kind: 'pageTitle'; selector: string; page: PageKey };
@@ -676,36 +474,39 @@ const LANGUAGE_BINDINGS: LanguageBinding[] = [
   {
     kind: 'placeholder',
     id: 'searchHolder',
-    copy: { 'zh-CN': '按姓名、计划、授予编号搜索...', 'en-US': 'Search by name, plan, grant...' },
+    key: 'placeholderSearchHolder',
   },
   {
     kind: 'placeholder',
     id: 'filterHoldingsTag',
-    copy: { 'zh-CN': '按员工标签筛选', 'en-US': 'Filter by employee tag' },
+    key: 'placeholderFilterHoldingsTag',
   },
   {
     kind: 'placeholder',
     id: 'searchExercises',
-    copy: { 'zh-CN': '按姓名、员工、授予编号搜索...', 'en-US': 'Search by name, employee, grant...' },
+    key: 'placeholderSearchExercises',
   },
   {
     kind: 'placeholder',
     id: 'searchSoldShares',
-    copy: { 'zh-CN': '按姓名、员工、账号搜索...', 'en-US': 'Search by name, employee, account...' },
+    key: 'placeholderSearchSoldShares',
   },
-  { kind: 'placeholder', id: 'filterEmployeesPageTag', copy: { 'zh-CN': '按标签筛选', 'en-US': 'Filter by tag' } },
-  { kind: 'placeholder', id: 'accountEmail', copy: { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' } },
-  { kind: 'placeholder', id: 'accountPhone', copy: { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' } },
+  { kind: 'placeholder', id: 'filterEmployeesPageTag', key: 'placeholderFilterEmployeesPageTag' },
+  { kind: 'placeholder', id: 'accountEmail', key: 'placeholderAccountEmail' },
+  { kind: 'placeholder', id: 'accountPhone', key: 'placeholderAccountPhone' },
   {
     kind: 'placeholder',
     id: 'managedUserUsername',
-    copy: { 'zh-CN': '输入登录账号', 'en-US': 'Enter login username' },
+    key: 'placeholderManagedUserUsername',
   },
-  { kind: 'placeholder', id: 'managedUserDisplayName', copy: { 'zh-CN': '输入显示名', 'en-US': 'Enter display name' } },
-  { kind: 'placeholder', id: 'managedUserEmail', copy: { 'zh-CN': 'name@example.com', 'en-US': 'name@example.com' } },
-  { kind: 'placeholder', id: 'managedUserPhone', copy: { 'zh-CN': '电话或 IM', 'en-US': 'Phone or IM' } },
-  { kind: 'placeholder', id: 'employeesPageName', copy: { 'zh-CN': '输入员工姓名', 'en-US': 'Enter employee name' } },
-  { kind: 'placeholder', id: 'employeesPageUserId', copy: { 'zh-CN': '输入用户 ID', 'en-US': 'Enter user id' } },
+  { kind: 'placeholder', id: 'managedUserDisplayName', key: 'placeholderManagedUserDisplayName' },
+  { kind: 'placeholder', id: 'managedUserEmail', key: 'placeholderManagedUserEmail' },
+  { kind: 'placeholder', id: 'managedUserPhone', key: 'placeholderManagedUserPhone' },
+  { kind: 'placeholder', id: 'searchEmployeesPage', key: 'placeholderSearchEmployeesPage' },
+  { kind: 'placeholder', id: 'employeesPageNumber', key: 'placeholderEmployeesPageNumber' },
+  { kind: 'placeholder', id: 'employeesMergeTargetNumber', key: 'placeholderEmployeesMergeTargetNumber' },
+  { kind: 'placeholder', id: 'employeesPageName', key: 'placeholderEmployeesPageName' },
+  { kind: 'placeholder', id: 'employeesPageUserId', key: 'placeholderEmployeesPageUserId' },
 ];
 
 function applyLanguageBindings() {
@@ -724,7 +525,7 @@ function applyLanguageBindings() {
         setOptionText(binding.id, binding.value, t(binding.key));
         break;
       case 'placeholder':
-        setPlaceholder(binding.id, binding.copy[currentLanguage]);
+        setPlaceholder(binding.id, t(binding.key));
         break;
       case 'hero':
         setPageHero(binding.page, binding.key);
@@ -742,12 +543,10 @@ function applyLanguageBindings() {
   }
 }
 
-function t(key: keyof typeof uiText): string {
-  return uiText[key][currentLanguage] ?? uiText[key]['zh-CN'];
-}
+const t = (key: UiTextKey) => texts(key, currentLanguage);
 
 /** Same as t(), with `{placeholder}` substitution for messages that carry a value. */
-function tp(key: keyof typeof uiText, params: Record<string, string | number>): string {
+function tp(key: UiTextKey, params: Record<string, string | number>): string {
   return t(key).replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name] ?? ''));
 }
 
@@ -826,7 +625,7 @@ function syncCurrentViewInfoText() {
   }
 }
 
-function setPageHero(page: PageKey, bodyKey: keyof typeof uiText) {
+function setPageHero(page: PageKey, bodyKey: UiTextKey) {
   const section = document.getElementById(`page-${page}`);
   if (!section) return;
   const hero = section.querySelector<HTMLElement>('.product-page-hero');

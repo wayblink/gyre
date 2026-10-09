@@ -1,6 +1,9 @@
 import type { ProductFileRecord } from '../shared/types.js';
 import type { NotifyFn } from './uiFeedback.js';
 import type { AppLanguage } from './i18n.js';
+import { createTexts, type TextKey } from './texts.js';
+
+const t = createTexts('fileMove');
 import { collectProductFileFolders, normalizeClientFolder, productFileFolder } from './fileTree.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
@@ -30,34 +33,7 @@ export function createFileMoveDialog({
   notify,
   getLanguage,
 }: FileMoveDialogDeps) {
-  const text = {
-    title: { 'zh-CN': '移动文件', 'en-US': 'Move files' },
-    singleSubtitle: {
-      'zh-CN': '选择目标目录，或填写新的目录路径。',
-      'en-US': 'Pick a target folder, or enter a new folder path.',
-    },
-    multiSubtitle: {
-      'zh-CN': '所选文件会一起移动到目标目录。',
-      'en-US': 'The selected files are moved to the target folder together.',
-    },
-    newFolderLabel: { 'zh-CN': '或填写新目录路径', 'en-US': 'Or enter a new folder path' },
-    cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
-    confirm: { 'zh-CN': '移动', 'en-US': 'Move' },
-    invalidFolder: { 'zh-CN': '目录路径不合法', 'en-US': 'Invalid folder path' },
-    pickFolder: { 'zh-CN': '请选择目标目录', 'en-US': 'Pick a target folder' },
-    sameFolder: { 'zh-CN': '文件已经在该目录中', 'en-US': 'The files already live in that folder' },
-    moved: { 'zh-CN': '个文件已移动到', 'en-US': 'file(s) moved to' },
-    rewritten: { 'zh-CN': '个工作流的引用已同步更新', 'en-US': 'workflow(s) had their references updated' },
-    failed: { 'zh-CN': '个文件移动失败', 'en-US': 'file(s) could not be moved' },
-    moveFailed: { 'zh-CN': '移动文件失败', 'en-US': 'Failed to move the files' },
-    selectedFiles: { 'zh-CN': '已选择', 'en-US': 'Selected' },
-    files: { 'zh-CN': '个文件', 'en-US': 'files' },
-  } satisfies Record<string, Record<AppLanguage, string>>;
-
-  function tt(key: keyof typeof text): string {
-    const language = getLanguage?.() ?? 'zh-CN';
-    return text[key][language] ?? text[key]['zh-CN'];
-  }
+  const tt = (key: TextKey<'fileMove'>) => t(key, getLanguage?.() ?? 'zh-CN');
 
   let pending: ((outcome: FileMoveOutcome | null) => void) | null = null;
   let targetFiles: ProductFileRecord[] = [];

@@ -1,4 +1,5 @@
 import type { AppLanguage } from './i18n.js';
+import { createTexts } from './texts.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { FilePickerResult } from './filePickerModal.js';
 import type {
@@ -60,24 +61,6 @@ const PAGE_KINDS: Record<WorkflowUpdatePageKey, WorkflowUpdateKind> = {
   'five-percent-holders': 'data-management',
 };
 
-/** Bilingual copy this modal owns (it used to be inline ternaries inside main.ts). */
-const TEXT = {
-  chooseFromFilesCenter: { 'zh-CN': '从文件中心选择', 'en-US': 'Choose from the Files Center' },
-  selectFile: { 'zh-CN': '选择文件…', 'en-US': 'Select file…' },
-  planSummaryRuleNote: {
-    'zh-CN': '说明：仅显示 Outstanding 不为 0 的计划。',
-    'en-US': 'Note: only plans with non-zero Outstanding are shown.',
-  },
-  workflowProgress: { 'zh-CN': 'Workflow 进度', 'en-US': 'Workflow progress' },
-  selected: { 'zh-CN': '已选择', 'en-US': 'Selected' },
-  pickSource: { 'zh-CN': '请选择或上传 {label}', 'en-US': 'Select or upload {label}' },
-  completedWithWarnings: { 'zh-CN': 'Workflow 完成（包含 Warning）', 'en-US': 'Workflow completed with warnings' },
-  updateCompleted: { 'zh-CN': 'Workflow 更新完成', 'en-US': 'Workflow update completed' },
-  noResultFiles: { 'zh-CN': '当前页面没有可导出的文件', 'en-US': 'This page has no exportable files' },
-  exportingFiles: { 'zh-CN': '开始导出文件', 'en-US': 'Exporting file' },
-  exportingFilesPlural: { 'zh-CN': '开始导出 {count} 个文件', 'en-US': 'Exporting {count} files' },
-} as const;
-
 export type WorkflowUpdateModal = {
   isWorkflowUpdatePage: (page: string) => page is WorkflowUpdatePageKey;
   /** Cache the per-page configs (called once at boot). */
@@ -116,7 +99,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
   const { el, api, escapeHtml, notify } = deps;
   const lang = deps.getLanguage;
 
-  const tt = (key: keyof typeof TEXT) => TEXT[key][lang()] ?? TEXT[key]['zh-CN'];
+  const tt = createTexts('workflowUpdateModal');
 
   const sourceBindingsByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowPageSourceBinding[]>> = {};
   const resultFilesByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowResultFileBinding[]>> = {};
@@ -182,8 +165,8 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
         const selectedFileId = selectedFiles[source.sourceKey] ?? null;
         const previous = bindingFor(page, source.sourceKey);
         const selected = selectedFileId ? deps.getProductFiles().find((file) => file.id === selectedFileId) : null;
-        const pickLabel = selected ? deps.productFileDisplayName(selected) : tt('selectFile');
-        const ruleNote = page === 'plan-summary' ? tt('planSummaryRuleNote') : '';
+        const pickLabel = selected ? deps.productFileDisplayName(selected) : tt('selectFile', lang());
+        const ruleNote = page === 'plan-summary' ? tt('planSummaryRuleNote', lang()) : '';
         return `
         <div class="workflow-update-source-card" data-workflow-update-source="${escapeHtml(source.sourceKey)}">
           <div class="workflow-update-source-card__main">
@@ -198,7 +181,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
               type="button"
               data-workflow-update-file-pick="${escapeHtml(source.sourceKey)}"
               aria-haspopup="dialog"
-              title="${escapeHtml(tt('chooseFromFilesCenter'))}"
+              title="${escapeHtml(tt('chooseFromFilesCenter', lang()))}"
             >
               <span class="workbook-tree__folder-icon" aria-hidden="true"></span>
               <span class="workflow-update-source-card__pick-label">${escapeHtml(pickLabel)}</span>
@@ -250,7 +233,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
     if (result.action === 'pick') {
       const file = deps.getProductFiles().find((item) => item.id === result.fileId);
       if (file) {
-        el('workflowUpdateStatus').textContent = `${tt('selected')}: ${deps.productFileDisplayName(file)}`;
+        el('workflowUpdateStatus').textContent = `${tt('selected', lang())}: ${deps.productFileDisplayName(file)}`;
       }
     }
   }
@@ -305,7 +288,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
     bar.setAttribute('aria-valuenow', '0');
     fill.style.width = '0%';
     text.textContent = '0 / 0';
-    label.textContent = tt('workflowProgress');
+    label.textContent = tt('workflowProgress', lang());
     step.textContent = stepStatusText('not_started');
   }
 
@@ -337,7 +320,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
       run.status === 'completed_with_warnings' || run.status === 'waiting_approval',
     );
     progress.classList.toggle('is-error', run.status === 'failed' || run.status === 'skipped');
-    label.textContent = tt('workflowProgress');
+    label.textContent = tt('workflowProgress', lang());
     bar.setAttribute('aria-valuenow', String(displayedPercent));
     fill.style.width = `${displayedPercent}%`;
     text.textContent = total > 0 ? `${Math.min(reached, total)} / ${total}` : '0 / 0';
@@ -435,7 +418,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
     const config = getConfig(page);
     const missing = config.sources.find((source) => !selectedFiles[source.sourceKey]);
     if (missing) {
-      notify(tt('pickSource').replace('{label}', missing.label), { type: 'warning' });
+      notify(tt('pickSource', lang()).replace('{label}', missing.label), { type: 'warning' });
       return;
     }
 
@@ -472,7 +455,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
       el('workflowUpdateStatus').textContent = statusMessage(
         run.status === 'completed_with_warnings' ? 'completedWithWarnings' : 'completed',
       );
-      notify(tt(run.status === 'completed_with_warnings' ? 'completedWithWarnings' : 'updateCompleted'), {
+      notify(tt(run.status === 'completed_with_warnings' ? 'completedWithWarnings' : 'updateCompleted', lang()), {
         type: run.status === 'completed_with_warnings' ? 'warning' : 'success',
       });
       closeModal();
@@ -487,7 +470,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
   function downloadResultFiles(page: WorkflowUpdatePageKey) {
     const files = resultFilesByPage[page] ?? [];
     if (files.length === 0) {
-      notify(tt('noResultFiles'), { type: 'warning' });
+      notify(tt('noResultFiles', lang()), { type: 'warning' });
       return;
     }
     files.forEach((file, index) => {
@@ -501,7 +484,9 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
       }, index * 150);
     });
     notify(
-      files.length === 1 ? tt('exportingFiles') : tt('exportingFilesPlural').replace('{count}', String(files.length)),
+      files.length === 1
+        ? tt('exportingFiles', lang())
+        : tt('exportingFilesPlural', lang()).replace('{count}', String(files.length)),
       { type: 'success' },
     );
   }

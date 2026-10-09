@@ -1,4 +1,23 @@
 import { readStoredLanguage, translateRecord, type AppLanguage } from './i18n.js';
+import { createTexts } from './texts.js';
+
+const tt = createTexts('uploadProgress');
+const UPLOAD_DEFAULT_TITLE: Record<AppLanguage, string> = {
+  'zh-CN': tt('title', 'zh-CN'),
+  'en-US': tt('title', 'en-US'),
+};
+const UPLOAD_DEFAULT_STATUS: Record<AppLanguage, string> = {
+  'zh-CN': tt('preparing', 'zh-CN'),
+  'en-US': tt('preparing', 'en-US'),
+};
+const UPLOADING_STATUS: Record<AppLanguage, string> = {
+  'zh-CN': tt('uploading', 'zh-CN'),
+  'en-US': tt('uploading', 'en-US'),
+};
+const UPLOAD_DEFAULT_COMPLETE: Record<AppLanguage, string> = {
+  'zh-CN': tt('completed', 'zh-CN'),
+  'en-US': tt('completed', 'en-US'),
+};
 
 type LocalizedText = string | Record<AppLanguage, string>;
 
@@ -19,11 +38,6 @@ export class UploadHttpError extends Error {
     this.name = 'UploadHttpError';
   }
 }
-
-const DEFAULT_TITLE = { 'zh-CN': '正在上传文件', 'en-US': 'Uploading file' };
-const DEFAULT_STATUS = { 'zh-CN': '准备上传...', 'en-US': 'Preparing upload...' };
-const UPLOADING_STATUS = { 'zh-CN': '正在上传...', 'en-US': 'Uploading...' };
-const DEFAULT_COMPLETE = { 'zh-CN': '上传完成', 'en-US': 'Upload completed' };
 
 function localize(copy: LocalizedText | undefined, fallback: Record<AppLanguage, string>): string {
   if (!copy) return translateRecord(fallback, readStoredLanguage());
@@ -65,9 +79,9 @@ function showUploadProgress(options: UploadProgressOptions) {
   const modal = getElement('uploadProgressModal');
   if (!modal) return;
 
-  setText('uploadProgressTitle', localize(options.title, DEFAULT_TITLE));
+  setText('uploadProgressTitle', localize(options.title, UPLOAD_DEFAULT_TITLE));
   setText('uploadProgressFileName', options.fileName ?? '');
-  setText('uploadProgressStatus', localize(undefined, DEFAULT_STATUS));
+  setText('uploadProgressStatus', localize(undefined, UPLOAD_DEFAULT_STATUS));
   setProgress(0);
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden', 'false');
@@ -127,7 +141,7 @@ export function uploadFormDataWithProgress<T>(
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         setProgress(100);
-        setText('uploadProgressStatus', localize(options.completedText, DEFAULT_COMPLETE));
+        setText('uploadProgressStatus', localize(options.completedText, UPLOAD_DEFAULT_COMPLETE));
         window.setTimeout(hideUploadProgress, 300);
         try {
           resolve(parseUploadResponse<T>(xhr));

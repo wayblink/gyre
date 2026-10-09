@@ -6,6 +6,7 @@ const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
 const filesPageSource = readFileSync(new URL('./filesPage.ts', import.meta.url), 'utf8');
 const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+const textsSource = readFileSync(new URL('./texts.ts', import.meta.url), 'utf8');
 const monthlyRunPageSource = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
 const uploadProgressSource = readFileSync(new URL('./uploadProgress.ts', import.meta.url), 'utf8');
 const workbookViewerSource = readFileSync(new URL('./univer/createWorkbookViewer.ts', import.meta.url), 'utf8');
@@ -628,8 +629,8 @@ test('plan summary update modal explains the non-zero Outstanding filter', () =>
     'utf8',
   );
 
-  assert.match(workflowUpdateModalSource, /only plans with non-zero Outstanding are shown/);
-  assert.match(workflowUpdateModalSource, /仅显示 Outstanding 不为 0 的计划/);
+  assert.match(textsSource, /only plans with non-zero Outstanding are shown/);
+  assert.match(textsSource, /仅显示 Outstanding 不为 0 的计划/);
   assert.match(workflowSource, /having sum\(case when \[key\] = 'Awards Outstanding'/);
   assert.match(workflowSource, /Outstanding 不为 0/);
   assert.match(optionSummarySource, /coalesce\(lookup\.sorting,.*coalesce\(base\.sorting/);
@@ -811,8 +812,8 @@ test('admin-only tools are gated by role and labelled "Admin Only"', () => {
   assert.match(html, /<div class="nav-section-label">Admin Only<\/div>/);
   assert.doesNotMatch(html, /开发工具/);
 
-  // The localized label renders as 仅管理员 / Admin Only.
-  assert.match(mainSource, /devTools:\s*\{\s*'zh-CN':\s*'仅管理员',\s*'en-US':\s*'Admin Only'\s*\}/);
+  // The localized label renders as 仅管理员 / Admin Only (in the merged translation table).
+  assert.match(textsSource, /devTools:\s*\{\s*'zh-CN':\s*'仅管理员',\s*'en-US':\s*'Admin Only'\s*\}/);
 
   // Files, Workflow, and User Management stay admin-only pages, hidden from regular users.
   assert.match(mainSource, /adminOnlyPages\s*=\s*new Set<PageKey>\(\['files',\s*'workflow',\s*'user-management'\]\)/);
@@ -834,7 +835,7 @@ test('Global Parameter exposes administrator-only create and delete controls', (
   assert.doesNotMatch(fixedValuePage, /<th>Effective From<\/th>/);
   assert.doesNotMatch(fixedValuePage, /id="fixedValueEffectiveFrom"/);
   assert.doesNotMatch(fixedValuePage, /管理员可维护/);
-  assert.match(mainSource, /'fixed-value':\s*\{\s*'zh-CN':\s*'全局参数',\s*'en-US':\s*'Global Parameter'\s*\}/);
+  assert.match(textsSource, /'fixed-value':\s*\{\s*'zh-CN':\s*'全局参数',\s*'en-US':\s*'Global Parameter'\s*\}/);
   assert.match(fixedValuePage, /id="btnAddFixedValue"/);
   assert.match(fixedValuePage, /data-admin-only="true"/);
   assert.match(mainSource, /function renderFixedValuePage\(\)/);
@@ -972,8 +973,8 @@ test('Employee Management update runs the employee data-management workflow and 
 
 test('workflow action labels are localized by language state', () => {
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
-  assert.match(mainSource, /update: \{ 'zh-CN': '更新', 'en-US': 'Update' \}/);
-  assert.match(mainSource, /confirmAndRun: \{ 'zh-CN': '确认并运行', 'en-US': 'Confirm & Run' \}/);
+  assert.match(textsSource, /update: \{ 'zh-CN': '更新', 'en-US': 'Update' \}/);
+  assert.match(textsSource, /confirmAndRun: \{ 'zh-CN': '确认并运行', 'en-US': 'Confirm & Run' \}/);
   assert.match(mainSource, /function syncWorkflowActionLabels\(\)/);
   assert.match(mainSource, /label\.textContent = t\('update'\)/);
   assert.match(mainSource, /label\.textContent = t\('export'\)/);
@@ -1089,11 +1090,12 @@ test('main.ts renders every bilingual string through the translation table', () 
   assert.doesNotMatch(source, /currentLanguage === 'zh-CN' \?/);
   assert.doesNotMatch(source, /currentLanguage === 'en-US' \?/);
 
-  // The table stays the single source of truth, and messages carrying a value use tp().
-  assert.match(source, /const uiText: Record<string, Record<AppLanguage, string>> = \{/);
-  assert.match(source, /function t\(key: keyof typeof uiText\): string \{/);
-  assert.match(source, /function tp\(key: keyof typeof uiText, params: Record<string, string \| number>\): string \{/);
-  assert.match(source, /confirmDeleteUser: \{ 'zh-CN': '确定删除用户【\{username\}】吗？'/);
+  // The table stays the single source of truth (now the merged table in texts.ts), and messages
+  // carrying a value use tp().
+  assert.match(textsSource, /export const TEXTS = \{/);
+  assert.match(textsSource, /confirmDeleteUser: \{ 'zh-CN': '确定删除用户【\{username\}】吗？'/);
+  assert.match(source, /const t = \(key: UiTextKey\) => texts\(key, currentLanguage\)/);
+  assert.match(source, /function tp\(key: UiTextKey, params: Record<string, string \| number>\): string \{/);
 
   // applyLanguage() is now data-driven: a declarative binding table plus an imperative tail that
   // only handles state-dependent labels, and neither may fall back to inline ternaries.

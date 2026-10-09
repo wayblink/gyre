@@ -350,6 +350,8 @@ test('monthly input rows expose an accessible purpose help icon and bilingual so
 
 test('monthly update treats optional sources as non-blocking and explains warning behavior', () => {
   const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+  // The copy now lives in the merged translation table.
+  const texts = readFileSync(new URL('./texts.ts', import.meta.url), 'utf8');
 
   // Required checks remain data-driven: an optional source can be absent while required
   // sources still block saving and running.
@@ -357,7 +359,7 @@ test('monthly update treats optional sources as non-blocking and explains warnin
   assert.match(source, /if \(source\.required && !binding\?\.fileId\) return false/);
   assert.match(source, /optionalNotConfigured/);
   assert.match(source, /optionalSourceHint/);
-  assert.match(source, /未提供时运行会产生 warning/);
+  assert.match(texts, /未提供时运行会产生 warning/);
 });
 
 test('monthly constants are rendered on the main Monthly Update page and saved row by row', () => {

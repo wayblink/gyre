@@ -17,6 +17,9 @@ import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { createWorkflowRunClient } from './workflow/runClient.js';
 import type { AppLanguage } from './i18n.js';
+import { createTexts, type TextKey } from './texts.js';
+
+const monthlyRunText = createTexts('monthlyRun');
 import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
@@ -417,123 +420,13 @@ export function createMonthlyRunPage({
   let isSavingSources = false;
   let monthlyConstantsCollapsed = false;
   const expandedWarningTaskIds = new Set<string>();
-  const text = {
-    selectMonth: { 'zh-CN': '请选择月份', 'en-US': 'Please select a month' },
-    codeDefined: { 'zh-CN': '代码定义', 'en-US': 'Code defined' },
-    noInputDefinitions: { 'zh-CN': '暂无输入定义', 'en-US': 'No input definitions' },
-    loadingSourceConfig: { 'zh-CN': '正在加载 source 配置…', 'en-US': 'Loading source configuration…' },
-    configureSourcesHint: {
-      'zh-CN': '请先配置每个 workflow 输入节点需要使用的源文件。',
-      'en-US': 'Configure the source files required by each workflow input node first.',
-    },
-    notConfigured: { 'zh-CN': '未配置', 'en-US': 'Not configured' },
-    notUploaded: { 'zh-CN': '未上传', 'en-US': 'Not uploaded' },
-    optionalNotConfigured: { 'zh-CN': '未配置（可选）', 'en-US': 'Not configured (optional)' },
-    optionalInherit: { 'zh-CN': 'Optional · 继承', 'en-US': 'Optional · Inherit' },
-    optionalValidation: { 'zh-CN': 'Optional · 校验', 'en-US': 'Optional · Validation' },
-    optionalSupplement: { 'zh-CN': 'Optional · 补充', 'en-US': 'Optional · Supplement' },
-    optionalSourceHint: {
-      'zh-CN': '可选输入：未提供时运行会产生 warning，批准后跳过该输入对应的修正。',
-      'en-US':
-        'Optional input: if omitted, the run raises a warning and skips the adjustment associated with this input after approval.',
-    },
-    chooseUploadedFile: { 'zh-CN': '选择已上传文件', 'en-US': 'Choose uploaded file' },
-    currentFile: { 'zh-CN': '当前文件', 'en-US': 'Current file' },
-    uploadNewFile: { 'zh-CN': '上传新文件', 'en-US': 'Upload new file' },
-    monthlyConstantsTitle: { 'zh-CN': '月度常量', 'en-US': 'Monthly Constants' },
-    collapseMonthlyConstants: { 'zh-CN': '收起月度常量', 'en-US': 'Collapse Monthly Constants' },
-    expandMonthlyConstants: { 'zh-CN': '展开月度常量', 'en-US': 'Expand Monthly Constants' },
-    monthlyConstantsHeaderHelp: {
-      'zh-CN': '这些常量按月份保存，并参与当月 Cap Table 计算；编辑某一行只会更新该行。',
-      'en-US':
-        'These constants are stored per month and used by the monthly Cap Table calculation; editing a row updates only that row.',
-    },
-    monthlyConstantName: { 'zh-CN': '常量', 'en-US': 'Constant' },
-    monthlyConstantValue: { 'zh-CN': '数值', 'en-US': 'Value' },
-    monthlyConstantActions: { 'zh-CN': '操作', 'en-US': 'Actions' },
-    editMonthlyConstant: { 'zh-CN': '编辑', 'en-US': 'Edit' },
-    saveMonthlyConstant: { 'zh-CN': '保存', 'en-US': 'Save' },
-    cancelMonthlyConstant: { 'zh-CN': '取消', 'en-US': 'Cancel' },
-    monthlyConstantsSaved: { 'zh-CN': '月度常量已保存', 'en-US': 'Monthly constants saved' },
-    selectSourceFile: { 'zh-CN': '选择', 'en-US': 'Select' },
-    defaultSheet: { 'zh-CN': '默认 Sheet', 'en-US': 'Default Sheet' },
-    sheetName: { 'zh-CN': 'Sheet 名称', 'en-US': 'Sheet name' },
-    sheetNameRequired: { 'zh-CN': '请填写 Sheet 名称', 'en-US': 'Enter a sheet name' },
-    inputSheet: { 'zh-CN': '输入 Sheet', 'en-US': 'Input sheet' },
-    sheetSaved: { 'zh-CN': '输入 Sheet 已保存', 'en-US': 'Input sheet saved' },
-    sheetSaveFailed: { 'zh-CN': '输入 Sheet 保存失败', 'en-US': 'Failed to save input sheet' },
-    copy: { 'zh-CN': '复制', 'en-US': 'Copy' },
-    copiedFileName: { 'zh-CN': '文件名已复制', 'en-US': 'File name copied' },
-    copyFileNameFailed: { 'zh-CN': '复制文件名失败', 'en-US': 'Failed to copy file name' },
-    fileNameHelp: { 'zh-CN': '输入文件用途', 'en-US': 'Input file purpose' },
-    fileNameHelpHint: {
-      'zh-CN': '点击每个输入项旁的问号，可查看该文件在 Monthly Update 中的用途。',
-      'en-US': 'Click the question mark beside an input to see how the file is used in Monthly Update.',
-    },
-    requiredHelp: { 'zh-CN': 'Is required 取值说明', 'en-US': 'Is required value meanings' },
-    requiredHelpHint: {
-      'zh-CN':
-        'Required：必需提供，缺少时不能执行。\nOptional · Inherit：继承上一轮输出，缺少时使用系统已保存结果。\nOptional · Validation：仅用于校验，不影响核心计算。\nOptional · Supplement：可选补充逻辑，缺少时仍可计算。',
-      'en-US':
-        'Required: must be provided or execution is blocked.\nOptional · Inherit: carries forward the prior output when no new file is provided.\nOptional · Validation: used only for validation and does not affect core calculations.\nOptional · Supplement: adds optional logic; calculation can continue without it.',
-    },
-    removeConfigTitle: { 'zh-CN': '删除 Uploaded file 配置', 'en-US': 'Delete Uploaded file configuration' },
-    removeConfigConfirm: { 'zh-CN': '确定删除', 'en-US': 'Delete the Uploaded file configuration for' },
-    removeConfigSuffix: {
-      'zh-CN': '的 Uploaded file 配置吗？文件中心里的文件不会被删除。',
-      'en-US': '? The file in Files will not be deleted.',
-    },
-    removedConfig: { 'zh-CN': '已删除', 'en-US': 'Deleted the Uploaded file configuration for' },
-    removedConfigSuffix: { 'zh-CN': '的 Uploaded file 配置', 'en-US': '' },
-    chooseFileFor: { 'zh-CN': '请先为', 'en-US': 'Please select a file for' },
-    completeSourceConfig: { 'zh-CN': '请先完成 source 配置', 'en-US': 'Complete source configuration first' },
-    workflowVersionMismatch: {
-      'zh-CN':
-        '月度更新工作流版本不匹配：前端 UI 基于 v{expected} 编写，数据库中的工作流定义为 v{actual}。请先更新数据库中的工作流定义或前端代码，使两边版本一致后再执行。',
-      'en-US':
-        'Monthly workflow version mismatch: this UI was built for workflow definition v{expected}, but the database holds v{actual}. Update the workflow definition (or the UI) so both versions match before running Monthly Update.',
-    },
-    submittingRun: { 'zh-CN': '正在提交 Monthly Update...', 'en-US': 'Submitting Monthly Update...' },
-    submittedRun: { 'zh-CN': 'Monthly Update 已提交', 'en-US': 'Monthly Update submitted' },
-    emptyRunState: {
-      'zh-CN': '执行后会在这里显示节点状态。',
-      'en-US': 'Node status will appear here after execution.',
-    },
-    reviewRequired: { 'zh-CN': '需人工复核', 'en-US': 'review required' },
-    showWarningDetails: { 'zh-CN': '查看告警详情', 'en-US': 'View warning details' },
-    hideWarningDetails: { 'zh-CN': '收起告警详情', 'en-US': 'Hide warning details' },
-    noHistory: { 'zh-CN': '暂无执行历史', 'en-US': 'No execution history' },
-    fileCount: { 'zh-CN': '个文件', 'en-US': 'files' },
-    noInputSnapshot: { 'zh-CN': '暂无输入快照', 'en-US': 'No input snapshot' },
-    loadingHistoryRun: { 'zh-CN': '正在加载历史执行记录...', 'en-US': 'Loading historical run...' },
-    historyMissingRun: {
-      'zh-CN': '该历史记录没有关联 workflow 执行记录',
-      'en-US': 'This history record has no workflow run attached',
-    },
-    historyLoadFailed: { 'zh-CN': '加载历史执行记录失败', 'en-US': 'Failed to load historical run' },
-    runHistory: { 'zh-CN': '运行历史', 'en-US': 'Run history' },
-    cannotDeleteRunning: {
-      'zh-CN': '运行中或待审批的记录不能删除',
-      'en-US': 'Running or approval-pending records cannot be deleted',
-    },
-    deleteHistoryTitle: { 'zh-CN': '删除运行历史及输出文件', 'en-US': 'Delete run history and output file' },
-    deleteHistoryConfirm: { 'zh-CN': '确定删除这条运行历史吗？', 'en-US': 'Delete this run history?' },
-    outputDeleteNotice: { 'zh-CN': '对应输出文件', 'en-US': 'The output file' },
-    outputDeleteNoticeSuffix: { 'zh-CN': '也会被永久删除。', 'en-US': 'will also be permanently deleted.' },
-    historyDeleted: {
-      'zh-CN': '运行历史及对应输出文件已删除',
-      'en-US': 'Run history and corresponding output file deleted',
-    },
-    previewExcel: { 'zh-CN': '预览', 'en-US': 'Preview' },
-    delete: { 'zh-CN': '删除', 'en-US': 'Delete' },
-  } satisfies Record<string, Record<AppLanguage, string>>;
 
   function lang(): AppLanguage {
     return getLanguage?.() ?? 'zh-CN';
   }
 
-  function tt(key: keyof typeof text): string {
-    return text[key][lang()] ?? text[key]['zh-CN'];
+  function tt(key: TextKey<'monthlyRun'>): string {
+    return monthlyRunText(key, lang());
   }
 
   function discardRunStateForOtherMonth() {
@@ -1283,7 +1176,7 @@ export function createMonthlyRunPage({
         if (overwrite) form.append('conflictPolicy', 'overwrite');
         return uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
           fileName: file.name,
-          title: { 'zh-CN': '正在上传月度输入文件', 'en-US': 'Uploading monthly input' },
+          title: tt('uploadingInputTitle'),
         });
       };
       let data;
@@ -1345,7 +1238,7 @@ export function createMonthlyRunPage({
     if (!el('monthlyRunSourceModal').classList.contains('hidden')) {
       renderSourceModal();
     }
-    notify(`${tt('removedConfig')} ${label} ${tt('removedConfigSuffix')}`.trim(), { type: 'success' });
+    notify(tt('removedConfig').replace('{label}', label), { type: 'success' });
   }
 
   async function saveSourceModal() {
