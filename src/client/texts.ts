@@ -232,6 +232,22 @@ export const TEXTS = {
     employeeLabelModalTitleEdit: { 'zh-CN': '编辑标签', 'en-US': 'Edit Tag' },
     employeeLabelModalTitleCreate: { 'zh-CN': '新增标签', 'en-US': 'New Tag' },
     employeesPageModalTitleEdit: { 'zh-CN': '编辑员工', 'en-US': 'Edit Employee' },
+    fixedValueEditInvalid: {
+      'zh-CN': '请填写参数解释并输入有效数字',
+      'en-US': 'Enter a description and a valid number',
+    },
+    fixedValueCreateInvalid: {
+      'zh-CN': '请完整填写 Key、参数解释和 Value',
+      'en-US': 'Fill in Key, description and Value',
+    },
+    fixedValueSaved: { 'zh-CN': 'Global Parameter 已保存', 'en-US': 'Global Parameter saved' },
+    fixedValueCreated: { 'zh-CN': 'Global Parameter 已新增', 'en-US': 'Global Parameter created' },
+    fixedValueDeleted: { 'zh-CN': 'Global Parameter 已删除', 'en-US': 'Global Parameter deleted' },
+    fixedValueDeleteConfirm: {
+      'zh-CN': '确定删除 Global Parameter「{label}」吗？此操作不可撤销。',
+      'en-US': 'Delete Global Parameter “{label}”? This cannot be undone.',
+    },
+    deleteGlobalParameter: { 'zh-CN': '删除 Global Parameter', 'en-US': 'Delete Global Parameter' },
     employeesPageModalTitleCreate: { 'zh-CN': '新增员工', 'en-US': 'New Employee' },
     employeeUnlinkConfirm: {
       'zh-CN': '确认取消该关联？取消后该编号恢复为独立员工，不影响授予/行权/卖出等任何业务记录。',

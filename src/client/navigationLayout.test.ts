@@ -838,10 +838,16 @@ test('Global Parameter exposes administrator-only create and delete controls', (
   assert.match(textsSource, /'fixed-value':\s*\{\s*'zh-CN':\s*'全局参数',\s*'en-US':\s*'Global Parameter'\s*\}/);
   assert.match(fixedValuePage, /id="btnAddFixedValue"/);
   assert.match(fixedValuePage, /data-admin-only="true"/);
-  assert.match(mainSource, /function renderFixedValuePage\(\)/);
-  assert.match(mainSource, /data-action="delete-fixed-value"/);
-  assert.match(mainSource, /if \(!isAdminUser\(\)\) return/);
-  assert.match(mainSource, /method:\s*'DELETE'/);
+  // The page owns its own admin gating, create/edit/delete modals and rendering.
+  const fixedValuePageSource = readFileSync(new URL('./fixedValuePage.ts', import.meta.url), 'utf8');
+  assert.match(fixedValuePageSource, /data-action="delete-fixed-value"/);
+  assert.match(fixedValuePageSource, /if \(!deps\.isAdmin\(\)\) return/);
+  assert.match(fixedValuePageSource, /method: 'DELETE'/);
+  assert.match(fixedValuePageSource, /editingId = null;/);
+  // main.ts wires the buttons and the page activation.
+  assert.match(mainSource, /fixedValuePage\.render\(\)/);
+  assert.match(mainSource, /fixedValuePage\.cancelEdit\(\)/);
+  assert.match(mainSource, /if \(page === 'fixed-value'\) \{/);
   assert.match(serverSource, /app\.post\('\/api\/global-parameters'/);
   assert.match(serverSource, /app\.delete\('\/api\/global-parameters\/:id'/);
   assert.match(serverSource, /requireAdminUser\(request as typeof request & RequestWithAuth, reply\)/);
@@ -1015,21 +1021,21 @@ test('Global Parameter editing uses the application modal instead of a browser p
   assert.doesNotMatch(fixedValueSection, /id="fixedValueEditEffectiveFrom"/);
   assert.match(fixedValueSection, /id="btnSubmitFixedValueEdit"/);
   assert.match(fixedValueSection, /data-close="fixedValueEditModal"/);
+  const fixedValuePageSource = readFileSync(new URL('./fixedValuePage.ts', import.meta.url), 'utf8');
   const fixedValueEditSource =
-    mainSource.match(/async function editFixedValue[\s\S]*?function openFixedValueModal/)?.[0] ?? '';
+    fixedValuePageSource.match(/async function edit\([\s\S]*?async function submitEdit/)?.[0] ?? '';
   assert.doesNotMatch(fixedValueEditSource, /\bprompt\(/);
-  assert.match(mainSource, /let editingFixedValueId: number \| null = null;/);
-  assert.match(mainSource, /function openFixedValueEditModal\(item: FixedValueRecord\)/);
-  assert.match(mainSource, /el(?:<[^>]+>)?\('fixedValueEditKey'\)\.value = item\.key;/);
-  assert.match(mainSource, /body: JSON\.stringify\(\{ label, value \}\)/);
+  assert.match(fixedValuePageSource, /let editingId: number \| null = null;/);
+  assert.match(fixedValuePageSource, /el<HTMLInputElement>\('fixedValueEditKey'\)\.value = item\.key;/);
+  assert.match(fixedValuePageSource, /body: JSON\.stringify\(\{ label, value \}\)/);
   assert.match(serverSource, /set label = coalesce\(\$1, label\),[\s\S]*value = \$2/);
   assert.match(serverSource, /updatedByFromRequest\(request as typeof request & RequestWithAuth\)/);
-  assert.match(mainSource, /el\('fixedValueEditModal'\)\.classList\.remove\('hidden'\)/);
-  assert.match(mainSource, /async function saveFixedValueEdit\(\)/);
-  assert.match(mainSource, /`\/api\/global-parameters\/\$\{editingFixedValueId\}`/);
+  assert.match(fixedValuePageSource, /el\('fixedValueEditModal'\)\.classList\.remove\('hidden'\)/);
+  assert.match(fixedValuePageSource, /async function submitEdit\(\)/);
+  assert.match(fixedValuePageSource, /`\/api\/global-parameters\/\$\{editingId\}`/);
   assert.match(
     mainSource,
-    /btnSubmitFixedValueEdit'\)\.addEventListener\('click', \(\) => void saveFixedValueEdit\(\)\)/,
+    /btnSubmitFixedValueEdit'\)\.addEventListener\('click', \(\) => void fixedValuePage\.submitEdit\(\)\)/,
   );
 });
 

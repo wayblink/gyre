@@ -32,6 +32,7 @@ import { createFilePickerModal } from './filePickerModal.js';
 import { createMonthlyRunPage } from './monthlyRunPage.js';
 import { createWorkflowUpdateModal, type WorkflowUpdatePageKey } from './workflowUpdateModal.js';
 import { createUserManagementPage } from './userManagementPage.js';
+import { createFixedValuePage } from './fixedValuePage.js';
 import { createTexts, createTextFormatter, TEXTS, type TextKey } from './texts.js';
 
 const texts = createTexts('main');
@@ -143,7 +144,6 @@ let monthlyRunInputCollapsed = false;
 let themeSelection: ThemeSelection = getStoredTheme();
 let currentLanguage: AppLanguage = readStoredLanguage();
 let appInitialized = false;
-let editingFixedValueId: number | null = null;
 
 let editingEmployeeId: number | null = null;
 let editingEmployeeLabelId: number | null = null;
@@ -241,6 +241,18 @@ const workflowUpdateModal = createWorkflowUpdateModal({
   openFilePicker: (options) => filePicker.open(options),
   productFileDisplayName,
   refreshPage: (page) => refreshWorkflowUpdatePage(page),
+});
+
+const fixedValuePage = createFixedValuePage({
+  el,
+  api,
+  escapeHtml,
+  notify,
+  confirmAction,
+  formatNumber,
+  getLanguage: () => currentLanguage,
+  isAdmin: isAdminUser,
+  localizeDom: localizeAppDom,
 });
 
 const userManagementPage = createUserManagementPage({
@@ -1149,6 +1161,12 @@ async function activatePage(page: PageKey) {
 
     if (page === 'user-management') {
       await userManagementPage.load();
+    }
+
+    // The Global Parameter page has no sidebar entry (it is linked from the docs and the 5% holders
+    // page), and without this branch it only rendered after a mutation.
+    if (page === 'fixed-value') {
+      await fixedValuePage.render();
     }
 
     if (page === 'grant-record') {
@@ -3396,160 +3414,6 @@ async function cancelFivePercentHoldersEdit() {
 }
 
 // The 5 monthly-workflow fixed values now live per-month on monthly_run_instances (inherited from
-async function renderFixedValuePage() {
-  const data = await api<{ items: FixedValueRecord[] }>('/api/global-parameters');
-  if (data.items.length === 0) {
-    el('fixedValuePageBody').innerHTML =
-      '<tr><td colspan="6" class="table-empty-cell">暂无 Global Parameter 配置</td></tr>';
-    localizeAppDom();
-    return;
-  }
-
-  el('fixedValuePageBody').innerHTML = data.items
-    .map(
-      (item) => `
-      <tr>
-        <td style="text-align:left;">${escapeHtml(item.key)}</td>
-        <td style="text-align:left; font-weight:600;">${escapeHtml(item.label)}</td>
-        <td class="col-number">${formatNumber(item.value)}</td>
-        <td>${escapeHtml(item.updatedAt)}</td>
-        <td>${escapeHtml(item.updatedBy)}</td>
-        <td>
-          ${
-            isAdminUser() && item.editable
-              ? `<div class="action-buttons">
-                <button class="btn btn-secondary btn-sm" data-action="edit-fixed-value" data-id="${item.id}" type="button">edit</button>
-                <button class="btn btn-danger btn-sm" data-action="delete-fixed-value" data-id="${item.id}" type="button" aria-label="删除 ${escapeHtml(item.label)}" title="删除">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
-                </button>
-              </div>`
-              : '<span>-</span>'
-          }
-        </td>
-      </tr>`,
-    )
-    .join('');
-
-  el('fixedValuePageBody')
-    .querySelectorAll<HTMLElement>('[data-action="edit-fixed-value"]')
-    .forEach((button) =>
-      button.addEventListener('click', () => void editFixedValue(Number(button.dataset.id), data.items)),
-    );
-  el('fixedValuePageBody')
-    .querySelectorAll<HTMLElement>('[data-action="delete-fixed-value"]')
-    .forEach((button) =>
-      button.addEventListener('click', () => void deleteFixedValue(Number(button.dataset.id), data.items)),
-    );
-  localizeAppDom();
-}
-
-async function editFixedValue(id: number, items: FixedValueRecord[]) {
-  if (!isAdminUser()) return;
-  const item = items.find((row) => row.id === id);
-  if (!item) return;
-  openFixedValueEditModal(item);
-}
-
-function openFixedValueEditModal(item: FixedValueRecord) {
-  if (!isAdminUser()) return;
-  editingFixedValueId = item.id;
-  el<HTMLInputElement>('fixedValueEditKey').value = item.key;
-  el<HTMLInputElement>('fixedValueEditLabel').value = item.label;
-  el<HTMLInputElement>('fixedValueEditValue').value = String(item.value);
-  el('fixedValueEditModal').classList.remove('hidden');
-  el<HTMLInputElement>('fixedValueEditValue').focus();
-}
-
-async function saveFixedValueEdit() {
-  if (!isAdminUser() || editingFixedValueId === null) return;
-  const label = el<HTMLInputElement>('fixedValueEditLabel').value.trim();
-  const rawValue = el<HTMLInputElement>('fixedValueEditValue').value.replace(/,/g, '').trim();
-  const value = Number(rawValue);
-  if (!label || !Number.isFinite(value)) {
-    notify('请填写参数解释并输入有效数字', { type: 'warning' });
-    return;
-  }
-  const submitButton = el<HTMLButtonElement>('btnSubmitFixedValueEdit');
-  submitButton.disabled = true;
-  try {
-    await api(`/api/global-parameters/${editingFixedValueId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ label, value }),
-    });
-    editingFixedValueId = null;
-    el('fixedValueEditModal').classList.add('hidden');
-    await renderFixedValuePage();
-    notify('Global Parameter 已保存', { type: 'success' });
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-  } finally {
-    submitButton.disabled = false;
-  }
-}
-
-function openFixedValueModal() {
-  if (!isAdminUser()) return;
-  el<HTMLInputElement>('fixedValueKey').value = '';
-  el<HTMLInputElement>('fixedValueLabel').value = '';
-  el<HTMLInputElement>('fixedValueValue').value = '';
-  el('fixedValueModal').classList.remove('hidden');
-  el<HTMLInputElement>('fixedValueKey').focus();
-}
-
-async function createFixedValue() {
-  if (!isAdminUser()) return;
-  const key = el<HTMLInputElement>('fixedValueKey').value.trim();
-  const label = el<HTMLInputElement>('fixedValueLabel').value.trim();
-  const rawValue = el<HTMLInputElement>('fixedValueValue').value.replace(/,/g, '').trim();
-  const value = Number(rawValue);
-  if (!key || !label || !rawValue || !Number.isFinite(value)) {
-    notify('请完整填写 Key、参数解释和 Value', { type: 'warning' });
-    return;
-  }
-
-  const submitButton = el<HTMLButtonElement>('btnSubmitFixedValue');
-  submitButton.disabled = true;
-  try {
-    await api('/api/global-parameters', {
-      method: 'POST',
-      body: JSON.stringify({
-        key,
-        label,
-        value,
-      }),
-    });
-    el('fixedValueModal').classList.add('hidden');
-    await renderFixedValuePage();
-    notify('Global Parameter 已新增', { type: 'success' });
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-  } finally {
-    submitButton.disabled = false;
-  }
-}
-
-async function deleteFixedValue(id: number, items: FixedValueRecord[]) {
-  if (!isAdminUser()) return;
-  const item = items.find((row) => row.id === id);
-  if (!item) return;
-  if (
-    !(await confirmAction(`确定删除 Global Parameter「${item.label}」吗？此操作不可撤销。`, {
-      title: '删除 Global Parameter',
-      confirmText: '删除',
-      tone: 'danger',
-    }))
-  )
-    return;
-
-  try {
-    await api(`/api/global-parameters/${id}`, { method: 'DELETE' });
-    await renderFixedValuePage();
-    notify('Global Parameter 已删除', { type: 'success' });
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-  }
-}
-
 function getGrantTypeClass(type: string): string {
   if (type === 'Option') return 'type-iso';
   if (type === 'RSU') return 'type-rsu';
@@ -3562,7 +3426,7 @@ async function initSettingsPage() {
     button.addEventListener('click', () => {
       const modalId = button.dataset.close ?? '';
       el(modalId).classList.add('hidden');
-      if (modalId === 'fixedValueEditModal') editingFixedValueId = null;
+      if (modalId === 'fixedValueEditModal') fixedValuePage.cancelEdit();
     });
   });
   document.querySelectorAll<HTMLButtonElement>('[data-language]').forEach((button) => {
@@ -3571,9 +3435,9 @@ async function initSettingsPage() {
       setLanguage(language);
     });
   });
-  el('btnAddFixedValue').addEventListener('click', openFixedValueModal);
-  el('btnSubmitFixedValue').addEventListener('click', () => void createFixedValue());
-  el('btnSubmitFixedValueEdit').addEventListener('click', () => void saveFixedValueEdit());
+  el('btnAddFixedValue').addEventListener('click', () => fixedValuePage.openCreateModal());
+  el('btnSubmitFixedValue').addEventListener('click', () => void fixedValuePage.submitCreate());
+  el('btnSubmitFixedValueEdit').addEventListener('click', () => void fixedValuePage.submitEdit());
   renderThemeCards();
   syncLanguageButtons();
 }

@@ -67,7 +67,6 @@ const API_STUBS: FetchStub[] = [
   },
   { match: /\/api\/monthly-runs$/, respond: { items: [], total: 0 } },
   { match: /\/api\/employee-labels$/, respond: { items: [] } },
-  { match: /\/api\/global-parameters$/, respond: { items: [] } },
   { match: /\/api\/fixed-values$/, respond: { items: [] } },
   { match: /\/api\/settings\//, respond: { items: [] } },
   { match: /\/api\/admin\/users$/, respond: { items: [] } },
@@ -561,4 +560,54 @@ test('switching the language relabels the user management table and modal', asyn
     [...doc.querySelectorAll('#userManagementBody tr')].some((row) => row.textContent?.includes('Inactive')),
     'status labels should switch language',
   );
+});
+
+const GLOBAL_PARAMETERS = {
+  items: [
+    {
+      id: 5,
+      key: 'optionsOutstandingCullgen',
+      label: 'Options Outstanding - Cullgen',
+      value: 4156815,
+      updatedAt: '2026-09-01T00:00:00.000Z',
+      updatedBy: 'Administrator',
+      editable: true,
+    },
+  ],
+};
+
+test('the global parameter page renders its rows and gates the edit controls on the admin role', async () => {
+  const window = await bootApp([...API_STUBS, { match: /\/api\/global-parameters$/, respond: GLOBAL_PARAMETERS }], 120);
+  const doc = window.document;
+
+  // The page has no sidebar entry, so it is reached by URL: a location change drives
+  // syncPageFromLocation() -> activatePage('fixed-value') -> fixedValuePage.render().
+  window.history.pushState(null, '', '/fixed-value');
+  window.dispatchEvent(new window.Event('popstate'));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  assert.ok(
+    lastRequests.some((request) => request.url.includes('/api/global-parameters')),
+    'activating the page should load the parameters',
+  );
+  assert.ok(doc.getElementById('page-fixed-value')?.classList.contains('active'), 'page not activated');
+  const row = doc.querySelector('#fixedValuePageBody tr');
+  assert.ok(row, 'the parameter row should render');
+  assert.ok(row.textContent?.includes('optionsOutstandingCullgen'), 'the key should render');
+  assert.ok(row.textContent?.includes('4,156,815'), 'the value should be formatted');
+
+  // The signed-in user is an admin, so the row actions are rendered.
+  assert.ok(doc.querySelector('[data-action="edit-fixed-value"][data-id="5"]'), 'edit button missing');
+  assert.ok(doc.querySelector('[data-action="delete-fixed-value"][data-id="5"]'), 'delete button missing');
+  assert.ok(doc.getElementById('btnAddFixedValue'), 'add button missing');
+
+  // Editing prefills the modal from the row.
+  doc.querySelector<HTMLButtonElement>('[data-action="edit-fixed-value"][data-id="5"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.ok(!doc.getElementById('fixedValueEditModal')?.classList.contains('hidden'), 'edit modal should open');
+  assert.equal(
+    (doc.getElementById('fixedValueEditLabel') as HTMLInputElement | null)?.value,
+    'Options Outstanding - Cullgen',
+  );
+  assert.equal((doc.getElementById('fixedValueEditValue') as HTMLInputElement | null)?.value, '4156815');
 });
