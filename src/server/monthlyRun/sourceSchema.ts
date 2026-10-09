@@ -1,18 +1,5 @@
 import type { MonthlyRunSourceDefinition } from '../../shared/types.js';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function parseJson<T>(value: unknown, fallback: T): T {
-  if (value === null || value === undefined || value === '') return fallback;
-  if (typeof value === 'object') return value as T;
-  try {
-    return JSON.parse(String(value)) as T;
-  } catch {
-    return fallback;
-  }
-}
+import { isRecord, parseJson } from '../utils/json.js';
 
 export type OrderedMonthlyRunSourceDefinition = MonthlyRunSourceDefinition & { order: number };
 

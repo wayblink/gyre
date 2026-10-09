@@ -39,10 +39,16 @@ test('business service resolves workflow by stable code and starts a run', async
   const fakeRun = { id: 88 } as never;
   const result = await startEsopPageWorkflow(
     {
-      async queryOne(_sql, params) {
-        if (_sql.includes('logical_path')) return { logical_path: 'input/2026-05/exercises.xlsx' };
+      async queryOne(sql, params) {
+        assert.match(sql, /workflow_definitions/);
         assert.deepEqual(params, ['esop-exercise-record-sync']);
         return workflow;
+      },
+      async query(sql, params) {
+        // All source files are resolved in one query instead of one round trip per source.
+        assert.match(sql, /select id, logical_path from product_files where id = any/);
+        assert.deepEqual(params, [[17]]);
+        return [{ id: 17, logical_path: 'input/2026-05/exercises.xlsx' }];
       },
     },
     {

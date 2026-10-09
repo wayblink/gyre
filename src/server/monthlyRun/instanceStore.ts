@@ -13,6 +13,7 @@ import {
   type MonthlyRunDb,
 } from './store.js';
 import { productFileRef } from '../workflow/fileSources.js';
+import { toIsoTimestamp } from '../utils/timestamp.js';
 
 // Cullgen options fixed-value fallbacks for the two instance columns. The real values flow from
 // Global Parameters via loadMonthlyRunRuntimeFixedValues at trigger time; these defaults only seed
@@ -26,11 +27,6 @@ const DEFAULT_CULLGEN_COMMON_STOCK = 14_450_527;
 const DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL = 7_815_396;
 
 type MonthlyRunInstanceRow = Record<string, unknown>;
-
-function toIsoTimestamp(value: unknown): string {
-  if (value instanceof Date) return value.toISOString();
-  return new Date(String(value)).toISOString();
-}
 
 function toNullableIsoTimestamp(value: unknown): string | null {
   return value === null || value === undefined ? null : toIsoTimestamp(value);

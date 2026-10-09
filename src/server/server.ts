@@ -106,7 +106,8 @@ import { executeWorkflowDefinition, executeWorkflowTaskPreview } from './workflo
 import { selectWorkflowPreviewTasks } from './workflow/previewTask.js';
 import { WorkflowFileSourceRegistry } from './workflow/fileSources.js';
 import { rewriteProductFileKey } from './workflow/productFileKeyRewrite.js';
-import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
+import { resolveWorkflowRunPlan } from './workflow/startWorkflowRun.js';
+import { normalizeWorkflowTask, normalizeWorkflowTasks } from './workflow/tasks.js';
 import {
   filterWorkflowRuntimeParametersBySchema,
   normalizeWorkflowRuntimeParameters,
@@ -136,6 +137,8 @@ import type {
   WorkflowRuntimeParameters,
   WorkflowTask,
 } from '../shared/types.js';
+import { isRecord, parseJson } from './utils/json.js';
+import { toIsoTimestamp } from './utils/timestamp.js';
 
 const db = await createDb();
 const app = Fastify({ logger: true });
@@ -171,15 +174,6 @@ const DEV_AUTH_USER: NonNullable<RequestWithAuth['currentUser']> = {
   is_active: true,
   last_login_at: null,
 };
-
-function toIsoTimestamp(value: unknown): string {
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
-  }
-  return new Date(String(value)).toISOString();
-}
 
 function updatedByFromRequest(request: RequestWithAuth): string {
   return request.currentUser?.username?.trim() || 'system';
@@ -555,16 +549,6 @@ async function getMonth(
     'select id, month_key, eom_date, capitalization_source_file_id, capitalization_source_sheet_name from months where month_key = $1',
     [monthKey],
   );
-}
-
-function parseJson<T>(value: unknown, fallback: T): T {
-  if (value === null || value === undefined || value === '') return fallback;
-  if (typeof value === 'object') return value as T;
-  try {
-    return JSON.parse(String(value)) as T;
-  } catch {
-    return fallback;
-  }
 }
 
 function asBoolean(value: unknown): boolean {
@@ -1568,54 +1552,6 @@ function toWorkflowDefinition(row: Record<string, unknown>) {
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function normalizeWorkflowTask(value: unknown): WorkflowTask | null {
-  if (!isRecord(value)) return null;
-  if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.operatorCode !== 'string') return null;
-  const inputs: WorkflowTask['inputs'] = {};
-  if (isRecord(value.inputs)) {
-    for (const [slotName, input] of Object.entries(value.inputs)) {
-      const normalizedSlotName = String(slotName ?? '').trim();
-      if (!normalizedSlotName || !isRecord(input)) continue;
-      inputs[normalizedSlotName] = normalizeWorkflowTaskInput(input);
-    }
-  }
-  const inputSourceIds = new Set(
-    Object.values(inputs)
-      .map((input) => String(input.from ?? '').trim())
-      .filter(Boolean),
-  );
-  const dependsOn = Array.isArray(value.dependsOn)
-    ? Array.from(
-        new Set(
-          value.dependsOn
-            .map((taskId) => String(taskId ?? '').trim())
-            .filter((taskId) => taskId && taskId !== value.id && !inputSourceIds.has(taskId)),
-        ),
-      )
-    : [];
-  return {
-    id: value.id,
-    name: value.name,
-    operatorCode: value.operatorCode,
-    operatorVersion: typeof value.operatorVersion === 'string' ? value.operatorVersion : '1.0.0',
-    description: typeof value.description === 'string' ? value.description : '',
-    x: Number(value.x ?? 0),
-    y: Number(value.y ?? 0),
-    params: isRecord(value.params) ? value.params : {},
-    inputs,
-    dependsOn,
-  };
-}
-
-function normalizeWorkflowTasks(value: unknown): WorkflowTask[] {
-  if (!Array.isArray(value)) return [];
-  return value.map(normalizeWorkflowTask).filter((task): task is WorkflowTask => Boolean(task));
-}
-
 function normalizeWorkflowTasksForPersistence(value: unknown, context: string): WorkflowTask[] {
   if (!Array.isArray(value)) return [];
   const normalized = normalizeWorkflowTasks(value);
@@ -2371,11 +2307,12 @@ async function registerRoutes() {
       );
     }
 
-    const storedTasks = normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
-    const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
-      tasks: storedTasks,
-      runtimeParamsSchema: parseJson(workflowRow.runtime_params_schema_json, {}),
-      runtimeParamsDefaults: parseJson(workflowRow.runtime_params_defaults_json, {}),
+    // Same resolution the other workflow entry points use (normalized tasks + runtime parameters
+    // merged over the definition defaults), resolved here because the history row snapshots them
+    // before the run exists.
+    const runtimeConfiguration = await resolveWorkflowRunPlan({
+      db,
+      workflow: workflowRow,
       runtimeParameters: resolvedRuntimeParameters,
     });
 
@@ -4586,11 +4523,11 @@ async function registerRoutes() {
     const workflowRow = await db.queryOne<Record<string, unknown>>('select * from workflow_definitions where id = $1', [workflowId]);
     if (!workflowRow) throw notFound('Workflow not found');
 
-    const storedTasks = normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
-    const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
-      tasks: storedTasks,
-      runtimeParamsSchema: parseJson(workflowRow.runtime_params_schema_json, {}),
-      runtimeParamsDefaults: parseJson(workflowRow.runtime_params_defaults_json, {}),
+    // Approvals are recorded before the run is enqueued, so the resolution stays separate from
+    // the shared startWorkflowRun() bootstrap here.
+    const runtimeConfiguration = await resolveWorkflowRunPlan({
+      db,
+      workflow: workflowRow,
       runtimeParameters: body.runtimeParameters,
     });
     const run = await workflowRunStore.createRun({

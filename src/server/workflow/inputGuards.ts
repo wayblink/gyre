@@ -10,6 +10,7 @@ import { evaluateDataFrameAssertion } from './operators/dataframeAssert.js';
 import { evaluateSchemaAssertion } from './operators/dataframeSchemaAssert.js';
 import { evaluateShapeAssertion } from './operators/dataframeShapeAssert.js';
 import { evaluateSqlAssertion } from './operators/dataframeSqlAssert.js';
+import { isRecord } from '../utils/json.js';
 
 export type WorkflowEvaluatedInputGuard = {
   guard: WorkflowInputGuard;
@@ -18,10 +19,6 @@ export type WorkflowEvaluatedInputGuard = {
   inputSlot: string;
   upstreamTaskId: string;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 export function normalizeInputGuards(value: unknown): WorkflowInputGuard[] {
   if (!Array.isArray(value)) return [];

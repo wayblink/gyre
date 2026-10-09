@@ -7,13 +7,10 @@ import type {
 } from '../../shared/types.js';
 import { workflowOperatorDefinitionByCode } from './operators/registry.js';
 import type { WorkflowOperatorRuntimeParameterRequirement } from './operators/types.js';
+import { isRecord } from '../utils/json.js';
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function setNestedRuntimeField(

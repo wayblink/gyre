@@ -22,25 +22,8 @@ import type {
   WorkflowRunStatusUpdateInput,
   WorkflowRunStepFinishInput,
 } from './runRepository.js';
-
-function parseJson<T>(value: unknown, fallback: T): T {
-  if (value === null || value === undefined || value === '') return fallback;
-  if (typeof value === 'object') return value as T;
-  try {
-    return JSON.parse(String(value)) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function toIsoTimestamp(value: unknown): string {
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
-  }
-  return new Date(String(value)).toISOString();
-}
+import { parseJson } from '../utils/json.js';
+import { toIsoTimestamp } from '../utils/timestamp.js';
 
 function toNullableIsoTimestamp(value: unknown): string | null {
   return value === null || value === undefined ? null : toIsoTimestamp(value);

@@ -8,6 +8,8 @@ import type {
   WorkflowRuntimeParameters,
 } from '../../shared/types.js';
 import type { QueryResultRow } from 'pg';
+import { parseJson } from '../utils/json.js';
+import { toIsoTimestamp } from '../utils/timestamp.js';
 
 export const MONTHLY_WORKFLOW_CODE = 'gyre-captable-summary-v2';
 export const MONTHLY_PERSIST_TASK_ID = 'persist_capitalization_summary';
@@ -41,25 +43,6 @@ export function planStatusForWorkflowRunStatus(status: WorkflowRunStatus): PlanS
   if (status === 'failed') return '失败';
   if (status === 'skipped') return '已取消';
   return '进行中';
-}
-
-function parseJson<T>(value: unknown, fallback: T): T {
-  if (value === null || value === undefined || value === '') return fallback;
-  if (typeof value === 'object') return value as T;
-  try {
-    return JSON.parse(String(value)) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function toIsoTimestamp(value: unknown): string {
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
-  }
-  return new Date(String(value)).toISOString();
 }
 
 function toNullableIsoTimestamp(value: unknown): string | null {

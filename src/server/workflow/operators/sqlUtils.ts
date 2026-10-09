@@ -2,6 +2,7 @@ import alasql from 'alasql';
 import type { WorkflowDataFrame, WorkflowTask } from '../../../shared/types.js';
 import type { WorkflowOperatorRuntime } from './types.js';
 import { normalizeSqlTableBindings, toSqlIdentifier } from './types.js';
+import { isRecord } from '../../utils/json.js';
 
 type AlaSqlDatabase = {
   tables: Record<string, { data?: Array<Record<string, unknown>> }>;
@@ -91,10 +92,6 @@ function bindDataFrameTable(database: AlaSqlDatabase, tableName: string, datafra
     __workflow_row_number: index + 1,
     __workflow_source_row: dataframe.index?.[index] ?? index + 1,
   }));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function toSqlLiteral(value: unknown): string {

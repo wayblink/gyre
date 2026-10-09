@@ -61,6 +61,13 @@ import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './tr
 import { buildLinkedBadge } from './linkedBadge.js';
 import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
 import { csvRow } from './csv.js';
+import {
+  edgePage,
+  nextPageWithinBounds,
+  paginationView,
+  renderPaginationControls,
+  type PaginationIds,
+} from './pagination.js';
 import '../../css/style.css';
 
 let currentMonth = '';
@@ -1156,7 +1163,12 @@ function setLanguage(language: AppLanguage) {
   monthlyRunPage.applyLanguage?.();
 }
 
-async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
+/**
+ * Shared request core: session cookie, JSON content type for non-form bodies, 401 -> re-auth, and
+ * `{ error }` payloads surfaced as thrown messages. `api`/`apiBinary` only differ in how they read
+ * a successful response.
+ */
+async function request(url: string, options: RequestInit = {}): Promise<Response> {
   const shouldSendJsonContentType =
     options.body !== undefined && options.body !== null && !(options.body instanceof FormData);
   const response = await fetch(url, {
@@ -1172,21 +1184,17 @@ async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
     const body = await response.json().catch(() => ({ error: response.statusText }));
     throw new Error(body.error ?? response.statusText);
   }
+  return response;
+}
+
+async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const response = await request(url, options);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
 async function apiBinary(url: string, options: RequestInit = {}): Promise<ArrayBuffer> {
-  const response = await fetch(url, { credentials: 'same-origin', ...options });
-  if (response.status === 401) {
-    await handleUnauthorized();
-    throw new Error('请先登录');
-  }
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText }));
-    throw new Error(body.error ?? response.statusText);
-  }
-  return await response.arrayBuffer();
+  return (await request(url, options)).arrayBuffer();
 }
 
 function formatNumber(num: unknown): string {
@@ -2562,48 +2570,31 @@ function paginationSummaryText(start: number, end: number, total: number, unit: 
   return total === 0 ? `0 ${unit}` : `Showing ${start}-${end} of ${total} ${unit}`;
 }
 
+const PAGINATION_IDS = {
+  holdings: { summary: 'holdingsPaginationSummary', page: 'holdingsPaginationPage', first: 'btnHoldingsFirstPage', prev: 'btnHoldingsPrevPage', next: 'btnHoldingsNextPage', last: 'btnHoldingsLastPage' },
+  employees: { summary: 'employeesPaginationSummary', page: 'employeesPaginationPage', first: 'btnEmployeesFirstPage', prev: 'btnEmployeesPrevPage', next: 'btnEmployeesNextPage', last: 'btnEmployeesLastPage' },
+  exercises: { summary: 'exercisePaginationSummary', page: 'exercisePaginationPage', first: 'btnExercisesFirstPage', prev: 'btnExercisesPrevPage', next: 'btnExercisesNextPage', last: 'btnExercisesLastPage' },
+  soldShares: { summary: 'soldSharesPaginationSummary', page: 'soldSharesPaginationPage', first: 'btnSoldSharesFirstPage', prev: 'btnSoldSharesPrevPage', next: 'btnSoldSharesNextPage', last: 'btnSoldSharesLastPage' },
+} as const satisfies Record<string, PaginationIds>;
+
 function renderHoldingsPagination(page: number, totalPages: number, total: number) {
-  const start = total === 0 ? 0 : (page - 1) * holdingsPageSize + 1;
-  const end = Math.min(page * holdingsPageSize, total);
-  el('holdingsPaginationSummary').textContent = paginationSummaryText(start, end, total, 'records');
-  el('holdingsPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
-  el<HTMLButtonElement>('btnHoldingsFirstPage').disabled = page <= 1;
-  el<HTMLButtonElement>('btnHoldingsPrevPage').disabled = page <= 1;
-  el<HTMLButtonElement>('btnHoldingsNextPage').disabled = total === 0 || page >= totalPages;
-  el<HTMLButtonElement>('btnHoldingsLastPage').disabled = total === 0 || page >= totalPages;
+  const view = paginationView({ page, pageSize: holdingsPageSize, total, totalPages });
+  renderPaginationControls(el, PAGINATION_IDS.holdings, view, paginationSummaryText(view.start, view.end, total, 'records'));
 }
 
 function renderEmployeesPagination(page: number, totalPages: number, total: number) {
-  const start = total === 0 ? 0 : (page - 1) * employeesPageSize + 1;
-  const end = Math.min(page * employeesPageSize, total);
-  el('employeesPaginationSummary').textContent = paginationSummaryText(start, end, total, 'employees');
-  el('employeesPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
-  el<HTMLButtonElement>('btnEmployeesFirstPage').disabled = page <= 1;
-  el<HTMLButtonElement>('btnEmployeesPrevPage').disabled = page <= 1;
-  el<HTMLButtonElement>('btnEmployeesNextPage').disabled = total === 0 || page >= totalPages;
-  el<HTMLButtonElement>('btnEmployeesLastPage').disabled = total === 0 || page >= totalPages;
+  const view = paginationView({ page, pageSize: employeesPageSize, total, totalPages });
+  renderPaginationControls(el, PAGINATION_IDS.employees, view, paginationSummaryText(view.start, view.end, total, 'employees'));
 }
 
 function renderExercisePagination(page: number, totalPages: number, total: number) {
-  const start = total === 0 ? 0 : (page - 1) * exercisePageSize + 1;
-  const end = Math.min(page * exercisePageSize, total);
-  el('exercisePaginationSummary').textContent = paginationSummaryText(start, end, total, 'records');
-  el('exercisePaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
-  el<HTMLButtonElement>('btnExercisesFirstPage').disabled = page <= 1;
-  el<HTMLButtonElement>('btnExercisesPrevPage').disabled = page <= 1;
-  el<HTMLButtonElement>('btnExercisesNextPage').disabled = total === 0 || page >= totalPages;
-  el<HTMLButtonElement>('btnExercisesLastPage').disabled = total === 0 || page >= totalPages;
+  const view = paginationView({ page, pageSize: exercisePageSize, total, totalPages });
+  renderPaginationControls(el, PAGINATION_IDS.exercises, view, paginationSummaryText(view.start, view.end, total, 'records'));
 }
 
 function renderSoldSharesPagination(page: number, totalPages: number, total: number) {
-  const start = total === 0 ? 0 : (page - 1) * soldSharesPageSize + 1;
-  const end = Math.min(page * soldSharesPageSize, total);
-  el('soldSharesPaginationSummary').textContent = paginationSummaryText(start, end, total, 'records');
-  el('soldSharesPaginationPage').textContent = `${total === 0 ? 0 : page} / ${Math.max(totalPages, 1)}`;
-  el<HTMLButtonElement>('btnSoldSharesFirstPage').disabled = page <= 1;
-  el<HTMLButtonElement>('btnSoldSharesPrevPage').disabled = page <= 1;
-  el<HTMLButtonElement>('btnSoldSharesNextPage').disabled = total === 0 || page >= totalPages;
-  el<HTMLButtonElement>('btnSoldSharesLastPage').disabled = total === 0 || page >= totalPages;
+  const view = paginationView({ page, pageSize: soldSharesPageSize, total, totalPages });
+  renderPaginationControls(el, PAGINATION_IDS.soldShares, view, paginationSummaryText(view.start, view.end, total, 'records'));
 }
 
 function searchHoldingsPage() {
@@ -2617,18 +2608,16 @@ function searchExercises() {
 }
 
 function changeExercisePage(delta: number) {
-  const maxPage = pageCountOf(exerciseTotal, exercisePageSize);
-  const nextPage = Math.min(Math.max(1, exercisePage + delta), maxPage);
-  if (nextPage === exercisePage) return;
-  exercisePage = nextPage;
+  const next = nextPageWithinBounds(exerciseTotal, exercisePageSize, exercisePage, delta);
+  if (next === null) return;
+  exercisePage = next;
   void renderExerciseRecords();
 }
 
 function goToExercisePage(target: 'first' | 'last') {
-  const maxPage = pageCountOf(exerciseTotal, exercisePageSize);
-  const nextPage = target === 'first' ? 1 : maxPage;
-  if (nextPage === exercisePage) return;
-  exercisePage = nextPage;
+  const next = edgePage(exerciseTotal, exercisePageSize, exercisePage, target);
+  if (next === null) return;
+  exercisePage = next;
   void renderExerciseRecords();
 }
 
@@ -2645,26 +2634,24 @@ function searchSoldShares() {
 }
 
 function changeSoldSharesPage(delta: number) {
-  const maxPage = pageCountOf(soldSharesTotal, soldSharesPageSize);
-  const nextPage = Math.min(Math.max(1, soldSharesPage + delta), maxPage);
-  if (nextPage === soldSharesPage) return;
-  soldSharesPage = nextPage;
-  void renderSoldShares();
+  const next = nextPageWithinBounds(soldSharesTotal, soldSharesPageSize, soldSharesPage, delta);
+  if (next === null) return;
+  soldSharesPage = next;
+  void renderExerciseRecords();
 }
 
 function goToSoldSharesPage(target: 'first' | 'last') {
-  const maxPage = pageCountOf(soldSharesTotal, soldSharesPageSize);
-  const nextPage = target === 'first' ? 1 : maxPage;
-  if (nextPage === soldSharesPage) return;
-  soldSharesPage = nextPage;
-  void renderSoldShares();
+  const next = edgePage(soldSharesTotal, soldSharesPageSize, soldSharesPage, target);
+  if (next === null) return;
+  soldSharesPage = next;
+  void renderExerciseRecords();
 }
 
 function changeSoldSharesPageSize(size: number) {
   if (size === soldSharesPageSize) return;
   soldSharesPageSize = size;
   soldSharesPage = 1;
-  void renderSoldShares();
+  void renderExerciseRecords();
 }
 
 function applyGrantView() {
@@ -2710,19 +2697,16 @@ function applyExerciseView() {
 }
 
 function changeHoldingsPage(delta: number) {
-  const currentPage = holdingsPage;
-  const maxPage = pageCountOf(holdingsTotal, holdingsPageSize);
-  const nextPage = Math.min(Math.max(1, currentPage + delta), maxPage);
-  if (nextPage === currentPage) return;
-  holdingsPage = nextPage;
+  const next = nextPageWithinBounds(holdingsTotal, holdingsPageSize, holdingsPage, delta);
+  if (next === null) return;
+  holdingsPage = next;
   void renderHoldingsPage(currentMonth);
 }
 
 function goToHoldingsPage(target: 'first' | 'last') {
-  const maxPage = pageCountOf(holdingsTotal, holdingsPageSize);
-  const nextPage = target === 'first' ? 1 : maxPage;
-  if (nextPage === holdingsPage) return;
-  holdingsPage = nextPage;
+  const next = edgePage(holdingsTotal, holdingsPageSize, holdingsPage, target);
+  if (next === null) return;
+  holdingsPage = next;
   void renderHoldingsPage(currentMonth);
 }
 
@@ -2739,19 +2723,16 @@ function searchEmployeesPage() {
 }
 
 function changeEmployeesPage(delta: number) {
-  const currentPage = employeesPage;
-  const maxPage = pageCountOf(employeesTotal, employeesPageSize);
-  const nextPage = Math.min(Math.max(1, currentPage + delta), maxPage);
-  if (nextPage === currentPage) return;
-  employeesPage = nextPage;
+  const next = nextPageWithinBounds(employeesTotal, employeesPageSize, employeesPage, delta);
+  if (next === null) return;
+  employeesPage = next;
   void loadEmployeesPage();
 }
 
 function goToEmployeesPage(target: 'first' | 'last') {
-  const maxPage = pageCountOf(employeesTotal, employeesPageSize);
-  const nextPage = target === 'first' ? 1 : maxPage;
-  if (nextPage === employeesPage) return;
-  employeesPage = nextPage;
+  const next = edgePage(employeesTotal, employeesPageSize, employeesPage, target);
+  if (next === null) return;
+  employeesPage = next;
   void loadEmployeesPage();
 }
 
@@ -2761,7 +2742,6 @@ function changeEmployeesPageSize(size: number) {
   employeesPage = 1;
   void loadEmployeesPage();
 }
-
 async function renderHoldingsPage(month: string) {
   const query = el<HTMLInputElement>('searchHolder').value.trim();
   const tagId = el<HTMLSelectElement>('filterHoldingsTag').value;

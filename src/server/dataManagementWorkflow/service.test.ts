@@ -25,8 +25,11 @@ test('business service resolves Plan Summary by stable code and starts a run', a
         assert.deepEqual(params, ['plan-summary-sync']);
         return workflow;
       },
-      async query() {
-        return [];
+      async query(sql, params) {
+        if (sql.includes('global_parameters')) return [];
+        assert.match(sql, /select id, logical_path from product_files where id = any/);
+        assert.deepEqual(params, [[4]]);
+        return [{ id: 4, logical_path: 'input/2026-05/option-plans-summary.xlsx' }];
       },
     },
     {
@@ -157,19 +160,24 @@ test('5% Holders workflow passes all global fixed values as runtime parameters',
         assert.deepEqual(params, ['five-percent-holders-sync']);
         return workflow;
       },
-      async query<T extends Record<string, unknown> = Record<string, unknown>>(_sql: string, params?: unknown[]): Promise<T[]> {
-        assert.deepEqual(params, [[
-          'fivePercentHoldersGniCommonStock',
-          'fivePercentHoldersGniTotalCses',
-          'fivePercentHoldersSongjiangMaCommonStock',
-          'fivePercentHoldersSongjiangMaTotalCses',
-        ]]);
-        return [
-          { key: 'fivePercentHoldersGniCommonStock', value: 11 },
-          { key: 'fivePercentHoldersGniTotalCses', value: 12 },
-          { key: 'fivePercentHoldersSongjiangMaCommonStock', value: 13 },
-          { key: 'fivePercentHoldersSongjiangMaTotalCses', value: 14 },
-        ] as unknown as T[];
+      async query(sql: string, params?: unknown[]) {
+        if (sql.includes('global_parameters')) {
+          assert.deepEqual(params, [[
+            'fivePercentHoldersGniCommonStock',
+            'fivePercentHoldersGniTotalCses',
+            'fivePercentHoldersSongjiangMaCommonStock',
+            'fivePercentHoldersSongjiangMaTotalCses',
+          ]]);
+          return [
+            { key: 'fivePercentHoldersGniCommonStock', value: 11 },
+            { key: 'fivePercentHoldersGniTotalCses', value: 12 },
+            { key: 'fivePercentHoldersSongjiangMaCommonStock', value: 13 },
+            { key: 'fivePercentHoldersSongjiangMaTotalCses', value: 14 },
+          ];
+        }
+        assert.match(sql, /select id, logical_path from product_files where id = any/);
+        assert.deepEqual(params, [[7]]);
+        return [{ id: 7, logical_path: 'output/captable/summary.xlsx' }];
       },
     },
     {

@@ -5,10 +5,7 @@ import type {
   WorkflowRuntimeParametersSchema,
   WorkflowTask,
 } from '../../shared/types.js';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+import { isRecord } from '../utils/json.js';
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;

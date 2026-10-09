@@ -1,30 +1,27 @@
-import type { WorkflowRunRecord, WorkflowTask } from '../../shared/types.js';
-import { resolveWorkflowRuntimeConfiguration } from '../workflow/runtimeParameters.js';
-import type { WorkflowRunCreateInput } from '../workflow/runRepository.js';
+import type { WorkflowRunRecord } from '../../shared/types.js';
+import {
+  loadActiveWorkflowDefinition,
+  startWorkflowRun,
+  type WorkflowBootstrapDb,
+  type WorkflowRunCreator,
+  type WorkflowRunStarter,
+  type WorkflowSourceBinding,
+} from '../workflow/startWorkflowRun.js';
 import {
   DATA_MANAGEMENT_WORKFLOW_CONFIGS,
   FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS,
   type DataManagementPageKey,
-  type DataManagementSourceBindings,
 } from './workflowDefinitions.js';
-import { buildFileRefsFromBindings } from '../workflow/fileSources.js';
 
-type QueryDb = {
-  queryOne(sql: string, params?: unknown[]): Promise<Record<string, unknown> | undefined>;
-  query<T extends Record<string, unknown> = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
-};
-type RunCreator = { createRun(input: WorkflowRunCreateInput): Promise<WorkflowRunRecord> };
-type RunStarter = { startAsync(runId: number): void };
+export type DataManagementSourceBindings = Record<string, WorkflowSourceBinding | undefined>;
 
-function parseJson<T>(value: unknown, fallback: T): T {
-  if (value === null || value === undefined || value === '') return fallback;
-  if (typeof value === 'object') return value as T;
-  try { return JSON.parse(String(value)) as T; } catch { return fallback; }
-}
-
-async function loadFivePercentHolderRuntimeOverrides(db: QueryDb) {
+/**
+ * 5% Holders reconciles against the four global fixed values, which are maintained per deployment.
+ * System-generated rows are ignored so a stale automatic value can never satisfy the requirement.
+ */
+async function loadFivePercentHolderRuntimeOverrides(db: WorkflowBootstrapDb) {
   const keys = Object.values(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS);
-  const rows = await db.query<{ key: string; value: number; updated_by?: string | null }>(
+  const rows = await db.query(
     `select distinct on (key) key, value, updated_by
       from global_parameters
      where key = any($1)
@@ -45,39 +42,22 @@ async function loadFivePercentHolderRuntimeOverrides(db: QueryDb) {
   return { fixedValues };
 }
 
+/**
+ * Data-management pages (employee / plan-summary / 5%-holders) each map to one DB workflow
+ * definition; the generic bootstrap resolves sources, runtime parameters and the run itself.
+ */
 export async function startDataManagementWorkflow(
-  db: QueryDb,
-  runStore: RunCreator,
-  executor: RunStarter,
+  db: WorkflowBootstrapDb,
+  runStore: WorkflowRunCreator,
+  executor: WorkflowRunStarter,
   pageKey: DataManagementPageKey,
   sources: DataManagementSourceBindings,
 ): Promise<WorkflowRunRecord> {
   const config = DATA_MANAGEMENT_WORKFLOW_CONFIGS[pageKey];
-  const workflow = await db.queryOne(
-    "select * from workflow_definitions where code = $1 and status = 'active' limit 1",
-    [config.workflowCode],
-  );
+  const workflow = await loadActiveWorkflowDefinition(db, config.workflowCode);
   if (!workflow) throw new Error(`Data management workflow is not available: ${config.workflowCode}`);
-  const runtimeOverrides = pageKey === 'five-percent-holders'
+  const runtimeParameters = pageKey === 'five-percent-holders'
     ? await loadFivePercentHolderRuntimeOverrides(db)
     : {};
-  const resolvedSources: DataManagementSourceBindings = {};
-  for (const [sourceKey, source] of Object.entries(sources)) {
-    const file = source?.fileId ? await db.queryOne('select logical_path from product_files where id = $1', [source.fileId]) : null;
-    if (file?.logical_path) {
-      const sheet = String(source?.sheet ?? '').trim();
-      resolvedSources[sourceKey] = { fileKey: String(file.logical_path), ...(sheet ? { sheet } : {}) };
-    }
-  }
-  const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
-    tasks: parseJson<WorkflowTask[]>(workflow.tasks_json, []),
-    runtimeParamsSchema: parseJson(workflow.runtime_params_schema_json, {}),
-    runtimeParamsDefaults: parseJson(workflow.runtime_params_defaults_json, {}),
-    runtimeParameters: { ...runtimeOverrides, ...buildFileRefsFromBindings(resolvedSources) },
-  });
-  const run = await runStore.createRun({
-    workflow, tasks: runtimeConfiguration.tasks, runtimeParameters: runtimeConfiguration.runtimeParameters,
-  });
-  executor.startAsync(run.id);
-  return run;
+  return startWorkflowRun({ db, runStore, executor, workflow, sources, runtimeParameters });
 }
