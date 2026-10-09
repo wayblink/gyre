@@ -884,6 +884,26 @@ export type WorkflowRunArtifactRecord = {
   createdAt: string;
 };
 
+/**
+ * Client-side view of the run the workflow page is showing: which workflow it belongs to, whether it
+ * is open/running, and the per-task state the run panel projects onto the DOM.
+ */
+export type WorkflowRunState = {
+  isOpen: boolean;
+  isRunning: boolean;
+  workflowId: number | null;
+  runId: number | null;
+  activeTaskId: string | null;
+  taskStates: Record<string, WorkflowExecutionTaskState>;
+  approvedWarningTaskIds: string[];
+  waitingForApprovalTaskIds: string[];
+  warningTaskIds: string[];
+  warningMessages: Record<string, string>;
+  taskMessages: Record<string, string>;
+  message: string;
+  errorMessage: string | null;
+};
+
 export type WorkflowRunRecord = {
   id: number;
   workflowId: number;

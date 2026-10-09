@@ -1,6 +1,7 @@
 import type {
   WorkflowExecutionResult,
   WorkflowExecutionTaskState,
+  WorkflowRunState,
   ProductFileDetail,
   ProductFileRecord,
   WorkflowAssertFailureStrategy,
@@ -66,6 +67,7 @@ import {
 import { normalizeWorkflowSqlText } from './workflow/sqlFormat.js';
 import * as dagLayout from './workflow/dagLayout.js';
 import * as taskParams from './workflow/taskParams.js';
+import { createWorkflowRunPanel, workflowRunTaskState } from './workflow/runPanel.js';
 import {
   cloneJson,
   createRuntimeDefaultsDisplay,
@@ -150,6 +152,17 @@ export function createWorkflowPage({
   const getCustomParamKeys = (task: WorkflowTask) => taskParams.getCustomParamKeys(task);
   const hasCustomStructuredParams = (task: WorkflowTask) => taskParams.hasCustomStructuredParams(task);
 
+  // The run panel is a pure projection of the run state onto the DOM.
+  const runPanel = createWorkflowRunPanel({
+    el,
+    escapeHtml,
+    getWorkflow: getActiveWorkflow,
+    getRunState: () => workflowRunState,
+    localizeDom: localizeWorkflowDom,
+  });
+  const renderWorkflowRunPanel = () => runPanel.render();
+  const getWorkflowRunTaskState = (taskId: string) => workflowRunTaskState(taskId, activeWorkflowId, workflowRunState);
+
   // DAG geometry/layout lives in its own module; these aliases keep the call sites below unchanged.
   const {
     getWorkflowTaskMap,
@@ -181,22 +194,6 @@ export function createWorkflowPage({
     { category: 'Database', label: { 'zh-CN': '数据库', 'en-US': 'Database' } },
     { category: 'Validation', label: { 'zh-CN': '断言', 'en-US': 'Validation' } },
   ];
-  type WorkflowRunState = {
-    isOpen: boolean;
-    isRunning: boolean;
-    workflowId: number | null;
-    runId: number | null;
-    activeTaskId: string | null;
-    taskStates: Record<string, WorkflowExecutionTaskState>;
-    approvedWarningTaskIds: string[];
-    waitingForApprovalTaskIds: string[];
-    warningTaskIds: string[];
-    warningMessages: Record<string, string>;
-    taskMessages: Record<string, string>;
-    message: string;
-    errorMessage: string | null;
-  };
-
   let workflowDefinitions: WorkflowDefinition[] = [];
   let workflowOperators: WorkflowOperator[] = [];
   let activeWorkflowId: number | null = null;
@@ -1519,166 +1516,6 @@ export function createWorkflowPage({
     activeWorkflowPreview = null;
     workflowPreviewPage = 1;
     renderWorkflowEditor();
-  }
-
-  function getWorkflowRunTaskState(taskId: string): WorkflowExecutionTaskState | null {
-    if (!activeWorkflowId || workflowRunState.workflowId !== activeWorkflowId || !workflowRunState.isOpen) return null;
-    if (workflowRunState.activeTaskId === taskId) return 'running';
-    return workflowRunState.taskStates[taskId] ?? 'pending';
-  }
-
-  function renderWorkflowRunPanel() {
-    const panel = el('workflowRunPanel');
-    const summary = el('workflowRunSummary');
-    const progressBar = el('workflowRunProgressBar');
-    const progressText = el('workflowRunProgressText');
-    const taskList = el('workflowRunTaskList');
-    const footer = el('workflowRunFooter');
-    const toggleButton = el<HTMLButtonElement>('btnToggleWorkflowRunPanel');
-    const headerTitle = panel.querySelector<HTMLHeadingElement>('.workflow-run-panel__header h3');
-    const workflow = getActiveWorkflow();
-
-    if (!workflow || !workflowRunState.isOpen || workflowRunState.workflowId !== workflow.id) {
-      panel.classList.add('hidden');
-      localizeWorkflowDom();
-      return;
-    }
-
-    const orderedTasks = getWorkflowExecutionOrder(workflow);
-    const total = orderedTasks.length;
-    const completed = orderedTasks.filter((task) => workflowRunState.taskStates[task.id] === 'completed').length;
-    const warnings = orderedTasks.filter((task) => workflowRunState.taskStates[task.id] === 'warning').length;
-    const skipped = orderedTasks.filter((task) => workflowRunState.taskStates[task.id] === 'skipped').length;
-    const reached = completed + warnings + skipped;
-    const ratio = total ? Math.min(1, reached / total) : 0;
-    const hasFailedTask = orderedTasks.some((task) => workflowRunState.taskStates[task.id] === 'failed');
-    const hasWarningTask = orderedTasks.some((task) => workflowRunState.taskStates[task.id] === 'warning');
-    const hasWaitingWarning = workflowRunState.waitingForApprovalTaskIds.length > 0;
-    const executionStatus = hasFailedTask
-      ? { code: 'failed', label: 'Failed' }
-      : hasWaitingWarning
-        ? { code: 'warning', label: 'Needs Review' }
-        : workflowRunState.isRunning
-          ? { code: 'running', label: 'Running' }
-          : !workflowRunState.isRunning && reached === total && total > 0 && hasWarningTask
-            ? { code: 'warning', label: 'Warning' }
-            : !workflowRunState.isRunning && completed === total && total > 0
-              ? { code: 'completed', label: 'Completed' }
-              : { code: 'idle', label: 'Idle' };
-
-    panel.classList.remove('hidden');
-    panel.classList.toggle('is-running', workflowRunState.isRunning);
-    panel.classList.toggle(
-      'is-finished',
-      !workflowRunState.isRunning && reached > 0 && !hasFailedTask && !hasWaitingWarning,
-    );
-    panel.classList.toggle('is-failed', hasFailedTask);
-    panel.classList.toggle('is-warning', hasWarningTask);
-    if (headerTitle) {
-      headerTitle.innerHTML = `Execution <span class="workflow-run-panel__status workflow-run-panel__status--${executionStatus.code}">${escapeHtml(executionStatus.label)}</span>`;
-    }
-    summary.textContent = workflowRunState.message;
-    toggleButton.textContent = workflowRunState.isRunning ? 'Collapse' : 'Hide';
-    progressBar.style.width = `${ratio * 100}%`;
-    progressText.textContent = hasWaitingWarning ? `${reached} / ${total} · review required` : `${reached} / ${total}`;
-    taskList.innerHTML = orderedTasks
-      .map((task, index) => {
-        const state = getWorkflowRunTaskState(task.id) ?? 'pending';
-        const isWaiting = workflowRunState.waitingForApprovalTaskIds.includes(task.id);
-        const indicator =
-          state === 'completed'
-            ? '✓'
-            : state === 'running'
-              ? '…'
-              : state === 'failed'
-                ? '!'
-                : state === 'warning'
-                  ? '!'
-                  : state === 'blocked'
-                    ? '·'
-                    : state === 'skipped'
-                      ? '–'
-                      : String(index + 1).padStart(2, '0');
-        const stateLabel =
-          state === 'completed'
-            ? 'Completed'
-            : state === 'running'
-              ? 'Running'
-              : state === 'failed'
-                ? 'Failed'
-                : state === 'warning'
-                  ? isWaiting
-                    ? 'Needs Review'
-                    : 'Warning'
-                  : state === 'blocked'
-                    ? 'Blocked'
-                    : state === 'skipped'
-                      ? 'Skipped'
-                      : 'Pending';
-        const detailMessage = workflowRunState.taskMessages[task.id] ?? '';
-        const meta =
-          state === 'warning'
-            ? (workflowRunState.warningMessages[task.id] ?? task.operatorCode)
-            : task.description || task.operatorCode;
-        return `
-          <div class="workflow-run-task workflow-run-task--${state}">
-            <span class="workflow-run-task__indicator">${escapeHtml(indicator)}</span>
-            <div class="workflow-run-task__body">
-              <div class="workflow-run-task__topline">
-                <div class="workflow-run-task__name">${escapeHtml(task.name)}</div>
-                <span class="workflow-run-task__state workflow-run-task__state--${state}">${escapeHtml(stateLabel)}</span>
-              </div>
-              <div class="workflow-run-task__meta">${escapeHtml(meta)}</div>
-              ${detailMessage ? `<div class="workflow-run-task__detail">${escapeHtml(detailMessage)}</div>` : ''}
-            </div>
-          </div>
-        `;
-      })
-      .join('');
-
-    if (workflowRunState.errorMessage) {
-      footer.innerHTML = `
-        <div class="workflow-run-panel__review">
-          <span class="workflow-run-panel__error">${escapeHtml(workflowRunState.errorMessage)}</span>
-        </div>
-      `;
-      localizeWorkflowDom();
-      return;
-    }
-    if (!workflowRunState.isRunning && hasWaitingWarning) {
-      const waitingNames = workflowRunState.waitingForApprovalTaskIds
-        .map((taskId) => orderedTasks.find((task) => task.id === taskId)?.name ?? taskId)
-        .join(', ');
-      footer.innerHTML = `
-        <div class="workflow-run-panel__review">
-          <span class="workflow-run-panel__warning">Warning requires review: ${escapeHtml(waitingNames)}</span>
-          <div class="workflow-run-panel__actions">
-            <button class="btn btn-warning btn-sm" type="button" data-continue-workflow-warning>Continue</button>
-            <button class="btn btn-secondary btn-sm" type="button" data-cancel-workflow-run>Cancel</button>
-          </div>
-        </div>
-      `;
-      localizeWorkflowDom();
-      return;
-    }
-    if (workflowRunState.isRunning && workflowRunState.runId) {
-      footer.innerHTML = `
-        <div class="workflow-run-panel__review">
-          <div class="workflow-run-panel__actions">
-            <button class="btn btn-secondary btn-sm" type="button" data-cancel-workflow-run>Cancel</button>
-          </div>
-        </div>
-      `;
-      localizeWorkflowDom();
-      return;
-    }
-    footer.innerHTML =
-      !workflowRunState.isRunning && reached === total && total > 0
-        ? hasWarningTask
-          ? '<span class="workflow-run-panel__warning">Workflow completed with warnings.</span>'
-          : '<span class="workflow-run-panel__success">Workflow execution completed.</span>'
-        : '<span class="workflow-run-panel__hint">节点会按依赖顺序显示执行状态。</span>';
-    localizeWorkflowDom();
   }
 
   function autoLayoutActiveWorkflow() {
