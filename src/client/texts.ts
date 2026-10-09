@@ -248,6 +248,20 @@ export const TEXTS = {
       'en-US': 'Delete Global Parameter “{label}”? This cannot be undone.',
     },
     deleteGlobalParameter: { 'zh-CN': '删除 Global Parameter', 'en-US': 'Delete Global Parameter' },
+    holdersDraftInvalid: { 'zh-CN': '请输入有效的 5% Holders 数字', 'en-US': 'Enter a valid 5% Holders number' },
+    holdersDraftCount: {
+      'zh-CN': '5% Holders 需要编辑四个全局参数',
+      'en-US': 'All four 5% Holders global parameters must be edited',
+    },
+    holdersSavedRunning: {
+      'zh-CN': 'Global Parameter 已保存，正在运行 5% Holders workflow...',
+      'en-US': 'Global Parameters saved; running the 5% Holders workflow...',
+    },
+    holdersUpdated: { 'zh-CN': '5% Holders 更新完成', 'en-US': '5% Holders update completed' },
+    holdersUpdatedWithWarnings: {
+      'zh-CN': '5% Holders 更新完成（包含 Warning）',
+      'en-US': '5% Holders update completed with warnings',
+    },
     employeesPageModalTitleCreate: { 'zh-CN': '新增员工', 'en-US': 'New Employee' },
     employeeUnlinkConfirm: {
       'zh-CN': '确认取消该关联？取消后该编号恢复为独立员工，不影响授予/行权/卖出等任何业务记录。',

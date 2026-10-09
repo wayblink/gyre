@@ -4,8 +4,6 @@ import type {
   Employee,
   EmployeeLabel,
   ExerciseRecord,
-  FixedValueRecord,
-  FivePercentHoldersResponse,
   Holding,
   LinkDetail,
   LatestMonthlyRunOutput,
@@ -33,6 +31,7 @@ import { createMonthlyRunPage } from './monthlyRunPage.js';
 import { createWorkflowUpdateModal, type WorkflowUpdatePageKey } from './workflowUpdateModal.js';
 import { createUserManagementPage } from './userManagementPage.js';
 import { createFixedValuePage } from './fixedValuePage.js';
+import { createFivePercentHoldersPage } from './fivePercentHoldersPage.js';
 import { createTexts, createTextFormatter, TEXTS, type TextKey } from './texts.js';
 
 const texts = createTexts('main');
@@ -151,22 +150,6 @@ let editingEmployeeLabelIds: number[] = [];
 let mergeSourceEmployeeId: number | null = null;
 const DEFAULT_EMPLOYEE_LABEL_COLOR = '#2563eb';
 
-const fivePercentHolderGlobalParameterKeys = {
-  gniCommonStock: 'fivePercentHoldersGniCommonStock',
-  gniTotalCses: 'fivePercentHoldersGniTotalCses',
-  songjiangMaCommonStock: 'fivePercentHoldersSongjiangMaCommonStock',
-  songjiangMaTotalCses: 'fivePercentHoldersSongjiangMaTotalCses',
-} as const;
-const fivePercentHolderGlobalParameterLabels: Record<string, string> = {
-  [fivePercentHolderGlobalParameterKeys.gniCommonStock]: '5% Holders - GNI Group Ltd. Common Stock',
-  [fivePercentHolderGlobalParameterKeys.gniTotalCses]: '5% Holders - GNI Group Ltd. Total CSEs',
-  [fivePercentHolderGlobalParameterKeys.songjiangMaCommonStock]: '5% Holders - Songjiang Ma Common Stock',
-  [fivePercentHolderGlobalParameterKeys.songjiangMaTotalCses]: '5% Holders - Songjiang Ma Total CSEs',
-};
-let fivePercentHoldersEditMode = false;
-let fivePercentHoldersSaving = false;
-let fivePercentHolderGlobalParameters: FixedValueRecord[] = [];
-
 const filesPage = createFilesPage({
   el,
   api,
@@ -226,7 +209,7 @@ async function refreshWorkflowUpdatePage(page: WorkflowUpdatePageKey) {
   } else if (page === 'plan-summary') {
     await renderPlanSummaryPage(currentMonth);
   } else if (page === 'five-percent-holders') {
-    await renderFivePercentHoldersPage();
+    await fivePercentHoldersPage.render();
   }
 }
 
@@ -241,6 +224,24 @@ const workflowUpdateModal = createWorkflowUpdateModal({
   openFilePicker: (options) => filePicker.open(options),
   productFileDisplayName,
   refreshPage: (page) => refreshWorkflowUpdatePage(page),
+});
+
+const fivePercentHoldersPage = createFivePercentHoldersPage({
+  el,
+  api,
+  escapeHtml,
+  notify,
+  formatNumber,
+  getLanguage: () => currentLanguage,
+  currentUserName: () => authStatus?.user?.displayName ?? 'Administrator',
+  refreshProductFiles: () => filesPage.refreshProductFiles(),
+  rememberPageData: (page, response) => workflowUpdateModal.rememberPageData(page, response),
+  workflowModal: {
+    bindingFor: (page, sourceKey) => workflowUpdateModal.bindingFor(page, sourceKey),
+    runEndpoint: (page) => workflowUpdateModal.runEndpoint(page),
+    pollRunUntilFinished: (runId) => workflowUpdateModal.pollRunUntilFinished(runId),
+  },
+  localizeDom: localizeAppDom,
 });
 
 const fixedValuePage = createFixedValuePage({
@@ -670,7 +671,7 @@ function syncWorkflowActionLabels() {
     .querySelectorAll<HTMLElement>('[data-workflow-update-page] [data-workflow-action-label]')
     .forEach((label) => {
       const button = label.closest<HTMLButtonElement>('[data-workflow-update-page]');
-      if (button?.dataset.workflowUpdatePage === 'five-percent-holders' && fivePercentHoldersEditMode) {
+      if (button?.dataset.workflowUpdatePage === 'five-percent-holders' && fivePercentHoldersPage.isEditMode()) {
         label.textContent = t('confirmAndRun');
         return;
       }
@@ -1194,7 +1195,7 @@ async function activatePage(page: PageKey) {
     }
 
     if (page === 'five-percent-holders') {
-      await renderFivePercentHoldersPage();
+      await fivePercentHoldersPage.render();
     }
 
     if (page === 'account') {
@@ -1815,7 +1816,7 @@ function initWorkflowUpdateModal() {
       const page = button.dataset.workflowUpdatePage ?? '';
       if (!workflowUpdateModal.isWorkflowUpdatePage(page)) return;
       if (page === 'five-percent-holders') {
-        void handleFivePercentHoldersUpdateClick();
+        void fivePercentHoldersPage.handleUpdateClick();
         return;
       }
       void workflowUpdateModal.openModal(page);
@@ -1828,7 +1829,7 @@ function initWorkflowUpdateModal() {
       workflowUpdateModal.downloadResultFiles(page);
     });
   });
-  el('btnCancelFivePercentHoldersEdit').addEventListener('click', () => void cancelFivePercentHoldersEdit());
+  el('btnCancelFivePercentHoldersEdit').addEventListener('click', () => void fivePercentHoldersPage.cancelEdit());
   workflowUpdateModal.bindEvents();
 }
 
@@ -3214,203 +3215,6 @@ async function renderPlanSummaryPage(month: string) {
     )
     .join('');
   localizeAppDom();
-}
-
-function formatHolderPercent(value: number | null): string {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
-  return `${(Number(value) * 100).toLocaleString('en-US', { maximumFractionDigits: 3 })}%`;
-}
-
-function fivePercentHoldersUpdateButton(): HTMLButtonElement | null {
-  return document.querySelector<HTMLButtonElement>('[data-workflow-update-page="five-percent-holders"]');
-}
-
-function fivePercentHoldersCancelButton(): HTMLButtonElement | null {
-  return document.querySelector<HTMLButtonElement>('#btnCancelFivePercentHoldersEdit');
-}
-
-function setFivePercentHoldersUpdateButtonState() {
-  const button = fivePercentHoldersUpdateButton();
-  if (!button) return;
-  const label = button.querySelector<HTMLElement>('[data-workflow-action-label]');
-  const text = fivePercentHoldersEditMode ? t('confirmAndRun') : t('update');
-  if (label) {
-    label.textContent = text;
-  } else {
-    button.textContent = text;
-  }
-  button.disabled = fivePercentHoldersSaving;
-  const cancelButton = fivePercentHoldersCancelButton();
-  if (cancelButton) {
-    cancelButton.classList.toggle('hidden', !fivePercentHoldersEditMode);
-    cancelButton.disabled = fivePercentHoldersSaving;
-    setButtonLabel('btnCancelFivePercentHoldersEdit', t('cancel'));
-  }
-}
-
-function fixedValueByKey(key: string): FixedValueRecord | null {
-  return fivePercentHolderGlobalParameters.find((item) => item.key === key) ?? null;
-}
-
-function fixedValueKeyForHolderCell(holderIndex: number, field: 'commonStock' | 'totalCses'): string | null {
-  if (holderIndex === 0) {
-    return field === 'commonStock'
-      ? fivePercentHolderGlobalParameterKeys.gniCommonStock
-      : fivePercentHolderGlobalParameterKeys.gniTotalCses;
-  }
-  if (holderIndex === 1) {
-    return field === 'commonStock'
-      ? fivePercentHolderGlobalParameterKeys.songjiangMaCommonStock
-      : fivePercentHolderGlobalParameterKeys.songjiangMaTotalCses;
-  }
-  return null;
-}
-
-function renderFivePercentHolderEditableNumber(
-  item: FivePercentHoldersResponse['items'][number],
-  field: 'commonStock' | 'totalCses',
-  holderIndex: number,
-) {
-  const key = fixedValueKeyForHolderCell(holderIndex, field);
-  const fixedValue = key ? fixedValueByKey(key) : null;
-  if (!fivePercentHoldersEditMode || item.rowType !== 'holder' || !key) {
-    if (item.rowType === 'holder' && key) return formatNumber(fixedValue?.value ?? null);
-    return formatNumber(field === 'commonStock' ? item.commonStock : item.totalCses);
-  }
-  const inputValue = fixedValue?.value ?? '';
-  const idAttribute = fixedValue?.id ? ` data-five-percent-fixed-value-id="${fixedValue.id}"` : '';
-  return `<input class="form-input fixed-value-inline-input" type="text" inputmode="decimal" value="${escapeHtml(String(inputValue))}"${idAttribute} data-five-percent-fixed-value-key="${escapeHtml(key)}">`;
-}
-
-async function loadFivePercentHolderGlobalParameters() {
-  const keys = new Set<string>(Object.values(fivePercentHolderGlobalParameterKeys));
-  const data = await api<{ items: FixedValueRecord[] }>('/api/five-percent-holders/fixed-values');
-  fivePercentHolderGlobalParameters = data.items.filter((item) => keys.has(item.key) && item.updatedBy !== 'system');
-}
-
-async function renderFivePercentHoldersPage() {
-  const data = await api<FivePercentHoldersResponse>('/api/five-percent-holders');
-  await loadFivePercentHolderGlobalParameters();
-  setWorkflowPageFiles('five-percent-holders', data);
-  setFivePercentHoldersUpdateButtonState();
-  const summary = data.summary;
-  el('fivePercentHoldersSummary').innerHTML = `
-    <div class="stat-chip"><span class="stat-chip__label">As of</span><span class="stat-chip__value">${escapeHtml(summary.asOfDate ?? '-')}</span></div>
-    <div class="stat-chip"><span class="stat-chip__label">Fully Diluted</span><span class="stat-chip__value">${formatNumber(summary.fullyDiluted)}</span></div>
-    <div class="stat-chip"><span class="stat-chip__label">Common Stock OS</span><span class="stat-chip__value">${formatNumber(summary.commonStockOs)}</span></div>`;
-
-  if (data.items.length === 0) {
-    el('fivePercentHoldersBody').innerHTML = '<tr><td colspan="5" class="table-empty-cell">暂无 5% 股东记录</td></tr>';
-    localizeAppDom();
-    return;
-  }
-
-  let holderIndex = 0;
-  el('fivePercentHoldersBody').innerHTML = data.items
-    .map((item) => {
-      const rowClass = item.rowType === 'total' ? ' class="table-row--total"' : '';
-      const currentHolderIndex = item.rowType === 'holder' ? holderIndex++ : -1;
-      return `
-      <tr${rowClass}>
-        <td style="text-align:left; font-weight:600;">${escapeHtml(item.name)}</td>
-        <td class="col-number">${renderFivePercentHolderEditableNumber(item, 'commonStock', currentHolderIndex)}</td>
-        <td class="col-number">${renderFivePercentHolderEditableNumber(item, 'totalCses', currentHolderIndex)}</td>
-        <td class="col-number">${formatHolderPercent(item.pctOfClass)}</td>
-        <td class="col-number">${formatHolderPercent(item.pctFullyDiluted)}</td>
-      </tr>`;
-    })
-    .join('');
-  localizeAppDom();
-}
-
-function readFivePercentHolderGlobalParameterDrafts() {
-  const drafts = Array.from(document.querySelectorAll<HTMLInputElement>('[data-five-percent-fixed-value-key]')).map(
-    (input) => {
-      const rawId = input.dataset.fivePercentFixedValueId;
-      const id = rawId ? Number(rawId) : null;
-      const key = String(input.dataset.fivePercentFixedValueKey ?? '');
-      const value = Number(input.value.replace(/,/g, '').trim());
-      if ((id !== null && (!Number.isInteger(id) || id <= 0)) || !key || !Number.isFinite(value)) {
-        throw new Error('请输入有效的 5% Holders 数字');
-      }
-      return { id, key, value };
-    },
-  );
-  if (drafts.length !== 4) throw new Error('5% Holders 需要编辑四个全局参数');
-  return drafts;
-}
-
-async function runFivePercentHoldersWorkflowWithPreviousSource() {
-  const binding = workflowUpdateModal.bindingFor('five-percent-holders', 'capitalization_summary');
-  const fileId = Number(binding?.fileId);
-  const sources = Number.isInteger(fileId) && fileId > 0 ? { capitalization_summary: { fileId } } : {};
-  const result = await api<WorkflowExecutionResult>(workflowUpdateModal.runEndpoint('five-percent-holders'), {
-    method: 'POST',
-    body: JSON.stringify({ sources }),
-  });
-  const runId = result.run?.id;
-  if (!runId) throw new Error('Workflow run was not created');
-  const run = await workflowUpdateModal.pollRunUntilFinished(runId);
-  if (run.status !== 'completed' && run.status !== 'completed_with_warnings') {
-    throw new Error(run.errorMessage ?? `Workflow ended with status ${run.status}`);
-  }
-  return run;
-}
-
-async function saveFivePercentHolderGlobalParametersAndRunWorkflow() {
-  const drafts = readFivePercentHolderGlobalParameterDrafts();
-  fivePercentHoldersSaving = true;
-  setFivePercentHoldersUpdateButtonState();
-  try {
-    for (const draft of drafts) {
-      const payload = {
-        key: draft.key,
-        label: fivePercentHolderGlobalParameterLabels[draft.key] ?? draft.key,
-        value: draft.value,
-        updatedBy: authStatus?.user?.displayName ?? 'Administrator',
-      };
-      if (draft.id) {
-        await api(`/api/fixed-values/${draft.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ value: draft.value, updatedBy: payload.updatedBy }),
-        });
-      } else {
-        await api('/api/fixed-values', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
-      }
-    }
-    notify('Global Parameter 已保存，正在运行 5% Holders workflow...', { type: 'success' });
-    const run = await runFivePercentHoldersWorkflowWithPreviousSource();
-    await filesPage.refreshProductFiles();
-    fivePercentHoldersEditMode = false;
-    await renderFivePercentHoldersPage();
-    notify(run.status === 'completed_with_warnings' ? '5% Holders 更新完成（包含 Warning）' : '5% Holders 更新完成', {
-      type: run.status === 'completed_with_warnings' ? 'warning' : 'success',
-    });
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-  } finally {
-    fivePercentHoldersSaving = false;
-    setFivePercentHoldersUpdateButtonState();
-  }
-}
-
-async function handleFivePercentHoldersUpdateClick() {
-  if (fivePercentHoldersSaving) return;
-  if (!fivePercentHoldersEditMode) {
-    fivePercentHoldersEditMode = true;
-    await renderFivePercentHoldersPage();
-    return;
-  }
-  await saveFivePercentHolderGlobalParametersAndRunWorkflow();
-}
-
-async function cancelFivePercentHoldersEdit() {
-  if (fivePercentHoldersSaving || !fivePercentHoldersEditMode) return;
-  fivePercentHoldersEditMode = false;
-  await renderFivePercentHoldersPage();
 }
 
 // The 5 monthly-workflow fixed values now live per-month on monthly_run_instances (inherited from

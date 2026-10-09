@@ -611,3 +611,98 @@ test('the global parameter page renders its rows and gates the edit controls on 
   );
   assert.equal((doc.getElementById('fixedValueEditValue') as HTMLInputElement | null)?.value, '4156815');
 });
+
+const HOLDERS_PAGE = {
+  summary: { asOfDate: '2026-09-30', fullyDiluted: 1000, commonStockOs: 500 },
+  items: [
+    {
+      rowType: 'holder',
+      name: 'GNI Group Ltd.',
+      commonStock: 100,
+      totalCses: 200,
+      pctOfClass: 0.2,
+      pctFullyDiluted: 0.3,
+    },
+    { rowType: 'holder', name: 'Songjiang Ma', commonStock: 50, totalCses: 80, pctOfClass: 0.1, pctFullyDiluted: 0.13 },
+    { rowType: 'total', name: 'Total', commonStock: 150, totalCses: 280, pctOfClass: 0.3, pctFullyDiluted: 0.43 },
+  ],
+  workflowSourceBindings: [],
+  workflowResultFiles: [],
+};
+
+const HOLDER_FIXED_VALUES = {
+  items: [
+    {
+      id: 11,
+      key: 'fivePercentHoldersGniCommonStock',
+      label: 'GNI Common Stock',
+      value: 100,
+      updatedBy: 'Administrator',
+    },
+    { id: 12, key: 'fivePercentHoldersGniTotalCses', label: 'GNI Total CSEs', value: 200, updatedBy: 'Administrator' },
+    {
+      id: 13,
+      key: 'fivePercentHoldersSongjiangMaCommonStock',
+      label: 'Ma Common Stock',
+      value: 50,
+      updatedBy: 'Administrator',
+    },
+    {
+      id: 14,
+      key: 'fivePercentHoldersSongjiangMaTotalCses',
+      label: 'Ma Total CSEs',
+      value: 80,
+      updatedBy: 'Administrator',
+    },
+  ],
+};
+
+test('the 5% holders page swaps its numbers for inline inputs in edit mode', async () => {
+  const window = await bootApp(
+    [
+      ...API_STUBS,
+      { match: /\/api\/five-percent-holders$/, respond: HOLDERS_PAGE },
+      { match: /\/api\/five-percent-holders\/fixed-values$/, respond: HOLDER_FIXED_VALUES },
+    ],
+    120,
+  );
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('.nav-item[data-page="five-percent-holders"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  // Read mode renders plain numbers, and the action button says Update.
+  assert.ok(!doc.querySelector('[data-five-percent-fixed-value-key]'), 'no inputs expected outside edit mode');
+  const updateButton = doc.querySelector<HTMLButtonElement>('[data-workflow-update-page="five-percent-holders"]');
+  assert.equal(updateButton?.querySelector('[data-workflow-action-label]')?.textContent, '更新');
+  assert.ok(doc.getElementById('btnCancelFivePercentHoldersEdit')?.classList.contains('hidden'), 'cancel hidden');
+
+  // First click enters edit mode: the four holder numbers become inputs.
+  updateButton?.click();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const inputs = [...doc.querySelectorAll<HTMLInputElement>('[data-five-percent-fixed-value-key]')];
+  assert.equal(inputs.length, 4, `expected four inline inputs, got ${inputs.length}`);
+  assert.deepEqual(
+    inputs.map((input) => input.value),
+    ['100', '200', '50', '80'],
+  );
+  assert.equal(
+    updateButton?.querySelector('[data-workflow-action-label]')?.textContent,
+    '确认并运行',
+    'the button should switch to Confirm & Run',
+  );
+  assert.ok(!doc.getElementById('btnCancelFivePercentHoldersEdit')?.classList.contains('hidden'), 'cancel visible');
+
+  // Cancel leaves edit mode without persisting anything.
+  doc.getElementById('btnCancelFivePercentHoldersEdit')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.ok(!doc.querySelector('[data-five-percent-fixed-value-key]'), 'inputs should be gone after cancel');
+  assert.equal(
+    doc.querySelector('[data-workflow-update-page="five-percent-holders"] [data-workflow-action-label]')?.textContent,
+    '更新',
+  );
+  assert.ok(
+    !lastRequests.some((request) => request.method === 'POST' && request.url.includes('/api/fixed-values')),
+    'cancelling must not persist anything',
+  );
+});

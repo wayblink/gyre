@@ -984,7 +984,9 @@ test('workflow action labels are localized by language state', () => {
   assert.match(mainSource, /function syncWorkflowActionLabels\(\)/);
   assert.match(mainSource, /label\.textContent = t\('update'\)/);
   assert.match(mainSource, /label\.textContent = t\('export'\)/);
-  assert.match(mainSource, /fivePercentHoldersEditMode \? t\('confirmAndRun'\) : t\('update'\)/);
+  // The 5% holders page overrides the generic label while it is in edit mode.
+  assert.match(mainSource, /fivePercentHoldersPage\.isEditMode\(\)/);
+  assert.match(mainSource, /label\.textContent = t\('confirmAndRun'\);/);
 });
 
 test('Employee Management deactivate action uses danger styling', () => {
@@ -996,18 +998,27 @@ test('Employee Management deactivate action uses danger styling', () => {
 test('5% Holders edit mode exposes localized Confirm & Run and Cancel actions', () => {
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const holdersSection = pageSection('five-percent-holders', 'fixed-value');
+  const holdersPageSource = readFileSync(new URL('./fivePercentHoldersPage.ts', import.meta.url), 'utf8');
 
   assert.match(holdersSection, /data-workflow-update-page="five-percent-holders"/);
   assert.match(holdersSection, /id="btnCancelFivePercentHoldersEdit"[\s\S]*<span>Cancel<\/span>/);
-  assert.match(mainSource, /function fivePercentHoldersCancelButton\(\)/);
-  assert.match(mainSource, /cancelButton\.classList\.toggle\('hidden', !fivePercentHoldersEditMode\)/);
-  assert.match(mainSource, /setButtonLabel\('btnCancelFivePercentHoldersEdit', t\('cancel'\)\)/);
-  assert.match(mainSource, /function cancelFivePercentHoldersEdit\(\)/);
-  assert.match(mainSource, /fivePercentHoldersEditMode = false;\s*await renderFivePercentHoldersPage\(\);/);
+
+  // The page owns the edit mode and its button labels.
+  assert.match(holdersPageSource, /const text = editMode \? t\('confirmAndRun'\) : t\('update'\)/);
+  assert.match(holdersPageSource, /cancel\.classList\.toggle\('hidden', !editMode\)/);
+  assert.match(holdersPageSource, /cancel\.textContent = t\('cancel'\)/);
+  assert.match(holdersPageSource, /async cancelEdit\(\)/);
+  assert.match(holdersPageSource, /editMode = false;\s*await render\(\);/);
+  assert.match(holdersPageSource, /if \(saving \|\| !editMode\) return;/);
+  // Leaving edit mode discards the drafts rather than persisting them.
+  assert.doesNotMatch(holdersPageSource, /cancelEdit[\s\S]{0,200}api\(/);
+
+  // main.ts only wires the button and asks the page whether it is editing.
   assert.match(
     mainSource,
-    /btnCancelFivePercentHoldersEdit'\)\.addEventListener\('click', \(\) => void cancelFivePercentHoldersEdit\(\)\)/,
+    /btnCancelFivePercentHoldersEdit'\)\.addEventListener\('click', \(\) => void fivePercentHoldersPage\.cancelEdit\(\)\)/,
   );
+  assert.match(mainSource, /fivePercentHoldersPage\.isEditMode\(\)/);
 });
 
 test('Global Parameter editing uses the application modal instead of a browser prompt', () => {
