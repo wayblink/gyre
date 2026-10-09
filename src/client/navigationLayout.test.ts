@@ -1075,3 +1075,24 @@ test('pagination summaries are localized and refresh when the language changes',
     assert.match(applyLanguageBody, new RegExp(`${name}\\(`));
   }
 });
+
+test('main.ts renders every bilingual string through the translation table', () => {
+  const source = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+
+  // Inline `currentLanguage === 'zh-CN' ? ... : ...` ternaries bypass the translation table: the
+  // string is invisible to translators and to any future i18n tooling. Every bilingual string must
+  // go through t()/tp().
+  assert.doesNotMatch(source, /currentLanguage === 'zh-CN' \?/);
+  assert.doesNotMatch(source, /currentLanguage === 'en-US' \?/);
+
+  // The table stays the single source of truth, and messages carrying a value use tp().
+  assert.match(source, /const uiText: Record<string, Record<AppLanguage, string>> = \{/);
+  assert.match(source, /function t\(key: keyof typeof uiText\): string \{/);
+  assert.match(source, /function tp\(key: keyof typeof uiText, params: Record<string, string \| number>\): string \{/);
+  assert.match(source, /confirmDeleteUser: \{ 'zh-CN': '确定删除用户【\{username\}】吗？'/);
+
+  // applyLanguage() must stay a list of t()/setText() calls, not a pile of inline ternaries.
+  const applyLanguage = source.match(/function applyLanguage\(\)[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.doesNotMatch(applyLanguage, /=== 'zh-CN'/);
+  assert.match(applyLanguage, /setButtonLabel\('btnEditTransferPlan', t\('edit'\)\)/);
+});

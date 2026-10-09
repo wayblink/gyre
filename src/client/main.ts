@@ -415,7 +415,7 @@ function renderWorkflowUpdateModalSources() {
               type="button"
               data-workflow-update-file-pick="${escapeHtml(source.sourceKey)}"
               aria-haspopup="dialog"
-              title="${currentLanguage === 'zh-CN' ? '从文件中心选择' : 'Choose from the Files Center'}"
+              title="${t('chooseFromFilesCenter')}"
             >
               <span class="workbook-tree__folder-icon" aria-hidden="true"></span>
               <span class="workflow-update-source-card__pick-label">${escapeHtml(pickLabel)}</span>
@@ -471,8 +471,7 @@ async function openWorkflowUpdateFilePicker(sourceKey: string) {
   if (result.action === 'pick') {
     const file = filesPage.getProductFiles().find((item) => item.id === result.fileId);
     if (file) {
-      el('workflowUpdateStatus').textContent =
-        `${currentLanguage === 'zh-CN' ? '已选择' : 'Selected'}: ${productFileDisplayName(file)}`;
+      el('workflowUpdateStatus').textContent = `${t('selected')}: ${productFileDisplayName(file)}`;
     }
   }
 }
@@ -524,7 +523,7 @@ function resetWorkflowUpdateProgress() {
   bar.setAttribute('aria-valuenow', '0');
   fill.style.width = '0%';
   text.textContent = '0 / 0';
-  label.textContent = currentLanguage === 'zh-CN' ? 'Workflow 进度' : 'Workflow progress';
+  label.textContent = t('workflowProgress');
   step.textContent = workflowUpdateStepStatusText('not_started');
 }
 
@@ -556,7 +555,7 @@ function renderWorkflowUpdateProgress(run: WorkflowRunRecord) {
     run.status === 'completed_with_warnings' || run.status === 'waiting_approval',
   );
   progress.classList.toggle('is-error', run.status === 'failed' || run.status === 'skipped');
-  label.textContent = currentLanguage === 'zh-CN' ? 'Workflow 进度' : 'Workflow progress';
+  label.textContent = t('workflowProgress');
   bar.setAttribute('aria-valuenow', String(displayedPercent));
   fill.style.width = `${displayedPercent}%`;
   text.textContent = total > 0 ? `${Math.min(reached, total)} / ${total}` : '0 / 0';
@@ -816,9 +815,6 @@ const uiText: Record<string, Record<AppLanguage, string>> = {
   update: { 'zh-CN': '更新', 'en-US': 'Update' },
   confirmAndRun: { 'zh-CN': '确认并运行', 'en-US': 'Confirm & Run' },
   save: { 'zh-CN': '保存', 'en-US': 'Save' },
-  cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
-  close: { 'zh-CN': '关闭', 'en-US': 'Close' },
-  edit: { 'zh-CN': '编辑', 'en-US': 'Edit' },
   delete: { 'zh-CN': '删除', 'en-US': 'Delete' },
   actions: { 'zh-CN': '操作', 'en-US': 'Actions' },
   rows: { 'zh-CN': '行数', 'en-US': 'Rows' },
@@ -939,6 +935,43 @@ const uiText: Record<string, Record<AppLanguage, string>> = {
     'zh-CN': '数据管理业务入口，维护 5% 股东与全局参数等可由管理员调整的数据。',
     'en-US': 'Data management hub for 5% holders and global parameters.',
   },
+  chooseFromFilesCenter: { 'zh-CN': '从文件中心选择', 'en-US': 'Choose from the Files Center' },
+  selected: { 'zh-CN': '已选择', 'en-US': 'Selected' },
+  workflowProgress: { 'zh-CN': 'Workflow 进度', 'en-US': 'Workflow progress' },
+  edit: { 'zh-CN': '编辑', 'en-US': 'Edit' },
+  cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
+  newEmployee: { 'zh-CN': '新增员工', 'en-US': 'New Employee' },
+  manageLabels: { 'zh-CN': '标签管理', 'en-US': 'Manage Labels' },
+  labelManagementTitle: { 'zh-CN': '标签管理', 'en-US': 'Label Management' },
+  newTag: { 'zh-CN': '新增标签', 'en-US': 'New Tag' },
+  close: { 'zh-CN': '关闭', 'en-US': 'Close' },
+  link: { 'zh-CN': '关联', 'en-US': 'Link' },
+  planSummarySubtitle: { 'zh-CN': '由股权授予明细聚合生成', 'en-US': 'Aggregated from equity grant detail' },
+  globalParameterTitle: { 'zh-CN': '参数', 'en-US': 'Global Parameter' },
+  usernameAndDisplayNameRequired: {
+    'zh-CN': '账号名和显示名不能为空',
+    'en-US': 'Username and display name are required',
+  },
+  newUserPasswordRequired: { 'zh-CN': '新用户必须设置密码', 'en-US': 'Password is required for a new user' },
+  userSaved: { 'zh-CN': '用户已保存', 'en-US': 'User saved' },
+  userDeleted: { 'zh-CN': '用户已删除', 'en-US': 'User deleted' },
+  rawFutuGrantData: { 'zh-CN': 'Futu 授予数据原始格式', 'en-US': 'Raw Futu grant data' },
+  rawOptionsOsDetail: { 'zh-CN': 'Options OS Detail 原始格式', 'en-US': 'Raw Options OS Detail data' },
+  standardizedFutuShareworksMerge: {
+    'zh-CN': 'Futu + Shareworks 标准化拼表',
+    'en-US': 'Standardized Futu + Shareworks merge',
+  },
+  rawFutuBciExercises: { 'zh-CN': 'Futu BCI Exercises to Date 原始格式', 'en-US': 'Raw Futu BCI Exercises to Date' },
+  unlink: { 'zh-CN': '取消关联', 'en-US': 'Unlink' },
+  unlinked: { 'zh-CN': '已取消关联', 'en-US': 'Unlinked' },
+  confirmDeleteUser: { 'zh-CN': '确定删除用户【{username}】吗？', 'en-US': 'Delete user {username}?' },
+  transposeTable: { 'zh-CN': '转置表格', 'en-US': 'Transpose table' },
+  restoreHorizontal: { 'zh-CN': '恢复横向', 'en-US': 'Restore horizontal' },
+  employeeLabelModalSubtitle: {
+    'zh-CN': '先创建标签，再分配给员工；名称或颜色变更会自动影响所有员工。',
+    'en-US': 'Create labels first, then assign them to employees. Name or color changes apply to all employees.',
+  },
+  transferPlanConfirmAndRun: { 'zh-CN': 'Transfer Plan Confirm & Run', 'en-US': 'Transfer Plan Confirm & Run' },
 };
 
 const placeholderTranslations: Array<[string, Record<AppLanguage, string>]> = [
@@ -971,6 +1004,11 @@ const placeholderTranslations: Array<[string, Record<AppLanguage, string>]> = [
 
 function t(key: keyof typeof uiText): string {
   return uiText[key][currentLanguage] ?? uiText[key]['zh-CN'];
+}
+
+/** Same as t(), with `{placeholder}` substitution for messages that carry a value. */
+function tp(key: keyof typeof uiText, params: Record<string, string | number>): string {
+  return t(key).replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name] ?? ''));
 }
 
 function pageTitleFor(page: PageKey): string {
@@ -1124,35 +1162,24 @@ function applyLanguage() {
   setButtonLabel('btnExport', t('export'));
   setButtonLabel(
     'btnToggleTransferPlanTableView',
-    transferPlanTableView === 'summaryRows'
-      ? currentLanguage === 'zh-CN'
-        ? '转置表格'
-        : 'Transpose table'
-      : currentLanguage === 'zh-CN'
-        ? '恢复横向'
-        : 'Restore horizontal',
+    transferPlanTableView === 'summaryRows' ? t('transposeTable') : t('restoreHorizontal'),
   );
-  setButtonLabel('btnEditTransferPlan', currentLanguage === 'zh-CN' ? '编辑' : 'Edit');
+  setButtonLabel('btnEditTransferPlan', t('edit'));
   setButtonLabel('btnSaveTransferPlanEdit', t('confirmAndRun'));
-  setButtonLabel('btnCancelTransferPlanEdit', currentLanguage === 'zh-CN' ? '取消' : 'Cancel');
-  setButtonLabel('btnAddEmployeesPage', currentLanguage === 'zh-CN' ? '新增员工' : 'New Employee');
-  setButtonLabel('btnManageEmployeeLabels', currentLanguage === 'zh-CN' ? '标签管理' : 'Manage Labels');
+  setButtonLabel('btnCancelTransferPlanEdit', t('cancel'));
+  setButtonLabel('btnAddEmployeesPage', t('newEmployee'));
+  setButtonLabel('btnManageEmployeeLabels', t('manageLabels'));
   setText('#btnCancelWorkflowUpdateModal', t('cancel'));
   setText('#btnConfirmWorkflowUpdate', t('confirmAndRun'));
-  setText('#workflowUpdateProgressLabel', currentLanguage === 'zh-CN' ? 'Workflow 进度' : 'Workflow progress');
-  setButtonLabel('btnAddEmployeeLabel', currentLanguage === 'zh-CN' ? '新增标签' : 'New Tag');
-  setText('#employeeLabelManagementModal .modal-title', currentLanguage === 'zh-CN' ? '标签管理' : 'Label Management');
-  setText(
-    '#employeeLabelManagementModal .modal-subtitle',
-    currentLanguage === 'zh-CN'
-      ? '先创建标签，再分配给员工；名称或颜色变更会自动影响所有员工。'
-      : 'Create labels first, then assign them to employees. Name or color changes apply to all employees.',
-  );
-  setAllText('[data-close="employeeLabelManagementModal"].btn', currentLanguage === 'zh-CN' ? '关闭' : 'Close');
+  setText('#workflowUpdateProgressLabel', t('workflowProgress'));
+  setButtonLabel('btnAddEmployeeLabel', t('newTag'));
+  setText('#employeeLabelManagementModal .modal-title', t('labelManagementTitle'));
+  setText('#employeeLabelManagementModal .modal-subtitle', t('employeeLabelModalSubtitle'));
+  setAllText('[data-close="employeeLabelManagementModal"].btn', t('close'));
   setAllText('#employeesPageModal [data-close="employeesPageModal"].btn', t('cancel'));
   setText('#btnSubmitEmployeesPage', t('save'));
   setAllText('#employeesMergeModal [data-close="employeesMergeModal"].btn', t('cancel'));
-  setText('#btnSubmitEmployeesMerge', currentLanguage === 'zh-CN' ? '关联' : 'Link');
+  setText('#btnSubmitEmployeesMerge', t('link'));
   setSearchLabels('captable', [t('month')]);
   setSearchLabels('grant-record', [t('search'), t('tag'), t('incentiveType')]);
   setSearchLabels('exercise-record', [t('search'), t('tag'), t('grantYear')]);
@@ -1222,12 +1249,9 @@ function applyLanguage() {
 
   setText('#btnCloseLinkModalFooter', t('close'));
   setText('#page-plan-summary .card-title', pageTitleFor('plan-summary'));
-  setText(
-    '#page-plan-summary .card-subtitle',
-    currentLanguage === 'zh-CN' ? '由股权授予明细聚合生成' : 'Aggregated from equity grant detail',
-  );
+  setText('#page-plan-summary .card-subtitle', t('planSummarySubtitle'));
   setText('#page-five-percent-holders .card-title', pageTitleFor('five-percent-holders'));
-  setText('#page-fixed-value .card-title', currentLanguage === 'zh-CN' ? '参数' : 'Global Parameter');
+  setText('#page-fixed-value .card-title', t('globalParameterTitle'));
   setAllText('.pagination-size-label-text', t('rows'));
   setAllText('[id$="FirstPage"]', t('first'));
   setAllText('[id$="PrevPage"]', t('previous'));
@@ -2561,14 +2585,14 @@ async function submitManagedUser() {
     isActive: el<HTMLSelectElement>('managedUserIsActive').value === 'true',
   };
   if (!payload.username || !payload.displayName) {
-    notify(currentLanguage === 'zh-CN' ? '账号名和显示名不能为空' : 'Username and display name are required', {
+    notify(t('usernameAndDisplayNameRequired'), {
       type: 'warning',
     });
     return;
   }
   if (!editingManagedUserId) {
     if (!password) {
-      notify(currentLanguage === 'zh-CN' ? '新用户必须设置密码' : 'Password is required for a new user', {
+      notify(t('newUserPasswordRequired'), {
         type: 'warning',
       });
       return;
@@ -2595,7 +2619,7 @@ async function submitManagedUser() {
         : [...managedUsers, response.user];
     closeManagedUserModal();
     renderUserManagementTable();
-    notify(currentLanguage === 'zh-CN' ? '用户已保存' : 'User saved', { type: 'success' });
+    notify(t('userSaved'), { type: 'success' });
   } catch (error) {
     notify((error as Error).message, { type: 'error' });
   }
@@ -2604,16 +2628,17 @@ async function submitManagedUser() {
 async function deleteUserManagementUser(userId: number) {
   const user = managedUsers.find((item) => item.id === userId);
   if (!user) return;
-  const confirmed = await confirmAction(
-    currentLanguage === 'zh-CN' ? `确定删除用户【${user.username}】吗？` : `Delete user ${user.username}?`,
-    { title: t('delete'), confirmText: t('delete'), tone: 'danger' },
-  );
+  const confirmed = await confirmAction(tp('confirmDeleteUser', { username: user.username }), {
+    title: t('delete'),
+    confirmText: t('delete'),
+    tone: 'danger',
+  });
   if (!confirmed) return;
   try {
     await api(`/api/admin/users/${userId}`, { method: 'DELETE' });
     managedUsers = managedUsers.filter((item) => item.id !== userId);
     renderUserManagementTable();
-    notify(currentLanguage === 'zh-CN' ? '用户已删除' : 'User deleted', { type: 'success' });
+    notify(t('userDeleted'), { type: 'success' });
   } catch (error) {
     notify((error as Error).message, { type: 'error' });
   }
@@ -2867,15 +2892,15 @@ function applyGrantView() {
   const viewCopy: Record<GrantView, { title: string; subtitle: string }> = {
     futu: {
       title: 'Futu Grant Record',
-      subtitle: currentLanguage === 'zh-CN' ? 'Futu 授予数据原始格式' : 'Raw Futu grant data',
+      subtitle: t('rawFutuGrantData'),
     },
     shareworks: {
       title: 'Shareworks Grant Record',
-      subtitle: currentLanguage === 'zh-CN' ? 'Options OS Detail 原始格式' : 'Raw Options OS Detail data',
+      subtitle: t('rawOptionsOsDetail'),
     },
     merge: {
       title: 'Merged Grant Record',
-      subtitle: currentLanguage === 'zh-CN' ? 'Futu + Shareworks 标准化拼表' : 'Standardized Futu + Shareworks merge',
+      subtitle: t('standardizedFutuShareworksMerge'),
     },
   };
   document.querySelectorAll<HTMLButtonElement>('[data-grant-view]').forEach((button) => {
@@ -2897,7 +2922,7 @@ function applyExerciseView() {
   const viewCopy: Record<ExerciseView, { title: string; subtitle: string }> = {
     futu: {
       title: 'Futu Exercise Records',
-      subtitle: currentLanguage === 'zh-CN' ? 'Futu BCI Exercises to Date 原始格式' : 'Raw Futu BCI Exercises to Date',
+      subtitle: t('rawFutuBciExercises'),
     },
     shareworks: {
       title: 'Shareworks Exec Option OS',
@@ -3435,7 +3460,7 @@ async function saveTransferPlanEdit() {
       ? '正在保存编辑、生成输入文件并运行 workflow...'
       : 'Saving edits, creating an input file, and running the workflow...';
   openWorkflowRunProgressModal(
-    currentLanguage === 'zh-CN' ? 'Transfer Plan Confirm & Run' : 'Transfer Plan Confirm & Run',
+    t('transferPlanConfirmAndRun'),
     currentLanguage === 'zh-CN'
       ? '正在根据编辑内容生成新的输入文件，并运行 Transfer Plan workflow。'
       : 'Creating a new input file from your edits and running the Transfer Plan workflow.',
@@ -3558,7 +3583,7 @@ function renderEmployeeLabelsTable() {
         <td class="col-number">${formatNumber(label.employeeCount)}</td>
         <td>
           <div class="action-buttons">
-            <button class="btn btn-secondary btn-sm" data-action="edit-employee-label" data-id="${label.id}">${currentLanguage === 'zh-CN' ? '编辑' : 'Edit'}</button>
+            <button class="btn btn-secondary btn-sm" data-action="edit-employee-label" data-id="${label.id}">${t('edit')}</button>
             <button class="btn btn-danger btn-sm" data-action="delete-employee-label" data-id="${label.id}">删除</button>
           </div>
         </td>
@@ -3737,7 +3762,7 @@ function renderEmployeesPageTable() {
             .map(
               (identity) =>
                 `<span class="linked-identity">${escapeHtml(`${identity.source}:${identity.employeeId} ${identity.name}`.trim())}` +
-                `<button type="button" class="linked-identity__unlink" data-action="unlink-employee" data-source-id="${identity.id}" data-target-number="${escapeHtml(item.employeeNumber)}" title="${currentLanguage === 'zh-CN' ? '取消关联' : 'Unlink'}">×</button></span>`,
+                `<button type="button" class="linked-identity__unlink" data-action="unlink-employee" data-source-id="${identity.id}" data-target-number="${escapeHtml(item.employeeNumber)}" title="${t('unlink')}">×</button></span>`,
             )
             .join(' ')
         : '-';
@@ -3790,8 +3815,8 @@ async function unlinkEmployee(sourceId: number, targetNumber: string): Promise<v
       ? '确认取消该关联？取消后该编号恢复为独立员工，不影响授予/行权/卖出等任何业务记录。'
       : 'Unlink this identity? It becomes a standalone employee again; grant/exercise/sale records are unaffected.',
     {
-      title: currentLanguage === 'zh-CN' ? '取消关联' : 'Unlink',
-      confirmText: currentLanguage === 'zh-CN' ? '取消关联' : 'Unlink',
+      title: t('unlink'),
+      confirmText: t('unlink'),
     },
   );
   if (!confirmed) return;
@@ -3799,7 +3824,7 @@ async function unlinkEmployee(sourceId: number, targetNumber: string): Promise<v
     method: 'POST',
     body: JSON.stringify({ mergeFromId: sourceId }),
   });
-  notify(currentLanguage === 'zh-CN' ? '已取消关联' : 'Unlinked', { type: 'success' });
+  notify(t('unlinked'), { type: 'success' });
   await loadEmployeesPage();
 }
 
