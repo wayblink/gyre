@@ -90,11 +90,3 @@ export function applyThemeSelection(selection: ThemeSelection) {
     // Ignore storage failures; the DOM theme still updates immediately.
   }
 }
-
-export function getThemeStyleOption(name: ThemeStyleName) {
-  return STYLE_OPTIONS.find((option) => option.name === name) ?? STYLE_OPTIONS[0];
-}
-
-export function getThemeColorOption(name: ThemeColorName) {
-  return COLOR_OPTIONS.find((option) => option.name === name) ?? COLOR_OPTIONS[0];
-}

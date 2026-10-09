@@ -23,9 +23,9 @@ export const config = {
   sessionTtlHours: Number(process.env.SESSION_TTL_HOURS ?? 24 * 7),
   sessionCookieSecure: (process.env.SESSION_COOKIE_SECURE ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false')) === 'true',
   authBootstrapSecret: process.env.AUTH_BOOTSTRAP_SECRET ?? '',
-  // Login is temporarily disabled during development. Set AUTH_DISABLED=false to re-enable
-  // authentication once the product is mature.
-  authDisabled: (process.env.AUTH_DISABLED ?? 'true') === 'true',
+  // Fail-secure default: authentication stays ON unless a deployment explicitly opts out with
+  // AUTH_DISABLED=true (local dev only). Images/containers must never ship with this unset.
+  authDisabled: (process.env.AUTH_DISABLED ?? 'false') === 'true',
   // Workflow operators and global parameters are product metadata seeded on boot.
   // Built-in workflow definitions are inserted only when missing; existing DB rows
   // remain the source of truth.

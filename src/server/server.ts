@@ -41,7 +41,6 @@ import {
 import {
   dataFrameToWorkbookBuffer,
   extractSheetRangeAsDataFrame,
-  parseWorkbook,
   previewWorkbookSheet,
   rowsToDataFrame,
   summarizeWorkbook,
@@ -64,7 +63,6 @@ import {
   listMonthlyRuns,
   MONTHLY_WORKFLOW_CODE,
   MonthlyRunHistoryDeleteConflictError,
-  reconcileMonthlyUpdatePlanStatuses,
 } from './monthlyRun/store.js';
 import {
   deleteMonthlyRunPlan,
@@ -106,7 +104,7 @@ import { assembleShareworksName, normalizeEmployeeSourceFilter, normalizeExterna
 import { expandByLinkedGroup } from './employeeLinkExpansion.js';
 import { executeWorkflowDefinition, executeWorkflowTaskPreview } from './workflow/engine.js';
 import { selectWorkflowPreviewTasks } from './workflow/previewTask.js';
-import { WorkflowFileSourceRegistry, productFileRef } from './workflow/fileSources.js';
+import { WorkflowFileSourceRegistry } from './workflow/fileSources.js';
 import { rewriteProductFileKey } from './workflow/productFileKeyRewrite.js';
 import { normalizeWorkflowTaskInput } from './workflow/inputGuards.js';
 import {
@@ -118,10 +116,12 @@ import {
 } from './workflow/runtimeParameters.js';
 import { deriveWorkflowRuntimeConfigFromTasks } from './workflow/runtimeParameterRequirements.js';
 import type { WorkflowOperatorRuntime } from './workflow/operators/types.js';
-import { WorkflowRunExecutor, workflowRunToExecutionResult } from './workflow/runExecutor.js';
+import { WorkflowRunExecutor } from './workflow/runExecutor.js';
+import { workflowRunToExecutionResult } from './workflow/runResult.js';
 import { WorkflowRunStore } from './workflow/runStore.js';
 import type {
   AuthStatus,
+  EmployeeMapping,
   LatestMonthlyRunOutput,
   MonthlyRunInstanceRecord,
   MonthlyRunInstanceUpsertRequest,
@@ -129,7 +129,8 @@ import type {
   MonthlyRunSourceDefinition,
   SummarySnapshot,
   SummaryCapitalizationSource,
-  WorkflowDataFrame,
+  ShareholderTag,
+  TrackedPlan,
   WorkflowImportExportBundle,
   WorkflowPortableDefinition,
   WorkflowRuntimeParameters,
@@ -455,14 +456,6 @@ async function assertMonthlyRunInstanceReady(instance: MonthlyRunInstanceRecord)
   }
 }
 
-function labelForMonth(monthKey: string): string {
-  return monthKey;
-}
-
-function maskDatabaseUrl(databaseUrl: string): string {
-  return databaseUrl.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:***@');
-}
-
 function sessionCookieOptions(maxAgeSeconds: number) {
   return {
     httpOnly: true,
@@ -700,20 +693,8 @@ function timestampVersionTag(date = new Date()): string {
   ].join('');
 }
 
-function timestampVersionTagFromValue(value: unknown): string {
-  const date = value ? new Date(String(value)) : new Date();
-  return Number.isNaN(date.getTime()) ? timestampVersionTag() : timestampVersionTag(date);
-}
-
 function stripFileVersion(fileName: string): string {
   return fileName.replace(/\.v\d{14}(?=\.[^.]+$)/i, '');
-}
-
-function withFileVersion(fileName: string, versionSource?: unknown): string {
-  if (/\.v\d{14}\.[^.]+$/i.test(fileName)) return fileName;
-  const ext = path.extname(fileName);
-  const baseName = ext ? fileName.slice(0, -ext.length) : fileName;
-  return `${baseName}.v${timestampVersionTagFromValue(versionSource)}${ext || '.xlsx'}`;
 }
 
 function productFileDisplayPath(row: Record<string, unknown>) {
@@ -912,14 +893,6 @@ function emptyFivePercentHolderRows(fixedValues: Map<string, Record<string, unkn
   ];
 }
 
-async function readLatestWorkflowDataFrameFile(params: {
-  workflowCode: string;
-  taskId: string;
-  fallbackSheetName: string;
-}): Promise<Array<Record<string, unknown>>> {
-  return (await readLatestWorkflowDataFrameArtifact(params))?.rows ?? [];
-}
-
 function sourceFilesFromArtifacts(...artifacts: Array<LatestWorkflowDataFrameArtifact | null | undefined>): string[] {
   return [...new Set(artifacts.map((artifact) => artifact?.filePath?.trim() || artifact?.fileName?.trim()).filter(Boolean) as string[])];
 }
@@ -938,24 +911,6 @@ function resultFilesFromArtifacts(...artifacts: Array<LatestWorkflowDataFrameArt
     });
   }
   return [...byId.values()];
-}
-
-function productFileIdsFromRuntimeParameters(runtimeParameters: unknown): number[] {
-  const ids: number[] = [];
-  const visit = (value: unknown) => {
-    if (Array.isArray(value)) {
-      value.forEach(visit);
-      return;
-    }
-    if (!isRecord(value)) return;
-    if (value.provider === 'product-files') {
-      const id = Number(value.id);
-      if (Number.isInteger(id) && id > 0) ids.push(id);
-    }
-    Object.values(value).forEach(visit);
-  };
-  visit(runtimeParameters);
-  return [...new Set(ids)];
 }
 
 function productFileIdAtRuntimePath(runtimeParameters: unknown, runtimePath: string): number | null {
@@ -1113,35 +1068,6 @@ async function latestFivePercentHolderInputSourceBindings(): Promise<WorkflowPag
       fileName: productFileDisplayPath(file),
     }
     : binding);
-}
-
-async function latestWorkflowInputSourceFiles(workflowCode: string): Promise<string[]> {
-  const row = await db.queryOne<Record<string, unknown>>(
-    `select runtime_parameters_json
-       from workflow_runs
-      where workflow_code = $1
-        and status in ('completed', 'completed_with_warnings')
-      order by finished_at desc nulls last, id desc
-      limit 1`,
-    [workflowCode],
-  );
-  if (!row) return [];
-  const runtimeParameters = parseJson(row.runtime_parameters_json, {});
-  const ids = productFileIdsFromRuntimeParameters(runtimeParameters);
-  const keys: string[] = [];
-  const visit = (value: unknown) => {
-    if (Array.isArray(value)) return value.forEach(visit);
-    if (!isRecord(value)) return;
-    if (value.provider === 'product-files' && String(value.key ?? '').trim()) keys.push(String(value.key).trim());
-    Object.values(value).forEach(visit);
-  };
-  visit(runtimeParameters);
-  if (ids.length === 0 && keys.length === 0) return [];
-  const files = await db.query<Record<string, unknown>>(
-    'select * from product_files where id = any($1::int[]) or lower(logical_path) = any($2::text[])',
-    [ids, keys.map((key) => key.toLowerCase())],
-  );
-  return [...new Set(files.map((file) => productFileDisplayPath(file).trim()).filter(Boolean))];
 }
 
 function textValue(value: unknown): string | null {
@@ -1322,11 +1248,6 @@ function employeeLabelIds(labels: EmployeeLabelRef[]): number[] {
 
 function employeeLabelNames(labels: EmployeeLabelRef[]): string[] {
   return labels.map((label) => label.name);
-}
-
-function rowMatches(row: Record<string, unknown>, query: string, keys: string[]) {
-  if (!query) return true;
-  return keys.map((key) => row[key]).join(' ').toLowerCase().includes(query);
 }
 
 function futuGrantFromWorkflowRow(row: Record<string, unknown>, index: number, labels: EmployeeLabelRef[] = []) {
@@ -1574,52 +1495,6 @@ function transferPlanEditedWorkbookBuffer(
 
 async function settingRows(table: 'employee_mappings' | 'tracked_plans' | 'shareholder_tags') {
   return db.query<Record<string, unknown>>(`select * from ${table} order by id`);
-}
-
-function toHoldingGrant(row: Record<string, unknown>) {
-  return {
-    id: Number(row.id),
-    employeeId: Number(row.employee_id),
-    employeeName: String(row.employee_name ?? ''),
-    employeeNumber: String(row.employee_number ?? ''),
-    userId: row.user_id ? String(row.user_id) : null,
-    tags: parseTags(row.tags),
-    grantNumber: String(row.grant_number ?? ''),
-    incentiveType: String(row.incentive_type ?? ''),
-    grantDate: row.grant_date ? String(row.grant_date) : null,
-    grantQuantity: row.grant_quantity === null || row.grant_quantity === undefined ? null : Number(row.grant_quantity),
-    grantPriceUsd: row.grant_price_usd === null || row.grant_price_usd === undefined ? null : Number(row.grant_price_usd),
-    expireDate: row.expire_date ? String(row.expire_date) : null,
-    planName: row.plan_name ? String(row.plan_name) : null,
-    conditionRule: row.condition_rule ? String(row.condition_rule) : null,
-    employeePortalVisibility: row.employee_portal_visibility ? String(row.employee_portal_visibility) : null,
-    closingPriceUsd: row.closing_price_usd === null || row.closing_price_usd === undefined ? null : Number(row.closing_price_usd),
-    withholdingCost: row.withholding_cost ? String(row.withholding_cost) : null,
-    taxCalculation: row.tax_calculation ? String(row.tax_calculation) : null,
-    taxWithholding: row.tax_withholding ? String(row.tax_withholding) : null,
-    fxSettlement: row.fx_settlement ? String(row.fx_settlement) : null,
-    taxRule: row.tax_rule ? String(row.tax_rule) : null,
-    cancellationConfirmDate: row.cancellation_confirm_date ? String(row.cancellation_confirm_date) : null,
-    dataSource: row.data_source ? String(row.data_source) : null,
-    vestingRuleName: row.vesting_rule_name ? String(row.vesting_rule_name) : null,
-    vestingStartDate: row.vesting_start_date ? String(row.vesting_start_date) : null,
-    vestedQuantity: row.vested_quantity === null || row.vested_quantity === undefined ? null : Number(row.vested_quantity),
-    effectiveVestedQuantity:
-      row.effective_vested_quantity === null || row.effective_vested_quantity === undefined ? null : Number(row.effective_vested_quantity),
-    unvestedQuantity: row.unvested_quantity === null || row.unvested_quantity === undefined ? null : Number(row.unvested_quantity),
-    vestedCancelledQuantity:
-      row.vested_cancelled_quantity === null || row.vested_cancelled_quantity === undefined ? null : Number(row.vested_cancelled_quantity),
-    unvestedCancelledQuantity:
-      row.unvested_cancelled_quantity === null || row.unvested_cancelled_quantity === undefined ? null : Number(row.unvested_cancelled_quantity),
-    exercisedQuantity: row.exercised_quantity === null || row.exercised_quantity === undefined ? null : Number(row.exercised_quantity),
-    pendingExerciseQuantity:
-      row.pending_exercise_quantity === null || row.pending_exercise_quantity === undefined ? null : Number(row.pending_exercise_quantity),
-    outstandingQuantity:
-      row.outstanding_quantity === null || row.outstanding_quantity === undefined ? null : Number(row.outstanding_quantity),
-    sellableQuantity: row.sellable_quantity === null || row.sellable_quantity === undefined ? null : Number(row.sellable_quantity),
-    relatedSaleOrderNumber: row.related_sale_order_number ? String(row.related_sale_order_number) : null,
-    agreementInfo: row.agreement_info ? String(row.agreement_info) : null,
-  };
 }
 
 function toEmployee(row: Record<string, unknown>) {
@@ -1910,44 +1785,6 @@ async function saveProductWorkbook(params: {
   };
 }
 
-function normalizeFileMatchText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\.[a-z0-9]+$/i, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-function fileMatchTokens(value: string): string[] {
-  return normalizeFileMatchText(value)
-    .split(/\s+/)
-    .filter((token) => token.length >= 2 && !/^\d+$/.test(token));
-}
-
-function fileNameMatchScore(candidate: string, target: string): number {
-  const normalizedCandidate = normalizeFileMatchText(candidate);
-  const normalizedTarget = normalizeFileMatchText(target);
-  if (!normalizedCandidate || !normalizedTarget) return 0;
-  if (normalizedCandidate === normalizedTarget) return 100;
-  if (normalizedCandidate.includes(normalizedTarget) || normalizedTarget.includes(normalizedCandidate)) return 80;
-
-  const targetTokens = fileMatchTokens(target);
-  if (!targetTokens.length) return 0;
-  const candidateTokens = new Set(fileMatchTokens(candidate));
-  const matched = targetTokens.filter((token) => candidateTokens.has(token)).length;
-  return matched / targetTokens.length;
-}
-
-async function productFileHasSheet(file: Record<string, unknown>, sheetName: string): Promise<boolean> {
-  try {
-    const buffer = await fileStorage.read(String(file.file_path));
-    const summary = summarizeWorkbook(buffer);
-    return summary.sheets.some((sheet) => sheet.sheetName.trim().toLowerCase() === sheetName.toLowerCase());
-  } catch {
-    return false;
-  }
-}
-
 async function updateProductWorkbook(params: {
   fileId: number;
   originalName: string;
@@ -2150,10 +1987,10 @@ async function registerRoutes() {
     }
   });
 
+  // Deliberately free of deployment details (no database URL/host): this route is unauthenticated.
   app.get('/api/health', async () => ({
     ok: true,
     service: 'gyre-captable',
-    database: maskDatabaseUrl(config.databaseUrl),
     excel: 'xlsx@0.20.3',
   }));
 
@@ -4363,7 +4200,7 @@ async function registerRoutes() {
   });
 
   app.get('/api/settings/employee-mappings', async () => ({
-    items: (await settingRows('employee_mappings')).map((row) => ({
+    items: (await settingRows('employee_mappings')).map((row): EmployeeMapping => ({
       id: Number(row.id),
       name: String(row.display_name),
       empId: String(row.employee_id),
@@ -4399,7 +4236,7 @@ async function registerRoutes() {
   });
 
   app.get('/api/settings/tracked-plans', async () => ({
-    items: (await settingRows('tracked_plans')).map((row) => ({
+    items: (await settingRows('tracked_plans')).map((row): TrackedPlan => ({
       id: Number(row.id),
       name: String(row.plan_name),
       createTime: String(row.created_at),
@@ -4434,7 +4271,7 @@ async function registerRoutes() {
   });
 
   app.get('/api/settings/shareholders', async () => ({
-    items: (await settingRows('shareholder_tags')).map((row) => ({
+    items: (await settingRows('shareholder_tags')).map((row): ShareholderTag => ({
       id: Number(row.id),
       name: String(row.name),
       identity: String(row.identity),

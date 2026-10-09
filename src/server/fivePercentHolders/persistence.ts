@@ -1,5 +1,3 @@
-import type { DbClient } from '../db.js';
-
 export type FivePercentHolderRow = {
   rowType: 'holder' | 'total';
   name: string;
@@ -153,42 +151,3 @@ export function parseFivePercentHoldersGrid(grid: unknown[][]): FivePercentHolde
   };
 }
 
-export async function replaceFivePercentHolders(
-  db: DbClient,
-  data: FivePercentHoldersWorkbook,
-  sourceFileId?: number,
-): Promise<number> {
-  await db.execute('delete from five_percent_holders');
-  await db.execute(
-    `insert into five_percent_holders (row_type, name, sort_order, raw_json)
-     values ('summary', '', -1, $1::jsonb)`,
-    [JSON.stringify({
-      asOfDate: data.asOfDate,
-      fullyDiluted: data.fullyDiluted,
-      commonStockOs: data.commonStockOs,
-      sourceFileId: sourceFileId ?? null,
-    })],
-  );
-  let count = 0;
-  for (const [sortOrder, holder] of data.holders.entries()) {
-    await db.execute(
-      `insert into five_percent_holders (
-        row_type, name, common_stock, total_cses, pct_of_class, pct_fully_diluted, sc13_filing, note, sort_order, raw_json
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
-      [
-        holder.rowType,
-        holder.name,
-        holder.commonStock,
-        holder.totalCses,
-        holder.pctOfClass,
-        holder.pctFullyDiluted,
-        holder.sc13Filing,
-        holder.note,
-        sortOrder,
-        JSON.stringify({ ...holder, sourceFileId: sourceFileId ?? null }),
-      ],
-    );
-    count += 1;
-  }
-  return count;
-}

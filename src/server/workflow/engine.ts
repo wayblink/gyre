@@ -165,16 +165,6 @@ export async function evaluateTaskInputGuards(
   return results;
 }
 
-export async function executeWorkflowTask(
-  task: WorkflowTask,
-  executed: Map<string, WorkflowDataFrame>,
-  taskMap: Map<string, WorkflowTask>,
-  runtime: WorkflowOperatorRuntime,
-  options: WorkflowExecutionOptions = {},
-): Promise<WorkflowDataFrame> {
-  return (await executeWorkflowTaskOutput(task, executed, new Map(), taskMap, runtime, options)).dataFrame;
-}
-
 export async function executeWorkflowTaskOutput(
   task: WorkflowTask,
   executed: Map<string, WorkflowDataFrame>,

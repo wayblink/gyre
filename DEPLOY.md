@@ -6,7 +6,7 @@
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `AUTH_DISABLED` | `true` | **登录开关**：`true`=免登录直接进；`false`=启用账号登录 |
+| `AUTH_DISABLED` | `false` | **登录开关**：`false`=启用账号登录（默认，生产必须保持）；`true`=免登录，仅限本地开发 |
 | `WORKFLOW_SEED_ON_INIT` | `true` | 启动时初始化 workflow operators 和内置 workflow definitions |
 | `DEMO_SEED_ON_INIT` | `false` | 是否导入 demo 业务数据；正式环境应保持 `false` |
 | `SEED_ON_INIT` | 兼容旧配置 | 旧版 demo seed 开关，等价于 `DEMO_SEED_ON_INIT`，仅用于兼容 |
@@ -17,7 +17,7 @@
 | `AUTH_BOOTSTRAP_SECRET` | 必填 | 空库创建首个管理员所需强口令；生产 compose 缺失时拒绝启动 |
 | `SESSION_COOKIE_SECURE` | 生产为 `true` | 仅通过 HTTPS 发送会话 Cookie；本地纯 HTTP 调试可显式设为 `false` |
 
-> 登录开关是纯配置项，改 `AUTH_DISABLED` 后重启容器即生效，无需改代码。启用登录（`false`）后首次需通过 `/api/auth/bootstrap` 创建管理员账号。
+> 登录开关是纯配置项，改 `AUTH_DISABLED` 后重启容器即生效，无需改代码。镜像**不再**默认关闭登录（`src/server/config.ts` 与 `Dockerfile` 均为 fail-secure），只有显式设置 `AUTH_DISABLED=true` 才免登录。启用登录后首次需通过 `/api/auth/bootstrap` 创建管理员账号。
 
 ## 二、单机快速起（app + Postgres）
 

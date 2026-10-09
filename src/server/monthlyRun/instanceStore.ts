@@ -6,7 +6,6 @@ import type {
   MonthlyRunSourceBinding,
   WorkflowRuntimeParameters,
 } from '../../shared/types.js';
-import type { QueryResultRow } from 'pg';
 import {
   MONTHLY_WORKFLOW_CODE,
   MonthlyRunHistoryDeleteConflictError,
@@ -551,12 +550,4 @@ export async function deleteMonthlyRunPlan(
     deletedOutputFileIds,
     deletedFilePaths,
   };
-}
-
-export async function getProductFilesByIds<T extends QueryResultRow = QueryResultRow>(
-  db: MonthlyRunDb,
-  fileIds: number[],
-): Promise<T[]> {
-  if (!fileIds.length) return [];
-  return db.query<T>('select * from product_files where id = any($1::int[])', [fileIds]);
 }

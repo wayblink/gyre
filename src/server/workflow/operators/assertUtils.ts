@@ -78,9 +78,3 @@ export function buildAssertionResult(params: {
     expectedLabel: params.expectedLabel,
   };
 }
-
-export function throwIfBlockingAssertionFailed(assertion: WorkflowAssertionResult) {
-  if (!assertion.passed && assertion.failureStrategy === 'block') {
-    throw new Error(assertion.failureMessage);
-  }
-}

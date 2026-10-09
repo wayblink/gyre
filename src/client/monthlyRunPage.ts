@@ -5,6 +5,7 @@ import type {
   MonthlyRunSourceConfigResponse,
   MonthlyRunSourceDefinition,
   MonthlyRunSourceBinding,
+  MonthlyRunTriggerRequest,
   MonthlyRunTriggerResponse,
   ProductFileDetail,
   ProductFileRecord,
@@ -1344,14 +1345,15 @@ export function createMonthlyRunPage({
     let failedMessage: string | null = null;
 
     try {
+      const payload: MonthlyRunTriggerRequest = {
+        workflowCode: monthlyWorkflowCode,
+        expectedWorkflowVersion: MONTHLY_WORKFLOW_VERSION,
+        month,
+        operator: currentInstance?.operator ?? 'Administrator',
+      };
       const response = await api<MonthlyRunTriggerResponse>('/api/monthly-runs', {
         method: 'POST',
-        body: JSON.stringify({
-          workflowCode: monthlyWorkflowCode,
-          expectedWorkflowVersion: MONTHLY_WORKFLOW_VERSION,
-          month,
-          operator: currentInstance?.operator ?? 'Administrator',
-        }),
+        body: JSON.stringify(payload),
       });
       activeHistoryId = response.history.id;
       activeRun = response.executionResult.run ?? null;

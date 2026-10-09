@@ -4,7 +4,6 @@ import type {
   AuthenticatedUser,
   Employee,
   EmployeeLabel,
-  EmployeeMapping,
   ExerciseRecord,
   FixedValueRecord,
   FivePercentHoldersResponse,
@@ -18,14 +17,11 @@ import type {
   MonthlyRunPlanDeleteResult,
   PaginatedResult,
   PlanSummaryResponse,
-  ProductFileDetail,
   ProductFileRecord,
   SoldShare,
   SummaryCapitalizationSource,
   SummarySnapshot,
-  TrackedPlan,
   TransferPlanResponse,
-  ShareholderTag,
   WorkflowExecutionResult,
   WorkflowExecutionTaskState,
   WorkflowPageConfig,
@@ -64,7 +60,6 @@ import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage
 import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './transferPlanPage.js';
 import { buildLinkedBadge } from './linkedBadge.js';
 import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
-import { uploadFormDataWithProgress } from './uploadProgress.js';
 import { csvRow } from './csv.js';
 import '../../css/style.css';
 
@@ -76,9 +71,6 @@ let authStatus: AuthStatus | null = null;
 let updatePlans: MonthlyRunInstanceRecord[] = [];
 let employees: Employee[] = [];
 let employeeLabels: EmployeeLabel[] = [];
-let employeeMappings: EmployeeMapping[] = [];
-let planManagements: TrackedPlan[] = [];
-let shareholders: ShareholderTag[] = [];
 let summarySourceFiles: ProductFileRecord[] = [];
 let holdingsPage = 1;
 let holdingsTotal = 0;
@@ -2130,10 +2122,6 @@ async function deleteUpdatePlan(id: number) {
   }
 }
 
-function renderUsedValue(used: boolean): string {
-  return used ? '<span class="source-used source-used--true">true</span>' : '<span class="source-used source-used--false">false</span>';
-}
-
 async function initHoldingsPage() {
   await loadEmployeeLabels();
   await renderHoldingsPage(currentMonth);
@@ -3259,36 +3247,6 @@ async function saveTransferPlanEdit() {
   }
 }
 
-async function importTransferPlanWorkbook() {
-  const input = el<HTMLInputElement>('transferPlanFileInput');
-  const file = input.files?.[0];
-  if (!file) return;
-  const form = new FormData();
-  form.append('file', file);
-  try {
-    await uploadFormDataWithProgress('/api/transfer-plan/import', form, {
-      fileName: file.name,
-      title: { 'zh-CN': '正在导入 Transfer 明细', 'en-US': 'Importing transfer detail' },
-      completedText: { 'zh-CN': '导入完成', 'en-US': 'Import completed' },
-    });
-    await renderTransferPlan();
-    await filesPage.refreshProductFiles();
-    notify('Transfer detail 已导入', { type: 'success' });
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-  } finally {
-    input.value = '';
-  }
-}
-
-function exportTransferPlanWorkbook() {
-  if (transferPlanSourceFileId === null) {
-    notify('当前没有可导出的源文件', { type: 'warning' });
-    return;
-  }
-  window.location.href = `/api/files/${transferPlanSourceFileId}/content`;
-}
-
 async function loadEmployeeLabels() {
   const data = await api<{ items: EmployeeLabel[] }>('/api/employee-labels');
   employeeLabels = data.items;
@@ -4093,169 +4051,6 @@ async function initSettingsPage() {
   el('btnSubmitFixedValueEdit').addEventListener('click', () => void saveFixedValueEdit());
   renderThemeCards();
   syncLanguageButtons();
-}
-
-async function loadEmployees() {
-  employeeMappings = (await api<{ items: EmployeeMapping[] }>('/api/settings/employee-mappings')).items;
-  renderEmployeeTable();
-}
-
-async function loadPlans() {
-  planManagements = (await api<{ items: TrackedPlan[] }>('/api/settings/tracked-plans')).items;
-  renderPlanManageTable();
-}
-
-async function loadShareholders() {
-  shareholders = (await api<{ items: ShareholderTag[] }>('/api/settings/shareholders')).items;
-  renderShareholderTable();
-}
-
-function renderEmployeeTable() {
-  const keyword = el<HTMLInputElement>('searchEmployee').value.trim().toLowerCase();
-  const list = keyword ? employeeMappings.filter((item) => item.name.toLowerCase().includes(keyword)) : employeeMappings;
-  el('employeeBody').innerHTML = list
-    .map(
-      (item, index) => `
-      <tr><td>${index + 1}</td><td style="text-align:left; font-weight:600;">${escapeHtml(item.name)}</td>
-      <td>${escapeHtml(item.empId)}</td><td>${escapeHtml(item.futuId || '-')}</td><td>${escapeHtml(item.shareworksId || '-')}</td>
-      <td><div class="action-buttons"><button class="btn btn-secondary btn-sm" data-action="edit-emp" data-id="${item.id}">编辑</button><button class="btn btn-danger btn-sm" data-action="del-emp" data-id="${item.id}">删除</button></div></td></tr>`,
-    )
-    .join('');
-  el('employeeBody').querySelectorAll<HTMLElement>('[data-action="edit-emp"]').forEach((button) => button.addEventListener('click', () => void editEmployee(Number(button.dataset.id))));
-  el('employeeBody').querySelectorAll<HTMLElement>('[data-action="del-emp"]').forEach((button) => button.addEventListener('click', () => void deleteEmployee(Number(button.dataset.id))));
-  localizeAppDom();
-}
-
-function renderPlanManageTable() {
-  const keyword = el<HTMLInputElement>('searchPlan').value.trim().toLowerCase();
-  const list = keyword ? planManagements.filter((item) => item.name.toLowerCase().includes(keyword)) : planManagements;
-  el('planManageBody').innerHTML = list
-    .map(
-      (item, index) => `
-      <tr><td>${index + 1}</td><td style="text-align:left; font-weight:600;">${escapeHtml(item.name)}</td><td>${escapeHtml(item.createTime)}</td>
-      <td><span class="status-badge ${item.status === '生效中' ? 'status-completed' : 'status-pending'}">${escapeHtml(item.status)}</span></td>
-      <td><div class="action-buttons"><button class="btn btn-secondary btn-sm" data-action="edit-plan" data-id="${item.id}">编辑</button><button class="btn btn-danger btn-sm" data-action="del-plan" data-id="${item.id}">删除</button></div></td></tr>`,
-    )
-    .join('');
-  el('planManageBody').querySelectorAll<HTMLElement>('[data-action="edit-plan"]').forEach((button) => button.addEventListener('click', () => void editTrackedPlan(Number(button.dataset.id))));
-  el('planManageBody').querySelectorAll<HTMLElement>('[data-action="del-plan"]').forEach((button) => button.addEventListener('click', () => void deleteTrackedPlan(Number(button.dataset.id))));
-  localizeAppDom();
-}
-
-function renderShareholderTable() {
-  const keyword = el<HTMLInputElement>('searchShareholder').value.trim().toLowerCase();
-  const list = keyword ? shareholders.filter((item) => item.name.toLowerCase().includes(keyword)) : shareholders;
-  el('shareholderBody').innerHTML = list
-    .map(
-      (item, index) => `
-      <tr><td>${index + 1}</td><td style="text-align:left; font-weight:600;">${escapeHtml(item.name)}</td><td style="text-align:left;">${escapeHtml(item.identity)}</td>
-      <td><label class="toggle-switch"><input type="checkbox" ${item.track ? 'checked' : ''} data-id="${item.id}" data-field="track"><span class="toggle-slider"></span></label><span class="${item.track ? 'toggle-track-yes' : 'toggle-track-no'}">${item.track ? '是' : '否'}</span></td>
-      <td><div class="action-buttons"><button class="btn btn-secondary btn-sm" data-action="edit-sh" data-id="${item.id}">编辑</button><button class="btn btn-danger btn-sm" data-action="del-sh" data-id="${item.id}">删除</button></div></td></tr>`,
-    )
-    .join('');
-  el('shareholderBody').querySelectorAll<HTMLInputElement>('input[data-field="track"]').forEach((input) => input.addEventListener('change', () => void patchShareholder(Number(input.dataset.id), { track: input.checked })));
-  el('shareholderBody').querySelectorAll<HTMLElement>('[data-action="edit-sh"]').forEach((button) => button.addEventListener('click', () => void editShareholder(Number(button.dataset.id))));
-  el('shareholderBody').querySelectorAll<HTMLElement>('[data-action="del-sh"]').forEach((button) => button.addEventListener('click', () => void deleteShareholder(Number(button.dataset.id))));
-  localizeAppDom();
-}
-
-async function submitEmployee() {
-  const name = el<HTMLInputElement>('newEmpName').value.trim();
-  const empId = el<HTMLInputElement>('newEmpId').value.trim();
-  if (!name || !empId) {
-    notify('请填写员工姓名和身份ID', { type: 'warning' });
-    return;
-  }
-  await api('/api/settings/employee-mappings', {
-    method: 'POST',
-    body: JSON.stringify({ name, empId, futuId: el<HTMLInputElement>('newEmpFutu').value.trim(), shareworksId: el<HTMLInputElement>('newEmpShare').value.trim() }),
-  });
-  el('addEmployeeModal').classList.add('hidden');
-  await loadEmployees();
-}
-
-async function editEmployee(id: number) {
-  const item = employeeMappings.find((row) => row.id === id);
-  if (!item) return;
-  const name = prompt('员工姓名：', item.name);
-  if (name === null) return;
-  const empId = prompt('员工身份ID：', item.empId);
-  if (empId === null) return;
-  const futuId = prompt('futu员工ID号：', item.futuId) ?? '';
-  const shareworksId = prompt('shareworks员工ID号：', item.shareworksId) ?? '';
-  await api(`/api/settings/employee-mappings/${id}`, { method: 'PATCH', body: JSON.stringify({ name, empId, futuId, shareworksId }) });
-  await loadEmployees();
-}
-
-async function deleteEmployee(id: number) {
-  const item = employeeMappings.find((row) => row.id === id);
-  if (!item) return;
-  if (!(await confirmAction(`确定删除员工【${item.name}】吗？`, { title: '删除员工映射', confirmText: '删除', tone: 'danger' }))) return;
-  await api(`/api/settings/employee-mappings/${id}`, { method: 'DELETE' });
-  await loadEmployees();
-}
-
-async function submitTrackedPlan() {
-  const name = el<HTMLInputElement>('newPlanName').value.trim();
-  if (!name) {
-    notify('请填写计划名称', { type: 'warning' });
-    return;
-  }
-  await api('/api/settings/tracked-plans', { method: 'POST', body: JSON.stringify({ name, description: el<HTMLTextAreaElement>('newPlanDesc').value.trim() }) });
-  el('addPlanManageModal').classList.add('hidden');
-  await loadPlans();
-}
-
-async function editTrackedPlan(id: number) {
-  const item = planManagements.find((row) => row.id === id);
-  if (!item) return;
-  const name = prompt('计划名称：', item.name);
-  if (!name?.trim()) return;
-  await api(`/api/settings/tracked-plans/${id}`, { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) });
-  await loadPlans();
-}
-
-async function deleteTrackedPlan(id: number) {
-  const item = planManagements.find((row) => row.id === id);
-  if (!item) return;
-  if (!(await confirmAction(`确定删除计划【${item.name}】吗？`, { title: '删除计划', confirmText: '删除', tone: 'danger' }))) return;
-  await api(`/api/settings/tracked-plans/${id}`, { method: 'DELETE' });
-  await loadPlans();
-}
-
-async function submitShareholder() {
-  const name = el<HTMLInputElement>('newShName').value.trim();
-  const identity = el<HTMLInputElement>('newShId').value.trim();
-  if (!name || !identity) {
-    notify('请填写股东姓名和身份信息', { type: 'warning' });
-    return;
-  }
-  await api('/api/settings/shareholders', { method: 'POST', body: JSON.stringify({ name, identity, track: el<HTMLSelectElement>('newShTrack').value === 'true' }) });
-  el('addShareholderModal').classList.add('hidden');
-  await loadShareholders();
-}
-
-async function patchShareholder(id: number, patch: Partial<ShareholderTag>) {
-  await api(`/api/settings/shareholders/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
-  await loadShareholders();
-}
-
-async function editShareholder(id: number) {
-  const item = shareholders.find((row) => row.id === id);
-  if (!item) return;
-  const name = prompt('股东姓名：', item.name);
-  if (name === null) return;
-  const identity = prompt('身份信息：', item.identity);
-  if (identity === null) return;
-  await patchShareholder(id, { name, identity });
-}
-
-async function deleteShareholder(id: number) {
-  const item = shareholders.find((row) => row.id === id);
-  if (!item) return;
-  if (!(await confirmAction(`确定删除股东【${item.name}】吗？`, { title: '删除股东', confirmText: '删除', tone: 'danger' }))) return;
-  await api(`/api/settings/shareholders/${id}`, { method: 'DELETE' });
-  await loadShareholders();
 }
 
 function formatFileSize(bytes: number) {

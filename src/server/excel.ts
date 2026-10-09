@@ -8,12 +8,6 @@ import type {
   WorkflowDataFrameRange,
 } from '../shared/types.js';
 
-export type ParsedWorkbookRow = {
-  sheetName: string;
-  rowIndex: number;
-  row: Record<string, unknown>;
-};
-
 export type WorkbookSheetPreview = {
   sheetName: string;
   rowCount: number;
@@ -310,25 +304,6 @@ function readWorksheetRow(
     row.push(normalizeCellValue(sheet[cellAddress]));
   }
   return row;
-}
-
-export function parseWorkbook(buffer: Buffer): ParsedWorkbookRow[] {
-  const workbook = readWorkbook(buffer);
-  const rows: ParsedWorkbookRow[] = [];
-
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      defval: null,
-      raw: true,
-    });
-
-    jsonRows.forEach((row, index) => {
-      rows.push({ sheetName, rowIndex: index + 2, row });
-    });
-  }
-
-  return rows;
 }
 
 export function summarizeWorkbook(buffer: Buffer): WorkbookSummary {

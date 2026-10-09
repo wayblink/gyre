@@ -258,7 +258,9 @@ test('file uploads use a shared visible progress dialog', () => {
   assert.match(filesPageSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
   assert.match(filesPageSource, /uploadFormDataWithProgress\(`\/api\/files\/\$\{currentProductFileDetail\.file\.id\}\/content`, form,/);
   assert.match(filePickerSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
-  assert.match(mainSource, /uploadFormDataWithProgress\('\/api\/transfer-plan\/import'/);
+  // The transfer-plan page no longer owns a local file input (its import runs through the shared
+  // workflow update modal), so main.ts itself must not grow an ad-hoc upload call site.
+  assert.doesNotMatch(mainSource, /uploadFormDataWithProgress/);
   assert.match(monthlyRunPageSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
   assert.match(monthlyRunPageSource, /renderUploadedFileCell\(file\)/);
   assert.match(monthlyRunPageSource, /\.source-file-link\[data-source-file-preview\]/);

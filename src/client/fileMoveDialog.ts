@@ -22,15 +22,6 @@ export type FileMoveOutcome = {
 
 type MoveResponse = { file: ProductFileRecord; rewrittenWorkflows: number };
 
-export function summarizeMoveOutcome(results: Array<MoveResponse | { error: string }>): Pick<FileMoveOutcome, 'moved' | 'rewrittenWorkflows'> {
-  return results.reduce(
-    (summary, result) => ('error' in result
-      ? summary
-      : { moved: summary.moved + 1, rewrittenWorkflows: summary.rewrittenWorkflows + result.rewrittenWorkflows }),
-    { moved: 0, rewrittenWorkflows: 0 },
-  );
-}
-
 export function createFileMoveDialog({ el, api, escapeHtml, getProductFiles, notify, getLanguage }: FileMoveDialogDeps) {
   const text = {
     title: { 'zh-CN': '移动文件', 'en-US': 'Move files' },

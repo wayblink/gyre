@@ -11,6 +11,24 @@ data
 *.log
 npm-debug.log*
 
+# Local scratch that must never enter the build context: DB dumps, deployment tarballs,
+# browser captures, business spreadsheets and root-level screenshots.
+# Patterns are anchored at the context root, so public/guide/*.png and database/*.xlsx
+# (both needed at runtime) are unaffected.
+backups/
+tmp/
+test-results/
+log/
+*.tar.gz
+*.dump
+*.png
+*.xlsx
+*.docx
+*.zip
+shot.tmp.mjs
+todo.md
+~$*
+
 # Editors / OS
 .vscode
 .idea

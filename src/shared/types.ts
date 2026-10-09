@@ -1,5 +1,4 @@
 export type PlanStatus = '待启动' | '进行中' | '待复核' | '已完成' | '失败' | '已取消';
-export type SourceStatus = 'pass' | 'warning' | '';
 
 export type Reconciliation = {
   item: string;
@@ -69,46 +68,6 @@ export type AuthStatus = {
   authenticated: boolean;
   bootstrapRequired: boolean;
   user: AuthenticatedUser | null;
-};
-
-export type UpdatePlan = {
-  id: number;
-  month: string;
-  monthLabel: string;
-  operationTime: string;
-  operator: string;
-  status: PlanStatus;
-  remark: string;
-};
-
-export type SourceCheckItem = {
-  id?: number;
-  sourceFileId?: number | null;
-  productFileId?: number | null;
-  fileName: string;
-  used: boolean;
-  isRequired: 'Required' | 'Optional' | '';
-  uploadedFile: string;
-  item?: string;
-  metric?: string;
-  status: SourceStatus;
-  value: number | null;
-  action: 'edit' | '-';
-};
-
-export type FixedValueItem = {
-  id?: number;
-  item: string;
-  note: string;
-  value: number;
-  used: boolean;
-  action: 'edit' | '-';
-};
-
-export type SourceChecklist = {
-  fixedValues: FixedValueItem[];
-  shareworksData: SourceCheckItem[];
-  futuData: SourceCheckItem[];
 };
 
 export type Holding = {
@@ -520,13 +479,6 @@ export type ProductFileSheetSummary = {
 export type ProductFileDetail = {
   file: ProductFileRecord;
   sheets: ProductFileSheetSummary[];
-};
-
-export type ProductFileSheetPreview = {
-  sheetName: string;
-  rowCount: number;
-  columns: string[];
-  rows: Array<Record<string, unknown>>;
 };
 
 export type WorkflowDataFrameRange = {
@@ -1097,8 +1049,3 @@ export type MonthlyRunSourceConfigResponse = {
   fixedValues: MonthlyRunFixedValueDefinition[];
 };
 
-export type MonthlyRunApprovalRequest = {
-  taskIds?: string[];
-  taskId?: string;
-  decision?: 'approved' | 'skipped';
-};
