@@ -9,8 +9,6 @@ import type {
   WorkflowExecuteRequest,
   WorkflowDataFrame,
   WorkflowDefinition,
-  WorkflowInputGuard,
-  WorkflowInputGuardType,
   WorkflowImportExportBundle,
   WorkflowOperator,
   WorkflowRunRecord,
@@ -37,7 +35,6 @@ import {
   getSqlTableBindings,
   getTaskInputSlots,
   getTaskOutputSlots,
-  isAnyAssertTask,
   isAssertTask,
   isPersistExcelTask,
   isSchemaAssertTask,
@@ -68,6 +65,7 @@ import {
 } from './workflow/runtimeParameterPresentation.js';
 import { normalizeWorkflowSqlText } from './workflow/sqlFormat.js';
 import * as dagLayout from './workflow/dagLayout.js';
+import * as taskParams from './workflow/taskParams.js';
 import {
   cloneJson,
   createRuntimeDefaultsDisplay,
@@ -139,6 +137,18 @@ export function createWorkflowPage({
     getProductFiles: files,
     productFileDisplayName,
   });
+
+  // Task param / input-guard rules live in their own module; these wrappers bind the operator list
+  // so the call sites below keep their original signatures.
+  const normalizeInputGuards = (guards: unknown) => taskParams.normalizeInputGuards(guards, workflowOperators);
+  const getInputGuardOperator = (type: string) => taskParams.getInputGuardOperator(workflowOperators, type);
+  const getInputBindingWithGuards = (input: WorkflowTaskInput | undefined, next: { from: string; slot?: string }) =>
+    taskParams.getInputBindingWithGuards(input, next, workflowOperators);
+  const findInputGuard = (task: WorkflowTask, guardId: string) =>
+    taskParams.findInputGuard(task, guardId, workflowOperators);
+  const getSqlInputSlots = (task: WorkflowTask) => taskParams.getSqlInputSlots(task);
+  const getCustomParamKeys = (task: WorkflowTask) => taskParams.getCustomParamKeys(task);
+  const hasCustomStructuredParams = (task: WorkflowTask) => taskParams.hasCustomStructuredParams(task);
 
   // DAG geometry/layout lives in its own module; these aliases keep the call sites below unchanged.
   const {
@@ -2008,48 +2018,6 @@ export function createWorkflowPage({
     return workflow.tasks.filter((task) => task.id !== taskId);
   }
 
-  function getInputGuardOperators() {
-    return workflowOperators.filter((operator) => operator.category === 'Validation') as Array<
-      WorkflowOperator & { code: WorkflowInputGuardType }
-    >;
-  }
-
-  function getInputGuardOperator(type: string) {
-    return getInputGuardOperators().find((operator) => operator.code === type) ?? null;
-  }
-
-  function normalizeInputGuards(guards: unknown): WorkflowInputGuard[] {
-    if (!Array.isArray(guards)) return [];
-    return guards
-      .map((guard, index) => {
-        if (!guard || typeof guard !== 'object') return null;
-        const record = guard as Partial<WorkflowInputGuard>;
-        const operator = getInputGuardOperator(String(record.type ?? ''));
-        if (!operator) return null;
-        return {
-          id: String(record.id ?? `guard_${index + 1}`).trim() || `guard_${index + 1}`,
-          type: operator.code,
-          name: String(record.name ?? operator.name).trim() || operator.name,
-          enabled: record.enabled !== false,
-          params:
-            record.params && typeof record.params === 'object' && !Array.isArray(record.params) ? record.params : {},
-        };
-      })
-      .filter((guard): guard is WorkflowInputGuard => Boolean(guard));
-  }
-
-  function getInputBindingWithGuards(
-    input: WorkflowTaskInput | undefined,
-    next: { from: string; slot?: string },
-  ): WorkflowTaskInput {
-    const guards = normalizeInputGuards(input?.guards);
-    return {
-      from: next.from,
-      slot: next.slot ?? 'dataframe',
-      guards,
-    };
-  }
-
   function renderWorkflowEdgeGuardsModal() {
     const workflow = getActiveWorkflow();
     const content = el('workflowEdgeGuardsContent');
@@ -2123,19 +2091,6 @@ export function createWorkflowPage({
         renderWorkflowEdgeGuardsModal();
       });
     });
-  }
-
-  function findInputGuard(task: WorkflowTask, guardId: string): WorkflowInputGuard | null {
-    for (const input of Object.values(task.inputs ?? {})) {
-      input.guards = normalizeInputGuards(input.guards);
-      const guard = input.guards.find((item) => item.id === guardId);
-      if (guard) return guard;
-    }
-    return null;
-  }
-
-  function getSqlInputSlots(task: WorkflowTask): string[] {
-    return Object.keys(task.inputs ?? {});
   }
 
   function renderSqlTables(task: WorkflowTask) {
@@ -2508,58 +2463,6 @@ export function createWorkflowPage({
 
   function syncTaskParamsTextarea(task: WorkflowTask) {
     el<HTMLTextAreaElement>('taskParamsInput').value = JSON.stringify(task.params ?? {}, null, 2);
-  }
-
-  function getCustomParamKeys(task: WorkflowTask) {
-    const keys = new Set<string>();
-
-    if (isSheetRangeExtractTask(task)) {
-      ['fileRef', 'fileId', 'sheetName', 'range', 'headerRow'].forEach((key) => keys.add(key));
-    }
-
-    if (isSheetSectionsExtractTask(task)) {
-      ['fileRef', 'fileId', 'sheetName', 'sectionMode', 'sections', 'splitByColumn'].forEach((key) => keys.add(key));
-    }
-
-    if (isSqlTableBackedTask(task)) {
-      ['sql', 'tableBindings'].forEach((key) => keys.add(key));
-    }
-
-    if (isPersistExcelTask(task)) {
-      ['fileName', 'sheetName', 'uploadedBy'].forEach((key) => keys.add(key));
-    }
-
-    if (isAssertTask(task)) {
-      ['operator', 'expectedValue', 'failureStrategy', 'failureMessage'].forEach((key) => keys.add(key));
-    }
-
-    if (isSqlAssertTask(task)) {
-      ['sql', 'tableBindings', 'operator', 'expectedValue', 'failureStrategy', 'failureMessage'].forEach((key) =>
-        keys.add(key),
-      );
-    }
-
-    if (isSchemaAssertTask(task)) {
-      ['mode', 'expectedColumns', 'failureStrategy', 'failureMessage'].forEach((key) => keys.add(key));
-    }
-
-    if (isShapeAssertTask(task)) {
-      ['rowOperator', 'expectedRows', 'columnOperator', 'expectedColumns', 'failureStrategy', 'failureMessage'].forEach(
-        (key) => keys.add(key),
-      );
-    }
-
-    return keys;
-  }
-
-  function hasCustomStructuredParams(task: WorkflowTask) {
-    return (
-      isSheetRangeExtractTask(task) ||
-      isSheetSectionsExtractTask(task) ||
-      isSqlTableBackedTask(task) ||
-      isPersistExcelTask(task) ||
-      isAnyAssertTask(task)
-    );
   }
 
   function renderStructuredTaskParams(task: WorkflowTask) {

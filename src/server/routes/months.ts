@@ -12,7 +12,6 @@ import {
   getMonth,
   getOrCreateMonth,
   getProductFileOrThrow,
-  parseIdParam,
   saveProductWorkbook,
   toProductFile,
 } from './support.js';

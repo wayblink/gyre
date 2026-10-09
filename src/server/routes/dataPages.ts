@@ -39,7 +39,6 @@ import {
   numberValue,
   pageWorkflowConfig,
   paginateItems,
-  parseIdParam,
   productFileDisplayPath,
   readLatestWorkflowDataFrameArtifact,
   readNameEmpNoSort,
