@@ -36,6 +36,7 @@ import {
 } from './support.js';
 import { resolveWorkflowRunPlan } from '../workflow/startWorkflowRun.js';
 import { findFileRefProblems, formatFileRefProblems } from '../workflow/fileRefPreflight.js';
+import { workflowOperatorDefinitions } from '../workflow/operators/registry.js';
 import { badRequest, conflict, getProductFileOrThrow } from './support.js';
 import { workflowRunToExecutionResult } from '../workflow/runResult.js';
 import { fileStorage } from '../storage.js';
@@ -145,6 +146,20 @@ async function injectPreviousMonthBase(
     key: previousBase.logical_path,
     sheet,
   };
+}
+
+/**
+ * Operators whose `fileRef` param is declared optional: an empty reference means "not supplied",
+ * which is a documented state, not a broken input.
+ */
+const optionalFileRefOperators = new Set(
+  workflowOperatorDefinitions
+    .filter((definition) => definition.paramsSchema?.fileRef?.required === false)
+    .map((definition) => definition.code),
+);
+
+function requiredMonthlySourceKeys(sources: Awaited<ReturnType<typeof monthlySourceDescriptors>>): Set<string> {
+  return new Set(sources.filter((source) => source.required).map((source) => source.sourceKey));
 }
 
 async function assertMonthlyRunInstanceReady(
@@ -323,6 +338,8 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
       db,
       tasks: runtimeConfiguration.tasks,
       runtimeFileRefs: runtimeConfiguration.runtimeParameters.fileRefs as Record<string, unknown> | undefined,
+      requiredSourceKeys: requiredMonthlySourceKeys(await monthlySourceDescriptors(db)),
+      optionalFileRefOperators,
     });
     if (fileRefProblems) {
       throw badRequest(`月度运行输入文件不可用：${formatFileRefProblems(fileRefProblems)}`);

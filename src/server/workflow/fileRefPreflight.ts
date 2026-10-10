@@ -1,4 +1,4 @@
-import type { WorkflowRuntimeParameters, WorkflowTask } from '../../shared/types.js';
+import type { WorkflowTask } from '../../shared/types.js';
 import { isRecord } from '../utils/json.js';
 
 /**
@@ -32,12 +32,28 @@ export type FileRefProblem = {
   reason: FileRefProblemReason;
 };
 
+export type FileRefCheckInput = {
+  tasks: WorkflowTask[];
+  runtimeFileRefs?: Record<string, unknown> | null;
+  index: ProductFileIndex;
+  /**
+   * Source keys the definition's runtime-params schema marks `required`. An unbound required source
+   * is a problem; an unbound *optional* one is not, because `sheet.optional-range.extract` treats an
+   * empty fileRef as "this input was not supplied" and its downstream SQL branches on `count(*)`.
+   */
+  requiredSourceKeys?: ReadonlySet<string>;
+  /**
+   * Operator codes whose `fileRef` param is declared optional. Their tasks accept an empty
+   * reference, so they are not checked.
+   */
+  optionalFileRefOperators?: ReadonlySet<string>;
+};
+
 type ResolvedFileReference = { provider: string; key?: string; id?: number };
 
 /**
  * Mirror of `normalizeWorkflowFileReference()` (operators/types.ts) without importing the operator
- * registry: this module is loaded by the route layer, and a pre-flight check must not depend on
- * every operator being registered.
+ * registry: a pre-flight check must not depend on every operator being registered.
  */
 function normalizeFileReference(value: unknown): ResolvedFileReference | null {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
@@ -97,42 +113,6 @@ export function indexProductFiles(rows: Array<{ id?: unknown; logical_path?: unk
   return { keys, ids };
 }
 
-/**
- * Every unusable file input in a resolved run plan.
- *
- * `runtimeFileRefs` is checked first so the operator sees the source key they have to rebind; the
- * task scan then catches references a task builds itself (rather than through `$fromRuntime`).
- */
-export function collectFileRefProblems(params: {
-  tasks: WorkflowTask[];
-  runtimeFileRefs?: Record<string, unknown> | null;
-  index: ProductFileIndex;
-}): FileRefProblem[] {
-  const problems: FileRefProblem[] = [];
-  const { tasks, runtimeFileRefs, index } = params;
-
-  if (runtimeFileRefs) {
-    for (const [sourceKey, value] of Object.entries(runtimeFileRefs)) {
-      // An absent binding is not a problem by itself: `required` sources are enforced separately,
-      // and an optional source may legitimately be unset.
-      if (value === undefined || value === null) continue;
-      const problem = inspectReference(value, index);
-      if (problem) problems.push({ ...problem, sourceKey, taskName: null });
-    }
-  }
-
-  for (const task of tasks) {
-    const refs: unknown[] = [];
-    collectTaskFileRefs(task.params ?? {}, refs);
-    for (const ref of refs) {
-      const problem = inspectReference(ref, index);
-      if (problem) problems.push({ ...problem, sourceKey: null, taskName: task.name });
-    }
-  }
-
-  return problems;
-}
-
 function inspectReference(
   value: unknown,
   index: ProductFileIndex,
@@ -152,6 +132,43 @@ function inspectReference(
     return index.ids.has(reference.id) ? null : { fileKey: `#${reference.id}`, reason: 'missing' };
   }
   return { fileKey: describeReference(value), reason: 'unresolved' };
+}
+
+/**
+ * Every unusable file input in a resolved run plan.
+ *
+ * `runtimeFileRefs` is checked first so the operator sees the source key they have to rebind; the
+ * task scan then catches references a task builds itself (rather than through `$fromRuntime`).
+ */
+export function collectFileRefProblems(params: FileRefCheckInput): FileRefProblem[] {
+  const problems: FileRefProblem[] = [];
+  const { tasks, runtimeFileRefs, index, requiredSourceKeys, optionalFileRefOperators } = params;
+
+  if (runtimeFileRefs) {
+    for (const [sourceKey, value] of Object.entries(runtimeFileRefs)) {
+      // An absent binding is not a problem by itself: `required` sources are enforced separately,
+      // and an optional source may legitimately be unset.
+      if (value === undefined || value === null) continue;
+      const problem = inspectReference(value, index);
+      // An optional source that resolved to nothing is the documented "not supplied" case; one that
+      // resolved to a file key which does not exist is a stale default and always worth reporting.
+      if (!problem) continue;
+      if (problem.reason === 'unresolved' && !requiredSourceKeys?.has(sourceKey)) continue;
+      problems.push({ ...problem, sourceKey, taskName: null });
+    }
+  }
+
+  for (const task of tasks) {
+    if (optionalFileRefOperators?.has(String(task.operatorCode ?? ''))) continue;
+    const refs: unknown[] = [];
+    collectTaskFileRefs(task.params ?? {}, refs);
+    for (const ref of refs) {
+      const problem = inspectReference(ref, index);
+      if (problem) problems.push({ ...problem, sourceKey: null, taskName: task.name });
+    }
+  }
+
+  return problems;
 }
 
 /** Human-readable summary; one line per problem so the operator can fix them all at once. */
@@ -201,12 +218,6 @@ export function referencedProductFiles(params: {
   return { keys: [...keys], ids: [...ids] };
 }
 
-export function isWorkflowRuntimeParametersFileRefs(
-  value: WorkflowRuntimeParameters['fileRefs'],
-): Record<string, unknown> | null {
-  return isRecord(value) ? (value as Record<string, unknown>) : null;
-}
-
 /** Loads just the product files the plan references and indexes them for the existence check. */
 export async function loadProductFileIndex(
   db: { query(sql: string, params?: unknown[]): Promise<Array<Record<string, unknown>>> },
@@ -223,11 +234,11 @@ export async function loadProductFileIndex(
  * One-shot helper for the route layer: collect the problems and, when there are any, the message to
  * show the operator. Returns null when the plan can run.
  */
-export async function findFileRefProblems(params: {
-  db: { query(sql: string, params?: unknown[]): Promise<Array<Record<string, unknown>>> };
-  tasks: WorkflowTask[];
-  runtimeFileRefs?: Record<string, unknown> | null;
-}): Promise<FileRefProblem[] | null> {
+export async function findFileRefProblems(
+  params: Omit<FileRefCheckInput, 'index'> & {
+    db: { query(sql: string, params?: unknown[]): Promise<Array<Record<string, unknown>>> };
+  },
+): Promise<FileRefProblem[] | null> {
   const references = referencedProductFiles(params);
   if (!references.keys.length && !references.ids.length) return null;
   const index = await loadProductFileIndex(params.db, references);

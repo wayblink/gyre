@@ -9,8 +9,8 @@ import {
   referencedProductFiles,
 } from './fileRefPreflight.js';
 
-function task(id: string, params: Record<string, unknown>): WorkflowTask {
-  return { id, name: id, inputs: {}, params, dependsOn: [] } as unknown as WorkflowTask;
+function task(id: string, params: Record<string, unknown>, operatorCode = 'sheet.range.extract'): WorkflowTask {
+  return { id, name: id, operatorCode, inputs: {}, params, dependsOn: [] } as unknown as WorkflowTask;
 }
 
 const index = indexProductFiles([
@@ -23,21 +23,58 @@ test('a resolved product-file reference passes', () => {
     tasks: [task('extract', { fileRef: { provider: 'product-files', key: 'input/a.xlsx' } })],
     runtimeFileRefs: { a: { provider: 'product-files', key: 'input/a.xlsx', sheet: 'S' } },
     index,
+    requiredSourceKeys: new Set(['a']),
   });
   assert.equal(problems.length, 0);
 });
 
-test('a fileRef with no provider/key is reported as unresolved against its source key', () => {
+test('a required source with no provider/key is reported as unresolved against its source key', () => {
   const problems = collectFileRefProblems({
     tasks: [task('extract_option_plans_summary', { fileRef: { sheet: '!Option Plans' } })],
     runtimeFileRefs: { option_plans_summary: { sheet: '!Option Plans' } },
     index,
+    requiredSourceKeys: new Set(['option_plans_summary']),
   });
   assert.equal(problems.length, 2);
   assert.equal(problems[0].sourceKey, 'option_plans_summary');
   assert.equal(problems[0].reason, 'unresolved');
   assert.equal(problems[1].taskName, 'extract_option_plans_summary');
   assert.equal(problems[1].reason, 'unresolved');
+});
+
+test('an optional source that resolved to nothing is not a problem', () => {
+  // `sheet.optional-range.extract` documents an empty fileRef as "not supplied"; its downstream SQL
+  // branches on count(*). Reporting it would block every month that legitimately skips the input.
+  const problems = collectFileRefProblems({
+    tasks: [
+      task('extract_previous_capitalization_summary', { fileRef: {} }, 'sheet.optional-range.extract'),
+      task('extract_bc_subplan_transfer', { fileRef: { sheet: 'S' } }, 'sheet.optional-range.extract'),
+    ],
+    runtimeFileRefs: { previous_capitalization_summary: {}, bc_subplan_transfer: { sheet: 'S' } },
+    index,
+    requiredSourceKeys: new Set(['incremental_control_book']),
+    optionalFileRefOperators: new Set(['sheet.optional-range.extract']),
+  });
+  assert.equal(problems.length, 0);
+});
+
+test('an optional source pointing at a file that does not exist is still reported', () => {
+  // A stale default is not the same as an unbound source: the operator asked for a file and the
+  // run would fail on it, so it must be surfaced even though the source is optional.
+  const problems = collectFileRefProblems({
+    tasks: [
+      task('extract_base_futu_exercises', {
+        fileRef: { provider: 'product-files', key: 'output/futu-exercises/Futu_Exercises_Base.xlsx' },
+      }),
+    ],
+    runtimeFileRefs: {
+      base_futu_exercises: { provider: 'product-files', key: 'output/futu-exercises/Futu_Exercises_Base.xlsx' },
+    },
+    index,
+    requiredSourceKeys: new Set(['incremental_futu_exercises']),
+  });
+  assert.equal(problems.length, 2);
+  assert.ok(problems.every((problem) => problem.reason === 'missing'));
 });
 
 test('a default pointing at a file no task writes is reported as missing', () => {
@@ -79,6 +116,7 @@ test('an unset optional source is not a problem', () => {
     tasks: [task('extract', { fileRef: { provider: 'product-files', key: 'input/a.xlsx' } })],
     runtimeFileRefs: { series_b: undefined, bc_subplan_transfer: null },
     index,
+    requiredSourceKeys: new Set(['a']),
   });
   assert.equal(problems.length, 0);
 });
@@ -88,6 +126,7 @@ test('a $fromRuntime descriptor that survived resolution is unresolved, not a re
     tasks: [task('extract', { fileRef: { $fromRuntime: 'fileRefs.option_plans_summary', $default: { sheet: 'S' } } })],
     runtimeFileRefs: { option_plans_summary: { $fromRuntime: 'fileRefs.option_plans_summary' } },
     index,
+    requiredSourceKeys: new Set(['option_plans_summary']),
   });
   assert.equal(problems.length, 2);
   assert.ok(problems.every((problem) => problem.reason === 'unresolved'));
@@ -110,6 +149,7 @@ test('non product-files providers are left alone', () => {
   const problems = collectFileRefProblems({
     tasks: [task('extract', { fileRef: { provider: 's3', bucket: 'b', key: 'k' } })],
     index,
+    requiredSourceKeys: new Set<string>(),
   });
   assert.equal(problems.length, 0);
 });
@@ -127,6 +167,7 @@ test('every problem is listed in one message', () => {
       base_futu_exercises: { provider: 'product-files', key: 'output/futu-exercises/Futu_Exercises_Base.xlsx' },
     },
     index,
+    requiredSourceKeys: new Set(['option_plans_summary', 'base_futu_exercises']),
   });
   const message = formatFileRefProblems(problems);
   assert.match(message, /本源 option_plans_summary/);
