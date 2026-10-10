@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { installDom, installFetch, type FetchStub } from '../../test/dom-env.mjs';
+import { MONTHLY_WORKFLOW_VERSION } from './monthlyRunPage.js';
 
 /**
  * Boot smoke test for the client shell.
@@ -46,7 +47,7 @@ const API_STUBS: FetchStub[] = [
     respond: {
       workflowCode: 'gyre-captable-summary-v2',
       workflowName: 'CapTable Summary',
-      workflowVersion: 17,
+      workflowVersion: MONTHLY_WORKFLOW_VERSION,
       sources: [],
       fixedValues: [],
     },
@@ -166,7 +167,7 @@ test('the monthly run page renders its source table from the workflow definition
       respond: {
         workflowCode: 'gyre-captable-summary-v2',
         workflowName: 'CapTable Summary',
-        workflowVersion: 17,
+        workflowVersion: MONTHLY_WORKFLOW_VERSION,
         sources: [
           {
             sourceKey: 'incremental_control_book',
@@ -192,6 +193,86 @@ test('the monthly run page renders its source table from the workflow definition
   assert.doesNotMatch(window.document.getElementById('monthlyRunSourceInfo')?.textContent ?? '', /版本不匹配/);
 });
 
+test('the monthly source table renders a sheet selector that preselects the configured default', async () => {
+  const window = await bootApp([
+    ...API_STUBS,
+    {
+      match: /\/api\/monthly-runs\/instance\?/,
+      respond: {
+        instance: {
+          id: 1,
+          monthKey: '2026-09',
+          operator: 'Administrator',
+          status: 'pending',
+          // Bound but no sheet saved yet: the selector must fall back to the configured default.
+          sources: { incremental_futu_exercises: { fileId: 162, sheetName: null } },
+          fixedValues: {},
+        },
+      },
+    },
+    {
+      match: /\/api\/monthly-runs\/source-config$/,
+      respond: {
+        workflowCode: 'gyre-captable-summary-v2',
+        workflowName: 'CapTable Summary',
+        workflowVersion: MONTHLY_WORKFLOW_VERSION,
+        sources: [
+          {
+            sourceKey: 'incremental_futu_exercises',
+            sourceGroup: 'futu',
+            taskId: 'invoke_futu_exercises_merge',
+            label: 'Futu Exercise Monthly Update',
+            description: '',
+            required: true,
+            hidden: false,
+            allowSheetNameOverride: true,
+            defaultSheetName: '行权明细数据',
+            order: 6,
+          },
+        ],
+        fixedValues: [],
+      },
+    },
+    {
+      // The file list must know the bound file: the selector is only rendered next to a resolved
+      // file, so a binding pointing at an unknown file shows "not uploaded" instead.
+      match: /\/api\/files$/,
+      respond: {
+        files: [
+          {
+            id: 162,
+            logicalPath: 'input/2026-09/员工行权记录.xlsx',
+            displayName: '员工行权记录',
+            originalName: '员工行权记录.xlsx',
+            createdAt: '2026-09-01T00:00:00.000Z',
+          },
+        ],
+      },
+    },
+    {
+      match: /\/api\/files\/162$/,
+      respond: {
+        file: { id: 162, logicalPath: 'input/2026-09/员工行权记录.xlsx', displayName: '员工行权记录' },
+        sheets: [
+          { sheetName: '行权汇总数据', rowCount: 9, columns: [] },
+          { sheetName: '行权明细数据', rowCount: 99, columns: [] },
+        ],
+      },
+    },
+  ]);
+
+  const select = window.document.querySelector<HTMLSelectElement>(
+    '[data-business-source-sheet="incremental_futu_exercises"]',
+  );
+  assert.ok(select, 'an overridable source must render a sheet selector');
+  assert.deepEqual(
+    [...select.options].map((option) => option.value),
+    ['行权汇总数据', '行权明细数据'],
+  );
+  // The configured default is preselected, not the first sheet in the workbook.
+  assert.equal(select.value, '行权明细数据');
+});
+
 test('a stale workflow definition version blocks the monthly page with a bilingual error', async () => {
   const window = await bootApp([
     ...API_STUBS,
@@ -200,7 +281,8 @@ test('a stale workflow definition version blocks the monthly page with a bilingu
       respond: {
         workflowCode: 'gyre-captable-summary-v2',
         workflowName: 'CapTable Summary',
-        workflowVersion: 18,
+        // One ahead of the pinned MONTHLY_WORKFLOW_VERSION so the guard fires.
+        workflowVersion: MONTHLY_WORKFLOW_VERSION + 1,
         sources: [],
         fixedValues: [],
       },
@@ -209,8 +291,8 @@ test('a stale workflow definition version blocks the monthly page with a bilingu
 
   const info = window.document.getElementById('monthlyRunSourceInfo');
   assert.match(info?.textContent ?? '', /月度更新工作流版本不匹配/);
-  assert.match(info?.textContent ?? '', /v17/);
-  assert.match(info?.textContent ?? '', /v18/);
+  assert.match(info?.textContent ?? '', new RegExp(`v${MONTHLY_WORKFLOW_VERSION}`));
+  assert.match(info?.textContent ?? '', new RegExp(`v${MONTHLY_WORKFLOW_VERSION + 1}`));
   // The source table must not render inputs for a definition this page does not know.
   assert.match(window.document.querySelector('#monthlyRunSourcesBody tr')?.textContent ?? '', /版本不匹配/);
 });

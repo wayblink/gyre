@@ -234,6 +234,54 @@ test('monthly run page exposes a sheet selector for an overridable configured in
   );
 });
 
+test('the monthly sheet selector preselects the configured default sheet', () => {
+  // A freshly bound source has no saved sheet yet, so the selector must show the workflow's own
+  // default rather than silently picking the first sheet in the workbook.
+  assert.deepEqual(
+    getMonthlyRunSourceSheetControlModel({
+      allowSheetNameOverride: true,
+      binding: { fileId: 64, sheetName: null },
+      defaultSheetName: '行权明细数据',
+      sheets: [
+        { sheetName: '行权汇总数据', rowCount: 10, columns: [] },
+        { sheetName: '行权明细数据', rowCount: 30, columns: ['Exercise Order No.'] },
+      ],
+    }),
+    {
+      fileId: 64,
+      selectedSheetName: '行权明细数据',
+      options: ['行权汇总数据', '行权明细数据'],
+    },
+  );
+
+  // A default that is not in the workbook still shows, so the operator sees what the workflow would
+  // have used instead of an unexplained first-sheet selection.
+  assert.deepEqual(
+    getMonthlyRunSourceSheetControlModel({
+      allowSheetNameOverride: true,
+      binding: { fileId: 64, sheetName: null },
+      defaultSheetName: '27591',
+      sheets: [{ sheetName: 'CB Details Sort By Process Date', rowCount: 10, columns: [] }],
+    }),
+    {
+      fileId: 64,
+      selectedSheetName: '27591',
+      options: ['27591', 'CB Details Sort By Process Date'],
+    },
+  );
+
+  // No file bound yet: no selector at all.
+  assert.equal(
+    getMonthlyRunSourceSheetControlModel({
+      allowSheetNameOverride: true,
+      binding: null,
+      defaultSheetName: '行权明细数据',
+      sheets: [],
+    }),
+    null,
+  );
+});
+
 test('monthly input bindings survive while the product file list is still loading', () => {
   const bindings = {
     control_book: { fileId: 4 },

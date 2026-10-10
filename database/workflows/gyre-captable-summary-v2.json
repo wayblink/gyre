@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 17,
+  "version": 18,
   "tasks": [
     {
       "x": 48,
@@ -57,7 +57,12 @@
           "$fromRuntime": "fileRefs.previous_capitalization_summary"
         },
         "headerRow": 1,
-        "sheetName": "Capitalization Summary",
+        "sheetName": {
+          "$type": "string",
+          "$label": "Sheet",
+          "$default": "Capitalization Summary",
+          "$fromRuntime": "fileRefs.previous_capitalization_summary.sheet"
+        },
         "dropTrailingEmptyRows": true
       },
       "dependsOn": [],
@@ -159,7 +164,7 @@
             },
             "incremental_cancel_restore_report": {
               "$type": "object",
-            "$label": "Cancel & Restore Detail",
+              "$label": "Cancel & Restore Detail",
               "$default": {
                 "sheet": "取消与恢复明细"
               },
@@ -1004,6 +1009,8 @@
           "label": "SERIES B Control Book",
           "order": 3,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "43105",
           "taskId": "invoke_read_series_b",
           "required": false,
           "optionalCategory": "supplement",
@@ -1020,6 +1027,8 @@
           "label": "Control Book Summary",
           "order": 1,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "EQ Control Book",
           "taskId": "invoke_control_book_merge",
           "required": false,
           "optionalCategory": "inherit",
@@ -1036,6 +1045,8 @@
           "label": "Futu Exercises Summary",
           "order": 5,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "Futu BCI Exercises",
           "taskId": "invoke_futu_exercises_merge",
           "required": false,
           "optionalCategory": "inherit",
@@ -1052,6 +1063,8 @@
           "label": "2025 BC Subplan Transfer",
           "order": 7,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "2025 BC Subplan Transfer",
           "taskId": "extract_bc_subplan_transfer",
           "required": false,
           "optionalCategory": "validation",
@@ -1068,6 +1081,8 @@
           "label": "Gyre Option Plans Summary SL",
           "order": 4,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "!Option Plans Summary (Post-Gyr",
           "taskId": "invoke_option_plans_summary",
           "required": true,
           "properties": {
@@ -1083,6 +1098,8 @@
           "label": "Control Book Detail update",
           "order": 2,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "27591",
           "taskId": "invoke_control_book_merge",
           "required": true,
           "properties": {
@@ -1098,6 +1115,8 @@
           "label": "Cancel & Restore Summary",
           "order": 9,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "取消与恢复明细",
           "taskId": "invoke_plan_summary_sync",
           "required": false,
           "optionalCategory": "inherit",
@@ -1114,6 +1133,8 @@
           "label": "Futu Exercise Monthly Update",
           "order": 6,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "行权明细数据",
           "taskId": "invoke_futu_exercises_merge",
           "required": true,
           "properties": {
@@ -1129,6 +1150,8 @@
           "label": "Previous Capitalization Summary",
           "order": 8,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "Capitalization Summary",
           "taskId": "extract_previous_capitalization_summary",
           "required": false,
           "optionalCategory": "inherit",
@@ -1139,6 +1162,8 @@
           "label": "Cancel & Restore Detail",
           "order": 10,
           "hidden": false,
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "取消与恢复明细",
           "taskId": "invoke_plan_summary_sync",
           "required": true,
           "properties": {
@@ -1219,7 +1244,9 @@
         "sheet": "行权明细数据",
         "provider": "product-files"
       },
-      "previous_capitalization_summary": {},
+      "previous_capitalization_summary": {
+        "sheet": "Capitalization Summary"
+      },
       "incremental_cancel_restore_report": {
         "id": 206,
         "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
