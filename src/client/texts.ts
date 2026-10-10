@@ -423,7 +423,6 @@ export const TEXTS = {
       'en-US': 'Deleted the Uploaded file configuration for {label}',
     },
     chooseFileFor: { 'zh-CN': '请先为', 'en-US': 'Please select a file for' },
-    completeSourceConfig: { 'zh-CN': '请先完成 source 配置', 'en-US': 'Complete source configuration first' },
     uploadingInputTitle: { 'zh-CN': '正在上传月度输入文件', 'en-US': 'Uploading monthly input' },
     workflowVersionMismatch: {
       'zh-CN':

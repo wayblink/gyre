@@ -4,6 +4,8 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  applyDefaultSourceSheets,
+  findIncompleteMonthlySource,
   getMonthlyRunFileCandidatesForSource,
   getMonthlyRunModalSourceDefinitions,
   getMonthlyRunSourceSheetControlModel,
@@ -205,6 +207,67 @@ test('monthly source update modal can be scoped to a single input source', () =>
   );
 });
 
+const SHEET_SOURCE = {
+  sourceKey: 'incremental_futu_exercises',
+  label: 'Futu Exercise Monthly Update',
+  required: true,
+  allowSheetNameOverride: true,
+  defaultSheetName: '行权明细数据',
+};
+
+test('applyDefaultSourceSheets backfills the configured default into a sheetless binding', () => {
+  assert.deepEqual(
+    applyDefaultSourceSheets([SHEET_SOURCE], { incremental_futu_exercises: { fileId: 162, sheetName: null } }),
+    { incremental_futu_exercises: { fileId: 162, sheetName: '行权明细数据' } },
+  );
+  // A sheet the operator picked wins over the default.
+  assert.deepEqual(
+    applyDefaultSourceSheets([SHEET_SOURCE], {
+      incremental_futu_exercises: { fileId: 162, sheetName: '行权汇总数据' },
+    }),
+    { incremental_futu_exercises: { fileId: 162, sheetName: '行权汇总数据' } },
+  );
+  // A source with no default is left alone rather than gaining an empty string.
+  assert.deepEqual(
+    applyDefaultSourceSheets([{ ...SHEET_SOURCE, defaultSheetName: null }], {
+      incremental_futu_exercises: { fileId: 162, sheetName: null },
+    }),
+    { incremental_futu_exercises: { fileId: 162, sheetName: null } },
+  );
+});
+
+test('findIncompleteMonthlySource names the offending source and what it is missing', () => {
+  // The old guard answered with a bare "complete source configuration", which says nothing about
+  // which of ten inputs is at fault.
+  assert.deepEqual(findIncompleteMonthlySource([SHEET_SOURCE], {}), {
+    sourceKey: 'incremental_futu_exercises',
+    label: 'Futu Exercise Monthly Update',
+    missing: 'file',
+  });
+  assert.deepEqual(
+    findIncompleteMonthlySource([SHEET_SOURCE], { incremental_futu_exercises: { fileId: 162, sheetName: null } }),
+    { sourceKey: 'incremental_futu_exercises', label: 'Futu Exercise Monthly Update', missing: 'sheet' },
+  );
+  // A sheetless binding that the default has already filled in is complete.
+  assert.equal(
+    findIncompleteMonthlySource([SHEET_SOURCE], {
+      incremental_futu_exercises: { fileId: 162, sheetName: '行权明细数据' },
+    }),
+    null,
+  );
+  // An unbound optional source is not a blocker.
+  assert.equal(findIncompleteMonthlySource([{ ...SHEET_SOURCE, required: false }], {}), null);
+});
+
+test('a monthly source with a default sheet is never blocked for lacking one', () => {
+  // End-to-end shape of the reported failure: a binding saved before the source declared
+  // allowSheetNameOverride, so the run button refused even though the workflow would have run.
+  const bindings = applyDefaultSourceSheets([SHEET_SOURCE], {
+    incremental_futu_exercises: { fileId: 162, sheetName: null },
+  });
+  assert.equal(findIncompleteMonthlySource([SHEET_SOURCE], bindings), null);
+});
+
 test('monthly run page exposes a sheet selector for an overridable configured input source', () => {
   assert.deepEqual(
     getMonthlyRunSourceSheetControlModel({
@@ -403,8 +466,12 @@ test('monthly update treats optional sources as non-blocking and explains warnin
 
   // Required checks remain data-driven: an optional source can be absent while required
   // sources still block saving and running.
-  assert.match(source, /source\.required && !draftSources\[source\.sourceKey\]\?\.fileId/);
-  assert.match(source, /if \(source\.required && !binding\?\.fileId\) return false/);
+  assert.match(source, /export function findIncompleteMonthlySource</);
+  assert.match(source, /if \(source\.required && !binding\?\.fileId\)/);
+  // One guard, two callers: the modal's save and the run button must not drift apart.
+  // One definition plus the two call sites (modal save, run button).
+  assert.equal(source.match(/findIncompleteMonthlySource</g)?.length, 1);
+  assert.equal(source.match(/findIncompleteMonthlySource\(/g)?.length, 2);
   assert.match(source, /optionalNotConfigured/);
   assert.match(source, /optionalSourceHint/);
   assert.match(texts, /未提供时运行会产生 warning/);

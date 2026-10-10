@@ -210,6 +210,63 @@ export function retainAvailableSourceBindings(
   );
 }
 
+/**
+ * Fill a binding's sheet from the source's configured default.
+ *
+ * A binding saved before a source declared `allowSheetNameOverride` (or one saved by the upload
+ * path before defaults existed) carries `sheetName: null`. The selector already *shows* the default
+ * in that case, but the run guard reads `sheetName` and would refuse to start — so the fallback has
+ * to reach the binding itself, not just the dropdown. The workflow would have worked anyway (the
+ * consuming task has the same `$default.sheet`), which is exactly why refusing was wrong.
+ */
+export function applyDefaultSourceSheets<T extends Pick<MonthlyRunSourceDefinition, 'sourceKey' | 'defaultSheetName'>>(
+  sourceDefinitions: ReadonlyArray<T>,
+  bindings: Record<string, MonthlyRunSourceBinding>,
+): Record<string, MonthlyRunSourceBinding> {
+  const defaults = new Map(
+    sourceDefinitions.map((source) => [source.sourceKey, String(source.defaultSheetName ?? '').trim()]),
+  );
+  return Object.fromEntries(
+    Object.entries(bindings).map(([sourceKey, binding]) => {
+      if (binding.sheetName?.trim()) return [sourceKey, binding];
+      const fallback = defaults.get(sourceKey);
+      return [sourceKey, fallback ? { ...binding, sheetName: fallback } : binding];
+    }),
+  );
+}
+
+/** What a source still needs before a run can start. */
+export type IncompleteMonthlySource = {
+  sourceKey: string;
+  label: string;
+  /** `file`: no input file bound. `sheet`: a file is bound but no sheet is chosen. */
+  missing: 'file' | 'sheet';
+};
+
+/**
+ * The first source that blocks a run, or null when the configuration is complete.
+ *
+ * Shared by the source modal's save and the run button so both report the same thing: a bare
+ * "complete source configuration" tells the operator nothing about which of ten inputs is at fault.
+ */
+export function findIncompleteMonthlySource<
+  T extends Pick<MonthlyRunSourceDefinition, 'sourceKey' | 'label' | 'required' | 'allowSheetNameOverride'>,
+>(
+  sourceDefinitions: ReadonlyArray<T>,
+  bindings: Record<string, MonthlyRunSourceBinding | null | undefined>,
+): IncompleteMonthlySource | null {
+  for (const source of sourceDefinitions) {
+    const binding = bindings[source.sourceKey];
+    if (source.required && !binding?.fileId) {
+      return { sourceKey: source.sourceKey, label: source.label, missing: 'file' };
+    }
+    if (source.allowSheetNameOverride && binding?.fileId && !binding.sheetName?.trim()) {
+      return { sourceKey: source.sourceKey, label: source.label, missing: 'sheet' };
+    }
+  }
+  return null;
+}
+
 export function getMonthlyRunModalSourceDefinitions<T extends Pick<MonthlyRunSourceDefinition, 'sourceKey'>>(
   sourceDefinitions: ReadonlyArray<T>,
   activeSourceKey?: string | null,
@@ -517,7 +574,7 @@ export function createMonthlyRunPage({
       `/api/monthly-runs/instance?month=${encodeURIComponent(month)}`,
     );
     currentInstance = data.instance;
-    selectedSources = sourceBindingsFromInstance(data.instance);
+    selectedSources = applyDefaultSourceSheets(sourceDefinitions, sourceBindingsFromInstance(data.instance));
     renderSourceInfo();
     renderBusinessDefinedInputConfiguration();
   }
@@ -533,7 +590,7 @@ export function createMonthlyRunPage({
       },
     );
     currentInstance = data.instance;
-    selectedSources = sourceBindingsFromInstance(data.instance);
+    selectedSources = applyDefaultSourceSheets(sourceDefinitions, sourceBindingsFromInstance(data.instance));
     renderSourceInfo();
     renderBusinessDefinedInputConfiguration();
   }
@@ -1243,19 +1300,15 @@ export function createMonthlyRunPage({
 
   async function saveSourceModal() {
     const modalSources = getMonthlyRunModalSourceDefinitions(sourceDefinitions, activeSourceModalKey);
-    const missing = modalSources.find((source) => source.required && !draftSources[source.sourceKey]?.fileId);
-    if (missing) {
-      notify(`${tt('chooseFileFor')} ${missing.label}`, { type: 'warning' });
-      return;
-    }
-    const missingSheet = modalSources.find(
-      (source) =>
-        source.allowSheetNameOverride &&
-        draftSources[source.sourceKey]?.fileId &&
-        !draftSources[source.sourceKey]?.sheetName?.trim(),
-    );
-    if (missingSheet) {
-      notify(`${tt('sheetNameRequired')}: ${missingSheet.label}`, { type: 'warning' });
+    // Same guard as the run button, so the modal and the button cannot disagree about what is missing.
+    const incomplete = findIncompleteMonthlySource(modalSources, draftSources);
+    if (incomplete) {
+      notify(
+        incomplete.missing === 'file'
+          ? `${tt('chooseFileFor')} ${incomplete.label}`
+          : `${tt('sheetNameRequired')}: ${incomplete.label}`,
+        { type: 'warning' },
+      );
       return;
     }
     isSavingSources = true;
@@ -1293,15 +1346,14 @@ export function createMonthlyRunPage({
       notify(formatWorkflowVersionMismatch(workflowVersionMismatch), { type: 'error' });
       return;
     }
-    if (
-      !sourceDefinitions.every((source) => {
-        const binding = selectedSources[source.sourceKey];
-        if (source.required && !binding?.fileId) return false;
-        if (source.allowSheetNameOverride && binding?.fileId && !binding.sheetName?.trim()) return false;
-        return true;
-      })
-    ) {
-      notify(tt('completeSourceConfig'), { type: 'warning' });
+    const incomplete = findIncompleteMonthlySource(sourceDefinitions, selectedSources);
+    if (incomplete) {
+      notify(
+        incomplete.missing === 'file'
+          ? `${tt('chooseFileFor')} ${incomplete.label}`
+          : `${tt('sheetNameRequired')}: ${incomplete.label}`,
+        { type: 'warning' },
+      );
       return;
     }
     if (isRunning) return;
