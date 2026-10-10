@@ -15,14 +15,11 @@ import type {
   PlanSummaryResponse,
   ProductFileRecord,
   SoldShare,
-  SummaryCapitalizationSource,
-  SummarySnapshot,
   WorkflowResultFileBinding,
   WorkflowPageSourceBinding,
   ShareworksExercise,
   ShareworksGrant,
 } from '../shared/types.js';
-import type { AccountProfile } from '../shared/types.js';
 import { createFilesPage } from './filesPage.js';
 import { createFilePickerModal } from './filePickerModal.js';
 import { createMonthlyRunPage } from './monthlyRunPage.js';
@@ -42,22 +39,12 @@ import { createThemeControls } from './theme.js';
 import { confirmAction, notify } from './uiFeedback.js';
 import { createWorkflowPage } from './workflowPage.js';
 import { createDocsPage } from './docsPage.js';
-import {
-  computeCapitalizationRowDeltas,
-  findComparableRow,
-  indexCapitalizationRows,
-  normalizeCapitalizationRows,
-  resolveBaselineMonth,
-  resolveDefaultSummaryMonth,
-  sortAvailableMonths,
-  type AvailableMonth,
-  type CapitalizationDelta,
-} from './summaryPage.js';
+import { resolveDefaultSummaryMonth, sortAvailableMonths, type AvailableMonth } from './summaryPage.js';
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
 import { createTransferPlanPage } from './transferPlanPage.js';
+import { createCaptablePage } from './captablePage.js';
 import { buildLinkedBadge } from './linkedBadge.js';
 import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
-import { csvRow } from './csv.js';
 import {
   edgePage,
   nextPageWithinBounds,
@@ -69,13 +56,10 @@ import '../../css/style.css';
 
 let currentMonth = '';
 let availableMonthOptions: AvailableMonth[] = [];
-let currentSummary: SummarySnapshot | null = null;
-let baselineSummaryCache: { month: string; data: SummarySnapshot | null } | null = null;
 let authStatus: AuthStatus | null = null;
 let updatePlans: MonthlyRunInstanceRecord[] = [];
 let employees: Employee[] = [];
 let employeeLabels: EmployeeLabel[] = [];
-let summarySourceFiles: ProductFileRecord[] = [];
 let holdingsPage = 1;
 let holdingsTotal = 0;
 let holdingsPageSize = 20;
@@ -124,7 +108,6 @@ const pageTitles: Record<string, string> = {
 };
 type PageKey = keyof typeof pageTitles;
 const DEFAULT_PAGE: PageKey = 'captable';
-const FIXED_CAPITALIZATION_SUMMARY_SHEET = 'Capitalization Summary';
 const validPages = new Set<PageKey>(Object.keys(pageTitles) as PageKey[]);
 const adminOnlyPages = new Set<PageKey>(['files', 'workflow', 'user-management']);
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'captable.sidebar.collapsed';
@@ -234,6 +217,32 @@ const fivePercentHoldersPage = createFivePercentHoldersPage({
   localizeDom: localizeAppDom,
 });
 
+const captablePage = createCaptablePage(
+  {
+    el,
+    api,
+    escapeHtml,
+    formatNumber,
+    notify,
+    confirmAction,
+    productFileDisplayName,
+    getLanguage: () => currentLanguage,
+  },
+  {
+    getMonth: () => currentMonth,
+    setMonth: (month) => {
+      currentMonth = month;
+    },
+    fetchAvailableMonths,
+    renderMonthPicker,
+    setPageSourceFiles,
+    getCurrentMonthTextNode,
+    resetActivePageSourceFile,
+    openLinkModal: (key) => void openLinkModal(key),
+    localizeDom: localizeAppDom,
+  },
+);
+
 const transferPlanPage = createTransferPlanPage({
   el,
   api,
@@ -299,10 +308,7 @@ const monthlyRunPage = createMonthlyRunPage({
   escapeHtml,
   formatDateTime,
   refreshProductFiles: () => filesPage.refreshProductFiles(),
-  refreshSummary: (month) => {
-    baselineSummaryCache = null;
-    return renderSummaryPage(month);
-  },
+  refreshSummary: (month) => captablePage.render(month),
   openProductFile: (fileId) => navigateToProductFile(fileId),
   notify,
   confirmAction,
@@ -846,11 +852,6 @@ function formatDateTime(value: string): string {
   }).format(date);
 }
 
-function getEOMDate(monthKey: string): string {
-  const [year, month] = monthKey.split('-').map(Number);
-  return `${year}/${month}/${new Date(year, month, 0).getDate()}`;
-}
-
 function escapeHtml(text: unknown): string {
   const div = document.createElement('div');
   div.textContent = String(text ?? '');
@@ -1120,8 +1121,8 @@ function setActivePage(page: string) {
 async function activatePage(page: PageKey) {
   try {
     if (page === 'captable') {
-      await refreshSummarySourceFileOptions();
-      if (currentMonth) await renderSummaryPage(currentMonth);
+      await captablePage.refreshSourceFileOptions();
+      if (currentMonth) await captablePage.render(currentMonth);
       return;
     }
 
@@ -1297,10 +1298,10 @@ function initMonthPicker() {
       return;
     }
     currentMonth = month;
-    void renderSummaryPage(month);
+    void captablePage.render(month);
     void renderHoldingsPage(month);
   });
-  el('btnExport').addEventListener('click', () => exportData());
+  el('btnExport').addEventListener('click', () => captablePage.exportCsv());
   el('btnOpenMonthlyUpdateFromCapTable').addEventListener('click', () => {
     void navigateToPage('monthly');
   });
@@ -1317,13 +1318,12 @@ async function initSummaryPage() {
     latestOutputResponse.output,
   );
   renderMonthPicker('monthPicker', currentMonth, 'hasCapTableData');
-  await refreshSummarySourceFileOptions();
+  await captablePage.refreshSourceFileOptions();
   if (months.length === 0) {
-    renderEmptySummaryPage('暂无月度业务数据。请先创建 Monthly Update 或导入正式数据。');
+    captablePage.renderEmpty('暂无月度业务数据。请先创建 Monthly Update 或导入正式数据。');
   } else {
-    await renderSummaryPage(currentMonth);
+    await captablePage.render(currentMonth);
   }
-  el<HTMLSelectElement>('capitalizationSourceFile').addEventListener('change', () => void saveCapitalizationSource());
   el('btnAddNote').addEventListener('click', () => {
     el('addNoteForm').classList.remove('hidden');
     el<HTMLTextAreaElement>('noteContent').focus();
@@ -1332,6 +1332,7 @@ async function initSummaryPage() {
     el('addNoteForm').classList.add('hidden');
     el<HTMLTextAreaElement>('noteContent').value = '';
   });
+  captablePage.bindSourceFileControl();
   el('btnSaveNote').addEventListener('click', async () => {
     const input = el<HTMLTextAreaElement>('noteContent');
     const content = input.value.trim();
@@ -1342,7 +1343,7 @@ async function initSummaryPage() {
     await api(`/api/months/${currentMonth}/notes`, { method: 'POST', body: JSON.stringify({ content }) });
     input.value = '';
     el('addNoteForm').classList.add('hidden');
-    await renderSummaryPage(currentMonth);
+    await captablePage.render(currentMonth);
   });
 }
 
@@ -1424,218 +1425,6 @@ function renderMonthPicker(inputId: string, selectedMonth: string, dataKey: 'has
       }
     });
   }
-}
-
-function renderEmptySummaryPage(message: string) {
-  currentSummary = null;
-  resetActivePageSourceFile();
-  getCurrentMonthTextNode().textContent = t('noSummaryData');
-  el('eomDate').textContent = '-';
-  el('reconciliationBody').innerHTML = `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
-  el('capitalizationBody').innerHTML = `<tr><td colspan="6" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
-  applyCapitalizationSourceState(null);
-  renderNotes([]);
-  localizeAppDom();
-}
-
-function formatCapitalizationPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '';
-  const numericValue = Number(value);
-  return numericValue <= 1 ? `${(numericValue * 100).toFixed(2)}%` : `${numericValue.toFixed(2)}%`;
-}
-
-function isTotalFullyDilutedRow(description: string): boolean {
-  return description.trim().toLowerCase().startsWith('total fully diluted shares outstand');
-}
-
-const CAPITALIZATION_DELTA_ICONS = {
-  up: '<svg class="cap-delta__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>',
-  down: '<svg class="cap-delta__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>',
-} as const;
-
-function renderCapitalizationDeltaCell(delta: CapitalizationDelta): string {
-  if (delta.direction === 'none') return '<td class="col-delta"></td>';
-  if (delta.direction === 'flat') return '<td class="col-delta cap-delta--flat">–</td>';
-  return `<td class="col-delta cap-delta--${delta.direction}">${CAPITALIZATION_DELTA_ICONS[delta.direction]}<span class="cap-delta__text">${escapeHtml(delta.text)}</span></td>`;
-}
-
-/** Loads the baseline month used for month-over-month deltas. Never rejects: no baseline just means no deltas. */
-async function loadBaselineSummary(baselineMonth: string | null): Promise<SummarySnapshot | null> {
-  if (!baselineMonth) return null;
-  if (baselineSummaryCache?.month === baselineMonth) return baselineSummaryCache.data;
-  try {
-    const data = await api<SummarySnapshot>(`/api/months/${baselineMonth}/summary`);
-    baselineSummaryCache = { month: baselineMonth, data };
-  } catch {
-    baselineSummaryCache = { month: baselineMonth, data: null };
-  }
-  return baselineSummaryCache.data;
-}
-
-async function renderSummaryPage(month: string) {
-  try {
-    currentMonth = month;
-    renderMonthPicker('monthPicker', month, 'hasCapTableData');
-    const availableMonths = await fetchAvailableMonths();
-    const [data, baselineSummary] = await Promise.all([
-      api<SummarySnapshot>(`/api/months/${month}/summary`),
-      loadBaselineSummary(
-        resolveBaselineMonth(
-          availableMonths.map((item) => item.month),
-          month,
-        ),
-      ),
-    ]);
-    const capitalization = normalizeCapitalizationRows(data.capitalization, data.fixedValues?.seriesBPreferredStock);
-    currentSummary = { ...data, capitalization };
-    setPageSourceFiles('captable', data.capitalizationSource?.fileName ?? t('defaultSnapshot'));
-    getCurrentMonthTextNode().textContent = formatMonthCN(month);
-    el('eomDate').textContent = data.eomDate || getEOMDate(month);
-    el('reconciliationBody').innerHTML = `
-      <tr>
-        <td style="text-align:left; font-weight:600;">${escapeHtml(data.reconciliation.item)}</td>
-        <td>${escapeHtml(data.eomDate || getEOMDate(month))}</td>
-        <td class="highlight-number">${formatNumber(data.reconciliation.lastMonth)}</td>
-        <td class="highlight-number">${formatNumber(data.reconciliation.newShares)}</td>
-        <td class="highlight-number">${formatNumber(data.reconciliation.eomBalance)}</td>
-      </tr>`;
-
-    const baselineIndex = indexCapitalizationRows(
-      normalizeCapitalizationRows(
-        baselineSummary?.capitalization ?? [],
-        baselineSummary?.fixedValues?.seriesBPreferredStock,
-      ),
-    );
-    const capBody = el('capitalizationBody');
-    capBody.innerHTML = capitalization
-      .map((item) => {
-        if (item.type === 'cat-header-blue' || item.type === 'cat-header-gray') {
-          return `<tr class="cat-header-blue"><td></td><td colspan="5" style="text-align:left;">${escapeHtml(item.description)}</td></tr>`;
-        }
-        const deltas = computeCapitalizationRowDeltas(item, findComparableRow(baselineIndex, item));
-        if (item.type === 'cat-sub-label') {
-          const sharesHtml =
-            item.shares === undefined
-              ? ''
-              : item.highlightShares
-                ? `<span class="highlight-yellow">${formatNumber(item.shares)}</span>`
-                : formatNumber(item.shares);
-          return `<tr class="cat-sub-label">
-            <td></td><td style="text-align:left;">${escapeHtml(item.description)}</td>
-            <td class="col-number">${sharesHtml}</td>${renderCapitalizationDeltaCell(deltas.shares)}
-            <td></td>${renderCapitalizationDeltaCell(deltas.percent)}
-          </tr>`;
-        }
-        const percent = formatCapitalizationPercent(item.percent);
-        const isTotalRow = isTotalFullyDilutedRow(item.description);
-        return `<tr class="${isTotalRow ? 'total-row-blue' : 'cap-data-row'}">
-          <td>${escapeHtml(item.number ?? '')}</td>
-          <td style="text-align:left;${isTotalRow ? ' font-weight:var(--font-bold);' : ''}">${escapeHtml(item.description)}</td>
-          <td class="col-number"${isTotalRow ? ' style="font-weight:var(--font-bold);"' : ''}>${formatNumber(item.shares)}</td>${renderCapitalizationDeltaCell(deltas.shares)}
-          <td class="col-percent"${isTotalRow ? ' style="font-weight:var(--font-bold);"' : ''}>${percent}</td>${renderCapitalizationDeltaCell(deltas.percent)}
-        </tr>`;
-      })
-      .join('');
-    applyCapitalizationSourceState(data.capitalizationSource ?? null);
-    capBody.querySelectorAll<HTMLElement>('.link-blue').forEach((link) => {
-      link.addEventListener('click', () => void openLinkModal(link.dataset.link ?? ''));
-    });
-    renderNotes(data.notes);
-    localizeAppDom();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load summary data';
-    if (/Month .* not found/i.test(message)) {
-      renderEmptySummaryPage('暂无月度业务数据。请先创建 Monthly Update 或导入正式数据。');
-      return;
-    }
-    currentSummary = null;
-    resetActivePageSourceFile();
-    getCurrentMonthTextNode().textContent = t('noSummaryData');
-    el('eomDate').textContent = '-';
-    el('reconciliationBody').innerHTML =
-      `<tr><td colspan="5" class="table-empty-cell">${escapeHtml(message)}</td></tr>`;
-    el('capitalizationBody').innerHTML = '';
-    applyCapitalizationSourceState(null);
-    renderNotes([]);
-    localizeAppDom();
-  }
-}
-
-async function refreshSummarySourceFileOptions() {
-  const data = await api<{ files: ProductFileRecord[] }>('/api/files');
-  summarySourceFiles = data.files;
-  const select = el<HTMLSelectElement>('capitalizationSourceFile');
-  const currentValue = select.value;
-  select.innerHTML = [
-    `<option value="">${escapeHtml(t('defaultSnapshot'))}</option>`,
-    ...summarySourceFiles.map(
-      (file) => `<option value="${file.id}">${escapeHtml(productFileDisplayName(file))}</option>`,
-    ),
-  ].join('');
-  if (currentValue && summarySourceFiles.some((file) => String(file.id) === currentValue)) {
-    select.value = currentValue;
-  }
-}
-
-function applyCapitalizationSourceState(source: SummaryCapitalizationSource | null) {
-  const select = el<HTMLSelectElement>('capitalizationSourceFile');
-
-  select.value = source?.fileId ? String(source.fileId) : '';
-}
-
-async function saveCapitalizationSource() {
-  const select = el<HTMLSelectElement>('capitalizationSourceFile');
-  const targetMonth = currentSummary?.month || el<HTMLInputElement>('monthPicker').value || currentMonth;
-
-  select.disabled = true;
-
-  try {
-    await api(`/api/months/${targetMonth}/capitalization-source`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        fileId: select.value ? Number(select.value) : null,
-        sheetName: select.value ? FIXED_CAPITALIZATION_SUMMARY_SHEET : null,
-      }),
-    });
-    baselineSummaryCache = null;
-    await renderSummaryPage(targetMonth);
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-    baselineSummaryCache = null;
-    await renderSummaryPage(targetMonth);
-  } finally {
-    select.disabled = false;
-  }
-}
-
-function renderNotes(notes: SummarySnapshot['notes']) {
-  const container = el('notesContainer');
-  if (!notes || notes.length === 0) {
-    container.innerHTML = '<div class="note-empty">暂无备注，点击右上角添加备注按钮添加</div>';
-    localizeAppDom();
-    return;
-  }
-  container.innerHTML = notes
-    .map(
-      (note) => `
-      <div class="note-item">
-        <div class="note-header">
-          <span class="note-time">${escapeHtml(note.time)}</span>
-          <div class="note-actions"><button class="note-action-btn" data-id="${note.id}" data-action="delete" title="删除">Delete</button></div>
-        </div>
-        <div class="note-content">${escapeHtml(note.content)}</div>
-      </div>`,
-    )
-    .join('');
-  container.querySelectorAll<HTMLElement>('[data-action="delete"]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      if (!(await confirmAction('确定删除此备注吗？', { title: '删除备注', confirmText: '删除', tone: 'danger' })))
-        return;
-      await api(`/api/notes/${button.dataset.id}`, { method: 'DELETE' });
-      await renderSummaryPage(currentMonth);
-    });
-  });
-  localizeAppDom();
 }
 
 async function initMonthlyPage() {
@@ -3034,28 +2823,6 @@ function formatFileSize(bytes: number) {
   const units = ['B', 'KB', 'MB', 'GB'];
   const index = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, index)).toFixed(index > 0 ? 1 : 0)} ${units[index]}`;
-}
-
-function exportData() {
-  if (!currentSummary) {
-    notify('当前月份没有可导出的摘要数据', { type: 'warning' });
-    return;
-  }
-  let csv = '\ufeff';
-  csv += `${csvRow([`CapTable 股权数据 - ${formatMonthCN(currentMonth)}`])}\n\n`;
-  csv += `${csvRow(['【流通股份对账】'])}\n${csvRow(['项目', '截至日期', '上月末', '本月新增', '本月末'])}\n`;
-  csv += `${csvRow([currentSummary.reconciliation.item, currentSummary.eomDate, currentSummary.reconciliation.lastMonth, currentSummary.reconciliation.newShares, currentSummary.reconciliation.eomBalance])}\n\n`;
-  csv += `${csvRow(['【资本结构】'])}\n${csvRow(['Description', '股份', '占比'])}\n`;
-  currentSummary.capitalization.forEach((item) => {
-    csv += `${csvRow([item.description, item.shares, item.percent])}\n`;
-  });
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `CapTable_${currentMonth}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
 }
 
 async function openLinkModal(key: string) {

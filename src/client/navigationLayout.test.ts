@@ -137,12 +137,14 @@ test('capitalization summary shows month-over-month change beside each value', (
   assert.match(capitalizationHead, /<th class="col-number" colspan="2">Common Shares Equivalent<\/th>/);
   assert.match(capitalizationHead, /<th class="col-percent" colspan="2">% of fully diluted<\/th>/);
 
-  assert.match(mainSource, /computeCapitalizationRowDeltas\(item, findComparableRow\(baselineIndex, item\)\)/);
-  assert.match(mainSource, /renderCapitalizationDeltaCell\(deltas\.shares\)/);
-  assert.match(mainSource, /renderCapitalizationDeltaCell\(deltas\.percent\)/);
-  assert.match(mainSource, /<td class="col-delta cap-delta--flat">–<\/td>/);
-  assert.match(mainSource, /colspan="5" style="text-align:left;"/);
-  assert.match(mainSource, /capitalizationBody'\)\.innerHTML = `<tr><td colspan="6"/);
+  const captablePageSource = readFileSync(new URL('./captablePage.ts', import.meta.url), 'utf8');
+  assert.match(captablePageSource, /computeCapitalizationRowDeltas\(item, findComparableRow\(baselineIndex, item\)\)/);
+  assert.match(captablePageSource, /renderCapitalizationDeltaCell\(deltas\.shares\)/);
+  assert.match(captablePageSource, /renderCapitalizationDeltaCell\(deltas\.percent\)/);
+  assert.match(captablePageSource, /<td class="col-delta cap-delta--flat">–<\/td>/);
+  assert.match(captablePageSource, /colspan="5" style="text-align:left;"/);
+  assert.match(captablePageSource, /`<tr><td colspan="6" class="table-empty-cell">/);
+  assert.match(captablePageSource, /export function createCaptablePage/);
 
   assert.match(css, /\.cap-delta--up\s*\{\s*color: var\(--success-600\);/);
   assert.match(css, /\.cap-delta--down\s*\{\s*color: var\(--danger-600\);/);

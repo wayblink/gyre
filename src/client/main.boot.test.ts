@@ -821,3 +821,66 @@ test('the transfer plan page toggles its table view and edit mode', async () => 
   assert.ok(!doc.getElementById('btnEditTransferPlan')?.classList.contains('hidden'), 'edit shown again');
   assert.match(doc.getElementById('transferPlanEditStatus')?.textContent ?? '', /最新 workflow 结果文件/);
 });
+
+const SUMMARY_SNAPSHOT = {
+  month: '2026-09',
+  eomDate: '09/30/2026',
+  reconciliation: { item: 'Total Common Stock', lastMonth: 100, newShares: 5, eomBalance: 105 },
+  capitalization: [
+    { type: 'row', description: 'Common Stock', shares: 105, percent: 0.5 },
+    { type: 'row', description: 'Total Fully Diluted Shares Outstanding', shares: 210, percent: 1 },
+  ],
+  notes: [{ id: 3, time: '2026-09-02 10:00', content: 'month-end close' }],
+  fixedValues: {},
+  capitalizationSource: null,
+};
+
+test('the captable page renders its reconciliation, deltas and notes', async () => {
+  const window = await bootApp(
+    [
+      ...API_STUBS,
+      { match: /\/api\/months\/2026-09\/summary$/, respond: SUMMARY_SNAPSHOT },
+      { match: /\/api\/files$/, respond: { files: [] } },
+    ],
+    120,
+  );
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('.nav-item[data-page="captable"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  // Reconciliation row.
+  assert.match(doc.getElementById('reconciliationBody')?.innerHTML ?? '', /Total Common Stock/);
+  assert.match(doc.getElementById('reconciliationBody')?.innerHTML ?? '', /105/);
+  // Capitalization table, with the total row rendered.
+  const capBody = doc.getElementById('capitalizationBody')?.innerHTML ?? '';
+  assert.match(capBody, /Common Stock/);
+  assert.match(capBody, /Total Fully Diluted Shares Outstanding/);
+  // Notes.
+  assert.match(doc.getElementById('notesContainer')?.innerHTML ?? '', /month-end close/);
+
+  // The CSV export is driven by the loaded snapshot, not by a fresh request.
+  assert.equal(doc.getElementById('btnExport')?.textContent?.trim(), '导出');
+  doc.getElementById('btnExport')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  // jsdom does not implement URL.createObjectURL; the click handler must not throw before that.
+  assert.ok(doc.getElementById('capitalizationBody')?.innerHTML.length, 'page still rendered');
+});
+
+test('a month with no data shows the empty state instead of a stale table', async () => {
+  const window = await bootApp(
+    [
+      ...API_STUBS,
+      { match: /\/api\/months\/2026-09\/summary$/, respond: { error: 'Month 2026-09 not found' }, status: 404 },
+      { match: /\/api\/files$/, respond: { files: [] } },
+    ],
+    120,
+  );
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('.nav-item[data-page="captable"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  const capBody = doc.getElementById('capitalizationBody')?.innerHTML ?? '';
+  assert.match(capBody, /table-empty-cell/, 'the empty state should render');
+});
