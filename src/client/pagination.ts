@@ -85,3 +85,8 @@ export function edgePage(
   const next = target === 'first' ? 1 : maxPage;
   return next === currentPage ? null : next;
 }
+
+/** Number of pages for a total, never fewer than one. */
+export function pageCountOf(total: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(total / pageSize));
+}

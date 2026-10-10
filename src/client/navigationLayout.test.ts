@@ -7,6 +7,7 @@ const css = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8'
 const filesPageSource = readFileSync(new URL('./filesPage.ts', import.meta.url), 'utf8');
 const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
 const textsSource = readFileSync(new URL('./texts.ts', import.meta.url), 'utf8');
+const esopTablesSource = readFileSync(new URL('./esopTables.ts', import.meta.url), 'utf8');
 const monthlyRunPageSource = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
 const uploadProgressSource = readFileSync(new URL('./uploadProgress.ts', import.meta.url), 'utf8');
 const workbookViewerSource = readFileSync(new URL('./univer/createWorkbookViewer.ts', import.meta.url), 'utf8');
@@ -388,10 +389,10 @@ test('Grant Record employee tag filter is wired through label ids for every gran
 
   assert.match(html, /id="filterHoldingsTag"/);
   assert.match(mainSource, /renderEmployeeLabelFilter\('filterHoldingsTag'\)/);
-  assert.match(mainSource, /filterHoldingsTag'\)\.addEventListener\('change', searchHoldingsPage\)/);
-  assert.match(mainSource, /\/api\/grants\/shareworks\?query=.*tagId=/);
-  assert.match(mainSource, /\/api\/grants\/merge\?query=.*tagId=/);
-  assert.match(mainSource, /\/api\/holdings\?month=.*tagId=/);
+  assert.match(esopTablesSource, /filterHoldingsTag'\)\.addEventListener\('change', searchHoldingsPage\)/);
+  assert.match(esopTablesSource, /\/api\/grants\/shareworks\?query=.*tagId=/);
+  assert.match(esopTablesSource, /\/api\/grants\/merge\?query=.*tagId=/);
+  assert.match(esopTablesSource, /\/api\/holdings\?month=.*tagId=/);
 
   // The label map itself lives in routes/support.ts; every grant source must resolve it.
   const supportSource = readFileSync(new URL('../server/routes/support.ts', import.meta.url), 'utf8');
@@ -413,10 +414,10 @@ test('Exercise and Sold Shares employee tag filters are wired through label ids'
   assert.match(html, /id="filterSoldSharesTag"/);
   assert.match(mainSource, /renderEmployeeLabelFilter\('filterExerciseTag'\)/);
   assert.match(mainSource, /renderEmployeeLabelFilter\('filterSoldSharesTag'\)/);
-  assert.match(mainSource, /filterExerciseTag'\)\.addEventListener\('change', searchExercises\)/);
-  assert.match(mainSource, /filterSoldSharesTag'\)\.addEventListener\('change', searchSoldShares\)/);
-  assert.match(mainSource, /\/api\/exercises\?query=.*tagId=/);
-  assert.match(mainSource, /\/api\/sold-shares\?query=.*tagId=/);
+  assert.match(esopTablesSource, /filterExerciseTag'\)\.addEventListener\('change', searchExercises\)/);
+  assert.match(esopTablesSource, /filterSoldSharesTag'\)\.addEventListener\('change', searchSoldShares\)/);
+  assert.match(esopTablesSource, /\/api\/exercises\?query=.*tagId=/);
+  assert.match(esopTablesSource, /\/api\/sold-shares\?query=.*tagId=/);
 
   assert.match(serverSource, /app\.get\('\/api\/exercises'/);
   assert.match(serverSource, /const employeeNumber = textValue\(row\['Employee No\.'\]\) \?\? '';/);
@@ -444,7 +445,6 @@ test('Exercise Record exposes file-backed filters, table, and pagination', () =>
 });
 
 test('Exercise Record exposes Futu / Shareworks / Merge source tabs like Grant Record', () => {
-  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const serverSource = readFileSync(new URL('../server/routes/dataPages.ts', import.meta.url), 'utf8');
   const exercisePage = html.match(/id="page-exercise-record"[\s\S]*?id="page-sold-shares"/)?.[0] ?? '';
 
@@ -466,14 +466,14 @@ test('Exercise Record exposes Futu / Shareworks / Merge source tabs like Grant R
   assert.match(exercisePage, /Data Source/);
 
   // main.ts: view state, dispatcher, per-view renderers, tab binding.
-  assert.match(mainSource, /activeExerciseView/);
-  assert.match(mainSource, /function applyExerciseView\(\)/);
-  assert.match(mainSource, /function renderShareworksExercises\(/);
-  assert.match(mainSource, /function renderMergedExercises\(/);
-  assert.match(mainSource, /data-exercise-view/);
-  assert.match(mainSource, /\/api\/exercises\/shareworks\?/);
-  assert.match(mainSource, /\/api\/exercises\/merge\?/);
-  assert.match(mainSource, /grant-source-badge--\$\{item\.source\.toLowerCase\(\)\}/);
+  assert.match(esopTablesSource, /exerciseView/);
+  assert.match(esopTablesSource, /function applyExerciseView\(\)/);
+  assert.match(esopTablesSource, /function renderShareworksExercises\(/);
+  assert.match(esopTablesSource, /function renderMergedExercises\(/);
+  assert.match(esopTablesSource, /data-exercise-view/);
+  assert.match(esopTablesSource, /\/api\/exercises\/shareworks\?/);
+  assert.match(esopTablesSource, /\/api\/exercises\/merge\?/);
+  assert.match(esopTablesSource, /grant-source-badge--\$\{item\.source\.toLowerCase\(\)\}/);
 
   // server.ts: two new routes + the Shareworks exercise row mapper + name→工号 lookup.
   assert.match(serverSource, /app\.get\('\/api\/exercises\/shareworks'/);
@@ -1081,18 +1081,18 @@ test('page size selectors survive language switches because only the label text 
 });
 
 test('pagination summaries are localized and refresh when the language changes', () => {
-  const renderers = [
-    'renderHoldingsPagination',
-    'renderEmployeesPagination',
-    'renderExercisePagination',
-    'renderSoldSharesPagination',
-  ];
-  for (const name of renderers) {
-    const body = mainSource.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`))?.[0] ?? '';
+  // The three ESOP tables live in esopTables.ts; the employee table is still in main.ts.
+  for (const name of ['renderHoldingsPagination', 'renderExercisePagination', 'renderSoldSharesPagination']) {
+    const body = esopTablesSource.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`))?.[0] ?? '';
     assert.ok(body, `${name} not found`);
     assert.match(body, /paginationSummaryText\(/);
     assert.doesNotMatch(body, /Showing /);
   }
+  const employeesBody =
+    mainSource.match(new RegExp('function renderEmployeesPagination\\([\\s\\S]*?\\n\\}'))?.[0] ?? '';
+  assert.ok(employeesBody, 'renderEmployeesPagination not found');
+  assert.match(employeesBody, /paginationSummaryText\(/);
+  assert.doesNotMatch(employeesBody, /Showing /);
 
   assert.match(mainSource, /function paginationSummaryText\(/);
   assert.match(textsSource, /paginationSummaryRecords: \{[\s\S]*?条记录/);
@@ -1101,8 +1101,11 @@ test('pagination summaries are localized and refresh when the language changes',
   // A language switch only calls applyLanguage(), so the summaries must be re-rendered there
   // or they keep the previous language until the next data load.
   const applyLanguageBody = mainSource.match(/function applyLanguage\(\)[\s\S]*?\n\}/)?.[0] ?? '';
-  for (const name of renderers) {
-    assert.match(applyLanguageBody, new RegExp(`${name}\\(`));
+  assert.match(applyLanguageBody, /renderEmployeesPagination\(/);
+  // The three ESOP tables live in esopTables.ts and re-render through their own applyLanguage().
+  assert.match(esopTablesSource, /applyLanguage\(\) \{/);
+  for (const name of ['renderHoldingsPagination', 'renderExercisePagination', 'renderSoldSharesPagination']) {
+    assert.match(esopTablesSource, new RegExp(`${name}\\(`));
   }
 });
 
