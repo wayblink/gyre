@@ -8,6 +8,7 @@ const filesPageSource = readFileSync(new URL('./filesPage.ts', import.meta.url),
 const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
 const textsSource = readFileSync(new URL('./texts.ts', import.meta.url), 'utf8');
 const esopTablesSource = readFileSync(new URL('./esopTables.ts', import.meta.url), 'utf8');
+const tableSortSource = readFileSync(new URL('./tableSort.ts', import.meta.url), 'utf8');
 const monthlyRunPageSource = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
 const uploadProgressSource = readFileSync(new URL('./uploadProgress.ts', import.meta.url), 'utf8');
 const workbookViewerSource = readFileSync(new URL('./univer/createWorkbookViewer.ts', import.meta.url), 'utf8');
@@ -1094,7 +1095,7 @@ test('pagination summaries are localized and refresh when the language changes',
   assert.match(employeesBody, /paginationSummaryText\(/);
   assert.doesNotMatch(employeesBody, /Showing /);
 
-  assert.match(mainSource, /function paginationSummaryText\(/);
+  assert.match(tableSortSource, /function paginationSummaryText\(/);
   assert.match(textsSource, /paginationSummaryRecords: \{[\s\S]*?条记录/);
   assert.match(textsSource, /paginationSummaryEmployees: \{[\s\S]*?名员工/);
 
@@ -1127,8 +1128,11 @@ test('main.ts renders every bilingual string through the translation table', () 
   assert.match(textsSource, /confirmDeleteUser: \{ 'zh-CN': '确定删除用户【\{username\}】吗？'/);
   assert.match(source, /const t = \(key: UiTextKey\) => texts\(key, currentLanguage\)/);
   // Parameterized messages go through the shared formatter in texts.ts.
-  assert.match(source, /const tp = \(key: UiTextKey, params: Record<string, string \| number>\) => tpMain\(/);
+  // Interpolated messages go through createTextFormatter() in texts.ts; the pagination summary
+  // moved into tableSort.ts and is the only main.ts neighbour that still interpolates a value.
   assert.match(textsSource, /export function createTextFormatter/);
+  assert.match(tableSortSource, /createTextFormatter\('main'\)/);
+  assert.doesNotMatch(tableSortSource, /\+ start \+/);
 
   // applyLanguage() is now data-driven: a declarative binding table plus an imperative tail that
   // only handles state-dependent labels, and neither may fall back to inline ternaries.

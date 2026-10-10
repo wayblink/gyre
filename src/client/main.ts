@@ -21,10 +21,9 @@ import { createUserManagementPage } from './userManagementPage.js';
 import { createFixedValuePage } from './fixedValuePage.js';
 import { createAccountPage } from './accountPage.js';
 import { createFivePercentHoldersPage } from './fivePercentHoldersPage.js';
-import { createTexts, createTextFormatter, TEXTS, type TextKey } from './texts.js';
+import { createTexts, TEXTS, type TextKey } from './texts.js';
 
 const texts = createTexts('main');
-const tpMain = createTextFormatter('main');
 
 /** Page titles keyed by page; the values live in the merged translation table. */
 const pageTitleTranslations = TEXTS.pageTitles as Record<PageKey, Record<AppLanguage, string>>;
@@ -36,6 +35,7 @@ import { resolveDefaultSummaryMonth, sortAvailableMonths, type AvailableMonth } 
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
 import { createTransferPlanPage } from './transferPlanPage.js';
 import { createCaptablePage } from './captablePage.js';
+import { paginationSummaryText } from './tableSort.js';
 import { createEsopTables, formatCurrency } from './esopTables.js';
 import { buildLinkedBadge } from './linkedBadge.js';
 import { pageCountOf } from './pagination.js';
@@ -59,7 +59,6 @@ let employeesPage = 1;
 let employeesTotal = 0;
 let employeesPageSize = 20;
 let employeesSort: { by: 'name' | 'empNo' | ''; dir: 'asc' | 'desc' } = { by: '', dir: 'asc' };
-type NameEmpNoSort = { by: 'name' | 'empNo' | ''; dir: 'asc' | 'desc' };
 let employeesSourceFilter: EmployeeSourceFilter = '';
 
 const pageTitles: Record<string, string> = {
@@ -205,9 +204,6 @@ const esopTables = createEsopTables(
     formatCurrency,
     notify,
     linkedBadge: (identities, language, escape) => buildLinkedBadge(identities as never, language, escape),
-    paginationSummaryText,
-    renderSortIndicators,
-    sortQuery,
     grantTypeClass: getGrantTypeClass,
     setPageSourceFiles: setWorkflowPageFiles,
     localizeDom: localizeAppDom,
@@ -602,7 +598,6 @@ function applyLanguageBindings() {
 }
 
 const t = (key: UiTextKey) => texts(key, currentLanguage);
-const tp = (key: UiTextKey, params: Record<string, string | number>) => tpMain(key, params, currentLanguage);
 
 function pageTitleFor(page: PageKey): string {
   return pageTitleTranslations[page]?.[currentLanguage] ?? pageTitles[page];
@@ -1575,7 +1570,7 @@ function renderEmployeesPagination(page: number, totalPages: number, total: numb
     el,
     PAGINATION_IDS.employees,
     view,
-    paginationSummaryText(view.start, view.end, total, 'employees'),
+    paginationSummaryText(view.start, view.end, total, 'employees', currentLanguage),
   );
 }
 
@@ -1687,12 +1682,6 @@ async function initAccountPage() {
     if (event.target === el('accountPasswordModal')) accountPage.closePasswordModal();
   });
 }
-
-function paginationSummaryText(start: number, end: number, total: number, unit: 'records' | 'employees') {
-  if (total === 0) return t(unit === 'employees' ? 'paginationSummaryEmployeesEmpty' : 'paginationSummaryRecordsEmpty');
-  return tp(unit === 'employees' ? 'paginationSummaryEmployees' : 'paginationSummaryRecords', { start, end, total });
-}
-
 const PAGINATION_IDS = {
   holdings: {
     summary: 'holdingsPaginationSummary',
@@ -1929,19 +1918,6 @@ function toggleEmployeesSort(by: 'name' | 'empNo') {
   employeesPage = 1;
   void loadEmployeesPage();
 }
-
-// Shared Name / Employee No. header sorting for the ESOP detail tables.
-function sortQuery(sort: NameEmpNoSort): string {
-  return sort.by ? `&sort=${sort.by}&dir=${sort.dir}` : '';
-}
-
-function renderSortIndicators(scopeSelector: string, sort: NameEmpNoSort) {
-  document.querySelectorAll<HTMLElement>(`${scopeSelector} [data-sort-key]`).forEach((node) => {
-    const key = node.dataset.sortKey;
-    node.dataset.dir = sort.by && sort.by === key ? sort.dir : 'none';
-  });
-}
-
 function renderEmployeesPageTable() {
   if (employees.length === 0) {
     el('employeesPageBody').innerHTML = '<tr><td colspan="8" class="table-empty-cell">暂无符合条件的员工</td></tr>';

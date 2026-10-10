@@ -1,6 +1,7 @@
 import type { AppLanguage } from './i18n.js';
 import { createTexts } from './texts.js';
 import type { NotifyFn } from './uiFeedback.js';
+import { paginationSummaryText, renderSortIndicators, sortQuery } from './tableSort.js';
 import type {
   ExerciseRecord,
   Holding,
@@ -37,9 +38,7 @@ export type EsopTablesDeps = {
   notify: NotifyFn;
   /** Employee labels are loaded by the employees page and shared with the table filters. */
   linkedBadge: (identities: unknown, lang: AppLanguage, escape: (text: unknown) => string) => string;
-  paginationSummaryText: (start: number, end: number, total: number, unit: 'records' | 'employees') => string;
-  renderSortIndicators: (scopeSelector: string, sort: { by: '' | 'name' | 'empNo'; dir: 'asc' | 'desc' }) => void;
-  sortQuery: (sort: { by: '' | 'name' | 'empNo'; dir: 'asc' | 'desc' }) => string;
+
   grantTypeClass: (type: string) => string;
   setPageSourceFiles: (
     page: string,
@@ -138,7 +137,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
       el,
       PAGINATION_IDS.holdings,
       view,
-      deps.paginationSummaryText(view.start, view.end, total, 'records'),
+      paginationSummaryText(view.start, view.end, total, 'records', deps.getLanguage()),
     );
   }
 
@@ -148,7 +147,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
       el,
       PAGINATION_IDS.exercises,
       view,
-      deps.paginationSummaryText(view.start, view.end, total, 'records'),
+      paginationSummaryText(view.start, view.end, total, 'records', deps.getLanguage()),
     );
   }
 
@@ -158,7 +157,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
       el,
       PAGINATION_IDS.soldShares,
       view,
-      deps.paginationSummaryText(view.start, view.end, total, 'records'),
+      paginationSummaryText(view.start, view.end, total, 'records', deps.getLanguage()),
     );
   }
 
@@ -385,10 +384,10 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     const query = deps.el<HTMLInputElement>('searchHolder').value.trim();
     const tagId = deps.el<HTMLSelectElement>('filterHoldingsTag').value;
     const grantType = deps.el<HTMLSelectElement>('filterGrantType').value;
-    deps.renderSortIndicators('#page-grant-record', grantSort);
+    renderSortIndicators('#page-grant-record', grantSort);
     if (grantView === 'shareworks') {
       const data = await deps.api<PaginatedResult<ShareworksGrant>>(
-        `/api/grants/shareworks?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${holdings}&pageSize=${holdingsPageSize}${deps.sortQuery(grantSort)}`,
+        `/api/grants/shareworks?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
       );
       deps.setPageSourceFiles('grant-record', data);
       const items = data.items ?? [];
@@ -401,7 +400,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     }
     if (grantView === 'merge') {
       const data = await deps.api<PaginatedResult<MergedGrant>>(
-        `/api/grants/merge?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${holdings}&pageSize=${holdingsPageSize}${deps.sortQuery(grantSort)}`,
+        `/api/grants/merge?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
       );
       deps.setPageSourceFiles('grant-record', data);
       const items = data.items ?? [];
@@ -413,7 +412,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
       return;
     }
     const data = await deps.api<PaginatedResult<Holding>>(
-      `/api/holdings?month=${month}&query=${encodeURIComponent(query)}&grantType=${encodeURIComponent(grantType)}&tagId=${encodeURIComponent(tagId)}&page=${holdings}&pageSize=${holdingsPageSize}${deps.sortQuery(grantSort)}`,
+      `/api/holdings?month=${month}&query=${encodeURIComponent(query)}&grantType=${encodeURIComponent(grantType)}&tagId=${encodeURIComponent(tagId)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
     );
     deps.setPageSourceFiles('grant-record', data);
     const items = data.holdings ?? [];
@@ -481,9 +480,9 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
       return;
     }
     const grantYear = deps.el<HTMLSelectElement>('filterExerciseGrantYear').value;
-    deps.renderSortIndicators('#exerciseTable', exerciseSort);
+    renderSortIndicators('#exerciseTable', exerciseSort);
     const data = await deps.api<PaginatedResult<ExerciseRecord>>(
-      `/api/exercises?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&grantYear=${encodeURIComponent(grantYear)}&page=${exercises}&pageSize=${exercisePageSize}${deps.sortQuery(exerciseSort)}`,
+      `/api/exercises?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&grantYear=${encodeURIComponent(grantYear)}&page=${exercises}&pageSize=${exercisePageSize}${sortQuery(exerciseSort)}`,
     );
     deps.setPageSourceFiles('exercise-record', data);
     const items = data.items ?? [];
@@ -622,9 +621,9 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     const query = deps.el<HTMLInputElement>('searchSoldShares').value.trim();
     const tagId = deps.el<HTMLSelectElement>('filterSoldSharesTag').value;
     const employmentStatus = deps.el<HTMLSelectElement>('filterSoldSharesEmploymentStatus').value;
-    deps.renderSortIndicators('#soldSharesTable', soldSharesSort);
+    renderSortIndicators('#soldSharesTable', soldSharesSort);
     const data = await deps.api<PaginatedResult<SoldShare>>(
-      `/api/sold-shares?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&employmentStatus=${encodeURIComponent(employmentStatus)}&page=${soldShares}&pageSize=${soldSharesPageSize}${deps.sortQuery(soldSharesSort)}`,
+      `/api/sold-shares?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&employmentStatus=${encodeURIComponent(employmentStatus)}&page=${soldShares}&pageSize=${soldSharesPageSize}${sortQuery(soldSharesSort)}`,
     );
     deps.setPageSourceFiles('sold-shares', data);
     const items = data.items ?? [];
