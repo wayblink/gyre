@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createDb } from './db.js';
 import { fileStorage } from './storage.js';
 import { config } from './config.js';
-import { loadBaseSeedManifest, seedBaseSeedFiles } from './baseSeeds.js';
+import { loadBaseSeedManifest, relocateMisplacedBaseFiles, seedBaseSeedFiles } from './baseSeeds.js';
 import { extractSheetRangeAsDataFrame } from './excel.js';
 
 /**
@@ -85,6 +86,82 @@ test('a cold-start init registers the bases and makes each one extractable', see
     const second = await seedBaseSeedFiles(db);
     assert.equal(second.registered.length, 0, 're-running must not re-register');
     assert.equal(second.skipped.length, 3);
+  } finally {
+    await db.close();
+  }
+});
+
+test('bases registered under a rewritten folder are relocated on init', seeded, async () => {
+  const db = await createDb();
+  // Re-runnable against a reused database: drop what a previous run left behind, including the
+  // correctly-placed base — a pre-fix database only has the base at the rewritten path, and leaving
+  // the correct one in place would make the relocation a no-op (target collision) rather than a move.
+  await db.execute("delete from product_files where logical_path like 'input/cancel_restore/%'");
+  await db.execute(
+    "delete from product_files where logical_path = 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx'",
+  );
+  try {
+    // Simulate a database written before the `declaredOutputFolder` fix: the base exists, but under
+    // the folder `normalizeProductFileStoragePrefix()` used to force.
+    const buffer = readFileSync(
+      path.join(
+        config.rootDir,
+        'database',
+        'base-seeds',
+        'cancel_restore',
+        'Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+      ),
+    );
+    const stored = await fileStorage.save('product', 'Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx', buffer, {
+      prefix: 'input/cancel_restore',
+    });
+    await db.execute(
+      `insert into product_files (original_name, stored_name, file_ext, file_path, logical_path,
+         file_size_bytes, mime_type, checksum, storage_backend, workbook_sheet_count, workbook_row_count, uploaded_by)
+       values ($1,$2,'xlsx',$3,$4,$5,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',$6,'local',1,758,'Workflow')`,
+      [
+        'Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+        stored.storedName,
+        stored.filePath,
+        'input/cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+        buffer.length,
+        createHash('sha256').update(buffer).digest('hex'),
+      ],
+    );
+    // A manual upload in the same folder must NOT be touched.
+    await db.execute(
+      `insert into product_files (original_name, stored_name, file_ext, file_path, logical_path,
+         file_size_bytes, mime_type, checksum, storage_backend, workbook_sheet_count, workbook_row_count, uploaded_by)
+       values ('manual.xlsx','manual.xlsx','xlsx',$1,$2,10,'application/octet-stream','x','local',1,1,'Administrator')`,
+      [stored.filePath, 'input/cancel_restore/manual.xlsx'],
+    );
+
+    const moved = await relocateMisplacedBaseFiles(db);
+    assert.deepEqual(moved, [
+      {
+        from: 'input/cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+        to: 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+      },
+    ]);
+
+    // The row moved, and the bytes behind the new path still extract to the recorded contract.
+    const row = await db.queryOne<{ file_path: string; logical_path: string }>(
+      "select file_path, logical_path from product_files where logical_path = 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx'",
+    );
+    assert.ok(row, 'base must be registered at the declared folder');
+    const frame = extractSheetRangeAsDataFrame(await fileStorage.read(row.file_path), '取消与恢复明细', {
+      range: 'A1:W',
+      headerRow: 1,
+      dropTrailingEmptyRows: true,
+    });
+    assert.equal(frame.rows.length, 758);
+
+    // The manual upload is untouched, and a second run is a no-op.
+    const manual = await db.queryOne<{ logical_path: string }>(
+      "select logical_path from product_files where logical_path = 'input/cancel_restore/manual.xlsx'",
+    );
+    assert.ok(manual, 'a manual upload in the same folder must not be relocated');
+    assert.deepEqual(await relocateMisplacedBaseFiles(db), []);
   } finally {
     await db.close();
   }

@@ -248,6 +248,7 @@ psql "$DATABASE_URL" -f /tmp/publish-v20.sql
 | `runtime_params_defaults_json.fileRefs.base_control_book`               | `key` 改为种子登记的 `control_book/EQ_Control_Book_Base_2026_06.xlsx`（原值 `input/2026-05/EQ Control Book.xlsx` 是输入文件，不是 base）                                  |
 | `runtime_params_defaults_json.fileRefs.base_futu_exercises`             | `key` 改为 `futu_exercises/Futu_Exercises_Base_2026_06.xlsx`（原值 `output/futu-exercises/Futu_Exercises_Base.xlsx` 没有任何任务会写出）                                  |
 | `runtime_params_defaults_json.fileRefs.base_cancel_restore_report`      | `key` 改为 `cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx`；去掉硬编码的 `id: 206`（dev 库 id，换库后指向别的文件）                                   |
+| `src/server/routes/support.ts`                                          | `saveProductWorkbook()` 新增 `declaredOutputFolder`：工作流声明的输出目录不再被改写进 `input/`（cancel_restore / futu_exercises 的 base 此前一直写错目录，见 10.6）       |
 
 **已存在的 `workflow_runs` 不受影响**：它们各自快照了 `tasks_snapshot_json`，并通过 `version_id` 指向 v17 的版本行，该行不会被删改。
 
@@ -412,6 +413,7 @@ AUTH_BOOTSTRAP_SECRET='<口令>' docker compose -f docker-compose.prod.yml up -d
 - [ ] 「月度更新」页无版本不匹配提示，源配置里能看到 sheet 下拉且默认值正确
 - [ ] 第 6.5 节若已执行：月度运行未被启动前校验拒绝，或拒绝信息指名了具体源
 - [ ] 冷启动种子已注册：`select count(*) from product_files where uploaded_by = 'BaseSeed'` 返回 3（见 10.4）
+- [ ] 错位 base 已搬迁：`input/cancel_restore/`、`input/futu_exercises/` 下不再有 `*_Base_*.xlsx`（见 10.8）
 - [ ] `git status --short` 干净（若执行了第 2 节）
 
 ---
@@ -421,6 +423,7 @@ AUTH_BOOTSTRAP_SECRET='<口令>' docker compose -f docker-compose.prod.yml up -d
 ## 9. 附：本次发布涉及的代码提交
 
 ```
+feat: relocate bases written to a rewritten output folder on init
 fix: stop rewriting a workflow's declared output folder into input/
 feat: seed every inherit-type monthly base from 2026-06
 fix: ship real cold-start base seeds for the inherit-type monthly sources
@@ -530,9 +533,61 @@ return `input/${normalized}`; // ← 其余一律塞进 input/
 
 **修法**：`saveProductWorkbook()` 新增 `declaredOutputFolder` 参数。工作流持久化路径（`context.ts` 的 `saveGeneratedWorkbook`）传 `true`，改用 `normalizeStorageFolderPrefix()`——只校验路径合法性（拒绝 `..` 等），不重写目录。HTTP 上传路径保持原行为：它们本来就会先用 `inputStorageFolderPrefix()` 归一化，语义上确实是「input 下的子目录」。
 
-回归测试 `src/server/routes/productFileFolder.test.ts` 在空库上断言：声明 `cancel_restore` 的文件落在 `cancel_restore/`，同目录的上传仍落在 `input/cancel_restore/`，`../` 仍被拒绝。
+### 10.7 启动时自动搬迁错位 base（无需人工）
 
-### 10.7 遗留事项
+修复只让**今后**的 base 落在正确目录。修复前已经写错位置的历史 base 仍在 `input/cancel_restore/`、`input/futu_exercises/` 下，继承链依然接不上。
 
-1. **dev 库一条错位记录已迁移**：`input/cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx` → `cancel_restore/...`。云端若也有 `input/cancel_restore/*_Base_*.xlsx` 或 `input/futu_exercises/*_Base_*.xlsx`，需要同样搬一次（改 `logical_path` 与 `file_path`），否则继承链仍要从 2026-07 之后才接上。
-2. 种子是快照，不自动更新。系统正常按月跑起来后，新 base 由工作流自己产出并被 `injectPreviousMonthBase()` 接管。
+`relocateMisplacedBaseFiles()` 在初始化时把它们搬回工作流声明的目录：
+
+- 只匹配 `*_Base_<yyyy_MM>.xlsx`（工作流产出），**同目录的人工上传不动**
+- 连存储里的字节一起搬（`fileStorage` 按 `file_path` 寻址，只改库会让后续 overwrite 写到新路径、旧对象变孤儿）
+- 目标路径已存在则跳过，不会覆盖
+- 幂等，可重复执行
+
+日志形如：
+
+```
+[base-seeds] relocated input/cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx -> cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx
+[base-seeds] registered=3 relocated=1 skipped=0
+```
+
+**这一次部署云端要做的改动就是上面这些，全部由初始化自动完成。** 人工只需按第 4 节发布 v20；注册种子、搬迁错位 base 都在容器启动时发生。
+
+### 10.8 验证搬迁生效
+
+```sql
+-- 应只剩人工上传，没有任何 *_Base_* 残留
+select id, logical_path, uploaded_by from product_files
+ where logical_path like 'input/cancel_restore/%' or logical_path like 'input/futu_exercises/%'
+ order by logical_path;
+
+-- 三个 base 都应在声明目录下
+select logical_path, uploaded_by, workbook_row_count from product_files
+ where logical_path ~ '/(control_book|futu_exercises|cancel_restore)/.*_Base_'
+ order by logical_path;
+```
+
+若第一条仍返回 `*_Base_*.xlsx`，说明搬迁没跑（看容器日志有没有 `relocated`）。此时可用兜底 SQL——**只改 `logical_path`，不动 `file_path`**：读取走 `file_path` 所以不会坏，但存储对象还留在旧目录，属于可接受的降级。
+
+```sql
+update product_files
+   set logical_path = 'cancel_restore/' || regexp_replace(logical_path, '^input/cancel_restore/', '')
+ where logical_path ~ '^input/cancel_restore/.*_Base_\d{4}_\d{2}\.xlsx$'
+   and not exists (
+     select 1 from product_files p2
+      where lower(p2.logical_path) = lower('cancel_restore/' || regexp_replace(product_files.logical_path, '^input/cancel_restore/', ''))
+   );
+
+update product_files
+   set logical_path = 'futu_exercises/' || regexp_replace(logical_path, '^input/futu_exercises/', '')
+ where logical_path ~ '^input/futu_exercises/.*_Base_\d{4}_\d{2}\.xlsx$'
+   and not exists (
+     select 1 from product_files p2
+      where lower(p2.logical_path) = lower('futu_exercises/' || regexp_replace(product_files.logical_path, '^input/futu_exercises/', ''))
+   );
+```
+
+### 10.9 遗留事项
+
+1. 种子是快照，不自动更新。系统正常按月跑起来后，新 base 由工作流自己产出并被 `injectPreviousMonthBase()` 接管。
+2. 首月可运行月份是 **2026-07**（种子是 2026-06 的 base）。

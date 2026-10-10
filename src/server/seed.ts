@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import XLSX from 'xlsx';
 import { config } from './config.js';
-import { seedBaseSeedFiles } from './baseSeeds.js';
+import { relocateMisplacedBaseFiles, seedBaseSeedFiles } from './baseSeeds.js';
 import type { AppDb, DbClient } from './db.js';
 import { parseFivePercentHoldersGrid, type FivePercentHoldersWorkbook } from './fivePercentHolders/persistence.js';
 import { FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS } from './dataManagementWorkflow/workflowDefinitions.js';
@@ -412,5 +412,13 @@ export async function ensureWorkflowSeedData(db: AppDb) {
   });
   // Outside the transaction: registering a base seed writes a file to storage and spawns a workbook
   // worker, neither of which belongs inside a DB transaction. Insert-if-missing keeps it idempotent.
-  await seedBaseSeedFiles(db);
+  const seeds = await seedBaseSeedFiles(db);
+  // Bases written before `declaredOutputFolder` exist are registered under `input/<folder>`; move
+  // them to the folder the workflow declares so the inheritance chain can find them. Idempotent.
+  const relocated = await relocateMisplacedBaseFiles(db);
+  if (seeds.registered.length || relocated.length) {
+    console.log(
+      `[base-seeds] registered=${seeds.registered.length} relocated=${relocated.length} skipped=${seeds.skipped.length}`,
+    );
+  }
 }

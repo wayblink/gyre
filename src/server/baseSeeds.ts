@@ -49,6 +49,65 @@ export function loadBaseSeedManifest(root = SEED_ROOT): BaseSeedManifest | null 
   return parsed;
 }
 
+/**
+ * Folders a workflow declares as its output directory that `normalizeProductFileStoragePrefix()`
+ * used to rewrite into `input/<folder>`. Bases written before that fix are registered under the
+ * wrong path, so `injectPreviousMonthBase()` cannot find them and the inheritance chain starts a
+ * month late. Relocating them on init is the same class of one-time data migration `schema.ts`
+ * already performs for `employees.tags`.
+ */
+const RELOCATED_BASE_FOLDERS: ReadonlyArray<{ from: string; to: string }> = [
+  { from: 'input/cancel_restore/', to: 'cancel_restore/' },
+  { from: 'input/futu_exercises/', to: 'futu_exercises/' },
+];
+
+/** Workflow-produced bases only: `<...>_Base_<yyyy_MM>.xlsx`, never a manual upload. */
+const WORKFLOW_BASE_FILE_NAME = /_Base_\d{4}_\d{2}\.xlsx$/i;
+
+export type RelocatedBaseFile = { from: string; to: string };
+
+/**
+ * Move bases registered under a rewritten folder back to the folder the workflow declared.
+ *
+ * Idempotent: a row already at the target path is left alone, and the target is checked for a
+ * collision first so a system that somehow has both keeps the existing one and reports the skip.
+ */
+export async function relocateMisplacedBaseFiles(
+  db: Pick<DbClient, 'query' | 'queryOne' | 'execute'>,
+): Promise<RelocatedBaseFile[]> {
+  const relocated: RelocatedBaseFile[] = [];
+  for (const { from, to } of RELOCATED_BASE_FOLDERS) {
+    const rows = await db.query<{ id: number; logical_path: string; original_name: string; file_path: string }>(
+      'select id, logical_path, original_name, file_path from product_files where logical_path like $1',
+      [`${from}%`],
+    );
+    for (const row of rows) {
+      const fileName = row.logical_path.slice(from.length);
+      if (!WORKFLOW_BASE_FILE_NAME.test(fileName)) continue;
+      const targetPath = `${to}${fileName}`;
+      const collision = await db.queryOne<{ id: number }>(
+        'select id from product_files where lower(logical_path) = lower($1)',
+        [targetPath],
+      );
+      if (collision) continue;
+
+      // Move the bytes too, not just the row: `fileStorage` addresses files by `file_path`, and a
+      // later overwrite would otherwise write to the new path and orphan the old object.
+      const buffer = await fileStorage.read(String(row.file_path));
+      const stored = await fileStorage.save('product', String(row.original_name), buffer, { prefix: to });
+      await db.execute('update product_files set logical_path = $2, file_path = $3, stored_name = $4 where id = $1', [
+        Number(row.id),
+        targetPath,
+        stored.filePath,
+        stored.storedName,
+      ]);
+      relocated.push({ from: row.logical_path, to: targetPath });
+      console.log(`[base-seeds] relocated ${row.logical_path} -> ${targetPath}`);
+    }
+  }
+  return relocated;
+}
+
 export type BaseSeedRegistrationResult = {
   registered: string[];
   skipped: string[];
