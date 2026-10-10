@@ -411,6 +411,23 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
   app.delete('/api/monthly-runs/:id', async (request, reply) => {
     const historyId = parseIdParam((request.params as { id: string }).id, 'monthly run id');
     try {
+      // A history parked in `waiting_approval` is paused mid-execution waiting for a human decision,
+      // and the only ways to end it from the run panel are 继续/跳过 — both advance the workflow and
+      // write its output. An operator asking to delete such a row means "throw this away", so end the
+      // run here instead. `cancelRun` finalises it as `skipped`, which the delete guard accepts, so
+      // nothing is left orphaned. Runs that are genuinely executing are still refused below.
+      const parked = await db.queryOne<{ workflow_run_id: number | null }>(
+        `select workflow_run_id from monthly_run_history
+          where id = $1 and status = 'waiting_approval'`,
+        [historyId],
+      );
+      const parkedRunId =
+        parked?.workflow_run_id === null || parked?.workflow_run_id === undefined
+          ? null
+          : Number(parked.workflow_run_id);
+      if (parkedRunId && Number.isInteger(parkedRunId) && parkedRunId > 0) {
+        await workflowRunExecutor.cancelRun(parkedRunId);
+      }
       const operation = await db.transaction((tx) => deleteMonthlyRunHistory(tx, historyId));
       if (!operation) throw notFound('Monthly run not found');
       const { deletedOutputFilePath, ...deleted } = operation;

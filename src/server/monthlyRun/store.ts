@@ -232,8 +232,13 @@ export async function deleteMonthlyRunHistory(
   if (!history) return null;
 
   const status = String(history.status ?? '');
-  if (status === 'pending' || status === 'running' || status === 'waiting_approval') {
-    throw new MonthlyRunHistoryDeleteConflictError('运行中或待审批的历史不能删除，请先结束本次 workflow');
+  // `waiting_approval` is deliberately absent: that run is paused mid-execution waiting for a human
+  // decision, and the DELETE route ends it before getting here (see the route). What remains here is
+  // a run that is actually executing, which must not be deleted out from under the executor.
+  if (status === 'pending' || status === 'running') {
+    throw new MonthlyRunHistoryDeleteConflictError(
+      '本次月度运行仍在执行中，不能删除；请等待它完成，或在工作流运行面板里取消后再删',
+    );
   }
 
   const monthId = Number(history.month_id);

@@ -67,6 +67,7 @@ function workflowRun(overrides: Partial<WorkflowRunRecord> = {}): WorkflowRunRec
 }
 
 class FakeMonthlyDb {
+  deletedHistoryIds: number[] = [];
   history: Record<string, unknown> | null = {
     id: 1,
     update_plan_id: 12,
@@ -172,6 +173,10 @@ class FakeMonthlyDb {
           if (params[2]) this.history.finished_at = params[2];
         }
       }
+      return;
+    }
+    if (/delete from monthly_run_history/i.test(sql)) {
+      this.deletedHistoryIds.push(Number(params[0]));
       return;
     }
     if (/update update_plans/i.test(sql)) {
@@ -446,5 +451,20 @@ test('deleteMonthlyRunHistory rejects a running record before deleting anything'
     },
   };
 
-  await assert.rejects(() => deleteMonthlyRunHistory(db, 8), /运行中或待审批的历史不能删除/);
+  await assert.rejects(() => deleteMonthlyRunHistory(db, 8), /仍在执行中，不能删除/);
+});
+
+test('deleteMonthlyRunHistory allows a record parked in waiting_approval', async () => {
+  // The DELETE route cancels such a run first, which finalises it as `skipped`; what reaches the
+  // store is therefore a terminal row. Pinning this here documents that the store no longer treats
+  // `waiting_approval` as "still running" — the only remaining blockers are pending/running.
+  const db = new FakeMonthlyDb();
+  db.history = { ...db.history, id: 9, status: 'waiting_approval', produced_file_id: null };
+  db.queryOne = async <T>(sql: string): Promise<T | undefined> =>
+    /for update of h/i.test(sql) ? (db.history as unknown as T) : undefined;
+
+  const result = await deleteMonthlyRunHistory(db, 9);
+
+  assert.ok(result);
+  assert.deepEqual(db.deletedHistoryIds, [9]);
 });

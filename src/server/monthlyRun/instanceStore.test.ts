@@ -372,7 +372,7 @@ test('deleteMonthlyRunPlan aborts when a history is running and mutates nothing'
     failOnWrite: true,
   });
 
-  await assert.rejects(() => deleteMonthlyRunPlan(stub.db, 5), /运行中或待审批的历史不能删除/);
+  await assert.rejects(() => deleteMonthlyRunPlan(stub.db, 5), /仍在执行中，不能删除/);
 });
 
 test('deleteMonthlyRunPlan refuses when a month-scoped input file is bound by another instance', async () => {

@@ -420,9 +420,26 @@ AUTH_BOOTSTRAP_SECRET='<口令>' docker compose -f docker-compose.prod.yml up -d
 
 ---
 
+## 8.1 删除卡在「需复核」的月度运行
+
+**现象**：在运行历史里点删除，返回 409「本次月度运行仍在执行中，不能删除；请等待它完成，或在工作流运行面板里取消后再删」。
+
+**为什么会卡住**：某个断言节点按 `failureStrategy: 'warning'` 失败后，工作流会**暂停**在 `waiting_approval` 等人签核。旧代码把 `waiting_approval` 和 `running` 一起拦在删除守卫外，而运行面板上能结束它的只有「继续」「跳过」——这两个操作都会把工作流**往前推**并写出输出，跟"删除"的意图正好相反。于是这条记录既删不掉，也没法简单地丢弃。
+
+**修法**：`DELETE /api/monthly-runs/:id` 现在会先结束这条记录——若它停在 `waiting_approval`，先 `cancelRun()` 把工作流收尾成 `skipped`（未完成的节点标记 skipped，已完成的保留），再走原来的删除逻辑。`cancelRun` 会触发 `applyMonthlyRunPostProcessing`，把历史行状态同步成 `skipped`，因此不会留下孤儿 run。
+
+真正还在执行的（`running` / `pending`）仍然拒绝，但提示改成了可操作的文案。
+
+**操作**：直接点删除即可，无需先点继续/跳过。删除后该次运行在运行历史里消失，工作流 run 以 `skipped` 收尾。
+
+**若仍然 409**：说明这条记录确实是 `running`。去工作流运行面板找到对应 run，点取消，等状态变成终态后再删。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 ```
+fix: let a monthly run parked in waiting_approval be deleted
 feat: relocate bases written to a rewritten output folder on init
 fix: stop rewriting a workflow's declared output folder into input/
 feat: seed every inherit-type monthly base from 2026-06
