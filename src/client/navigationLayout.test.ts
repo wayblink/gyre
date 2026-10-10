@@ -551,11 +551,15 @@ test('Transfer to Futu exposes file-backed monthly summary, cancellation editing
     /id="btnToggleTransferPlanTableView"[\s\S]*<rect x="6" y="3" width="8" height="14" rx="2"/,
   );
   assert.match(transferPage, /id="btnToggleTransferPlanTableView"[\s\S]*v-3\.1h3\.1/);
+  // The page controller owns the edit mode and hides the workflow actions while editing.
+  const transferPlanPageSource = readFileSync(new URL('./transferPlanPage.ts', import.meta.url), 'utf8');
   assert.match(
-    mainSource,
+    transferPlanPageSource,
     /\[data-workflow-update-page="transfer-plan"\], \[data-workflow-export-page="transfer-plan"\]/,
   );
-  assert.match(mainSource, /button\.classList\.toggle\('hidden', transferPlanEditMode\)/);
+  assert.match(transferPlanPageSource, /button\.classList\.toggle\('hidden', editMode\)/);
+  assert.match(transferPlanPageSource, /export function createTransferPlanPage/);
+  assert.match(mainSource, /transferPlanPage\.saveEdit\(\)/);
 });
 
 test('workflow-backed product pages expose update actions and shared update modal', () => {

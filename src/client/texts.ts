@@ -225,6 +225,12 @@ export const TEXTS = {
       'zh-CN': '正在保存编辑、生成输入文件并运行 workflow...',
       'en-US': 'Saving edits, creating an input file, and running the workflow...',
     },
+    transferPlanInvalidQuantity: { 'zh-CN': '请输入有效的取消数量', 'en-US': 'Enter a valid cancellation quantity' },
+    transferPlanUpdated: { 'zh-CN': 'Transfer Plan 已更新', 'en-US': 'Transfer Plan updated' },
+    transferPlanUpdatedWithWarnings: {
+      'zh-CN': 'Transfer Plan 已更新（包含 Warning）',
+      'en-US': 'Transfer Plan updated with warnings',
+    },
     transferPlanProgressSubtitle: {
       'zh-CN': '正在根据编辑内容生成新的输入文件，并运行 Transfer Plan workflow。',
       'en-US': 'Creating a new input file from your edits and running the Transfer Plan workflow.',

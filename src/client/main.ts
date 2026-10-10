@@ -17,8 +17,6 @@ import type {
   SoldShare,
   SummaryCapitalizationSource,
   SummarySnapshot,
-  TransferPlanResponse,
-  WorkflowExecutionResult,
   WorkflowResultFileBinding,
   WorkflowPageSourceBinding,
   ShareworksExercise,
@@ -56,7 +54,7 @@ import {
   type CapitalizationDelta,
 } from './summaryPage.js';
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
-import { renderTransferPlanSummaryTable, type TransferPlanTableView } from './transferPlanPage.js';
+import { createTransferPlanPage } from './transferPlanPage.js';
 import { buildLinkedBadge } from './linkedBadge.js';
 import { applyStaticTranslations, persistLanguage, readStoredLanguage, type AppLanguage } from './i18n.js';
 import { csvRow } from './csv.js';
@@ -91,8 +89,6 @@ let exercisePageSize = 20;
 let soldSharesPage = 1;
 let soldSharesTotal = 0;
 let soldSharesPageSize = 20;
-let transferPlanTableView: TransferPlanTableView = 'summaryRows';
-let transferPlanEditMode = false;
 let employeesPage = 1;
 let employeesTotal = 0;
 let employeesPageSize = 20;
@@ -197,7 +193,7 @@ async function refreshWorkflowUpdatePage(page: WorkflowUpdatePageKey) {
   } else if (page === 'sold-shares') {
     await renderSoldShares();
   } else if (page === 'transfer-plan') {
-    await renderTransferPlan();
+    await transferPlanPage.render();
   } else if (page === 'employee-management') {
     await loadEmployeesPage();
   } else if (page === 'plan-summary') {
@@ -236,6 +232,27 @@ const fivePercentHoldersPage = createFivePercentHoldersPage({
     pollRunUntilFinished: (runId) => workflowUpdateModal.pollRunUntilFinished(runId),
   },
   localizeDom: localizeAppDom,
+});
+
+const transferPlanPage = createTransferPlanPage({
+  el,
+  api,
+  escapeHtml,
+  formatNumber,
+  notify,
+  getLanguage: () => currentLanguage,
+  setButtonLabel,
+  rememberPageData: (page, response) => workflowUpdateModal.rememberPageData(page, response),
+  refreshProductFiles: () => filesPage.refreshProductFiles(),
+  localizeDom: localizeAppDom,
+  workflowModal: {
+    openProgressModal: (title, subtitle) => workflowUpdateModal.openProgressModal(title, subtitle),
+    renderProgress: (run) => workflowUpdateModal.renderProgress(run),
+    statusMessage: (key, detail) => workflowUpdateModal.statusMessage(key, detail),
+    pollRunUntilFinished: (runId, onProgress) => workflowUpdateModal.pollRunUntilFinished(runId, onProgress),
+    forceCloseModal: () => workflowUpdateModal.forceCloseModal(),
+    setCloseLocked: (locked) => workflowUpdateModal.setCloseLocked(locked),
+  },
 });
 
 const accountPage = createAccountPage({
@@ -709,10 +726,7 @@ function applyLanguage() {
   applyLanguageBindings();
 
   // Labels that depend on live page state stay imperative.
-  setButtonLabel(
-    'btnToggleTransferPlanTableView',
-    transferPlanTableView === 'summaryRows' ? t('transposeTable') : t('restoreHorizontal'),
-  );
+  transferPlanPage.syncLabels();
   syncCurrentViewInfoText();
 
   setText('#page-user-management .card-title', pageTitleFor('user-management'));
@@ -1148,7 +1162,7 @@ async function activatePage(page: PageKey) {
     }
 
     if (page === 'transfer-plan') {
-      await renderTransferPlan();
+      await transferPlanPage.render();
     }
 
     if (page === 'employee-management') {
@@ -1833,20 +1847,11 @@ async function initSoldSharesPage() {
 }
 
 async function initTransferPlanPage() {
-  el('btnToggleTransferPlanTableView').addEventListener('click', () => {
-    transferPlanTableView = transferPlanTableView === 'summaryRows' ? 'periodRows' : 'summaryRows';
-    void renderTransferPlan();
-  });
-  el('btnEditTransferPlan').addEventListener('click', () => {
-    transferPlanEditMode = true;
-    void renderTransferPlan();
-  });
-  el('btnCancelTransferPlanEdit').addEventListener('click', () => {
-    transferPlanEditMode = false;
-    void renderTransferPlan();
-  });
-  el('btnSaveTransferPlanEdit').addEventListener('click', () => void saveTransferPlanEdit());
-  await renderTransferPlan();
+  el('btnToggleTransferPlanTableView').addEventListener('click', () => void transferPlanPage.toggleTableView());
+  el('btnEditTransferPlan').addEventListener('click', () => void transferPlanPage.startEdit());
+  el('btnCancelTransferPlanEdit').addEventListener('click', () => void transferPlanPage.cancelEdit());
+  el('btnSaveTransferPlanEdit').addEventListener('click', () => void transferPlanPage.saveEdit());
+  await transferPlanPage.render();
 }
 
 async function initEmployeesPage() {
@@ -2547,116 +2552,6 @@ async function renderSoldShares() {
     )
     .join('');
   localizeAppDom();
-}
-
-async function renderTransferPlan() {
-  const data = await api<TransferPlanResponse>('/api/transfer-plan');
-  setWorkflowPageFiles('transfer-plan', data);
-  el('transferPlanSourceName').textContent = data.sourceFileName;
-  el('transferPlanInTotal').textContent = formatNumber(data.totals.inTotal);
-  el('transferPlanCancelled').textContent = formatNumber(data.totals.cancelledQuantity);
-  el('transferPlanTransferred').textContent = formatNumber(data.totals.transferToFutu);
-  el('transferPlanDetailCount').textContent = formatNumber(data.detailCount);
-
-  const table = renderTransferPlanSummaryTable(
-    data,
-    transferPlanTableView,
-    { escapeHtml, formatNumber },
-    {
-      editable: transferPlanEditMode,
-    },
-  );
-  el('transferPlanSummaryHead').innerHTML = table.headHtml;
-  el('transferPlanSummaryBody').innerHTML = table.bodyHtml;
-  el('transferPlanSummaryTable').classList.toggle(
-    'table-transfer-plan--transposed',
-    transferPlanTableView === 'periodRows',
-  );
-  el('btnEditTransferPlan').classList.toggle('hidden', transferPlanEditMode);
-  el('btnSaveTransferPlanEdit').classList.toggle('hidden', !transferPlanEditMode);
-  el('btnCancelTransferPlanEdit').classList.toggle('hidden', !transferPlanEditMode);
-  document
-    .querySelectorAll<HTMLElement>(
-      '[data-workflow-update-page="transfer-plan"], [data-workflow-export-page="transfer-plan"]',
-    )
-    .forEach((button) => {
-      button.classList.toggle('hidden', transferPlanEditMode);
-    });
-  el('transferPlanEditStatus').textContent = transferPlanEditMode
-    ? t('transferPlanEditStatusEditing')
-    : t('transferPlanEditStatusIdle');
-  const toggleButton = el<HTMLButtonElement>('btnToggleTransferPlanTableView');
-  setButtonLabel(
-    'btnToggleTransferPlanTableView',
-    transferPlanTableView === 'summaryRows' ? t('transposeTable') : t('restoreHorizontal'),
-  );
-  toggleButton.setAttribute('aria-pressed', String(transferPlanTableView === 'periodRows'));
-  localizeAppDom();
-}
-
-function readTransferPlanEdits(): Array<{ period: string; cancelledQuantity: number }> {
-  return Array.from(document.querySelectorAll<HTMLInputElement>('[data-transfer-cancelled-period]')).map((input) => {
-    const period = input.dataset.transferCancelledPeriod ?? '';
-    const cancelledQuantity = Number(input.value);
-    if (!period || !Number.isFinite(cancelledQuantity)) {
-      input.classList.add('is-invalid');
-      throw new Error('请输入有效的取消数量');
-    }
-    input.classList.remove('is-invalid');
-    return { period, cancelledQuantity };
-  });
-}
-
-async function saveTransferPlanEdit() {
-  const saveButton = el<HTMLButtonElement>('btnSaveTransferPlanEdit');
-  const cancelButton = el<HTMLButtonElement>('btnCancelTransferPlanEdit');
-  let edits: Array<{ period: string; cancelledQuantity: number }>;
-  try {
-    edits = readTransferPlanEdits();
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-    return;
-  }
-
-  saveButton.disabled = true;
-  cancelButton.disabled = true;
-  el('transferPlanEditStatus').textContent = t('transferPlanSavingStatus');
-  workflowUpdateModal.openProgressModal(t('transferPlanConfirmAndRun'), t('transferPlanProgressSubtitle'));
-  try {
-    const result = await api<WorkflowExecutionResult>('/api/transfer-plan/edits', {
-      method: 'POST',
-      body: JSON.stringify({ edits }),
-    });
-    const runId = result.run?.id;
-    if (!runId) throw new Error('Workflow run was not created');
-    if (result.run) workflowUpdateModal.renderProgress(result.run);
-    el('workflowUpdateStatus').textContent = workflowUpdateModal.statusMessage('running', String(runId));
-    const run = await workflowUpdateModal.pollRunUntilFinished(runId, (run) => workflowUpdateModal.renderProgress(run));
-    if (run.status !== 'completed' && run.status !== 'completed_with_warnings') {
-      throw new Error(run.errorMessage ?? `Workflow ended with status ${run.status}`);
-    }
-    workflowUpdateModal.renderProgress(run);
-    el('workflowUpdateStatus').textContent = workflowUpdateModal.statusMessage(
-      run.status === 'completed_with_warnings' ? 'completedWithWarnings' : 'completed',
-    );
-    transferPlanEditMode = false;
-    await filesPage.refreshProductFiles();
-    await renderTransferPlan();
-    notify(run.status === 'completed_with_warnings' ? 'Workflow 完成（包含 Warning）' : 'Transfer Plan 已更新', {
-      type: run.status === 'completed_with_warnings' ? 'warning' : 'success',
-    });
-    workflowUpdateModal.forceCloseModal();
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-    el('transferPlanEditStatus').textContent = (error as Error).message;
-    el('workflowUpdateStatus').textContent = workflowUpdateModal.statusMessage('failed', (error as Error).message);
-    el('workflowUpdateProgress').classList.add('is-error');
-    workflowUpdateModal.setCloseLocked(false);
-    el('btnCloseWorkflowUpdateModal').classList.remove('hidden');
-  } finally {
-    saveButton.disabled = false;
-    cancelButton.disabled = false;
-  }
 }
 
 async function loadEmployeeLabels() {
