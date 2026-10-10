@@ -171,11 +171,13 @@ async function assertMonthlyRunInstanceReady(
     const binding = instance.sources[source.sourceKey];
     const fileId = binding?.fileId ?? null;
     if (!fileId) {
-      if (source.required) throw new Error(`Missing source binding: ${source.sourceKey}`);
+      // A missing required binding is operator input, not a server fault: report it as a 400 so the
+      // Monthly Update page can show it instead of logging a stack trace as a 500.
+      if (source.required) throw badRequest(`Missing source binding: ${source.sourceKey}`);
       continue;
     }
     if (source.allowSheetNameOverride && !binding?.sheetName?.trim()) {
-      throw new Error(`Missing source sheet name: ${source.sourceKey}`);
+      throw badRequest(`Missing source sheet name: ${source.sourceKey}`);
     }
     await getProductFileOrThrow(db, fileId);
   }
