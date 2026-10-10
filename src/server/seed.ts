@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import XLSX from 'xlsx';
 import { config } from './config.js';
+import { seedBaseSeedFiles } from './baseSeeds.js';
 import type { AppDb, DbClient } from './db.js';
 import { parseFivePercentHoldersGrid, type FivePercentHoldersWorkbook } from './fivePercentHolders/persistence.js';
 import { FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS } from './dataManagementWorkflow/workflowDefinitions.js';
@@ -409,4 +410,7 @@ export async function ensureWorkflowSeedData(db: AppDb) {
     await seedWorkflowData(client);
     await seedGlobalParameters(client);
   });
+  // Outside the transaction: registering a base seed writes a file to storage and spawns a workbook
+  // worker, neither of which belongs inside a DB transaction. Insert-if-missing keeps it idempotent.
+  await seedBaseSeedFiles(db);
 }

@@ -1,0 +1,109 @@
+{
+  "generatedBy": "scripts/export-base-seeds.ts",
+  "description": "冷启动 base 种子：optionalCategory=inherit 的月度本源在空库中没有可继承的上月产出，由这些文件提供首个 base。初始化时按 logicalPath 注册进 product_files（已存在则跳过）。",
+  "exclude": {
+    "previous_capitalization_summary": "运行期由上月 Capitalization Summary 输出自动注入，无需种子（见 injectPreviousMonthBase）。"
+  },
+  "seeds": [
+    {
+      "sourceKey": "base_control_book",
+      "logicalPath": "control_book/EQ_Control_Book_Base_2026_01.xlsx",
+      "fileName": "EQ_Control_Book_Base_2026_01.xlsx",
+      "sheetName": "EQ Control Book",
+      "contract": {
+        "range": "A9:L",
+        "headerRow": 9
+      },
+      "columns": [
+        "Security ID",
+        "Security",
+        "As of Date",
+        "Process Date",
+        "Trans. Type",
+        "Trans. No.",
+        "Broker No.",
+        "Shares Issued",
+        "Shares Retired",
+        "Issued & Outstanding",
+        "Comment",
+        "Net Shares issued in Period"
+      ],
+      "rowCount": 116,
+      "bytes": 63371,
+      "sha256": "6ff85c8697720237f58bbe29ca62dd4a707e4d2b4e9f63d9e8dd203d4889680e",
+      "baseMonth": "2026-01",
+      "note": "最早的 EQ Control Book 合并 base（2026-01 月度运行产出），冷启动后可从此继续按月继承。"
+    },
+    {
+      "sourceKey": "base_futu_exercises",
+      "logicalPath": "futu_exercises/Futu_Exercises_Base_2026_05.xlsx",
+      "fileName": "Futu_Exercises_Base_2026_05.xlsx",
+      "sheetName": "Futu BCI Exercises",
+      "contract": {
+        "range": "A1:N",
+        "headerRow": 1
+      },
+      "columns": [
+        "Exercise Order No.",
+        "Name",
+        "Employee No.",
+        "Futubull ID",
+        "User ID",
+        "Grant No.",
+        "Grant Date",
+        "Grant Price(USD)",
+        "Exercise Date",
+        "Ordered Qty",
+        "Exercised Qty",
+        "Exercise Cost(USD)",
+        "Deduction/Selling Qty.",
+        "Dealt Qty."
+      ],
+      "rowCount": 780,
+      "bytes": 394446,
+      "sha256": "5d90207784ca3b3d1dd76543629fc483a5bed965565080ac39edbc59a04841e6",
+      "baseMonth": "2026-05",
+      "note": "最早的 Futu BCI Exercises 合并 base（14 列，Exercise Order No. 由合并流程回填）。"
+    },
+    {
+      "sourceKey": "base_cancel_restore_report",
+      "logicalPath": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
+      "fileName": "Gyre Therapeutics取消与恢复报表.xlsx",
+      "sheetName": "取消与恢复明细",
+      "contract": {
+        "range": "A1:W",
+        "headerRow": 1
+      },
+      "columns": [
+        "姓名",
+        "工号",
+        "牛牛号",
+        "员工邮箱",
+        "手机号",
+        "证件号",
+        "在职状态",
+        "授予编号",
+        "激励类型",
+        "所属计划",
+        "授予日期",
+        "授予数量",
+        "授予价(USD)",
+        "创建日期(GMT+8)",
+        "创建编号",
+        "归属日期",
+        "财务变更日期",
+        "变更日期",
+        "变更类型",
+        "取消/恢复原因",
+        "数量",
+        "归属规则",
+        "操作人"
+      ],
+      "rowCount": 758,
+      "bytes": 77440,
+      "sha256": "0b5a3e673c50ab1f093897e41445c261261b3e18cff8870243e407227afd7560",
+      "baseMonth": null,
+      "note": "取消与恢复报表尚无合并产出的 base（cancel_restore/ 目录为空），冷启动沿用人工导入的累计报表；首次月度合并后会产出 cancel_restore/..._Base_<yyyy_MM>.xlsx 并自动接管继承链。"
+    }
+  ]
+}
