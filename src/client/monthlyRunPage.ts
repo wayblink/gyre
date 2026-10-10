@@ -250,7 +250,10 @@ export type IncompleteMonthlySource = {
  * "complete source configuration" tells the operator nothing about which of ten inputs is at fault.
  */
 export function findIncompleteMonthlySource<
-  T extends Pick<MonthlyRunSourceDefinition, 'sourceKey' | 'label' | 'required' | 'allowSheetNameOverride'>,
+  T extends Pick<
+    MonthlyRunSourceDefinition,
+    'sourceKey' | 'label' | 'required' | 'allowSheetNameOverride' | 'defaultSheetName'
+  >,
 >(
   sourceDefinitions: ReadonlyArray<T>,
   bindings: Record<string, MonthlyRunSourceBinding | null | undefined>,
@@ -260,7 +263,14 @@ export function findIncompleteMonthlySource<
     if (source.required && !binding?.fileId) {
       return { sourceKey: source.sourceKey, label: source.label, missing: 'file' };
     }
-    if (source.allowSheetNameOverride && binding?.fileId && !binding.sheetName?.trim()) {
+    // A source with a configured default never blocks on a missing sheet: the default is the answer.
+    // Only a source with nothing to fall back to needs the operator to pick one.
+    if (
+      source.allowSheetNameOverride &&
+      binding?.fileId &&
+      !binding.sheetName?.trim() &&
+      !source.defaultSheetName?.trim()
+    ) {
       return { sourceKey: source.sourceKey, label: source.label, missing: 'sheet' };
     }
   }

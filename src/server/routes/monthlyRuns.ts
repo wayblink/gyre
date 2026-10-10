@@ -176,7 +176,10 @@ async function assertMonthlyRunInstanceReady(
       if (source.required) throw badRequest(`Missing source binding: ${source.sourceKey}`);
       continue;
     }
-    if (source.allowSheetNameOverride && !binding?.sheetName?.trim()) {
+    // A sheet is only mandatory when there is nothing to fall back to. Every source's consuming task
+    // carries its own `$default.sheet`, so demanding one here refused runs that would have used that
+    // default — and bindings saved before the source declared `allowSheetNameOverride` have none.
+    if (!binding?.sheetName?.trim() && !source.defaultSheetName?.trim()) {
       throw badRequest(`Missing source sheet name: ${source.sourceKey}`);
     }
     await getProductFileOrThrow(db, fileId);

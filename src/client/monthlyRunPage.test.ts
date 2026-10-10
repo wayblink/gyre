@@ -244,14 +244,22 @@ test('findIncompleteMonthlySource names the offending source and what it is miss
     label: 'Futu Exercise Monthly Update',
     missing: 'file',
   });
-  assert.deepEqual(
+  // A source with a configured default never blocks on a missing sheet: the default is the answer.
+  assert.equal(
     findIncompleteMonthlySource([SHEET_SOURCE], { incremental_futu_exercises: { fileId: 162, sheetName: null } }),
+    null,
+  );
+  // Only a source with nothing to fall back to needs the operator to pick one.
+  assert.deepEqual(
+    findIncompleteMonthlySource([{ ...SHEET_SOURCE, defaultSheetName: null }], {
+      incremental_futu_exercises: { fileId: 162, sheetName: null },
+    }),
     { sourceKey: 'incremental_futu_exercises', label: 'Futu Exercise Monthly Update', missing: 'sheet' },
   );
-  // A sheetless binding that the default has already filled in is complete.
+  // A picked sheet wins over the default.
   assert.equal(
     findIncompleteMonthlySource([SHEET_SOURCE], {
-      incremental_futu_exercises: { fileId: 162, sheetName: '行权明细数据' },
+      incremental_futu_exercises: { fileId: 162, sheetName: '行权汇总数据' },
     }),
     null,
   );
