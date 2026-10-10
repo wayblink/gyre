@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { isRecord } from '../utils/json.js';
 import {
   attachWorkflowRunToMonthlyHistory,
   createMonthlyRunHistory,
@@ -34,7 +35,8 @@ import {
   previousMonthKey,
 } from './support.js';
 import { resolveWorkflowRunPlan } from '../workflow/startWorkflowRun.js';
-import { conflict, getProductFileOrThrow } from './support.js';
+import { findFileRefProblems, formatFileRefProblems } from '../workflow/fileRefPreflight.js';
+import { badRequest, conflict, getProductFileOrThrow } from './support.js';
 import { workflowRunToExecutionResult } from '../workflow/runResult.js';
 import { fileStorage } from '../storage.js';
 import { monthlySourcesFromSchema } from '../monthlyRun/sourceSchema.js';
@@ -111,23 +113,37 @@ const monthlyRunTriggerBodySchema = z.object({
   expectedWorkflowVersion: z.number().int().positive().optional(),
 });
 
-async function injectPreviousCancelRestoreBase(
+/**
+ * Point an internally-maintained source at last month's merged base workbook.
+ *
+ * Both the cancel/restore report and the Futu exercises base are *outputs* of a previous monthly
+ * run: the merge sub-workflows persist `<folder>/<Base name>_<yyyy_MM>.xlsx` so the next month can
+ * chain off them. Resolving them here keeps the sources out of the UI, and — more importantly —
+ * stops the definition's hardcoded default from being used, because those defaults are written once
+ * when the workflow is authored and go stale the moment a new month starts.
+ */
+async function injectPreviousMonthBase(
   db: RouteContext['db'],
   runtimeParameters: WorkflowRuntimeParameters,
   monthKey: string,
+  sourceKey: string,
+  basePath: string,
+  sheet: string,
 ): Promise<void> {
   const fileRefs = runtimeParameters.fileRefs;
   if (!fileRefs || typeof fileRefs !== 'object' || Array.isArray(fileRefs)) return;
-  const previousBasePath = `cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_${previousMonthKey(monthKey).replace('-', '_')}.xlsx`;
+  // An explicit binding always wins: the operator picked that file on purpose.
+  const existing = (fileRefs as Record<string, unknown>)[sourceKey];
+  if (isRecord(existing) && String(existing.key ?? '').trim()) return;
   const previousBase = await db.queryOne<{ logical_path: string }>(
     'select logical_path from product_files where logical_path = $1 order by id desc limit 1',
-    [previousBasePath],
+    [basePath],
   );
   if (!previousBase?.logical_path) return;
-  (fileRefs as Record<string, unknown>).base_cancel_restore_report = {
+  (fileRefs as Record<string, unknown>)[sourceKey] = {
     provider: 'product-files',
     key: previousBase.logical_path,
-    sheet: '取消与恢复明细',
+    sheet,
   };
 }
 
@@ -253,7 +269,23 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
     // The cancel/restore base is maintained internally: when last month's merged
     // workbook exists, feed it into this run automatically instead of requiring a
     // user-visible source binding.
-    await injectPreviousCancelRestoreBase(db, resolvedRuntimeParameters, monthlyRunInstance.monthKey);
+    const previousMonthUnderscore = previousMonthKey(monthlyRunInstance.monthKey).replace('-', '_');
+    await injectPreviousMonthBase(
+      db,
+      resolvedRuntimeParameters,
+      monthlyRunInstance.monthKey,
+      'base_cancel_restore_report',
+      `cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_${previousMonthUnderscore}.xlsx`,
+      '取消与恢复明细',
+    );
+    await injectPreviousMonthBase(
+      db,
+      resolvedRuntimeParameters,
+      monthlyRunInstance.monthKey,
+      'base_futu_exercises',
+      `futu_exercises/Futu_Exercises_Base_${previousMonthUnderscore}.xlsx`,
+      'Futu BCI Exercises',
+    );
 
     const monthKey = String(resolvedRuntimeParameters.month);
     const monthId = await getOrCreateMonth(db, monthKey);
@@ -281,6 +313,20 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
       workflow: workflowRow,
       runtimeParameters: resolvedRuntimeParameters,
     });
+
+    // Monthly Update merges the instance's saved sources over the definition's defaults, so a
+    // default that is not a real product file (or an unbound optional source whose default is an
+    // empty object) would otherwise reach a `sheet.range.extract` task and fail several steps into
+    // the run — after earlier steps already wrote files. Refuse to start instead, listing every
+    // unusable input at once.
+    const fileRefProblems = await findFileRefProblems({
+      db,
+      tasks: runtimeConfiguration.tasks,
+      runtimeFileRefs: runtimeConfiguration.runtimeParameters.fileRefs as Record<string, unknown> | undefined,
+    });
+    if (fileRefProblems) {
+      throw badRequest(`月度运行输入文件不可用：${formatFileRefProblems(fileRefProblems)}`);
+    }
 
     const runtimeFileRefs = runtimeConfiguration.runtimeParameters.fileRefs;
     const primarySourceFileId =
