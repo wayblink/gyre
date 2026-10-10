@@ -39,13 +39,7 @@ const tpMain = createTextFormatter('main');
 
 /** Page titles keyed by page; the values live in the merged translation table. */
 const pageTitleTranslations = TEXTS.pageTitles as Record<PageKey, Record<AppLanguage, string>>;
-import {
-  applyThemeSelection,
-  COLOR_OPTIONS,
-  getStoredTheme,
-  type ThemeColorName,
-  type ThemeSelection,
-} from './theme.js';
+import { createThemeControls } from './theme.js';
 import { confirmAction, notify } from './uiFeedback.js';
 import { createWorkflowPage } from './workflowPage.js';
 import { createDocsPage } from './docsPage.js';
@@ -140,7 +134,6 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = 'captable.sidebar.collapsed';
 const MONTHLY_RUN_INPUT_COLLAPSED_STORAGE_KEY = 'captable.monthlyRun.inputCollapsed';
 let sidebarCollapsed = false;
 let monthlyRunInputCollapsed = false;
-let themeSelection: ThemeSelection = getStoredTheme();
 let currentLanguage: AppLanguage = readStoredLanguage();
 let appInitialized = false;
 
@@ -242,6 +235,12 @@ const fivePercentHoldersPage = createFivePercentHoldersPage({
     pollRunUntilFinished: (runId) => workflowUpdateModal.pollRunUntilFinished(runId),
   },
   localizeDom: localizeAppDom,
+});
+
+const themeControls = createThemeControls({
+  el,
+  escapeHtml,
+  text: (key) => t(key),
 });
 
 const fixedValuePage = createFixedValuePage({
@@ -740,7 +739,8 @@ function applyLanguage() {
   el('authSubmit').textContent = authStatus?.bootstrapRequired ? t('createAndLogin') : t('login');
   el('sidebarToggle').setAttribute('aria-label', sidebarCollapsed ? t('expandSidebar') : t('collapseSidebar'));
   syncLanguageButtons();
-  renderThemeCards();
+  // The theme picker carries localized descriptions, so it is re-rendered on a language switch.
+  themeControls.renderCards();
   applyStaticTranslations(document, currentLanguage);
   syncWorkflowActionLabels();
 }
@@ -917,50 +917,6 @@ function initSidebarToggle() {
   sidebarCollapsed = readSidebarCollapsedPreference();
   applySidebarState();
   el('sidebarToggle').addEventListener('click', () => setSidebarCollapsed(!sidebarCollapsed));
-}
-
-function renderThemeCards() {
-  el('themeColorOptions').innerHTML = COLOR_OPTIONS.map((option) => {
-    const descByColor: Record<ThemeColorName, string> = {
-      blue: t('blueDesc'),
-      teal: t('tealDesc'),
-      amber: t('amberDesc'),
-    };
-    return `
-      <button
-        class="theme-card${themeSelection.color === option.name ? ' active' : ''}"
-        type="button"
-        data-theme-color="${option.name}"
-      >
-        <span class="theme-card-head">
-          <span>
-            <strong>${escapeHtml(option.label)}</strong>
-            <small>${escapeHtml(descByColor[option.name])}</small>
-          </span>
-          ${themeSelection.color === option.name ? `<span class="theme-check">${escapeHtml(t('current'))}</span>` : ''}
-        </span>
-        <span class="theme-swatches" aria-hidden="true">
-          ${option.swatches.map((color) => `<span class="theme-swatch" style="background-color:${escapeHtml(color)}"></span>`).join('')}
-        </span>
-      </button>`;
-  }).join('');
-
-  document.querySelectorAll<HTMLElement>('[data-theme-color]').forEach((button) => {
-    button.addEventListener('click', () => setThemeColor(button.dataset.themeColor as ThemeColorName));
-  });
-}
-
-function applyTheme() {
-  applyThemeSelection(themeSelection);
-  if (document.getElementById('themeColorOptions')) {
-    renderThemeCards();
-  }
-}
-
-function setThemeColor(color: ThemeColorName) {
-  if (themeSelection.color === color) return;
-  themeSelection = { ...themeSelection, color };
-  applyTheme();
 }
 
 function setCurrentUser(user: AuthenticatedUser | null) {
@@ -3242,7 +3198,7 @@ async function initSettingsPage() {
   el('btnAddFixedValue').addEventListener('click', () => fixedValuePage.openCreateModal());
   el('btnSubmitFixedValue').addEventListener('click', () => void fixedValuePage.submitCreate());
   el('btnSubmitFixedValueEdit').addEventListener('click', () => void fixedValuePage.submitEdit());
-  renderThemeCards();
+  themeControls.renderCards();
   syncLanguageButtons();
 }
 
@@ -3351,7 +3307,7 @@ async function initializeApp() {
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    applyTheme();
+    themeControls.apply();
     el('authForm').addEventListener('submit', (event) => void submitAuthForm(event));
     const status = await fetchAuthStatus();
     if (!status.authenticated) {

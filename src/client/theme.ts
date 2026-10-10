@@ -90,3 +90,78 @@ export function applyThemeSelection(selection: ThemeSelection) {
     // Ignore storage failures; the DOM theme still updates immediately.
   }
 }
+
+/**
+ * Theme selection plus the settings-page cards that choose it.
+ *
+ * main.ts owned the current selection and re-rendered the picker from `applyLanguage()`, which meant
+ * a language switch rebuilt the theme UI as a side effect of translation. Keeping the selection here
+ * lets the page ask for a re-render explicitly.
+ */
+export type ThemeControlsDeps = {
+  el: <T extends HTMLElement>(id: string) => T;
+  escapeHtml: (text: unknown) => string;
+  /** Localized copy for the color descriptions and the "current" marker. */
+  text: (key: 'blueDesc' | 'tealDesc' | 'amberDesc' | 'current') => string;
+};
+
+export type ThemeControls = {
+  /** Re-apply the stored selection and re-render the picker if it is on screen. */
+  apply: () => void;
+  setColor: (color: ThemeColorName) => void;
+  renderCards: () => void;
+};
+
+const COLOR_DESCRIPTIONS: Record<ThemeColorName, 'blueDesc' | 'tealDesc' | 'amberDesc'> = {
+  blue: 'blueDesc',
+  teal: 'tealDesc',
+  amber: 'amberDesc',
+};
+
+export function createThemeControls(deps: ThemeControlsDeps): ThemeControls {
+  const { el, escapeHtml } = deps;
+  let selection = getStoredTheme();
+
+  function renderCards() {
+    el('themeColorOptions').innerHTML = COLOR_OPTIONS.map((option) => {
+      const desc = deps.text(COLOR_DESCRIPTIONS[option.name]);
+      const active = selection.color === option.name;
+      return `
+      <button
+        class="theme-card${active ? ' active' : ''}"
+        type="button"
+        data-theme-color="${option.name}"
+      >
+        <span class="theme-card-head">
+          <span>
+            <strong>${escapeHtml(option.label)}</strong>
+            <small>${escapeHtml(desc)}</small>
+          </span>
+          ${active ? `<span class="theme-check">${escapeHtml(deps.text('current'))}</span>` : ''}
+        </span>
+        <span class="theme-swatches" aria-hidden="true">
+          ${option.swatches.map((color) => `<span class="theme-swatch" style="background-color:${escapeHtml(color)}"></span>`).join('')}
+        </span>
+      </button>`;
+    }).join('');
+
+    document.querySelectorAll<HTMLElement>('[data-theme-color]').forEach((button) => {
+      button.addEventListener('click', () => setColor(button.dataset.themeColor as ThemeColorName));
+    });
+  }
+
+  function apply() {
+    applyThemeSelection(selection);
+    if (document.getElementById('themeColorOptions')) {
+      renderCards();
+    }
+  }
+
+  function setColor(color: ThemeColorName) {
+    if (selection.color === color) return;
+    selection = { ...selection, color };
+    apply();
+  }
+
+  return { apply, setColor, renderCards };
+}
