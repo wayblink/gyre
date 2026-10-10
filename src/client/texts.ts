@@ -258,6 +258,18 @@ export const TEXTS = {
       'en-US': 'Global Parameters saved; running the 5% Holders workflow...',
     },
     holdersUpdated: { 'zh-CN': '5% Holders 更新完成', 'en-US': '5% Holders update completed' },
+    accountNameRequired: { 'zh-CN': '账号名和显示名不能为空', 'en-US': 'Username and display name are required' },
+    accountSaved: { 'zh-CN': '账号信息已保存', 'en-US': 'Account information saved' },
+    accountPasswordIncomplete: {
+      'zh-CN': '请填写当前密码、新密码和确认新密码',
+      'en-US': 'Fill in the current password, the new password and its confirmation',
+    },
+    accountPasswordMismatch: { 'zh-CN': '两次输入的新密码不一致', 'en-US': 'The new passwords do not match' },
+    accountPasswordTooShort: {
+      'zh-CN': '新密码长度至少为 8 位',
+      'en-US': 'The new password must be at least 8 characters',
+    },
+    accountPasswordUpdated: { 'zh-CN': '密码已更新', 'en-US': 'Password updated' },
     holdersUpdatedWithWarnings: {
       'zh-CN': '5% Holders 更新完成（包含 Warning）',
       'en-US': '5% Holders update completed with warnings',

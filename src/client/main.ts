@@ -31,6 +31,7 @@ import { createMonthlyRunPage } from './monthlyRunPage.js';
 import { createWorkflowUpdateModal, type WorkflowUpdatePageKey } from './workflowUpdateModal.js';
 import { createUserManagementPage } from './userManagementPage.js';
 import { createFixedValuePage } from './fixedValuePage.js';
+import { createAccountPage } from './accountPage.js';
 import { createFivePercentHoldersPage } from './fivePercentHoldersPage.js';
 import { createTexts, createTextFormatter, TEXTS, type TextKey } from './texts.js';
 
@@ -235,6 +236,14 @@ const fivePercentHoldersPage = createFivePercentHoldersPage({
     pollRunUntilFinished: (runId) => workflowUpdateModal.pollRunUntilFinished(runId),
   },
   localizeDom: localizeAppDom,
+});
+
+const accountPage = createAccountPage({
+  el,
+  api,
+  notify,
+  getLanguage: () => currentLanguage,
+  onProfileSaved: setCurrentUser,
 });
 
 const themeControls = createThemeControls({
@@ -1155,7 +1164,7 @@ async function activatePage(page: PageKey) {
     }
 
     if (page === 'account') {
-      await loadAccountPage();
+      await accountPage.load();
     }
 
     if (page === 'docs') {
@@ -1908,92 +1917,15 @@ async function initEmployeesPage() {
 }
 
 async function initAccountPage() {
-  el('btnSaveAccountProfile').addEventListener('click', () => void submitAccountProfile());
-  el('btnOpenChangePasswordModal').addEventListener('click', openAccountPasswordModal);
-  el('btnChangeAccountPassword').addEventListener('click', () => void submitAccountPassword());
+  el('btnSaveAccountProfile').addEventListener('click', () => void accountPage.submitProfile());
+  el('btnOpenChangePasswordModal').addEventListener('click', () => accountPage.openPasswordModal());
+  el('btnChangeAccountPassword').addEventListener('click', () => void accountPage.submitPassword());
   document.querySelectorAll<HTMLElement>('[data-close="accountPasswordModal"]').forEach((button) => {
-    button.addEventListener('click', closeAccountPasswordModal);
+    button.addEventListener('click', () => accountPage.closePasswordModal());
   });
   el('accountPasswordModal').addEventListener('click', (event) => {
-    if (event.target === el('accountPasswordModal')) closeAccountPasswordModal();
+    if (event.target === el('accountPasswordModal')) accountPage.closePasswordModal();
   });
-}
-
-async function loadAccountPage() {
-  const data = await api<{ account: AccountProfile }>('/api/account');
-  el<HTMLInputElement>('accountUsername').value = data.account.username;
-  el<HTMLInputElement>('accountDisplayName').value = data.account.displayName;
-  el<HTMLInputElement>('accountEmail').value = data.account.email ?? '';
-  el<HTMLInputElement>('accountPhone').value = data.account.phone ?? '';
-}
-
-async function submitAccountProfile() {
-  const payload = {
-    username: el<HTMLInputElement>('accountUsername').value.trim(),
-    displayName: el<HTMLInputElement>('accountDisplayName').value.trim(),
-    email: el<HTMLInputElement>('accountEmail').value.trim() || null,
-    phone: el<HTMLInputElement>('accountPhone').value.trim() || null,
-  };
-  if (!payload.username || !payload.displayName) {
-    notify('账号名和显示名不能为空', { type: 'warning' });
-    return;
-  }
-  try {
-    const data = await api<{ account: AccountProfile }>('/api/account', {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    });
-    authStatus = authStatus ? { ...authStatus, user: data.account } : authStatus;
-    setCurrentUser(data.account);
-    notify('账号信息已保存', { type: 'success' });
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-  }
-}
-
-async function submitAccountPassword() {
-  const currentPassword = el<HTMLInputElement>('accountCurrentPassword').value;
-  const newPassword = el<HTMLInputElement>('accountNewPassword').value;
-  const confirmNewPassword = el<HTMLInputElement>('accountConfirmNewPassword').value;
-  if (!currentPassword || !newPassword || !confirmNewPassword) {
-    notify('请填写当前密码、新密码和确认新密码', { type: 'warning' });
-    return;
-  }
-  if (newPassword !== confirmNewPassword) {
-    notify('两次输入的新密码不一致', { type: 'warning' });
-    return;
-  }
-  if (newPassword.length < 8) {
-    notify('新密码长度至少为 8 位', { type: 'warning' });
-    return;
-  }
-  try {
-    await api('/api/account/password', {
-      method: 'PATCH',
-      body: JSON.stringify({ currentPassword, newPassword }),
-    });
-    resetAccountPasswordForm();
-    closeAccountPasswordModal();
-    notify('密码已更新', { type: 'success' });
-  } catch (error) {
-    notify((error as Error).message, { type: 'error' });
-  }
-}
-
-function resetAccountPasswordForm() {
-  el<HTMLInputElement>('accountCurrentPassword').value = '';
-  el<HTMLInputElement>('accountNewPassword').value = '';
-  el<HTMLInputElement>('accountConfirmNewPassword').value = '';
-}
-
-function openAccountPasswordModal() {
-  resetAccountPasswordForm();
-  el('accountPasswordModal').classList.remove('hidden');
-  el<HTMLInputElement>('accountCurrentPassword').focus();
-}
-
-function closeAccountPasswordModal() {
-  el('accountPasswordModal').classList.add('hidden');
 }
 
 function pageCountOf(total: number, pageSize: number) {
