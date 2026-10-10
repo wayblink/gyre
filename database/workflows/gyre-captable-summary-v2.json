@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 19,
+  "version": 20,
   "tasks": [
     {
       "x": 48,
@@ -1215,12 +1215,12 @@
         "sheet": "43105"
       },
       "base_control_book": {
-        "key": "control_book/EQ_Control_Book_Base_2026_01.xlsx",
+        "key": "control_book/EQ_Control_Book_Base_2026_06.xlsx",
         "sheet": "EQ Control Book",
         "provider": "product-files"
       },
       "base_futu_exercises": {
-        "key": "futu_exercises/Futu_Exercises_Base_2026_05.xlsx",
+        "key": "futu_exercises/Futu_Exercises_Base_2026_06.xlsx",
         "sheet": "Futu BCI Exercises",
         "provider": "product-files"
       },
@@ -1234,7 +1234,7 @@
         "provider": "product-files"
       },
       "base_cancel_restore_report": {
-        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
+        "key": "cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx",
         "sheet": "取消与恢复明细",
         "provider": "product-files"
       },

@@ -44,26 +44,26 @@ export type BaseSeedDefinition = {
 export const BASE_SEEDS: BaseSeedDefinition[] = [
   {
     sourceKey: 'base_control_book',
-    logicalPath: 'control_book/EQ_Control_Book_Base_2026_01.xlsx',
+    logicalPath: 'control_book/EQ_Control_Book_Base_2026_06.xlsx',
     sheetName: 'EQ Control Book',
     contract: { range: 'A9:L', headerRow: 9 },
-    note: '最早的 EQ Control Book 合并 base（2026-01 月度运行产出），冷启动后可从此继续按月继承。',
+    note: '2026-06 的 EQ Control Book 合并 base。',
   },
   {
     sourceKey: 'base_futu_exercises',
-    logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_05.xlsx',
+    logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_06.xlsx',
     sheetName: 'Futu BCI Exercises',
     contract: { range: 'A1:N', headerRow: 1 },
-    note: '最早的 Futu BCI Exercises 合并 base（14 列，Exercise Order No. 由合并流程回填）。',
+    note: '2026-06 的 Futu BCI Exercises 合并 base（14 列，Exercise Order No. 由合并流程回填）。',
   },
   {
     sourceKey: 'base_cancel_restore_report',
-    logicalPath: 'input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx',
+    logicalPath: 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
     sheetName: '取消与恢复明细',
     contract: { range: 'A1:W', headerRow: 1 },
     note:
-      '取消与恢复报表尚无合并产出的 base（cancel_restore/ 目录为空），冷启动沿用人工导入的累计报表；' +
-      '首次月度合并后会产出 cancel_restore/..._Base_<yyyy_MM>.xlsx 并自动接管继承链。',
+      '2026-06 的取消与恢复合并 base。此前该 base 一直被写进 input/cancel_restore/（输出目录被' +
+      '重写成 input/ 子目录），继承链找不到它；已修正为声明式输出目录。',
   },
 ];
 

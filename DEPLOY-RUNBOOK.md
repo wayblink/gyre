@@ -11,11 +11,11 @@
 
 ## 0. 一分钟背景（为什么有这些步骤）
 
-这次要发布的内容里，**只有一项是数据库变更**：工作流定义 `gyre-captable-summary-v2` 从 v18 升到 v19。
+这次要发布的内容里，**只有一项是数据库变更**：工作流定义 `gyre-captable-summary-v2` 从 v19 升到 v20。
 
-前端硬编码了 `MONTHLY_WORKFLOW_VERSION = 19`，服务端拿数据库里的 `workflow_definitions.version` 跟它比对。**不一致时月度更新页直接报「版本不匹配」并拒绝执行**（`POST /api/monthly-runs` 返回 409）。所以不更新数据库，整个月度功能不可用——这不是降级，是硬失效。
+前端硬编码了 `MONTHLY_WORKFLOW_VERSION = 20`，服务端拿数据库里的 `workflow_definitions.version` 跟它比对。**不一致时月度更新页直接报「版本不匹配」并拒绝执行**（`POST /api/monthly-runs` 返回 409）。所以不更新数据库，整个月度功能不可用——这不是降级，是硬失效。
 
-而应用启动时的 seed 逻辑是 `insert ... on conflict (code) do nothing`（见 `src/server/seed.ts` 的 `insertWorkflowDefinitionIfMissing`）：**只插入缺失的定义，绝不覆盖已有行**。所以 v19 必须显式发布，重启容器不会带上它。
+而应用启动时的 seed 逻辑是 `insert ... on conflict (code) do nothing`（见 `src/server/seed.ts` 的 `insertWorkflowDefinitionIfMissing`）：**只插入缺失的定义，绝不覆盖已有行**。所以 v20 必须显式发布，重启容器不会带上它。
 
 其余改动（前端重构、页面拆分、i18n 合并、输入校验）都不碰数据库结构，随镜像一起上线即可。
 
@@ -36,14 +36,14 @@
 | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
 | 触发任何一次月度运行（`POST /api/monthly-runs`）                       | 会真实执行业务工作流、写文件、改 `monthly_run_instances` 状态 |
 | `delete` / `update` / `drop` 任何业务表                                | 本手册没有需要你手写 DML 的步骤                               |
-| `--force` 发布工作流定义                                               | 只有云端版本**高于** 19 时才需要，那是异常状态                |
+| `--force` 发布工作流定义                                               | 只有云端版本**高于** 20 时才需要，那是异常状态                |
 | 修改 `AUTH_DISABLED`、`AUTH_BOOTSTRAP_SECRET`、`SESSION_COOKIE_SECURE` | 安全相关配置                                                  |
 | 导入演示数据（`DEMO_SEED_ON_INIT=true` / `npm run seed:demo`）         | 会写业务数据                                                  |
 
 ### 停下来报告的条件
 
 - 第 3 节预检 SQL ① 返回非 0
-- `workflow_definitions` 里 `gyre-captable-summary-v2` 的 version **大于 19**
+- `workflow_definitions` 里 `gyre-captable-summary-v2` 的 version **大于 20**
 - 应用容器反复重启 / 健康检查不过
 - `docker compose logs app` 里出现 `Runtime parameter reference not found` 或 `Missing element #`
 
@@ -159,7 +159,7 @@ select count(*) as monthly_instances from monthly_run_instances;
 
 ---
 
-## 4. 数据库变更：发布工作流定义 v19
+## 4. 数据库变更：发布工作流定义 v20
 
 ### 4.1 方式 A（推荐）：在运行中的应用容器内执行
 
@@ -173,14 +173,14 @@ docker compose -f docker-compose.prod.yml exec app \
   node dist/src/server/workflow/publishWorkflowSeed.js gyre-captable-summary-v2 --dry-run
 
 # 期望输出：
-#   validated gyre-captable-summary-v2 v19 from database/workflows/gyre-captable-summary-v2.json (workflow_id=..., version_id=...)
+#   validated gyre-captable-summary-v2 v20 from database/workflows/gyre-captable-summary-v2.json (workflow_id=..., version_id=...)
 
 # 确认无误后正式发布
 docker compose -f docker-compose.prod.yml exec app \
   node dist/src/server/workflow/publishWorkflowSeed.js gyre-captable-summary-v2
 
 # 期望输出：
-#   published gyre-captable-summary-v2 v19 from database/workflows/gyre-captable-summary-v2.json (workflow_id=..., version_id=...)
+#   published gyre-captable-summary-v2 v20 from database/workflows/gyre-captable-summary-v2.json (workflow_id=..., version_id=...)
 ```
 
 > 注意：必须在**新镜像已经跑起来之后**执行（脚本和 `database/` 都在镜像里）。所以顺序是第 5 节先构建启动，再回到这里发布。
@@ -226,13 +226,13 @@ process.stdout.write(
 );
 MJS
 
-node /tmp/gen-publish-sql.mjs > /tmp/publish-v19.sql
+node /tmp/gen-publish-sql.mjs > /tmp/publish-v20.sql
 
 # 自检：应看到 where code = 'gyre-captable-summary-v2'
-grep -o "where code = '[^']*'" /tmp/publish-v19.sql
+grep -o "where code = '[^']*'" /tmp/publish-v20.sql
 
 # 确认无误后执行
-psql "$DATABASE_URL" -f /tmp/publish-v19.sql
+psql "$DATABASE_URL" -f /tmp/publish-v20.sql
 ```
 
 执行后按 6.2 节核对。注意：jsonb 不保留键顺序，所以校验时要用**深比较**（如 `assert.deepStrictEqual`），直接字符串比对会误报不一致。
@@ -241,13 +241,13 @@ psql "$DATABASE_URL" -f /tmp/publish-v19.sql
 
 | 字段                                                                    | 变更                                                                                                                                                                      |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`                                                               | 18 → **19**                                                                                                                                                               |
+| `version`                                                               | 19 → **20**                                                                                                                                                               |
 | `runtime_params_schema_json.fileRefs.properties.*`                      | 10 个源全部新增 `allowSheetNameOverride: true` 与 `defaultSheetName`（月度输入源可选 sheet，并带默认值）                                                                  |
 | `tasks_json`                                                            | `extract_previous_capitalization_summary` 的 `sheetName` 从写死的 `"Capitalization Summary"` 改为 `$fromRuntime: "fileRefs.previous_capitalization_summary.sheet"` 描述符 |
 | `runtime_params_defaults_json.fileRefs.previous_capitalization_summary` | `{}` → `{"sheet": "Capitalization Summary"}`（否则上面的 `$fromRuntime` 解析不到会抛 `Runtime parameter reference not found`）                                            |
-| `runtime_params_defaults_json.fileRefs.base_control_book`               | `key` 改为种子实际登记的 `control_book/EQ_Control_Book_Base_2026_01.xlsx`（原值 `input/2026-05/EQ Control Book.xlsx` 是输入文件，不是 base）                              |
-| `runtime_params_defaults_json.fileRefs.base_futu_exercises`             | `key` 改为 `futu_exercises/Futu_Exercises_Base_2026_05.xlsx`（原值 `output/futu-exercises/Futu_Exercises_Base.xlsx` 没有任何任务会写出，见第 10 节）                      |
-| `runtime_params_defaults_json.fileRefs.base_cancel_restore_report`      | 去掉硬编码的 `id: 206`（dev 库 id，换库后指向别的文件）；`key` 不变                                                                                                       |
+| `runtime_params_defaults_json.fileRefs.base_control_book`               | `key` 改为种子登记的 `control_book/EQ_Control_Book_Base_2026_06.xlsx`（原值 `input/2026-05/EQ Control Book.xlsx` 是输入文件，不是 base）                                  |
+| `runtime_params_defaults_json.fileRefs.base_futu_exercises`             | `key` 改为 `futu_exercises/Futu_Exercises_Base_2026_06.xlsx`（原值 `output/futu-exercises/Futu_Exercises_Base.xlsx` 没有任何任务会写出）                                  |
+| `runtime_params_defaults_json.fileRefs.base_cancel_restore_report`      | `key` 改为 `cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx`；去掉硬编码的 `id: 206`（dev 库 id，换库后指向别的文件）                                   |
 
 **已存在的 `workflow_runs` 不受影响**：它们各自快照了 `tasks_snapshot_json`，并通过 `version_id` 指向 v17 的版本行，该行不会被删改。
 
@@ -312,11 +312,11 @@ docker compose -f docker-compose.prod.yml logs --tail=200 app | grep -iE 'error|
 ### 6.2 数据库状态
 
 ```sql
--- version 必须是 19
+-- version 必须是 20
 select id, code, version, status, updated_at
   from workflow_definitions where code = 'gyre-captable-summary-v2';
 
--- v18 已 published；v17 仍在（历史 run 指着它）
+-- v20 已 published；v19 及更早仍在（历史 run 指着各自版本）
 select version, status, published_at
   from workflow_definition_versions
  where workflow_id = (select id from workflow_definitions where code = 'gyre-captable-summary-v2')
@@ -349,7 +349,7 @@ for s in d['sources']:
 "
 ```
 
-**期望**：`workflowVersion = 19`、`sources = 10`、`全部可选 sheet: True`。
+**期望**：`workflowVersion = 20`、`sources = 10`、`全部可选 sheet: True`。
 
 若这里是 17，说明第 4 节没生效——**不要继续**，回去重跑。
 
@@ -404,10 +404,10 @@ AUTH_BOOTSTRAP_SECRET='<口令>' docker compose -f docker-compose.prod.yml up -d
 ## 8. 完成标准（全部打勾才算完成）
 
 - [ ] 第 3 节预检 ① 返回 0；② ③ 若为 1 已报告并得到许可
-- [ ] `gyre-captable-summary-v2` 的 `version` = 19，`workflow_definition_versions` 有 v19 published
+- [ ] `gyre-captable-summary-v2` 的 `version` = 20，`workflow_definition_versions` 有 v20 published
 - [ ] `docker compose ps` 两个服务均 Up / healthy
 - [ ] `app` 日志无 error / fatal / unhandled / reference not found
-- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 19`、10 个源、全部 `allowSheetNameOverride: true`
+- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 20`、10 个源、全部 `allowSheetNameOverride: true`
 - [ ] `GET /api/files` 未登录返回 401
 - [ ] 「月度更新」页无版本不匹配提示，源配置里能看到 sheet 下拉且默认值正确
 - [ ] 第 6.5 节若已执行：月度运行未被启动前校验拒绝，或拒绝信息指名了具体源
@@ -421,6 +421,8 @@ AUTH_BOOTSTRAP_SECRET='<口令>' docker compose -f docker-compose.prod.yml up -d
 ## 9. 附：本次发布涉及的代码提交
 
 ```
+fix: stop rewriting a workflow's declared output folder into input/
+feat: seed every inherit-type monthly base from 2026-06
 fix: ship real cold-start base seeds for the inherit-type monthly sources
 docs: add a cloud deployment runbook for the v18 workflow definition
 1bd4953 fix: stop requiring a monthly sheet name the workflow already defaults
@@ -453,11 +455,21 @@ a6c4605 fix: refuse a monthly run whose file inputs cannot resolve
 
 ```
 database/base-seeds/
-├── manifest.json                                          # 每个种子的契约、列、行数、sha256、base 月份
-├── control_book/EQ_Control_Book_Base_2026_01.xlsx         # base_control_book
-├── futu_exercises/Futu_Exercises_Base_2026_05.xlsx        # base_futu_exercises
-└── input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx   # base_cancel_restore_report
+├── manifest.json                                              # 每个种子的契约、列、行数、sha256、base 月份
+├── control_book/EQ_Control_Book_Base_2026_06.xlsx             # base_control_book
+├── futu_exercises/Futu_Exercises_Base_2026_06.xlsx            # base_futu_exercises
+└── cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx  # base_cancel_restore_report
 ```
+
+| 源                           | 契约实测                                    |
+| ---------------------------- | ------------------------------------------- |
+| `base_control_book`          | `EQ Control Book` / A9:L / 12 列 120 行     |
+| `base_futu_exercises`        | `Futu BCI Exercises` / A1:N / 14 列 1025 行 |
+| `base_cancel_restore_report` | `取消与恢复明细` / A1:W / 23 列 758 行      |
+
+三个种子统一取 **2026-06** 的合并产出。
+
+**为什么一个月份就够。** base 是「截至上月末的累计 to-date 状态」，不是当月快照；月度合并按自然键幂等，且增量只取当月行。所以拿 2026-06 的 base 去跑 2026-07、2026-09 或更晚都成立——**首月可运行月份统一是 2026-07**。已在 dev 库实测：2026-06 种子下，2026-07 与 2026-09 的计划里三个 `base_*` 都解析到真实文件。
 
 `manifest.json` 里每个种子都记录了**消费任务的抽取契约**（sheet、range、headerRow）和按该契约实测出的列名/行数/校验和。初始化注册前会重新校验：字节对不上、或按契约抽出来的行列数和清单不一致，就**跳过并告警**，不会注册一个会在空库上跑到一半才失败的表。
 
@@ -484,9 +496,9 @@ select logical_path, uploaded_by, workbook_sheet_count, workbook_row_count
 期望 3 行。容器日志里对应：
 
 ```
-[base-seeds] registered base_control_book @ control_book/EQ_Control_Book_Base_2026_01.xlsx (id=..., 63371 bytes, 1 sheets, 116 rows)
-[base-seeds] registered base_futu_exercises @ futu_exercises/Futu_Exercises_Base_2026_05.xlsx (id=..., 394446 bytes, 1 sheets, 780 rows)
-[base-seeds] registered base_cancel_restore_report @ input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx (id=..., 77440 bytes, 1 sheets, 758 rows)
+[base-seeds] registered base_control_book @ control_book/EQ_Control_Book_Base_2026_06.xlsx (id=..., 65027 bytes, 1 sheets, 121 rows)
+[base-seeds] registered base_futu_exercises @ futu_exercises/Futu_Exercises_Base_2026_06.xlsx (id=..., 519770 bytes, 1 sheets, 1025 rows)
+[base-seeds] registered base_cancel_restore_report @ cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx (id=..., 756036 bytes, 1 sheets, 758 rows)
 ```
 
 ### 10.5 换一批种子 / 重新生成
@@ -499,8 +511,28 @@ git add database/base-seeds
 
 注意：换了种子文件必须同步改 `gyre-captable-summary-v2` 的 `runtimeParamsDefaults.fileRefs.*.key`，否则默认值指向的路径和种子登记的路径不一致，冷启动依然解析不到。改完按第 4 节重新发布，并 bump 版本。
 
-### 10.6 已知限制（需要需求方决策）
+### 10.6 已修复：cancel_restore base 一直写错目录
 
-1. **`cancel_restore/` 目录从来没有产出过 base。** 现存的两个 `..._Cancel_Restore_Base_*.xlsx` 一个在 `input/cancel_restore/`（人工放置）、一个是我验证时产生的孤儿（已删）。而 `injectPreviousMonthBase()` 只在 `cancel_restore/` 下找。所以取消/恢复这条继承链**目前链不起来**，冷启动靠种子里的那份人工累计报表顶着。这是既有问题，不是本次引入。
-2. **种子的 base 月份不一致**：control_book 是 2026-01、futu_exercises 是 2026-05。因为它们是各自链条上**最早的真实产出**。首次可运行月份因此不同（分别为 2026-02 与 2026-06），`manifest.json` 里的 `baseMonth` 记录了这个事实，没有粉饰。
-3. 种子是快照，不会自动更新。系统正常按月跑起来后，新的 base 由工作流自己产出并被 `injectPreviousMonthBase()` 接管，种子只在冷启动那一瞬间有用。
+**现象**：`cancel_restore/` 目录从来是空的，看起来「取消与恢复合并从不产出 base」。
+
+**根因**：`saveProductWorkbook()` 用 `normalizeProductFileStoragePrefix()` 归一化 `folderPrefix`，而那个函数有一张硬编码白名单——
+
+```ts
+if (normalized === 'output' || normalized.startsWith('output/')) return normalized;
+if (normalized === 'input' || normalized.startsWith('input/')) return normalized;
+if (normalized === 'control_book' || normalized.startsWith('control_book/')) return normalized;
+return `input/${normalized}`; // ← 其余一律塞进 input/
+```
+
+`workbook.persist.excel` 的 `folderPrefix` 语义是「输出目录」，但走到这里被改写成 `input/<folder>`。于是 `cancel_restore` → `input/cancel_restore/`、`futu_exercises` → `input/futu_exercises/`，而 `injectPreviousMonthBase()` 只在 `cancel_restore/`、`futu_exercises/` 下找。
+
+**base 每个月都正常产出了，只是落在没人查找的目录里**，继承链因此永远链不起来。`control_book` 侥幸在白名单里，所以一直正常。
+
+**修法**：`saveProductWorkbook()` 新增 `declaredOutputFolder` 参数。工作流持久化路径（`context.ts` 的 `saveGeneratedWorkbook`）传 `true`，改用 `normalizeStorageFolderPrefix()`——只校验路径合法性（拒绝 `..` 等），不重写目录。HTTP 上传路径保持原行为：它们本来就会先用 `inputStorageFolderPrefix()` 归一化，语义上确实是「input 下的子目录」。
+
+回归测试 `src/server/routes/productFileFolder.test.ts` 在空库上断言：声明 `cancel_restore` 的文件落在 `cancel_restore/`，同目录的上传仍落在 `input/cancel_restore/`，`../` 仍被拒绝。
+
+### 10.7 遗留事项
+
+1. **dev 库一条错位记录已迁移**：`input/cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx` → `cancel_restore/...`。云端若也有 `input/cancel_restore/*_Base_*.xlsx` 或 `input/futu_exercises/*_Base_*.xlsx`，需要同样搬一次（改 `logical_path` 与 `file_path`），否则继承链仍要从 2026-07 之后才接上。
+2. 种子是快照，不自动更新。系统正常按月跑起来后，新 base 由工作流自己产出并被 `injectPreviousMonthBase()` 接管。
