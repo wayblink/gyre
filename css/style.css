@@ -8643,22 +8643,55 @@ textarea.form-input {
     line-height: 1.5;
 }
 
-/* File-name pattern of the export an input expects; styled like the required/optional badges so it
-   reads as a property of the input instead of a stray line of muted text. */
-.source-file-template {
+/* File-name pattern of the export an input expects. Collapsed to an icon: a pill on every row made
+   the input table noisy, and the pattern only matters while the operator is looking for the file. */
+.source-file-template__trigger {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-left: 2px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+.source-file-template__trigger svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.source-file-template__trigger:hover,
+.source-file-template__trigger:focus-visible,
+.source-file-template__trigger[aria-expanded='true'] {
+    background: var(--slate-100);
+    color: var(--primary-600);
+}
+
+/* Wraps onto its own line under the description instead of being an absolutely positioned popover,
+   which would be clipped by the table's horizontal scroll container. */
+.source-file-template__body {
+    display: flex;
+    flex: 1 1 100%;
     flex-wrap: wrap;
+    align-items: baseline;
     gap: 6px;
-    max-width: 100%;
-    margin-top: 4px;
-    padding: 2px 10px;
-    border-radius: var(--radius-full);
-    background-color: var(--slate-100);
+    margin-top: var(--space-1);
     color: var(--text-muted);
     font-size: var(--text-xs);
     font-weight: 400;
-    line-height: 1.6;
+    line-height: 1.5;
 }
 
 .source-file-template__label {
@@ -8669,6 +8702,10 @@ textarea.form-input {
 .source-file-template__pattern {
     min-width: 0;
     max-width: 100%;
+    padding: 0 5px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--bg-subtle);
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
     font-size: var(--text-xs);
     color: var(--slate-700);

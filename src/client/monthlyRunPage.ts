@@ -114,17 +114,36 @@ const sourcePurposeEnglish: Record<string, string> = {
  * badge already says so, and inventing a file name for them only suggests there is something to go
  * and find.
  */
+/**
+ * Renderers that live outside the page initializer cannot reach `deps.escapeHtml`, and the values
+ * here come from the DB workflow schema, so they must still be escaped.
+ */
+function escapeTemplateText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function sourceFileNameTemplate(
   source: MonthlyRunSourceDefinition,
   t: (key: 'fileTemplateLabel') => string,
 ): string {
-  if (!source.fileTemplate?.trim()) return '';
-  // Pill chrome mirrors the required/optional badges so the pattern reads as a property of the
-  // input rather than a stray line of text.
-  return `<span class="source-file-template">
-    <span class="source-file-template__label">${t('fileTemplateLabel')}</span>
-    <code class="source-file-template__pattern">${source.fileTemplate}</code>
-  </span>`;
+  const pattern = source.fileTemplate?.trim();
+  if (!pattern) return '';
+  const label = t('fileTemplateLabel');
+  const key = escapeTemplateText(source.sourceKey);
+  // Collapsed behind an icon: a pill on every row made the table noisy, and the pattern is only
+  // needed while the operator is looking for the file.
+  return `<button type="button" class="source-file-template__trigger" data-source-template-toggle="${key}" aria-label="${label}: ${escapeTemplateText(pattern)}" title="${label}" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"></path><path d="M14 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg>
+    </button>
+    <span class="source-file-template__body hidden" data-source-template-body="${key}">
+      <span class="source-file-template__label">${label}</span>
+      <code class="source-file-template__pattern">${escapeTemplateText(pattern)}</code>
+    </span>`;
 }
 
 function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLanguage): string {
@@ -705,6 +724,26 @@ export function createMonthlyRunPage({
       });
     });
 
+    document.querySelectorAll<HTMLButtonElement>('[data-source-template-toggle]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const sourceKey = button.dataset.sourceTemplateToggle;
+        if (!sourceKey) return;
+        const body = document.querySelector<HTMLElement>(`[data-source-template-body="${CSS.escape(sourceKey)}"]`);
+        if (!body) return;
+        const willOpen = body.classList.contains('hidden');
+        // One open at a time: several expanded patterns push the table apart.
+        document
+          .querySelectorAll<HTMLElement>('[data-source-template-body]')
+          .forEach((other) => other.classList.add('hidden'));
+        document
+          .querySelectorAll<HTMLButtonElement>('[data-source-template-toggle]')
+          .forEach((other) => other.setAttribute('aria-expanded', 'false'));
+        body.classList.toggle('hidden', !willOpen);
+        button.setAttribute('aria-expanded', String(willOpen));
+      });
+    });
+
     document.querySelectorAll<HTMLButtonElement>('[data-business-source-remove]').forEach((button) => {
       button.addEventListener('click', () => {
         const sourceKey = button.dataset.businessSourceRemove;
@@ -972,8 +1011,8 @@ export function createMonthlyRunPage({
             <div class="source-description-inline">
               ${requirementBadge}
               <span class="source-purpose">${escapeHtml(sourceDescription(source, lang()))}</span>
+              ${sourceFileNameTemplate(source, tt)}
             </div>
-            ${sourceFileNameTemplate(source, tt)}
           </td>
           <td class="source-uploaded-cell">${uploaded}</td>
           <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>

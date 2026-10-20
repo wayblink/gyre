@@ -732,7 +732,7 @@ test('monthly page blocks rendering and execution while the workflow version is 
   assert.match(source, /let workflowVersionMismatch: \{ expected: number; actual: number \} \| null = null;/);
 });
 
-test('an input row shows the file-name pattern so operators know which export to upload', () => {
+test('an input row keeps the file-name pattern collapsed behind an icon until asked for', () => {
   const t = (key: 'fileTemplateLabel') => (key === 'fileTemplateLabel' ? 'File name pattern' : key);
   const source = {
     sourceKey: 'incremental_control_book',
@@ -746,12 +746,19 @@ test('an input row shows the file-name pattern so operators know which export to
 
   const html = sourceFileNameTemplate(source, t);
 
-  assert.match(html, /File name pattern/);
-  assert.match(html, /Control_Books_Detail_Data_DD\.MM\.YYYY_HH\.mm\.xlsx/);
-  assert.match(html, /<code/, 'the pattern is rendered as code so it is easy to copy');
-  // Same pill chrome as the required/optional badges, so it reads as a property of the input.
-  assert.match(html, /class="source-file-template"/);
-  assert.doesNotMatch(html, /source-file-template--auto/);
+  // Collapsed: only an icon button is visible, the pattern itself starts hidden.
+  assert.match(html, /data-source-template-toggle="incremental_control_book"/);
+  assert.match(html, /<svg/, 'the trigger is an icon, not text');
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /class="source-file-template__body hidden"/);
+  assert.match(html, /data-source-template-body="incremental_control_book"/);
+  // Still discoverable for screen readers, which cannot click.
+  assert.match(html, /aria-label="File name pattern: Control_Books_Detail_Data_DD\.MM\.YYYY_HH\.mm\.xlsx"/);
+  // The pattern travels with the row so the toggle can reveal it without another request.
+  assert.match(
+    html,
+    /<code class="source-file-template__pattern">Control_Books_Detail_Data_DD\.MM\.YYYY_HH\.mm\.xlsx<\/code>/,
+  );
 
   // Sources the system carries over have no template, so nothing is rendered for them: the badge
   // already says the file is inherited and they must not look like something to go and upload.
