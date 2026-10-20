@@ -1,5 +1,6 @@
 import type { AppDb } from '../db.js';
 import { applyMonthlyRunPostProcessing } from '../monthlyRun/store.js';
+import { triggerMonthlyRecordPageSyncs } from '../monthlyRun/recordPageSync.js';
 import { dataFrameToWorkbookBuffer, extractSheetRangeAsDataFrame, rowsToDataFrame } from '../excel.js';
 import { upsertTableRows } from '../workflow/tableUpsert.js';
 import { WorkflowFileSourceRegistry } from '../workflow/fileSources.js';
@@ -140,7 +141,12 @@ export function createRouteContext(db: AppDb): RouteContext {
 
   const workflowRunStore = new WorkflowRunStore(db);
   const workflowRunExecutor = new WorkflowRunExecutor(workflowRunStore, workflowOperatorRuntime, undefined, {
-    onRunFinalized: (run) => applyMonthlyRunPostProcessing(db, run),
+    onRunFinalized: async (run) => {
+      await applyMonthlyRunPostProcessing(db, run);
+      // Each record page gets its own month-tagged run; the pages look their snapshot up by
+      // workflow code + month, so an in-process invoke would not be visible to them.
+      await triggerMonthlyRecordPageSyncs({ db, runStore: workflowRunStore, executor: workflowRunExecutor }, run);
+    },
   });
 
   return { db, workflowFileSources, workflowOperatorRuntime, workflowRunStore, workflowRunExecutor };
