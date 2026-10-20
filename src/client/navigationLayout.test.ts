@@ -22,11 +22,12 @@ const grantRecordWorkflow = JSON.parse(
   version: number;
   tasks: Array<{
     id: string;
-    params?: { sheetName?: string; headerRow?: number };
+    operatorCode?: string;
+    params?: { sheetName?: string; headerRow?: number; emptyColumns?: string };
     inputs?: Record<string, { guards?: Array<{ type?: string; params?: { expectedColumns?: string } }> }>;
   }>;
   runtimeParamsSchema: { fileRefs: { properties: Record<string, { label?: string }> } };
-  runtimeParamsDefaults: { fileRefs: { shareworks_grants: { key: string } } };
+  runtimeParamsDefaults: { fileRefs: Record<string, { key?: string; sheet?: string }> };
 };
 
 function pageLabel(page: string): string {
@@ -375,16 +376,29 @@ test('Grant Record workflow uses the Shareworks source workbook contract', () =>
   const project = grantRecordWorkflow.tasks.find((task) => task.id === 'project_shareworks_grants_columns');
   const schemaGuard = project?.inputs?.input1?.guards?.find((guard) => guard.type === 'dataframe.schema.assert');
 
-  assert.equal(grantRecordWorkflow.version, 2);
+  assert.equal(grantRecordWorkflow.version, 4);
   assert.equal(extract?.params?.sheetName, 'Personnel Summary (Options OS D');
   assert.equal(extract?.params?.headerRow, 2);
+  // The source is optional now, so the extract yields an empty frame instead of failing — and that
+  // frame must still declare the columns the projection reads, or the SQL breaks on a missing file.
+  assert.equal(extract?.operatorCode, 'sheet.optional-range.extract');
+  for (const column of ['Employee Number', 'Shares Outstanding', 'Last Name']) {
+    assert.match(extract?.params?.emptyColumns ?? '', new RegExp(column.replace('/', '\\/')));
+  }
   assert.match(schemaGuard?.params?.expectedColumns ?? '', /Employee Number/);
   assert.match(schemaGuard?.params?.expectedColumns ?? '', /Shares Outstanding/);
   assert.match(
     grantRecordWorkflow.runtimeParamsSchema.fileRefs.properties.shareworks_grants.label ?? '',
     /source workbook/i,
   );
-  assert.match(grantRecordWorkflow.runtimeParamsDefaults.fileRefs.shareworks_grants.key, /2026\/06-26\//);
+  // No hardcoded product file: a default key would label May/June data with whatever month the
+  // operator picked. Only the sheet is defaulted.
+  assert.equal(grantRecordWorkflow.runtimeParamsDefaults.fileRefs.shareworks_grants.key, undefined);
+  assert.equal(grantRecordWorkflow.runtimeParamsDefaults.fileRefs.futu_grants.key, undefined);
+  assert.equal(
+    grantRecordWorkflow.runtimeParamsDefaults.fileRefs.shareworks_grants.sheet,
+    'Personnel Summary (Options OS D',
+  );
 });
 
 test('Grant Record employee tag filter is wired through label ids for every grant source', () => {
@@ -1232,19 +1246,24 @@ test('record pages are month-scoped: snapshot key, picker, and per-month artifac
 
   // Every record API resolves its artifact for the requested month: exercises (futu), shareworks,
   // the merge view (two artifacts), sold-shares, cancellation — plus the pre-existing plan-summary.
-  assert.equal((serverSource.match(/month: requestedMonth \|\| null/g) ?? []).length, 7);
+  assert.equal((serverSource.match(/month: requestedMonth \|\| null/g) ?? []).length, 9);
 
   // Months advertise which pages have a snapshot; an empty snapshot does not count.
-  for (const flag of ['hasExerciseData', 'hasSoldSharesData', 'hasCancellationData']) {
+  for (const flag of ['hasExerciseData', 'hasSoldSharesData', 'hasCancellationData', 'hasGrantData']) {
     assert.match(monthsSource, new RegExp(`as "${flag}"`));
   }
-  assert.equal((monthsSource.match(/file\.workbook_row_count > 0/g) ?? []).length, 3);
+  assert.equal((monthsSource.match(/file\.workbook_row_count > 0/g) ?? []).length, 4);
 
   // The UI sends the selected month, and only the month-scoped pages send it on update.
   assert.equal((esopTablesSource.match(/month=\$\{encodeURIComponent\(host\.getMonth\(\)\)\}/g) ?? []).length, 5);
   assert.match(modalSource, /const MONTH_SCOPED_PAGES = new Set<WorkflowUpdatePageKey>\(\[/);
   assert.match(modalSource, /MONTH_SCOPED_PAGES\.has\(page\) \? deps\.getMonth\?\.\(\)/);
-  for (const picker of ['exerciseMonthPicker', 'soldSharesMonthPicker', 'cancellationMonthPicker']) {
+  for (const picker of [
+    'grantMonthPicker',
+    'exerciseMonthPicker',
+    'soldSharesMonthPicker',
+    'cancellationMonthPicker',
+  ]) {
     assert.match(html, new RegExp(`id="${picker}"`));
     assert.match(mainSource, new RegExp(`pickerId: '${picker}'`));
   }

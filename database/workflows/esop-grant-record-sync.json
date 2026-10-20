@@ -3,7 +3,7 @@
   "name": "ESOP / Grant Record Sync",
   "description": "分别读取 Futu 授予记录与 Shareworks Options OS Detail 源表，并更新 Grant Record 三个展示视图。",
   "status": "active",
-  "version": 2,
+  "version": 4,
   "tasks": [
     {
       "x": 48,
@@ -16,15 +16,17 @@
         "fileRef": {
           "$type": "object",
           "$label": "Futu 授予记录",
-          "$fromRuntime": "fileRefs.futu_grants"
+          "$fromRuntime": "fileRefs.futu_grants",
+          "$default": {}
         },
         "headerRow": 1,
         "sheetName": "授予记录",
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": ""
       },
       "dependsOn": [],
-      "description": "从独立业务输入 Futu 授予记录 提取 授予记录。",
-      "operatorCode": "sheet.range.extract",
+      "description": "从独立业务输入 Futu 授予记录 提取 授予记录。 来源可选：未提供时输出空 dataframe，不阻断运行。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {
@@ -38,15 +40,17 @@
         "fileRef": {
           "$type": "object",
           "$label": "Shareworks Options OS Detail source workbook",
-          "$fromRuntime": "fileRefs.shareworks_grants"
+          "$fromRuntime": "fileRefs.shareworks_grants",
+          "$default": {}
         },
         "headerRow": 2,
         "sheetName": "Personnel Summary (Options OS D",
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "Employee Number, Last Name, First Name, Middle Name, Plan Name, Grant Name, Grant Type, Employee Grant Number, Grant Date, Vesting Start Date, Service Start Date, Original VCD (migrated grants), Expire Date, Expire Date (participant view), Earliest Expire Cancel Date, Latest Expire Cancel Date, No. of Shares Granted, Exercise Price per Share, Vesting Schedule, Early Exercise Allowed, No. of Shares Vested, No. of Shares Unvested, Shares Exercised / Released, Shares Subject To Repurchase, Shares Cancelled/Expired, Shares Outstanding, Outstanding Unvested, Outstanding Vested/Exercisable"
       },
       "dependsOn": [],
-      "description": "从 Shareworks Options OS Detail 源工作簿的 Personnel Summary (Options OS D sheet 提取授予明细，表头在第 2 行。",
-      "operatorCode": "sheet.range.extract",
+      "description": "从 Shareworks Options OS Detail 源工作簿的 Personnel Summary (Options OS D sheet 提取授予明细，表头在第 2 行。 来源可选：未提供时输出空 dataframe，不阻断运行。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {
@@ -105,10 +109,14 @@
         "sheetName": "Futu Grants",
         "sourceKey": "futu_grants",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/grant-record"
+        "folderPrefix": "output/grant-record",
+        "fileNameSuffix": {
+          "$fromRuntime": "monthUnderscore"
+        },
+        "skipWhenEmpty": true
       },
       "dependsOn": [],
-      "description": "将 Futu 授予记录 dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "description": "将 Futu 授予记录 dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀；输入为空时不落盘。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     },
@@ -129,10 +137,14 @@
         "sheetName": "Shareworks Grants",
         "sourceKey": "shareworks_grants",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/grant-record"
+        "folderPrefix": "output/grant-record",
+        "fileNameSuffix": {
+          "$fromRuntime": "monthUnderscore"
+        },
+        "skipWhenEmpty": true
       },
       "dependsOn": [],
-      "description": "将 Shareworks 源表投影后的 Grant Record dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "description": "将 Shareworks 源表投影后的 Grant Record dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀；输入为空时不落盘。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     }
@@ -151,17 +163,29 @@
           "label": "Shareworks Options OS Detail source workbook"
         }
       }
+    },
+    "month": {
+      "type": "string",
+      "label": "Month",
+      "description": "快照月份（YYYY-MM）。写入 run 的 runtime_parameters，页面按它取当月快照；也用于输出文件名后缀。",
+      "required": false,
+      "default": ""
+    },
+    "monthUnderscore": {
+      "type": "string",
+      "label": "Month (underscore)",
+      "description": "月份的下划线形式（YYYY_MM），用于输出文件名后缀。",
+      "required": false,
+      "default": ""
     }
   },
   "runtimeParamsDefaults": {
     "fileRefs": {
       "futu_grants": {
-        "key": "input/2026-05/!!Gyre Cap Table 05.31.26【新】.xlsx",
-        "provider": "product-files"
+        "sheet": "授予记录"
       },
       "shareworks_grants": {
-        "key": "input/2026/06-26/09-7-2026_12-12-34_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx",
-        "provider": "product-files"
+        "sheet": "Personnel Summary (Options OS D"
       }
     }
   }
