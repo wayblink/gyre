@@ -98,6 +98,14 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
     folderPrefix: { type: 'string', label: '输出目录', required: false, placeholder: 'output/captable', default: '' },
     sheetName: { type: 'string', label: 'Sheet 名称', required: false, placeholder: 'Sheet1', default: 'Sheet1' },
     uploadedBy: { type: 'string', label: '上传人', required: false, placeholder: 'Workflow', default: 'Workflow' },
+    skipWhenEmpty: {
+      type: 'boolean',
+      label: '空输入不落盘',
+      required: false,
+      description:
+        '输入 dataframe 没有任何数据行时直接跳过写文件，保留该目录下已有的同名产物。用于「可选来源未提供」不应覆盖上一次有效快照的场景。',
+      default: false,
+    },
   },
   runtimeParameters: [
     {
@@ -119,11 +127,17 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
         guards: task.inputs?.input1?.guards,
       },
     };
+    task.params.skipWhenEmpty = task.params.skipWhenEmpty === true;
     normalizeWorkflowTaskDependencies(task);
   },
   async execute(context) {
     const { task, runtime } = context;
     const dataframe = await requireInputDataFrame(context, 'input1');
+    // Nothing to write: leave the folder alone rather than publishing an empty file that would
+    // become the newest artifact for the month and replace a snapshot a previous run produced.
+    if (task.params.skipWhenEmpty === true && dataframe.rows.length === 0) {
+      return { kind: 'dataframe', dataFrame: dataframe };
+    }
     const baseFileName = normalizePersistExcelFileName(task.params.fileName, `${task.name || 'workflow-output'}`);
     const folderPrefix = String(task.params.folderPrefix ?? '').trim() || undefined;
     const fileName = withOutputFileVersion(

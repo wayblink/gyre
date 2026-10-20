@@ -3,7 +3,7 @@
   "name": "ESOP / Exercise to Date Sync",
   "description": "读取 Futu 员工行权记录源工作簿的行权汇总数据，并替换 Exercise Record 展示数据。",
   "status": "active",
-  "version": 4,
+  "version": 5,
   "tasks": [
     {
       "x": 48,
@@ -71,10 +71,11 @@
         "folderPrefix": "output/exercise-record",
         "fileNameSuffix": {
           "$fromRuntime": "monthUnderscore"
-        }
+        },
+        "skipWhenEmpty": true
       },
       "dependsOn": [],
-      "description": "将标准化后的 Futu 行权汇总数据输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。",
+      "description": "将标准化后的 Futu 行权汇总数据输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。 输入为空时不落盘，避免覆盖上一次有效快照。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     },
@@ -119,10 +120,11 @@
         "folderPrefix": "output/exercise-record",
         "fileNameSuffix": {
           "$fromRuntime": "monthUnderscore"
-        }
+        },
+        "skipWhenEmpty": true
       },
       "dependsOn": [],
-      "description": "将 Shareworks Exec Option OS dataframe 原样输出为 Excel 文件（保留全部 22 列），展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。",
+      "description": "将 Shareworks Exec Option OS dataframe 原样输出为 Excel 文件（保留全部 22 列），展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。 输入为空时不落盘，避免覆盖上一次有效快照。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     }
