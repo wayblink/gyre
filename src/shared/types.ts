@@ -690,6 +690,14 @@ export type WorkflowRuntimeParameterField = {
   allowSheetNameOverride?: boolean;
   hidden?: boolean;
   optionalCategory?: 'inherit' | 'validation' | 'supplement';
+  /**
+   * File-name pattern of the export this source expects, e.g.
+   * `Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx`. Shown next to the description so operators
+   * can tell which file to upload without opening the docs.
+   */
+  fileTemplate?: string;
+  /** Set when the system supplies the file (carried over from last month) and there is nothing to upload. */
+  fileTemplateAuto?: boolean;
 };
 
 export type WorkflowRuntimeParametersSchema = Record<string, WorkflowRuntimeParameterField>;
@@ -1002,6 +1010,8 @@ export type MonthlyRunSourceDefinition = {
   required: boolean;
   hidden?: boolean;
   optionalCategory?: 'inherit' | 'validation' | 'supplement';
+  fileTemplate?: string;
+  fileTemplateAuto?: boolean;
 };
 
 export type MonthlyRunFixedValueDefinition = {

@@ -101,7 +101,23 @@ const sourcePurposeEnglish: Record<string, string> = {
   base_cancel_restore_report: 'Prior month full cancel & restore base, carried forward from last month’s merge.',
   incremental_cancel_restore_report:
     'Current month cancel & restore report (increment or full), merged by creation ID.',
+  exercise_record_shareworks: 'Shareworks exec option export; refreshes the Exercise Record page (Shareworks view).',
+  sold_shares_futu: 'Futu sold-shares export; refreshes the Sold Shares page.',
 };
+
+/**
+ * File-name pattern for a monthly input, shown under its purpose so operators know which export to
+ * upload. Patterns come from the DB workflow schema (`fileTemplate`); the wording of the label is
+ * the only thing that differs per language, so the template itself is never translated.
+ */
+export function sourceFileNameTemplate(
+  source: MonthlyRunSourceDefinition,
+  t: (key: 'fileTemplateLabel' | 'fileTemplateAutoLabel') => string,
+): string {
+  if (!source.fileTemplate) return '';
+  const label = source.fileTemplateAuto ? t('fileTemplateAutoLabel') : t('fileTemplateLabel');
+  return `<div class="source-file-template"><span>${label}</span><code>${source.fileTemplate}</code></div>`;
+}
 
 function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLanguage): string {
   if (language === 'en-US') return sourcePurposeEnglish[source.sourceKey] ?? source.description;
@@ -116,7 +132,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 31;
+export const MONTHLY_WORKFLOW_VERSION = 32;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was
@@ -949,6 +965,7 @@ export function createMonthlyRunPage({
               ${requirementBadge}
               <span class="source-purpose">${escapeHtml(sourceDescription(source, lang()))}</span>
             </div>
+            ${sourceFileNameTemplate(source, tt)}
           </td>
           <td class="source-uploaded-cell">${uploaded}</td>
           <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>
@@ -1195,6 +1212,7 @@ export function createMonthlyRunPage({
               <span>${escapeHtml(tt('defaultSheet'))}</span>
               <strong>${escapeHtml(source.defaultSheetName ?? '-')}</strong>
             </div>
+            ${sourceFileNameTemplate(source, tt)}
           </section>
         `;
       })

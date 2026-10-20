@@ -8643,6 +8643,31 @@ textarea.form-input {
     line-height: 1.5;
 }
 
+/* File-name pattern of the export an input expects; keeps operators from guessing which file to upload. */
+.source-file-template {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+.source-file-template code {
+    min-width: 0;
+    max-width: 100%;
+    padding: 0 5px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--bg-subtle);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+}
+
 .source-table__col-uploaded {
     width: 43%;
 }

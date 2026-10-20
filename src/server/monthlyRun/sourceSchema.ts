@@ -30,6 +30,8 @@ export function monthlySourcesFromSchemaOrdered(schemaJson: unknown): OrderedMon
         required: field.required === true,
         hidden: field.hidden === true,
         optionalCategory: readOptionalCategory(field.optionalCategory),
+        fileTemplate: typeof field.fileTemplate === 'string' ? field.fileTemplate : undefined,
+        fileTemplateAuto: field.fileTemplateAuto === true,
         order: typeof field.order === 'number' ? field.order : 0,
       };
     })

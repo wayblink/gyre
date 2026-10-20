@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 31,
+  "version": 32,
   "tasks": [
     {
       "x": 48,
@@ -1136,7 +1136,9 @@
               "label": "SERIES B sheet"
             }
           },
-          "description": "用于计算 Series B Preferred Stock（Shares Issued 合计 × 5）；未提供时为 0。"
+          "description": "Series B 的 Control Book 明细导出，提供 Shares Issued；×5 得到 Series B Preferred Stock，未提供时按 0 计。",
+          "fileTemplate": "SeriesB_Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx",
+          "fileTemplateAuto": false
         },
         "base_control_book": {
           "type": "object",
@@ -1154,7 +1156,9 @@
               "label": "Base sheet"
             }
           },
-          "description": "上月完整 EQ Control Book，作为增量合并的 base。"
+          "description": "完整的 EQ Control Book，作为增量合并的基表；一般由上月结果自动带出，也可手动换成新的 Cap Table 文件。",
+          "fileTemplate": "EQ_Control_Book_Base_YYYY_MM.xlsx（或 !!Gyre Cap Table MM.DD.YY.xlsx）",
+          "fileTemplateAuto": true
         },
         "base_futu_exercises": {
           "type": "object",
@@ -1172,7 +1176,9 @@
               "label": "Base sheet"
             }
           },
-          "description": "上月完整 Futu BCI Exercises base，作为增量合并的 base。"
+          "description": "完整的 Futu BCI Exercises 基表，作为增量合并的基表；一般自动带出。",
+          "fileTemplate": "Futu_Exercises_Base_YYYY_MM.xlsx",
+          "fileTemplateAuto": true
         },
         "bc_subplan_transfer": {
           "type": "object",
@@ -1190,7 +1196,9 @@
               "label": "Sheet"
             }
           },
-          "description": "可选的 transfer/vesting 数据；OPS 未反映取消数时用它补齐。"
+          "description": "2025 BC Subplan 的 transfer / vesting 明细，用于在校验环节补齐 Option Plans Summary 未反映的取消数；可取自 Cap Table 的同名 sheet。",
+          "fileTemplate": "!!Gyre Cap Table MM.DD.YY.xlsx（工作表 2025 BC Subplan Transfer）",
+          "fileTemplateAuto": false
         },
         "option_plans_summary": {
           "type": "object",
@@ -1207,7 +1215,9 @@
               "label": "Sheet"
             }
           },
-          "description": "提供各计划的 outstanding 与 available 股数。"
+          "description": "各计划的 outstanding 与 available 股数，用于计算 Options Outstanding / Available；必填。",
+          "fileTemplate": "DD-M-YYYY_HH-mm-ss_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx",
+          "fileTemplateAuto": false
         },
         "incremental_control_book": {
           "type": "object",
@@ -1224,7 +1234,9 @@
               "label": "Increment sheet"
             }
           },
-          "description": "本月增量 Control Book 明细，与 base 按交易自然键合并。"
+          "description": "本月 Control Book 明细导出，按交易自然键合并进基表；必填，且报告期必须是本月，否则运行会被拦下。",
+          "fileTemplate": "Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx",
+          "fileTemplateAuto": false
         },
         "base_cancel_restore_report": {
           "type": "object",
@@ -1242,7 +1254,9 @@
               "label": "Base sheet"
             }
           },
-          "description": "上月取消与恢复完整基表，由上一月合并输出自动延续。"
+          "description": "上月完整的取消与恢复基表，默认由上月合并结果自动延续。",
+          "fileTemplate": "Gyre_Therapeutics_Cancel_Restore_Base_YYYY_MM.xlsx",
+          "fileTemplateAuto": true
         },
         "incremental_futu_exercises": {
           "type": "object",
@@ -1259,7 +1273,9 @@
               "label": "Increment sheet"
             }
           },
-          "description": "富途导出的员工行权记录 workbook（同一份文件含两个 sheet）：「行权明细数据」用于与 base 按行权订单编号增量合并，「行权汇总数据」同时作为 invoke_exercise_record_sync 的来源。可选。"
+          "description": "富途「员工行权记录」导出，同一份文件含两个 sheet：明细与基表按行权订单编号增量合并，汇总用于「行权记录」页的 Futu 视图。",
+          "fileTemplate": "Gyre Therapeutics员工行权记录.xlsx",
+          "fileTemplateAuto": false
         },
         "previous_capitalization_summary": {
           "type": "object",
@@ -1271,7 +1287,9 @@
           "taskId": "extract_previous_capitalization_summary",
           "required": false,
           "optionalCategory": "inherit",
-          "description": "自动引入上月 Capitalization Summary，用于校验本月 Last Month。"
+          "description": "上月 Capitalization Summary，仅用于校验本月 Last Month，无需上传。",
+          "fileTemplate": "YYYY-MM-Capitalization_Table_Summary_View.xlsx",
+          "fileTemplateAuto": true
         },
         "incremental_cancel_restore_report": {
           "type": "object",
@@ -1288,7 +1306,9 @@
               "label": "Increment sheet"
             }
           },
-          "description": "「取消与恢复报表」明细；既用于 Plan Summary 的增量合并，也作为 invoke_cancellation_record_sync 的来源。可选。"
+          "description": "本月「取消与恢复报表」明细，用于 Plan Summary 增量合并，同时生成「取消记录」页的当月快照。",
+          "fileTemplate": "Gyre Therapeutics取消与恢复报表.xlsx",
+          "fileTemplateAuto": false
         },
         "exercise_record_shareworks": {
           "type": "object",
@@ -1306,7 +1326,9 @@
               "label": "Sheet"
             }
           },
-          "description": "Shareworks Executive Awards OS 导出；作为 invoke_exercise_record_sync 的来源之一。可选：未提供时该视图当月为空。"
+          "description": "Shareworks「Executive Awards OS Only」导出，用于「行权记录」页的 Shareworks 视图；未提供时该视图当月为空。",
+          "fileTemplate": "DD-M-YYYY_HH-mm-ss_MDT_!GYRE_Exec_Option_OS.xlsx",
+          "fileTemplateAuto": false
         },
         "sold_shares_futu": {
           "type": "object",
@@ -1324,7 +1346,9 @@
               "label": "Sheet"
             }
           },
-          "description": "Futu 导出的出售汇总数据；作为 invoke_sold_shares_sync 的来源。可选：未提供时该页当月为空。"
+          "description": "富途「出售汇总」导出，用于「卖出记录」页的当月快照；未提供时该页当月为空。",
+          "fileTemplate": "Gyre Therapeutics-公司出售记录YYYY-MM-DD-YYYY-MM-DD.xlsx",
+          "fileTemplateAuto": false
         }
       }
     },

@@ -4,6 +4,8 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  MONTHLY_FIXED_VALUE_DEFS,
+  MONTHLY_WORKFLOW_VERSION,
   applyDefaultSourceSheets,
   findIncompleteMonthlySource,
   getMonthlyRunFileCandidatesForSource,
@@ -12,12 +14,11 @@ import {
   getMonthlyRunVisibleSources,
   getMonthlyRunWarningTaskIds,
   isRunPanelStaleForMonth,
-  MONTHLY_FIXED_VALUE_DEFS,
-  MONTHLY_WORKFLOW_VERSION,
-  monthlyWorkflowVersionMismatch,
   monthlyRunSourceFolders,
+  monthlyWorkflowVersionMismatch,
   resolveMonthlyRunPreviewFileId,
   retainAvailableSourceBindings,
+  sourceFileNameTemplate,
 } from './monthlyRunPage.js';
 
 const MONTHLY_FIXED_VALUE_KEYS = MONTHLY_FIXED_VALUE_DEFS.map((def) => def.key);
@@ -729,4 +730,32 @@ test('monthly page blocks rendering and execution while the workflow version is 
 
   assert.match(source, /workflowVersionMismatch: \{/);
   assert.match(source, /let workflowVersionMismatch: \{ expected: number; actual: number \} \| null = null;/);
+});
+
+test('an input row shows the file-name pattern so operators know which export to upload', () => {
+  const t = (key: 'fileTemplateLabel' | 'fileTemplateAutoLabel') =>
+    key === 'fileTemplateAutoLabel' ? 'Auto-supplied' : 'File name pattern';
+  const source = {
+    sourceKey: 'incremental_control_book',
+    sourceGroup: 'shareworks' as const,
+    taskId: 'invoke_control_book_merge',
+    label: 'Control Book Detail update',
+    description: 'desc',
+    required: true,
+    fileTemplate: 'Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx',
+  };
+
+  const html = sourceFileNameTemplate(source, t);
+
+  assert.match(html, /File name pattern/);
+  assert.match(html, /Control_Books_Detail_Data_DD\.MM\.YYYY_HH\.mm\.xlsx/);
+  assert.match(html, /<code>/, 'the pattern is rendered as code so it is easy to copy');
+
+  // Carried-over files say so instead of telling the operator to upload something.
+  const auto = sourceFileNameTemplate({ ...source, fileTemplateAuto: true }, t);
+  assert.match(auto, /Auto-supplied/);
+  assert.doesNotMatch(auto, /File name pattern/);
+
+  // No template configured -> nothing rendered rather than an empty chip.
+  assert.equal(sourceFileNameTemplate({ ...source, fileTemplate: undefined }, t), '');
 });
