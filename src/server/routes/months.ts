@@ -93,7 +93,24 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                   and artifact.file_id is not null
                   and file.workbook_row_count > 0
                   and run.runtime_parameters_json->>'month' = m.month_key
-             ) as "hasCancellationData"
+             ) as "hasCancellationData",
+             exists (
+               select 1
+                 from workflow_run_artifacts artifact
+                 join workflow_runs run on run.id = artifact.run_id
+                 join product_files file on file.id = artifact.file_id
+                where run.workflow_code in ('esop-grant-record-sync', $1)
+                  and run.status in ('completed', 'completed_with_warnings')
+                  /* The grant page has two views (Futu / Shareworks); either one counts as data. */
+                  and artifact.task_id in (
+                    'persist_grant_record_futu_file',
+                    'persist_grant_record_shareworks_file'
+                  )
+                  and artifact.artifact_type = 'file'
+                  and artifact.file_id is not null
+                  and file.workbook_row_count > 0
+                  and run.runtime_parameters_json->>'month' = m.month_key
+             ) as "hasGrantData"
         from months m
        order by m.month_key desc
     `,
