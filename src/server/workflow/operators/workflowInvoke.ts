@@ -46,13 +46,13 @@ function normalizePathList(value: unknown): string[] {
   return value.map((item) => String(item ?? '').trim()).filter(Boolean);
 }
 
-function readRuntimePath(parameters: WorkflowRuntimeParameters, path: string): unknown {
+function readRuntimePath(parameters: WorkflowRuntimeParameters, path: string): { found: boolean; value: unknown } {
   let current: unknown = parameters;
   for (const segment of path.split('.')) {
-    if (!isRecord(current)) return undefined;
+    if (!isRecord(current) || !Object.hasOwn(current, segment)) return { found: false, value: undefined };
     current = current[segment];
   }
-  return current;
+  return { found: true, value: current };
 }
 
 /** A file reference without a file is what an unbound optional monthly source resolves to. */
@@ -108,10 +108,16 @@ async function executeWorkflowInvoke(params: {
   // Optional monthly sources: when every listed parameter is unbound there is nothing to do, so
   // skip the call entirely instead of asking the child to persist an empty snapshot.
   const skipWhenEmpty = normalizePathList(params.skipWhenEmpty);
-  if (
-    skipWhenEmpty.length > 0 &&
-    skipWhenEmpty.every((path) => isEmptyRuntimeValue(readRuntimePath(runtimeParameters, path)))
-  ) {
+  const skipValues = skipWhenEmpty.map((path) => {
+    const resolved = readRuntimePath(runtimeParameters, path);
+    // An undeclared path is a typo, not "not supplied": silently skipping forever would look like a
+    // successful run while the output never appears.
+    if (!resolved.found) {
+      throw new Error(`Task ${params.taskName} skipWhenEmpty refers to an unknown runtime parameter: ${path}`);
+    }
+    return resolved.value;
+  });
+  if (skipWhenEmpty.length > 0 && skipValues.every((value) => isEmptyRuntimeValue(value))) {
     return { kind: 'dataframe', dataFrame: params.buildEmptyDataFrame(`${params.taskName} skipped`) };
   }
 

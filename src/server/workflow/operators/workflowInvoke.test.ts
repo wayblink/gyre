@@ -173,6 +173,25 @@ test('workflow.invoke still runs when at least one listed source is bound', asyn
   });
 });
 
+test('workflow.invoke refuses a skipWhenEmpty path that no runtime parameter declares', async () => {
+  const calls: InvokeCall[] = [];
+  const context = createContext(
+    {
+      workflowCode: 'esop-sold-shares-sync',
+      // Typo: the monthly source is `sold_shares_futu`. Without the guard the task would skip on
+      // every run and the page would simply stay empty, with the run reporting success.
+      skipWhenEmpty: ['fileRefs.sold_shares'],
+    },
+    calls,
+  );
+
+  await assert.rejects(
+    () => workflowInvokeOperator.execute(context),
+    /skipWhenEmpty refers to an unknown runtime parameter: fileRefs\.sold_shares/,
+  );
+  assert.equal(calls.length, 0);
+});
+
 test('workflow.invoke asks the host to cascade child artifacts only when configured', async () => {
   const calls: InvokeCall[] = [];
   await workflowInvokeOperator.execute(createContext({ workflowCode: 'child' }, calls));
