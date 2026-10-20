@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 28,
+  "version": 29,
   "tasks": [
     {
       "x": 48,
@@ -1028,7 +1028,8 @@
             "futu_exercises": {
               "$type": "object",
               "$label": "futu_exercises",
-              "$fromRuntime": "fileRefs.exercise_record_futu"
+              "$fromRuntime": "fileRefs.incremental_futu_exercises",
+              "$description": "行权记录页读取同一 workbook 的「行权汇总数据」sheet（sheet 名在子工作流中是字面量）"
             },
             "shareworks_exercises": {
               "$type": "object",
@@ -1040,7 +1041,7 @@
         "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "调用 ESOP 行权记录同步，写出本月「行权记录」快照（month 透传，文件名带月份后缀）。两个来源都可选，缺失时该视图当月为空。",
+      "description": "调用 ESOP 行权记录同步，写出本月「行权记录」快照（month 透传，文件名带月份后缀）。Futu 视图复用月度已收集的富途行权导出（读取其「行权汇总数据」sheet）；Shareworks 视图使用独立来源，缺失时该视图当月为空。",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -1233,7 +1234,7 @@
         },
         "incremental_futu_exercises": {
           "type": "object",
-          "label": "Futu Exercise Monthly Update",
+          "label": "Futu Exercise Export",
           "order": 6,
           "hidden": false,
           "allowSheetNameOverride": true,
@@ -1246,7 +1247,7 @@
               "label": "Increment sheet"
             }
           },
-          "description": "本月富途导出的『行权明细数据』，与 base 按行权订单编号合并。"
+          "description": "富途导出的员工行权记录 workbook（同一份文件含两个 sheet）：「行权明细数据」用于与 base 按行权订单编号增量合并，「行权汇总数据」用于刷新「行权记录」页的当月快照。"
         },
         "previous_capitalization_summary": {
           "type": "object",
@@ -1277,28 +1278,10 @@
           },
           "description": "本月取消与恢复报表（增量或全量），按创建编号合并。"
         },
-        "exercise_record_futu": {
-          "type": "object",
-          "label": "Exercise Record · Futu 行权汇总",
-          "order": 11,
-          "hidden": false,
-          "allowSheetNameOverride": true,
-          "defaultSheetName": "行权汇总数据",
-          "taskId": "invoke_exercise_record_sync",
-          "required": false,
-          "optionalCategory": "supplement",
-          "properties": {
-            "sheet": {
-              "type": "string",
-              "label": "Sheet"
-            }
-          },
-          "description": "Futu 导出的行权汇总数据，仅用于刷新「行权记录」页的当月快照；未提供时该页当月为空。"
-        },
         "exercise_record_shareworks": {
           "type": "object",
           "label": "Exercise Record · Shareworks",
-          "order": 12,
+          "order": 11,
           "hidden": false,
           "allowSheetNameOverride": true,
           "defaultSheetName": "Executive Awards OS Only",
@@ -1316,7 +1299,7 @@
         "sold_shares_futu": {
           "type": "object",
           "label": "Sold Shares · Futu 出售汇总",
-          "order": 13,
+          "order": 12,
           "hidden": false,
           "allowSheetNameOverride": true,
           "defaultSheetName": "出售汇总数据",
@@ -1404,7 +1387,6 @@
       "incremental_cancel_restore_report": {
         "sheet": "取消与恢复明细"
       },
-      "exercise_record_futu": {},
       "exercise_record_shareworks": {},
       "sold_shares_futu": {}
     },

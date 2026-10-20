@@ -23,13 +23,13 @@ test('monthly input sources render in the order the workflow definition declares
       'SERIES B Control Book',
       'Gyre Option Plans Summary SL',
       'Futu Exercises Summary',
-      'Futu Exercise Monthly Update',
+      'Futu Exercise Export',
       '2025 BC Subplan Transfer',
       'Previous Capitalization Summary',
       'Cancel & Restore Summary',
       'Cancel & Restore Detail',
-      // Record pages are refreshed at the end of the monthly run; all three are optional.
-      'Exercise Record · Futu 行权汇总',
+      // Record pages are refreshed at the end of the monthly run. The Futu view reuses the Futu
+      // exercise export above (same workbook, other sheet), so only these two are extra uploads.
       'Exercise Record · Shareworks',
       'Sold Shares · Futu 出售汇总',
     ],
@@ -46,7 +46,7 @@ test('monthly Futu input sources are labelled for the monthly update flow', () =
   const byKey = new Map(sources.map((source) => [source.sourceKey, source.label]));
 
   assert.equal(byKey.get('base_futu_exercises'), 'Futu Exercises Summary');
-  assert.equal(byKey.get('incremental_futu_exercises'), 'Futu Exercise Monthly Update');
+  assert.equal(byKey.get('incremental_futu_exercises'), 'Futu Exercise Export');
 });
 
 test('monthly input sources distinguish required business files from optional inputs', () => {
