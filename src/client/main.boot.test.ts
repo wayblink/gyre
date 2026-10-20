@@ -1302,3 +1302,50 @@ test('the cancellation-record page boots, binds its controls, and renders record
   assert.match(cells[14] ?? '', /CRL00000785/);
   assert.equal(doc.getElementById('cancellationPaginationSummary')?.textContent?.includes('1'), true);
 });
+
+test('the file-name pattern starts collapsed and toggles from its icon', async () => {
+  const window = await bootApp([
+    ...API_STUBS,
+    {
+      match: /\/api\/monthly-runs\/source-config$/,
+      respond: {
+        workflowCode: 'gyre-captable-summary-v2',
+        workflowName: 'CapTable Summary',
+        workflowVersion: MONTHLY_WORKFLOW_VERSION,
+        sources: [
+          {
+            sourceKey: 'incremental_control_book',
+            sourceGroup: 'shareworks',
+            taskId: 'invoke_control_book_merge',
+            label: 'Control Book Detail update',
+            description: '本月增量明细',
+            required: true,
+            hidden: false,
+            allowSheetNameOverride: false,
+            fileTemplate: 'Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx',
+            order: 2,
+          },
+        ],
+        fixedValues: [],
+      },
+    },
+  ]);
+  const doc = window.document;
+  const trigger = doc.querySelector<HTMLButtonElement>('[data-source-template-toggle="incremental_control_book"]');
+  const body = doc.querySelector<HTMLElement>('[data-source-template-body="incremental_control_book"]');
+  assert.ok(trigger, 'the pattern trigger must render');
+  assert.ok(body, 'the pattern panel must render with the row');
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.ok(body.classList.contains('hidden'), 'the pattern starts collapsed');
+  assert.match(body.textContent ?? '', /Control_Books_Detail_Data_DD\.MM\.YYYY_HH\.mm\.xlsx/);
+
+  trigger.click();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.ok(!body.classList.contains('hidden'), 'clicking the icon reveals the pattern');
+  assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+
+  trigger.click();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.ok(body.classList.contains('hidden'), 'clicking again hides it');
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+});

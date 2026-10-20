@@ -18,7 +18,8 @@ import {
   monthlyWorkflowVersionMismatch,
   resolveMonthlyRunPreviewFileId,
   retainAvailableSourceBindings,
-  sourceFileNameTemplate,
+  sourceFileNameBody,
+  sourceFileNameTrigger,
 } from './monthlyRunPage.js';
 
 const MONTHLY_FIXED_VALUE_KEYS = MONTHLY_FIXED_VALUE_DEFS.map((def) => def.key);
@@ -744,24 +745,29 @@ test('an input row keeps the file-name pattern collapsed behind an icon until as
     fileTemplate: 'Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx',
   };
 
-  const html = sourceFileNameTemplate(source, t);
+  const trigger = sourceFileNameTrigger(source, t);
+  const body = sourceFileNameBody(source, t);
 
-  // Collapsed: only an icon button is visible, the pattern itself starts hidden.
-  assert.match(html, /data-source-template-toggle="incremental_control_book"/);
-  assert.match(html, /<svg/, 'the trigger is an icon, not text');
-  assert.match(html, /aria-expanded="false"/);
-  assert.match(html, /class="source-file-template__body hidden"/);
-  assert.match(html, /data-source-template-body="incremental_control_book"/);
+  // Collapsed: only an icon button shows, and it belongs in the badge column.
+  assert.match(trigger, /data-source-template-toggle="incremental_control_book"/);
+  assert.match(trigger, /<svg/, 'the trigger is an icon, not text');
+  assert.match(trigger, /aria-expanded="false"/);
+  assert.doesNotMatch(trigger, /source-file-template__pattern/);
   // Still discoverable for screen readers, which cannot click.
-  assert.match(html, /aria-label="File name pattern: Control_Books_Detail_Data_DD\.MM\.YYYY_HH\.mm\.xlsx"/);
+  assert.match(trigger, /aria-label="File name pattern: Control_Books_Detail_Data_DD\.MM\.YYYY_HH\.mm\.xlsx"/);
+
   // The pattern travels with the row so the toggle can reveal it without another request.
+  assert.match(body, /class="source-file-template__body hidden"/);
+  assert.match(body, /data-source-template-body="incremental_control_book"/);
   assert.match(
-    html,
+    body,
     /<code class="source-file-template__pattern">Control_Books_Detail_Data_DD\.MM\.YYYY_HH\.mm\.xlsx<\/code>/,
   );
 
   // Sources the system carries over have no template, so nothing is rendered for them: the badge
   // already says the file is inherited and they must not look like something to go and upload.
-  assert.equal(sourceFileNameTemplate({ ...source, fileTemplate: undefined }, t), '');
-  assert.equal(sourceFileNameTemplate({ ...source, fileTemplate: '   ' }, t), '');
+  assert.equal(sourceFileNameTrigger({ ...source, fileTemplate: undefined }, t), '');
+  assert.equal(sourceFileNameBody({ ...source, fileTemplate: undefined }, t), '');
+  assert.equal(sourceFileNameTrigger({ ...source, fileTemplate: '   ' }, t), '');
+  assert.equal(sourceFileNameBody({ ...source, fileTemplate: '   ' }, t), '');
 });

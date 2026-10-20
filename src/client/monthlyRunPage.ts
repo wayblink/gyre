@@ -127,7 +127,7 @@ function escapeTemplateText(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
-export function sourceFileNameTemplate(
+export function sourceFileNameTrigger(
   source: MonthlyRunSourceDefinition,
   t: (key: 'fileTemplateLabel') => string,
 ): string {
@@ -139,8 +139,18 @@ export function sourceFileNameTemplate(
   // needed while the operator is looking for the file.
   return `<button type="button" class="source-file-template__trigger" data-source-template-toggle="${key}" aria-label="${label}: ${escapeTemplateText(pattern)}" title="${label}" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"></path><path d="M14 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg>
-    </button>
-    <span class="source-file-template__body hidden" data-source-template-body="${key}">
+    </button>`;
+}
+
+export function sourceFileNameBody(
+  source: MonthlyRunSourceDefinition,
+  t: (key: 'fileTemplateLabel') => string,
+): string {
+  const pattern = source.fileTemplate?.trim();
+  if (!pattern) return '';
+  const label = t('fileTemplateLabel');
+  const key = escapeTemplateText(source.sourceKey);
+  return `<span class="source-file-template__body hidden" data-source-template-body="${key}">
       <span class="source-file-template__label">${label}</span>
       <code class="source-file-template__pattern">${escapeTemplateText(pattern)}</code>
     </span>`;
@@ -1009,9 +1019,12 @@ export function createMonthlyRunPage({
           </td>
           <td class="source-description-cell">
             <div class="source-description-inline">
-              ${requirementBadge}
+              <div class="source-description-aside">
+                ${requirementBadge}
+                ${sourceFileNameTrigger(source, tt)}
+              </div>
               <span class="source-purpose">${escapeHtml(sourceDescription(source, lang()))}</span>
-              ${sourceFileNameTemplate(source, tt)}
+              ${sourceFileNameBody(source, tt)}
             </div>
           </td>
           <td class="source-uploaded-cell">${uploaded}</td>
@@ -1259,7 +1272,8 @@ export function createMonthlyRunPage({
               <span>${escapeHtml(tt('defaultSheet'))}</span>
               <strong>${escapeHtml(source.defaultSheetName ?? '-')}</strong>
             </div>
-            ${sourceFileNameTemplate(source, tt)}
+            ${sourceFileNameTrigger(source, tt)}
+            ${sourceFileNameBody(source, tt)}
           </section>
         `;
       })
