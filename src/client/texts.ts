@@ -401,7 +401,6 @@ export const TEXTS = {
     selectSourceFile: { 'zh-CN': '选择', 'en-US': 'Select' },
     defaultSheet: { 'zh-CN': '默认 Sheet', 'en-US': 'Default Sheet' },
     fileTemplateLabel: { 'zh-CN': '文件名参考', 'en-US': 'File name pattern' },
-    fileTemplateAutoLabel: { 'zh-CN': '自动带出', 'en-US': 'Auto-supplied' },
     sheetName: { 'zh-CN': 'Sheet 名称', 'en-US': 'Sheet name' },
     sheetNameRequired: { 'zh-CN': '请填写 Sheet 名称', 'en-US': 'Enter a sheet name' },
     inputSheet: { 'zh-CN': 'Sheet', 'en-US': 'Sheet' },

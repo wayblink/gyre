@@ -109,18 +109,20 @@ const sourcePurposeEnglish: Record<string, string> = {
  * File-name pattern for a monthly input, shown under its purpose so operators know which export to
  * upload. Patterns come from the DB workflow schema (`fileTemplate`); the wording of the label is
  * the only thing that differs per language, so the template itself is never translated.
+ *
+ * Untemplated sources render nothing: those are the ones the system carries over itself, whose
+ * badge already says so, and inventing a file name for them only suggests there is something to go
+ * and find.
  */
 export function sourceFileNameTemplate(
   source: MonthlyRunSourceDefinition,
-  t: (key: 'fileTemplateLabel' | 'fileTemplateAutoLabel') => string,
+  t: (key: 'fileTemplateLabel') => string,
 ): string {
-  if (!source.fileTemplate) return '';
-  const label = source.fileTemplateAuto ? t('fileTemplateAutoLabel') : t('fileTemplateLabel');
-  const modifier = source.fileTemplateAuto ? ' source-file-template--auto' : '';
+  if (!source.fileTemplate?.trim()) return '';
   // Pill chrome mirrors the required/optional badges so the pattern reads as a property of the
   // input rather than a stray line of text.
-  return `<span class="source-file-template${modifier}">
-    <span class="source-file-template__label">${label}</span>
+  return `<span class="source-file-template">
+    <span class="source-file-template__label">${t('fileTemplateLabel')}</span>
     <code class="source-file-template__pattern">${source.fileTemplate}</code>
   </span>`;
 }
@@ -138,7 +140,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 32;
+export const MONTHLY_WORKFLOW_VERSION = 33;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was

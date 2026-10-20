@@ -733,8 +733,7 @@ test('monthly page blocks rendering and execution while the workflow version is 
 });
 
 test('an input row shows the file-name pattern so operators know which export to upload', () => {
-  const t = (key: 'fileTemplateLabel' | 'fileTemplateAutoLabel') =>
-    key === 'fileTemplateAutoLabel' ? 'Auto-supplied' : 'File name pattern';
+  const t = (key: 'fileTemplateLabel') => (key === 'fileTemplateLabel' ? 'File name pattern' : key);
   const source = {
     sourceKey: 'incremental_control_book',
     sourceGroup: 'shareworks' as const,
@@ -754,12 +753,8 @@ test('an input row shows the file-name pattern so operators know which export to
   assert.match(html, /class="source-file-template"/);
   assert.doesNotMatch(html, /source-file-template--auto/);
 
-  // Carried-over files say so instead of telling the operator to upload something.
-  const auto = sourceFileNameTemplate({ ...source, fileTemplateAuto: true }, t);
-  assert.match(auto, /Auto-supplied/);
-  assert.doesNotMatch(auto, /File name pattern/);
-  assert.match(auto, /source-file-template source-file-template--auto/);
-
-  // No template configured -> nothing rendered rather than an empty chip.
+  // Sources the system carries over have no template, so nothing is rendered for them: the badge
+  // already says the file is inherited and they must not look like something to go and upload.
   assert.equal(sourceFileNameTemplate({ ...source, fileTemplate: undefined }, t), '');
+  assert.equal(sourceFileNameTemplate({ ...source, fileTemplate: '   ' }, t), '');
 });

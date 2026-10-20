@@ -8675,16 +8675,6 @@ textarea.form-input {
     overflow-wrap: anywhere;
 }
 
-/* The system carries these files over itself, so nothing needs uploading. */
-.source-file-template--auto {
-    background-color: var(--success-50);
-    color: var(--success-700);
-}
-
-.source-file-template--auto .source-file-template__pattern {
-    color: var(--success-700);
-}
-
 .source-table__col-uploaded {
     width: 43%;
 }

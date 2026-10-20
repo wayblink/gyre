@@ -41,30 +41,40 @@ test('monthly input sources render in the order the workflow definition declares
   assert.equal(new Set(orders).size, orders.length, `duplicate order values: ${orders.join(',')}`);
 });
 
-test('every monthly input carries a file-name template so operators know what to upload', () => {
+test('only sources the operator uploads carry a file-name template', () => {
   const sources = monthlySourcesFromSchemaOrdered(monthlyWorkflowSchema());
-
-  // The template is the "which export is this?" answer that used to live only in the runbook; a
-  // source without one leaves the operator guessing in the upload dialog.
-  const withoutTemplate = sources.filter((source) => !source.fileTemplate?.trim());
-  assert.deepEqual(
-    withoutTemplate.map((source) => source.sourceKey),
-    [],
-  );
-
   const byKey = new Map(sources.map((source) => [source.sourceKey, source]));
+
+  // Files carried over from last month describe themselves through their badge; a template on them
+  // would suggest there is a file to go and find.
+  for (const sourceKey of [
+    'base_control_book',
+    'base_futu_exercises',
+    'previous_capitalization_summary',
+    'base_cancel_restore_report',
+  ]) {
+    assert.equal(byKey.get(sourceKey)?.fileTemplate, undefined, `${sourceKey} must not have a template`);
+  }
+
+  // Everything the operator brings must say which export it is.
+  for (const sourceKey of [
+    'incremental_control_book',
+    'option_plans_summary',
+    'series_b',
+    'incremental_futu_exercises',
+    'bc_subplan_transfer',
+    'incremental_cancel_restore_report',
+    'exercise_record_shareworks',
+    'sold_shares_futu',
+  ]) {
+    assert.ok(byKey.get(sourceKey)?.fileTemplate?.trim(), `${sourceKey} needs a template`);
+  }
+
   assert.equal(byKey.get('incremental_control_book')?.fileTemplate, 'Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx');
   assert.equal(
     byKey.get('exercise_record_shareworks')?.fileTemplate,
     'DD-M-YYYY_HH-mm-ss_MDT_!GYRE_Exec_Option_OS.xlsx',
   );
-  // Files the system carries over itself are marked so the UI does not tell people to upload them.
-  for (const sourceKey of ['base_control_book', 'base_futu_exercises', 'base_cancel_restore_report']) {
-    assert.equal(byKey.get(sourceKey)?.fileTemplateAuto, true, `${sourceKey} should be auto-supplied`);
-  }
-  for (const sourceKey of ['incremental_control_book', 'option_plans_summary', 'sold_shares_futu']) {
-    assert.equal(byKey.get(sourceKey)?.fileTemplateAuto, false, `${sourceKey} is a manual upload`);
-  }
 });
 
 test('monthly Futu input sources are labelled for the monthly update flow', () => {
