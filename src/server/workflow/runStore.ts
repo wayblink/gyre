@@ -11,6 +11,7 @@ import type {
   WorkflowRunStepRecord,
   WorkflowTask,
   WorkflowTaskPreviewResult,
+  WorkflowTaskResultWithArtifacts,
 } from '../../shared/types.js';
 import type {
   WorkflowRunClaimedStepFinishInput,
@@ -181,7 +182,21 @@ export function projectRunRecordLight(run: WorkflowRunRecord): WorkflowRunRecord
   };
 }
 
-function buildArtifactInput(task: WorkflowTask, stepId: number, result: WorkflowTaskPreviewResult | null) {
+/** One `workflow_run_artifacts` row, before it is written. */
+type ArtifactInput = {
+  stepId: number;
+  taskId: string;
+  artifactType: 'file' | 'assertion' | 'dataframe';
+  fileId: number | null;
+  name: string;
+  metadata: Record<string, unknown>;
+};
+
+function buildArtifactInput(
+  task: WorkflowTask,
+  stepId: number,
+  result: WorkflowTaskPreviewResult | null,
+): ArtifactInput | null {
   if (!result) return null;
   const base = {
     stepId,
@@ -193,7 +208,7 @@ function buildArtifactInput(task: WorkflowTask, stepId: number, result: Workflow
   if (result.kind === 'file') {
     return {
       ...base,
-      artifactType: 'file' as const,
+      artifactType: 'file',
       fileId: result.file.id,
       name: result.file.displayName || result.file.originalName,
       metadata: {
@@ -208,7 +223,7 @@ function buildArtifactInput(task: WorkflowTask, stepId: number, result: Workflow
   if (result.kind === 'assert') {
     return {
       ...base,
-      artifactType: 'assertion' as const,
+      artifactType: 'assertion',
       metadata: {
         assertion: result.assertion,
         rows: result.dataFrame.rows.length,
@@ -220,7 +235,7 @@ function buildArtifactInput(task: WorkflowTask, stepId: number, result: Workflow
 
   return {
     ...base,
-    artifactType: 'dataframe' as const,
+    artifactType: 'dataframe',
     metadata: {
       rows: result.dataFrame.rows.length,
       columns: result.dataFrame.columns.length,
@@ -234,12 +249,20 @@ function buildArtifactInput(task: WorkflowTask, stepId: number, result: Workflow
  * run. A page then finds its snapshot by `task_id` + month regardless of whether the snapshot came
  * from a standalone run of its own workflow or from the monthly workflow invoking it.
  */
-function buildNestedArtifactInput(task: WorkflowTask, stepId: number, result: WorkflowTaskPreviewResult | null) {
-  if (!result || result.kind !== 'file' || !result.nestedArtifacts?.length) return [];
-  return result.nestedArtifacts.map((nested) => ({
+function buildNestedArtifactInput(
+  task: WorkflowTask,
+  stepId: number,
+  result: WorkflowTaskPreviewResult | null,
+): ArtifactInput[] {
+  // Applies to any result kind: the child's own final task may be a plain transform, so gating on
+  // `kind === 'file'` would drop every file it persisted.
+  const nestedArtifacts = (result as WorkflowTaskResultWithArtifacts | null)?.nestedArtifacts;
+  if (!nestedArtifacts?.length) return [];
+  result = result as WorkflowTaskResultWithArtifacts;
+  return nestedArtifacts.map((nested) => ({
     stepId,
     taskId: nested.taskId,
-    artifactType: 'file' as const,
+    artifactType: 'file',
     fileId: nested.file.id,
     name: nested.taskName || nested.file.displayName || nested.file.originalName,
     metadata: {
@@ -601,19 +624,22 @@ export class WorkflowRunStore implements WorkflowRunRepository {
     return step;
   }
 
-  async persistArtifact(runId: number, task: WorkflowTask, stepId: number, result: WorkflowTaskPreviewResult | null) {
+  async persistArtifact(
+    runId: number,
+    task: WorkflowTask,
+    stepId: number,
+    result: WorkflowTaskResultWithArtifacts | WorkflowTaskPreviewResult | null,
+  ) {
     const primary = buildArtifactInput(task, stepId, result);
-    const inputs = primary ? [primary, ...buildNestedArtifactInput(task, stepId, result)] : [];
+    // A step may contribute several rows: its own artifact plus one per file the invoked child
+    // persisted. Neither is required — a step that only forwards a child's files has no primary.
+    const inputs = [...(primary ? [primary] : []), ...buildNestedArtifactInput(task, stepId, result)];
     for (const artifactInput of inputs) {
       await this.insertArtifact(runId, artifactInput);
     }
   }
 
-  private async insertArtifact(
-    runId: number,
-    artifactInput:
-      NonNullable<ReturnType<typeof buildArtifactInput>> | ReturnType<typeof buildNestedArtifactInput>[number],
-  ) {
+  private async insertArtifact(runId: number, artifactInput: ArtifactInput) {
     const row = await this.db.queryOne<Record<string, unknown>>(
       `insert into workflow_run_artifacts (
         run_id, step_id, task_id, artifact_type, file_id, name, metadata_json

@@ -820,22 +820,30 @@ export type WorkflowTaskPreviewResult =
       kind: 'file';
       file: ProductFileRecord;
       dataFrame: WorkflowDataFrame;
-      /**
-       * Files persisted by the tasks of an invoked child workflow.
-       *
-       * `workflow.invoke` only returns one result, so a child that writes several files (the ESOP
-       * exercise sync writes one per view) would otherwise lose all but one of them. The parent run
-       * records each of these under the child's own task id, which lets a page find its snapshot
-       * whether it was produced standalone or from a monthly run.
-       */
-      nestedArtifacts?: WorkflowNestedArtifact[];
     };
 
+/**
+ * Files persisted by the tasks of an invoked child workflow.
+ *
+ * `workflow.invoke` only returns one result, so a child that writes several files (the ESOP
+ * exercise sync writes one per view) would otherwise lose all but one of them. The parent run
+ * records each of these under the child's own task id, which lets a page find its snapshot whether
+ * it was produced standalone or from a monthly run.
+ */
 export type WorkflowNestedArtifact = {
   taskId: string;
   taskName: string;
   file: ProductFileRecord;
   dataFrame: WorkflowDataFrame;
+};
+
+/**
+ * Any result kind may carry the child's files: which task the engine reports as `result` depends on
+ * execution order, so a child whose last task is a plain transform must still surface the files its
+ * persist tasks wrote.
+ */
+export type WorkflowTaskResultWithArtifacts = WorkflowTaskPreviewResult & {
+  nestedArtifacts?: WorkflowNestedArtifact[];
 };
 
 export type WorkflowExecutionTaskState =
