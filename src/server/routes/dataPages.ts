@@ -61,14 +61,16 @@ import {
 } from './parameters.js';
 import type { EmployeeLabelRef, RequestWithAuth, WorkflowPageSourceBindingResponse } from './support.js';
 
+import { MONTHLY_WORKFLOW_CODE } from '../monthlyRun/store.js';
+import { workflowRunToExecutionResult } from '../workflow/runResult.js';
+import type { RouteContext } from './context.js';
+
 /**
  * The monthly workflow invokes the record-page syncs, and the child's persisted files are recorded
  * on the monthly run under the child's own task ids. Record pages therefore accept a snapshot from
  * either their own workflow or the monthly run.
  */
-const MONTHLY_SNAPSHOT_WORKFLOW_CODES = ['gyre-captable-summary-v2'];
-import { workflowRunToExecutionResult } from '../workflow/runResult.js';
-import type { RouteContext } from './context.js';
+const MONTHLY_SNAPSHOT_WORKFLOW_CODES = [MONTHLY_WORKFLOW_CODE];
 
 /**
  * The workflow-backed product pages: holdings/grants, exercises, sold shares, transfer plan, plan

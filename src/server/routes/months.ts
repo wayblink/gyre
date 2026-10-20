@@ -15,6 +15,7 @@ import {
   saveProductWorkbook,
   toProductFile,
 } from './support.js';
+import { MONTHLY_WORKFLOW_CODE } from '../monthlyRun/store.js';
 import type { RouteContext } from './context.js';
 import type { SummarySnapshot } from '../../shared/types.js';
 
@@ -32,7 +33,8 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
   const { db } = ctx;
 
   app.get('/api/months', async () => {
-    const rows = await db.query(`
+    const rows = await db.query(
+      `
       select m.month_key as month,
              m.eom_date as "eomDate",
              m.status,
@@ -42,7 +44,7 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                select 1
                  from workflow_run_artifacts artifact
                  join workflow_runs run on run.id = artifact.run_id
-                where run.workflow_code = 'gyre-captable-summary-v2'
+                where run.workflow_code = $1
                   and run.status in ('completed', 'completed_with_warnings')
                   and artifact.task_id = 'invoke_plan_summary_sync'
                   and artifact.artifact_type = 'file'
@@ -54,9 +56,9 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                  from workflow_run_artifacts artifact
                  join workflow_runs run on run.id = artifact.run_id
                  join product_files file on file.id = artifact.file_id
-                where run.workflow_code in ('esop-exercise-record-sync', 'gyre-captable-summary-v2')
+                where run.workflow_code in ('esop-exercise-record-sync', $1)
                   and run.status in ('completed', 'completed_with_warnings')
-                  -- The exercise page has two views (Futu / Shareworks); either one counts as data.
+                  /* The exercise page has two views (Futu / Shareworks); either one counts as data. */
                   and artifact.task_id in (
                     'persist_exercise_record_file',
                     'persist_exercise_record_shareworks_file'
@@ -71,7 +73,7 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                  from workflow_run_artifacts artifact
                  join workflow_runs run on run.id = artifact.run_id
                  join product_files file on file.id = artifact.file_id
-                where run.workflow_code in ('esop-sold-shares-sync', 'gyre-captable-summary-v2')
+                where run.workflow_code in ('esop-sold-shares-sync', $1)
                   and run.status in ('completed', 'completed_with_warnings')
                   and artifact.task_id = 'persist_sold_shares_file'
                   and artifact.artifact_type = 'file'
@@ -84,7 +86,7 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                  from workflow_run_artifacts artifact
                  join workflow_runs run on run.id = artifact.run_id
                  join product_files file on file.id = artifact.file_id
-                where run.workflow_code in ('esop-cancellation-record-sync', 'gyre-captable-summary-v2')
+                where run.workflow_code in ('esop-cancellation-record-sync', $1)
                   and run.status in ('completed', 'completed_with_warnings')
                   and artifact.task_id = 'persist_cancellation_records_file'
                   and artifact.artifact_type = 'file'
@@ -94,7 +96,9 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
              ) as "hasCancellationData"
         from months m
        order by m.month_key desc
-    `);
+    `,
+      [MONTHLY_WORKFLOW_CODE],
+    );
     return { months: rows };
   });
 
