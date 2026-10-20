@@ -438,7 +438,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     renderSortIndicators('#page-grant-record', grantSort);
     if (grantView === 'shareworks') {
       const data = await deps.api<PaginatedResult<ShareworksGrant>>(
-        `/api/grants/shareworks?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
+        `/api/grants/shareworks?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&month=${encodeURIComponent(month)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
       );
       deps.setPageSourceFiles('grant-record', data);
       const items = data.items ?? [];

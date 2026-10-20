@@ -459,7 +459,13 @@ const LANGUAGE_BINDINGS: LanguageBinding[] = [
   { kind: 'hero', page: 'five-percent-holders', key: 'holdersHeroText' },
   { kind: 'hero', page: 'docs', key: 'docsHeroText' },
   { kind: 'hero', page: 'captable', key: 'captableHeroText' },
-  { kind: 'allText', selector: '.product-page-hero__metric > span', key: 'sourceFile' },
+  // Everything except the month-picker caption, which has its own label.
+  {
+    kind: 'allText',
+    selector: '.product-page-hero__metric > span:not(.month-picker-caption)',
+    key: 'sourceFile',
+  },
+  { kind: 'allText', selector: '.month-picker-caption', key: 'monthCaption' },
   { kind: 'allText', selector: '[data-page-file-label="source-files"]', key: 'sourceFiles' },
   { kind: 'allText', selector: '[data-page-file-label="result-file"]', key: 'resultFile' },
   { kind: 'button', id: 'btnExport', key: 'export' },
@@ -2253,6 +2259,11 @@ async function initializeApp() {
   await monthlyRunPage.init();
   await filesPage.init();
   await workflowPage.init();
+  initRecordMonthPicker({
+    pickerId: 'grantMonthPicker',
+    dataKey: 'hasGrantData',
+    render: (month) => esopTables.renderHoldings(month),
+  });
   initRecordMonthPicker({
     pickerId: 'exerciseMonthPicker',
     dataKey: 'hasExerciseData',

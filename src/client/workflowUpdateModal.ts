@@ -59,7 +59,12 @@ export type WorkflowUpdateModalDeps = {
  * the artifact per month; the other ESOP pages have no `month` runtime param (sending it would be
  * rejected as an unknown parameter).
  */
-const MONTH_SCOPED_PAGES = new Set<WorkflowUpdatePageKey>(['exercise-record', 'sold-shares', 'cancellation-record']);
+const MONTH_SCOPED_PAGES = new Set<WorkflowUpdatePageKey>([
+  'grant-record',
+  'exercise-record',
+  'sold-shares',
+  'cancellation-record',
+]);
 
 const PAGE_KINDS: Record<WorkflowUpdatePageKey, WorkflowUpdateKind> = {
   'grant-record': 'esop',
