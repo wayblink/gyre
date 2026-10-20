@@ -140,7 +140,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 33;
+export const MONTHLY_WORKFLOW_VERSION = 34;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was
@@ -1394,7 +1394,8 @@ export function createMonthlyRunPage({
       notify(formatWorkflowVersionMismatch(workflowVersionMismatch), { type: 'error' });
       return;
     }
-    const incomplete = findIncompleteMonthlySource(sourceDefinitions, selectedSources);
+    // Hidden sources are system-supplied, so they are never an operator-side gap.
+    const incomplete = findIncompleteMonthlySource(getMonthlyRunVisibleSources(sourceDefinitions), selectedSources);
     if (incomplete) {
       notify(
         incomplete.missing === 'file'

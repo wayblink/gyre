@@ -158,8 +158,13 @@ const optionalFileRefOperators = new Set(
     .map((definition) => definition.code),
 );
 
+/**
+ * Sources the operator must supply. A hidden source is maintained by the system (e.g. last month's
+ * Capitalization Summary), so it can never be a missing binding on the operator's side — requiring
+ * one would block the run with an error naming a row the page does not show.
+ */
 function requiredMonthlySourceKeys(sources: Awaited<ReturnType<typeof monthlySourceDescriptors>>): Set<string> {
-  return new Set(sources.filter((source) => source.required).map((source) => source.sourceKey));
+  return new Set(sources.filter((source) => source.required && !source.hidden).map((source) => source.sourceKey));
 }
 
 async function assertMonthlyRunInstanceReady(
@@ -173,7 +178,7 @@ async function assertMonthlyRunInstanceReady(
     if (!fileId) {
       // A missing required binding is operator input, not a server fault: report it as a 400 so the
       // Monthly Update page can show it instead of logging a stack trace as a 500.
-      if (source.required) throw badRequest(`Missing source binding: ${source.sourceKey}`);
+      if (source.required && !source.hidden) throw badRequest(`Missing source binding: ${source.sourceKey}`);
       continue;
     }
     // A sheet is only mandatory when there is nothing to fall back to. Every source's consuming task

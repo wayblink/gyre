@@ -25,7 +25,8 @@ test('monthly input sources render in the order the workflow definition declares
       'Futu Exercises Summary',
       'Futu Exercise Export',
       '2025 BC Subplan Transfer',
-      'Previous Capitalization Summary',
+      // Previous Capitalization Summary sits between these two in `order` but stays hidden: the
+      // system injects last month's output itself, so there is nothing for the operator to upload.
       'Cancel & Restore Summary',
       'Cancel & Restore Detail',
       // Record pages are refreshed at the end of the monthly run. The Futu view reuses the Futu
@@ -39,6 +40,17 @@ test('monthly input sources render in the order the workflow definition declares
   // arbitrary. Every source must carry a distinct order value.
   const orders = sources.map((source) => source.order);
   assert.equal(new Set(orders).size, orders.length, `duplicate order values: ${orders.join(',')}`);
+});
+
+test('last month Capitalization Summary is injected by the system and hidden from the table', () => {
+  const sources = monthlySourcesFromSchemaOrdered(monthlyWorkflowSchema());
+  const byKey = new Map(sources.map((source) => [source.sourceKey, source]));
+
+  const previous = byKey.get('previous_capitalization_summary');
+  assert.equal(previous?.hidden, true, 'the source must not be shown: nothing about it is operator input');
+  // Still declared, because the run injects it and the history labels it.
+  assert.ok(previous, 'the source itself must stay in the schema');
+  assert.notEqual(previous?.required, true);
 });
 
 test('only sources the operator uploads carry a file-name template', () => {
