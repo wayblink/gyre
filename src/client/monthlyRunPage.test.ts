@@ -749,12 +749,16 @@ test('an input row shows the file-name pattern so operators know which export to
 
   assert.match(html, /File name pattern/);
   assert.match(html, /Control_Books_Detail_Data_DD\.MM\.YYYY_HH\.mm\.xlsx/);
-  assert.match(html, /<code>/, 'the pattern is rendered as code so it is easy to copy');
+  assert.match(html, /<code/, 'the pattern is rendered as code so it is easy to copy');
+  // Same pill chrome as the required/optional badges, so it reads as a property of the input.
+  assert.match(html, /class="source-file-template"/);
+  assert.doesNotMatch(html, /source-file-template--auto/);
 
   // Carried-over files say so instead of telling the operator to upload something.
   const auto = sourceFileNameTemplate({ ...source, fileTemplateAuto: true }, t);
   assert.match(auto, /Auto-supplied/);
   assert.doesNotMatch(auto, /File name pattern/);
+  assert.match(auto, /source-file-template source-file-template--auto/);
 
   // No template configured -> nothing rendered rather than an empty chip.
   assert.equal(sourceFileNameTemplate({ ...source, fileTemplate: undefined }, t), '');

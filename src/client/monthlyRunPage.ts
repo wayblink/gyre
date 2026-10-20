@@ -116,7 +116,13 @@ export function sourceFileNameTemplate(
 ): string {
   if (!source.fileTemplate) return '';
   const label = source.fileTemplateAuto ? t('fileTemplateAutoLabel') : t('fileTemplateLabel');
-  return `<div class="source-file-template"><span>${label}</span><code>${source.fileTemplate}</code></div>`;
+  const modifier = source.fileTemplateAuto ? ' source-file-template--auto' : '';
+  // Pill chrome mirrors the required/optional badges so the pattern reads as a property of the
+  // input rather than a stray line of text.
+  return `<span class="source-file-template${modifier}">
+    <span class="source-file-template__label">${label}</span>
+    <code class="source-file-template__pattern">${source.fileTemplate}</code>
+  </span>`;
 }
 
 function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLanguage): string {
