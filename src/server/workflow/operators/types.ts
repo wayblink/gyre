@@ -72,6 +72,8 @@ export type WorkflowOperatorRuntime = {
     inputDataFrames: Record<string, WorkflowDataFrame>;
     outputTaskId?: string;
     invocationStack: string[];
+    /** Record the child's persisted files on the parent run, under the child's task ids. */
+    propagateChildArtifacts?: boolean;
   }) => Promise<WorkflowTaskPreviewResult>;
 };
 

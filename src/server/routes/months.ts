@@ -54,7 +54,7 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                  from workflow_run_artifacts artifact
                  join workflow_runs run on run.id = artifact.run_id
                  join product_files file on file.id = artifact.file_id
-                where run.workflow_code = 'esop-exercise-record-sync'
+                where run.workflow_code in ('esop-exercise-record-sync', 'gyre-captable-summary-v2')
                   and run.status in ('completed', 'completed_with_warnings')
                   and artifact.task_id = 'persist_exercise_record_file'
                   and artifact.artifact_type = 'file'
@@ -67,7 +67,7 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                  from workflow_run_artifacts artifact
                  join workflow_runs run on run.id = artifact.run_id
                  join product_files file on file.id = artifact.file_id
-                where run.workflow_code = 'esop-sold-shares-sync'
+                where run.workflow_code in ('esop-sold-shares-sync', 'gyre-captable-summary-v2')
                   and run.status in ('completed', 'completed_with_warnings')
                   and artifact.task_id = 'persist_sold_shares_file'
                   and artifact.artifact_type = 'file'
@@ -80,7 +80,7 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                  from workflow_run_artifacts artifact
                  join workflow_runs run on run.id = artifact.run_id
                  join product_files file on file.id = artifact.file_id
-                where run.workflow_code = 'esop-cancellation-record-sync'
+                where run.workflow_code in ('esop-cancellation-record-sync', 'gyre-captable-summary-v2')
                   and run.status in ('completed', 'completed_with_warnings')
                   and artifact.task_id = 'persist_cancellation_records_file'
                   and artifact.artifact_type = 'file'

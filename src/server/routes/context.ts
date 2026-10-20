@@ -1,6 +1,6 @@
 import type { AppDb } from '../db.js';
+import type { WorkflowTask, WorkflowTaskPreviewResult } from '../../shared/types.js';
 import { applyMonthlyRunPostProcessing } from '../monthlyRun/store.js';
-import { triggerMonthlyRecordPageSyncs } from '../monthlyRun/recordPageSync.js';
 import { dataFrameToWorkbookBuffer, extractSheetRangeAsDataFrame, rowsToDataFrame } from '../excel.js';
 import { upsertTableRows } from '../workflow/tableUpsert.js';
 import { WorkflowFileSourceRegistry } from '../workflow/fileSources.js';
@@ -106,6 +106,35 @@ export function createRouteContext(db: AppDb): RouteContext {
 
       const storedTasks = normalizeWorkflowTasks(parseJson(workflowRow.tasks_json, []));
       const childRuntimeParamsSchema = parseJson(workflowRow.runtime_params_schema_json, {});
+      /**
+       * Give the parent run the child's persisted files, each under the child's own task id.
+       *
+       * `workflow.invoke` returns a single result, so a child writing several files (the ESOP exercise
+       * sync writes one per view) loses all but one. Pages look their snapshot up by `task_id` + month,
+       * so without this a snapshot produced by a monthly invoke would be invisible unless it happened to
+       * be the child's final task.
+       */
+      function attachNestedArtifacts(
+        result: WorkflowTaskPreviewResult,
+        taskResults: Record<string, WorkflowTaskPreviewResult | null>,
+        childTasks: WorkflowTask[],
+      ): WorkflowTaskPreviewResult {
+        if (result.kind !== 'file') return result;
+        const names = new Map(childTasks.map((task) => [task.id, task.name]));
+        const nestedArtifacts = Object.entries(taskResults)
+          .filter(
+            (entry): entry is [string, Extract<WorkflowTaskPreviewResult, { kind: 'file' }>] =>
+              entry[1]?.kind === 'file',
+          )
+          .map(([taskId, childResult]) => ({
+            taskId,
+            taskName: names.get(taskId) ?? taskId,
+            file: childResult.file,
+            dataFrame: childResult.dataFrame,
+          }));
+        return nestedArtifacts.length > 0 ? { ...result, nestedArtifacts } : result;
+      }
+
       const runtimeConfiguration = resolveWorkflowRuntimeConfiguration({
         tasks: storedTasks,
         runtimeParamsSchema: childRuntimeParamsSchema,
@@ -127,7 +156,9 @@ export function createRouteContext(db: AppDb): RouteContext {
         if (!selected?.dataFrame) {
           throw new Error(`workflow.invoke output task not found or did not produce dataframe: ${params.outputTaskId}`);
         }
-        return selected;
+        return params.propagateChildArtifacts
+          ? attachNestedArtifacts(selected, childResult.taskResults, storedTasks)
+          : selected;
       }
 
       if (!childResult.result?.dataFrame) {
@@ -135,18 +166,15 @@ export function createRouteContext(db: AppDb): RouteContext {
           `workflow.invoke target workflow did not produce dataframe output: ${workflowCode || workflowId}`,
         );
       }
-      return childResult.result;
+      return params.propagateChildArtifacts
+        ? attachNestedArtifacts(childResult.result, childResult.taskResults, storedTasks)
+        : childResult.result;
     },
   };
 
   const workflowRunStore = new WorkflowRunStore(db);
   const workflowRunExecutor = new WorkflowRunExecutor(workflowRunStore, workflowOperatorRuntime, undefined, {
-    onRunFinalized: async (run) => {
-      await applyMonthlyRunPostProcessing(db, run);
-      // Each record page gets its own month-tagged run; the pages look their snapshot up by
-      // workflow code + month, so an in-process invoke would not be visible to them.
-      await triggerMonthlyRecordPageSyncs({ db, runStore: workflowRunStore, executor: workflowRunExecutor }, run);
-    },
+    onRunFinalized: (run) => applyMonthlyRunPostProcessing(db, run),
   });
 
   return { db, workflowFileSources, workflowOperatorRuntime, workflowRunStore, workflowRunExecutor };

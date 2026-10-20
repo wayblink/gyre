@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 30,
+  "version": 31,
   "tasks": [
     {
       "x": 48,
@@ -1012,6 +1012,102 @@
       "description": "将 Read SERIES B 返回的 Shares Issued 合计乘以 5，得到 Summary 使用的 Series B Preferred Stock 数值；未提供 SERIES B Control Book 时该值为 0。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
+    },
+    {
+      "id": "invoke_exercise_record_sync",
+      "name": "Invoke Exercise Record Sync",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0",
+      "description": "调用 ESOP 行权记录同步，写出本月「行权记录」快照（月份透传，文件名带月份后缀）。两个来源都可选：都未提供时跳过，任一提供则执行。",
+      "dependsOn": [],
+      "inputs": {},
+      "x": 48,
+      "y": 1470,
+      "params": {
+        "workflowCode": "esop-exercise-record-sync",
+        "outputTaskId": "",
+        "inputMappings": [],
+        "inheritRuntimeParameters": true,
+        "propagateChildArtifacts": true,
+        "skipWhenEmpty": [
+          "fileRefs.futu_exercises",
+          "fileRefs.shareworks_exercises"
+        ],
+        "runtimeParameters": {
+          "fileRefs": {
+            "futu_exercises": {
+              "$type": "object",
+              "$label": "futu_exercises",
+              "$fromRuntime": "fileRefs.incremental_futu_exercises"
+            },
+            "shareworks_exercises": {
+              "$type": "object",
+              "$label": "shareworks_exercises",
+              "$fromRuntime": "fileRefs.exercise_record_shareworks"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "invoke_sold_shares_sync",
+      "name": "Invoke Sold Shares Sync",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0",
+      "description": "调用 ESOP 卖出记录同步，写出本月「卖出记录」快照。来源可选：未提供时跳过。",
+      "dependsOn": [],
+      "inputs": {},
+      "x": 300,
+      "y": 1470,
+      "params": {
+        "workflowCode": "esop-sold-shares-sync",
+        "outputTaskId": "",
+        "inputMappings": [],
+        "inheritRuntimeParameters": true,
+        "propagateChildArtifacts": true,
+        "skipWhenEmpty": [
+          "fileRefs.futu_sold_shares"
+        ],
+        "runtimeParameters": {
+          "fileRefs": {
+            "futu_sold_shares": {
+              "$type": "object",
+              "$label": "futu_sold_shares",
+              "$fromRuntime": "fileRefs.sold_shares_futu"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "invoke_cancellation_record_sync",
+      "name": "Invoke Cancellation Record Sync",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0",
+      "description": "调用取消记录同步，写出本月「取消记录」快照。复用月度已收集的「取消与恢复报表」，未提供时跳过。",
+      "dependsOn": [],
+      "inputs": {},
+      "x": 552,
+      "y": 1470,
+      "params": {
+        "workflowCode": "esop-cancellation-record-sync",
+        "outputTaskId": "",
+        "inputMappings": [],
+        "inheritRuntimeParameters": true,
+        "propagateChildArtifacts": true,
+        "skipWhenEmpty": [
+          "fileRefs.cancellation_report"
+        ],
+        "runtimeParameters": {
+          "fileRefs": {
+            "cancellation_report": {
+              "$type": "object",
+              "$label": "cancellation_report",
+              "$fromRuntime": "fileRefs.incremental_cancel_restore_report"
+            }
+          }
+        }
+      }
     }
   ],
   "runtimeParamsSchema": {
@@ -1163,7 +1259,7 @@
               "label": "Increment sheet"
             }
           },
-          "description": "富途导出的员工行权记录 workbook（同一份文件含两个 sheet）：「行权明细数据」用于与 base 按行权订单编号增量合并，「行权汇总数据」在月度完成后用于刷新「行权记录」页（Futu 视图）的当月快照。"
+          "description": "富途导出的员工行权记录 workbook（同一份文件含两个 sheet）：「行权明细数据」用于与 base 按行权订单编号增量合并，「行权汇总数据」同时作为 invoke_exercise_record_sync 的来源。可选。"
         },
         "previous_capitalization_summary": {
           "type": "object",
@@ -1192,7 +1288,7 @@
               "label": "Increment sheet"
             }
           },
-          "description": "本月取消与恢复报表（增量或全量），按创建编号合并。"
+          "description": "「取消与恢复报表」明细；既用于 Plan Summary 的增量合并，也作为 invoke_cancellation_record_sync 的来源。可选。"
         },
         "exercise_record_shareworks": {
           "type": "object",
@@ -1201,7 +1297,7 @@
           "hidden": false,
           "allowSheetNameOverride": true,
           "defaultSheetName": "Executive Awards OS Only",
-          "taskId": "esop-exercise-record-sync",
+          "taskId": "invoke_exercise_record_sync",
           "required": false,
           "optionalCategory": "supplement",
           "properties": {
@@ -1210,7 +1306,7 @@
               "label": "Sheet"
             }
           },
-          "description": "Shareworks Executive Awards OS 导出，月度完成后用于刷新「行权记录」页（Shareworks 视图）的当月快照；未提供时该视图当月为空。"
+          "description": "Shareworks Executive Awards OS 导出；作为 invoke_exercise_record_sync 的来源之一。可选：未提供时该视图当月为空。"
         },
         "sold_shares_futu": {
           "type": "object",
@@ -1219,7 +1315,7 @@
           "hidden": false,
           "allowSheetNameOverride": true,
           "defaultSheetName": "出售汇总数据",
-          "taskId": "esop-sold-shares-sync",
+          "taskId": "invoke_sold_shares_sync",
           "required": false,
           "optionalCategory": "supplement",
           "properties": {
@@ -1228,7 +1324,7 @@
               "label": "Sheet"
             }
           },
-          "description": "Futu 导出的出售汇总数据，月度完成后用于刷新「卖出记录」页的当月快照；未提供时该页当月为空。"
+          "description": "Futu 导出的出售汇总数据；作为 invoke_sold_shares_sync 的来源。可选：未提供时该页当月为空。"
         }
       }
     },

@@ -60,6 +60,13 @@ import {
   fivePercentHolderGlobalParameterOrder,
 } from './parameters.js';
 import type { EmployeeLabelRef, RequestWithAuth, WorkflowPageSourceBindingResponse } from './support.js';
+
+/**
+ * The monthly workflow invokes the record-page syncs, and the child's persisted files are recorded
+ * on the monthly run under the child's own task ids. Record pages therefore accept a snapshot from
+ * either their own workflow or the monthly run.
+ */
+const MONTHLY_SNAPSHOT_WORKFLOW_CODES = ['gyre-captable-summary-v2'];
 import { workflowRunToExecutionResult } from '../workflow/runResult.js';
 import type { RouteContext } from './context.js';
 
@@ -681,6 +688,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     const artifact = await readLatestWorkflowDataFrameArtifact(db, {
       workflowCode: 'esop-exercise-record-sync',
       taskId: 'persist_exercise_record_file',
+      alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
       fallbackSheetName: 'Futu BCI Exercises to Date',
       month: requestedMonth || null,
     });
@@ -764,6 +772,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
         readLatestWorkflowDataFrameArtifact(db, {
           workflowCode: 'esop-exercise-record-sync',
           taskId: 'persist_exercise_record_shareworks_file',
+          alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
           fallbackSheetName: 'Shareworks Exec Option OS',
           month: requestedMonth || null,
         }),
@@ -857,12 +866,14 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       readLatestWorkflowDataFrameArtifact(db, {
         workflowCode: 'esop-exercise-record-sync',
         taskId: 'persist_exercise_record_file',
+        alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
         fallbackSheetName: 'Futu BCI Exercises to Date',
         month: requestedMonth || null,
       }),
       readLatestWorkflowDataFrameArtifact(db, {
         workflowCode: 'esop-exercise-record-sync',
         taskId: 'persist_exercise_record_shareworks_file',
+        alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
         fallbackSheetName: 'Shareworks Exec Option OS',
         month: requestedMonth || null,
       }),
@@ -963,6 +974,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     const artifact = await readLatestWorkflowDataFrameArtifact(db, {
       workflowCode: 'esop-sold-shares-sync',
       taskId: 'persist_sold_shares_file',
+      alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
       fallbackSheetName: 'Futu Sold Shares',
       month: requestedMonth || null,
     });
@@ -1041,6 +1053,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     const artifact = await readLatestWorkflowDataFrameArtifact(db, {
       workflowCode: 'esop-cancellation-record-sync',
       taskId: 'persist_cancellation_records_file',
+      alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
       fallbackSheetName: 'Cancellation Records',
       month: requestedMonth || null,
     });

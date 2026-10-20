@@ -229,6 +229,30 @@ function buildArtifactInput(task: WorkflowTask, stepId: number, result: Workflow
   };
 }
 
+/**
+ * Files written by an invoked child workflow, recorded under the *child's* task ids on the parent
+ * run. A page then finds its snapshot by `task_id` + month regardless of whether the snapshot came
+ * from a standalone run of its own workflow or from the monthly workflow invoking it.
+ */
+function buildNestedArtifactInput(task: WorkflowTask, stepId: number, result: WorkflowTaskPreviewResult | null) {
+  if (!result || result.kind !== 'file' || !result.nestedArtifacts?.length) return [];
+  return result.nestedArtifacts.map((nested) => ({
+    stepId,
+    taskId: nested.taskId,
+    artifactType: 'file' as const,
+    fileId: nested.file.id,
+    name: nested.taskName || nested.file.displayName || nested.file.originalName,
+    metadata: {
+      file: nested.file,
+      rows: nested.dataFrame.rows.length,
+      columns: nested.dataFrame.columns.length,
+      range: nested.dataFrame.range,
+      // Traces the file back to the invoke task that produced it.
+      invokedBy: task.id,
+    },
+  }));
+}
+
 export class WorkflowRunStore implements WorkflowRunRepository {
   constructor(private readonly db: AppDb) {}
 
@@ -578,8 +602,18 @@ export class WorkflowRunStore implements WorkflowRunRepository {
   }
 
   async persistArtifact(runId: number, task: WorkflowTask, stepId: number, result: WorkflowTaskPreviewResult | null) {
-    const artifactInput = buildArtifactInput(task, stepId, result);
-    if (!artifactInput) return;
+    const primary = buildArtifactInput(task, stepId, result);
+    const inputs = primary ? [primary, ...buildNestedArtifactInput(task, stepId, result)] : [];
+    for (const artifactInput of inputs) {
+      await this.insertArtifact(runId, artifactInput);
+    }
+  }
+
+  private async insertArtifact(
+    runId: number,
+    artifactInput:
+      NonNullable<ReturnType<typeof buildArtifactInput>> | ReturnType<typeof buildNestedArtifactInput>[number],
+  ) {
     const row = await this.db.queryOne<Record<string, unknown>>(
       `insert into workflow_run_artifacts (
         run_id, step_id, task_id, artifact_type, file_id, name, metadata_json

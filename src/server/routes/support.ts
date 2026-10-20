@@ -617,6 +617,12 @@ export async function readLatestWorkflowDataFrameArtifact(
     taskId: string;
     fallbackSheetName: string;
     month?: string | null;
+    /**
+     * Other runs that may produce this artifact. A monthly run invokes the record-page syncs, and the
+     * child's persisted files are recorded on the monthly run under the child's own task ids, so the
+     * monthly workflow code has to be accepted as well.
+     */
+    alsoWorkflowCodes?: string[];
   },
 ): Promise<LatestWorkflowDataFrameArtifact | null> {
   const artifact = await db.queryOne<Record<string, unknown>>(
@@ -630,7 +636,7 @@ export async function readLatestWorkflowDataFrameArtifact(
        from workflow_run_artifacts artifact
        join workflow_runs run on run.id = artifact.run_id
        join product_files file on file.id = artifact.file_id
-      where run.workflow_code = $1
+      where (run.workflow_code = $1 or run.workflow_code = any($4::text[]))
         and run.status in ('completed', 'completed_with_warnings')
         and artifact.task_id = $2
         and artifact.artifact_type = 'file'
@@ -638,7 +644,7 @@ export async function readLatestWorkflowDataFrameArtifact(
         and ($3::text is null or run.runtime_parameters_json->>'month' = $3)
       order by run.finished_at desc nulls last, artifact.id desc
       limit 1`,
-    [params.workflowCode, params.taskId, params.month?.trim() || null],
+    [params.workflowCode, params.taskId, params.month?.trim() || null, params.alsoWorkflowCodes ?? []],
   );
   if (!artifact) return null;
   const metadata = parseJson<Record<string, unknown>>(artifact.metadata_json, {});

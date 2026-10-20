@@ -18,6 +18,7 @@ function createContext(params: Record<string, unknown>, calls: InvokeCall[]): Wo
   const sourceFrame = rowsToDataFrame([{ key: 'Granted', value: 1 }]);
   const outputFrame = rowsToDataFrame([{ key: 'Granted', value: 10 }]);
   const runtime = {
+    rowsToDataFrame,
     async invokeWorkflow(callParams: InvokeCall): Promise<WorkflowTaskPreviewResult> {
       calls.push(callParams);
       return { kind: 'dataframe', dataFrame: outputFrame };
@@ -125,4 +126,61 @@ test('workflow.invoke fails when the host runtime has no invocation capability',
   (context.runtime as { invokeWorkflow?: unknown }).invokeWorkflow = undefined;
 
   await assert.rejects(() => workflowInvokeOperator.execute(context), /workflow\.invoke runtime is not configured/);
+});
+
+test('workflow.invoke skips the call when every listed source is unbound', async () => {
+  const calls: InvokeCall[] = [];
+  const context = createContext(
+    {
+      workflowCode: 'esop-sold-shares-sync',
+      skipWhenEmpty: ['fileRefs.futu_sold_shares'],
+      runtimeParameters: { fileRefs: { futu_sold_shares: { sheet: '出售汇总数据' } } },
+    },
+    calls,
+  );
+
+  const result = (await workflowInvokeOperator.execute(context)) as WorkflowTaskPreviewResult;
+
+  assert.equal(calls.length, 0, 'nothing to sync, so the child must not run');
+  assert.equal(result.kind, 'dataframe');
+  assert.equal(result.dataFrame.rows.length, 0);
+  assert.match(result.dataFrame.range.sheetName, /skipped/i);
+});
+
+test('workflow.invoke still runs when at least one listed source is bound', async () => {
+  const calls: InvokeCall[] = [];
+  const context = createContext(
+    {
+      workflowCode: 'esop-exercise-record-sync',
+      skipWhenEmpty: ['fileRefs.futu_exercises', 'fileRefs.shareworks_exercises'],
+      runtimeParameters: {
+        fileRefs: {
+          futu_exercises: {},
+          shareworks_exercises: { provider: 'product-files', key: 'sw.xlsx', sheet: 'Executive Awards OS Only' },
+        },
+      },
+    },
+    calls,
+  );
+
+  await workflowInvokeOperator.execute(context);
+
+  assert.equal(calls.length, 1, 'one bound source is enough');
+  assert.deepEqual((calls[0].runtimeParameters.fileRefs as Record<string, unknown>).shareworks_exercises, {
+    provider: 'product-files',
+    key: 'sw.xlsx',
+    sheet: 'Executive Awards OS Only',
+  });
+});
+
+test('workflow.invoke asks the host to cascade child artifacts only when configured', async () => {
+  const calls: InvokeCall[] = [];
+  await workflowInvokeOperator.execute(createContext({ workflowCode: 'child' }, calls));
+  assert.equal((calls[0] as { propagateChildArtifacts?: boolean }).propagateChildArtifacts, false);
+
+  const cascading: InvokeCall[] = [];
+  await workflowInvokeOperator.execute(
+    createContext({ workflowCode: 'child', propagateChildArtifacts: true }, cascading),
+  );
+  assert.equal((cascading[0] as { propagateChildArtifacts?: boolean }).propagateChildArtifacts, true);
 });

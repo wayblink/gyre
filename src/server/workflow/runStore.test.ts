@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { projectRunRecordLight } from './runStore.js';
+import { projectRunRecordLight, WorkflowRunStore } from './runStore.js';
 import type { WorkflowDataFrame, WorkflowRunRecord } from '../../shared/types.js';
 
 function bigDataFrame(): WorkflowDataFrame {
@@ -110,4 +110,98 @@ test('projectRunRecordLight does not mutate the original run (execution path sta
   const original = run.steps[0].result;
   assert.equal(original?.kind === 'dataframe' && original.dataFrame.rows.length, 100);
   assert.ok('dataframe' in (run.artifacts[0].metadata as Record<string, unknown>));
+});
+
+test("persistArtifact records an invoked child's own files under the child task ids", async () => {
+  const inserts: Array<{ taskId: string; fileId: number | null; metadata: Record<string, unknown> }> = [];
+  const db = {
+    async queryOne(sql: string, params?: unknown[]) {
+      assert.match(sql, /insert into workflow_run_artifacts/);
+      const [runId, stepId, taskId, artifactType, fileId, name, metadata] = params as unknown[];
+      inserts.push({
+        taskId: String(taskId),
+        fileId: fileId === null ? null : Number(fileId),
+        metadata: JSON.parse(String(metadata)),
+      });
+      return {
+        id: inserts.length,
+        run_id: runId,
+        step_id: stepId,
+        task_id: taskId,
+        artifact_type: artifactType,
+        file_id: fileId,
+        name,
+        metadata_json: metadata,
+        created_at: new Date().toISOString(),
+      };
+    },
+    async execute() {
+      return { rowCount: 1 };
+    },
+  };
+  const store = new WorkflowRunStore(db as never);
+  const file = (id: number, name: string) => ({ id, originalName: name, displayName: name }) as never;
+  const task = { id: 'invoke_exercise_record_sync', name: 'Invoke Exercise Record Sync' } as never;
+  const dataFrame = bigDataFrame();
+
+  await store.persistArtifact(9, task, 77, {
+    kind: 'file',
+    file: file(2, 'exercise_record_shareworks_2026_08.xlsx'),
+    dataFrame,
+    nestedArtifacts: [
+      {
+        taskId: 'persist_exercise_record_file',
+        taskName: 'Persist Futu',
+        file: file(1, 'exercise_record_2026_08.xlsx'),
+        dataFrame,
+      },
+      {
+        taskId: 'persist_exercise_record_shareworks_file',
+        taskName: 'Persist Shareworks',
+        file: file(2, 'exercise_record_shareworks_2026_08.xlsx'),
+        dataFrame,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    inserts.map((row) => row.taskId),
+    ['invoke_exercise_record_sync', 'persist_exercise_record_file', 'persist_exercise_record_shareworks_file'],
+    'the invoke artifact plus one per child persist',
+  );
+  assert.deepEqual(
+    inserts.slice(1).map((row) => row.fileId),
+    [1, 2],
+  );
+  assert.equal(inserts[1].metadata.invokedBy, 'invoke_exercise_record_sync');
+});
+
+test('persistArtifact ignores nested artifacts unless the invoke cascades them', async () => {
+  const taskIds: string[] = [];
+  const db = {
+    async queryOne(_sql: string, params?: unknown[]) {
+      taskIds.push(String((params as unknown[])[2]));
+      return {
+        id: taskIds.length,
+        run_id: 1,
+        step_id: 1,
+        task_id: 'x',
+        artifact_type: 'dataframe',
+        file_id: null,
+        name: 'x',
+        metadata_json: '{}',
+        created_at: new Date().toISOString(),
+      };
+    },
+    async execute() {
+      return { rowCount: 1 };
+    },
+  };
+  const store = new WorkflowRunStore(db as never);
+  await store.persistArtifact(9, { id: 'invoke', name: 'Invoke' } as never, 1, {
+    kind: 'dataframe',
+    dataFrame: bigDataFrame(),
+    // A dataframe result cannot carry nested artifacts; nothing must be invented.
+  });
+  assert.deepEqual(taskIds, ['invoke']);
 });

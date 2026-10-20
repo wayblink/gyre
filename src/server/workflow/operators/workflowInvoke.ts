@@ -41,6 +41,29 @@ function normalizeRuntimeParameters(value: unknown): WorkflowRuntimeParameters {
   return isRecord(value) ? cloneJson(value) : {};
 }
 
+function normalizePathList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item ?? '').trim()).filter(Boolean);
+}
+
+function readRuntimePath(parameters: WorkflowRuntimeParameters, path: string): unknown {
+  let current: unknown = parameters;
+  for (const segment of path.split('.')) {
+    if (!isRecord(current)) return undefined;
+    current = current[segment];
+  }
+  return current;
+}
+
+/** A file reference without a file is what an unbound optional monthly source resolves to. */
+function isEmptyRuntimeValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (!isRecord(value)) return false;
+  const hasFile = Boolean(value.key) || Boolean(value.path) || Number(value.fileId) > 0;
+  return !hasFile;
+}
+
 async function executeWorkflowInvoke(params: {
   taskName: string;
   workflowId: unknown;
@@ -51,7 +74,10 @@ async function executeWorkflowInvoke(params: {
   inputMappings: unknown;
   parentRuntimeParameters: WorkflowRuntimeParameters;
   invocationStack: string[];
+  skipWhenEmpty: unknown;
+  propagateChildArtifacts: unknown;
   resolveInputDataFrame: (slot: string) => Promise<WorkflowDataFrame>;
+  buildEmptyDataFrame: (sheetName: string) => WorkflowDataFrame;
   invokeWorkflow?: (params: {
     workflowId?: number;
     workflowCode?: string;
@@ -59,6 +85,7 @@ async function executeWorkflowInvoke(params: {
     inputDataFrames: Record<string, WorkflowDataFrame>;
     outputTaskId?: string;
     invocationStack: string[];
+    propagateChildArtifacts?: boolean;
   }) => Promise<WorkflowTaskPreviewResult>;
 }): Promise<WorkflowTaskPreviewResult> {
   if (!params.invokeWorkflow) {
@@ -78,6 +105,16 @@ async function executeWorkflowInvoke(params: {
       ? explicitRuntimeParameters
       : mergeRuntimeParameters(params.parentRuntimeParameters, explicitRuntimeParameters);
 
+  // Optional monthly sources: when every listed parameter is unbound there is nothing to do, so
+  // skip the call entirely instead of asking the child to persist an empty snapshot.
+  const skipWhenEmpty = normalizePathList(params.skipWhenEmpty);
+  if (
+    skipWhenEmpty.length > 0 &&
+    skipWhenEmpty.every((path) => isEmptyRuntimeValue(readRuntimePath(runtimeParameters, path)))
+  ) {
+    return { kind: 'dataframe', dataFrame: params.buildEmptyDataFrame(`${params.taskName} skipped`) };
+  }
+
   const inputDataFrames: Record<string, WorkflowDataFrame> = {};
   for (const mapping of normalizeInputMappings(params.inputMappings)) {
     inputDataFrames[mapping.taskId] = await params.resolveInputDataFrame(mapping.inputSlot);
@@ -91,6 +128,7 @@ async function executeWorkflowInvoke(params: {
     inputDataFrames,
     outputTaskId,
     invocationStack: params.invocationStack,
+    propagateChildArtifacts: params.propagateChildArtifacts === true,
   });
 }
 
@@ -164,6 +202,22 @@ export const workflowInvokeOperator = defineWorkflowOperator({
       description: '指定子 workflow 中哪个 task 的 dataframe 作为输出；为空则取子 workflow 最终 result。',
       default: '',
     },
+    skipWhenEmpty: {
+      type: 'array',
+      label: 'Skip When Empty',
+      required: false,
+      description:
+        '运行时参数路径列表（如 fileRefs.sold_shares）。全部为空时直接跳过调用、不产生输出文件；任一有值则正常调用。',
+      default: [],
+    },
+    propagateChildArtifacts: {
+      type: 'boolean',
+      label: '级联子流程产物',
+      required: false,
+      description:
+        '开启后把子 workflow 里各 persist 节点写出的文件，按子节点 task id 一并记录到当前 run 的产物中（供页面按 task id + 月份查询）。',
+      default: false,
+    },
   },
   normalizeTask(task) {
     const nextInputs: typeof task.inputs = {};
@@ -180,6 +234,8 @@ export const workflowInvokeOperator = defineWorkflowOperator({
     task.params.inputMappings = normalizeInputMappings(task.params.inputMappings);
     task.params.runtimeParameters = normalizeRuntimeParameters(task.params.runtimeParameters);
     task.params.inheritRuntimeParameters = task.params.inheritRuntimeParameters !== false;
+    task.params.skipWhenEmpty = normalizePathList(task.params.skipWhenEmpty);
+    task.params.propagateChildArtifacts = task.params.propagateChildArtifacts === true;
     normalizeWorkflowTaskDependencies(task);
   },
   async execute({ task, runtime, runtimeParameters, invocationStack, resolveInputDataFrame }) {
@@ -193,7 +249,11 @@ export const workflowInvokeOperator = defineWorkflowOperator({
       inputMappings: task.params.inputMappings,
       parentRuntimeParameters: runtimeParameters,
       invocationStack,
+      skipWhenEmpty: task.params.skipWhenEmpty,
+      propagateChildArtifacts: task.params.propagateChildArtifacts,
       resolveInputDataFrame,
+      buildEmptyDataFrame: (sheetName) =>
+        runtime.rowsToDataFrame([], { sheetName, a1Range: 'A1', columns: ['skipped'] }),
       invokeWorkflow: runtime.invokeWorkflow,
     });
   },
@@ -208,7 +268,11 @@ export const workflowInvokeOperator = defineWorkflowOperator({
       inputMappings: context.task.params.inputMappings,
       parentRuntimeParameters: context.runtimeParameters,
       invocationStack: context.invocationStack,
+      skipWhenEmpty: context.task.params.skipWhenEmpty,
+      propagateChildArtifacts: context.task.params.propagateChildArtifacts,
       resolveInputDataFrame: context.resolveInputDataFrame,
+      buildEmptyDataFrame: (sheetName) =>
+        context.runtime.rowsToDataFrame([], { sheetName, a1Range: 'A1', columns: ['skipped'] }),
       invokeWorkflow: context.runtime.invokeWorkflow,
     });
   },
