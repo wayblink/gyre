@@ -20,6 +20,7 @@ import {
   retainAvailableSourceBindings,
   sourceFileNameBody,
   sourceFileNameTrigger,
+  sourcePurposeEnglish,
 } from './monthlyRunPage.js';
 
 const MONTHLY_FIXED_VALUE_KEYS = MONTHLY_FIXED_VALUE_DEFS.map((def) => def.key);
@@ -770,4 +771,17 @@ test('an input row keeps the file-name pattern collapsed behind an icon until as
   assert.equal(sourceFileNameBody({ ...source, fileTemplate: undefined }, t), '');
   assert.equal(sourceFileNameTrigger({ ...source, fileTemplate: '   ' }, t), '');
   assert.equal(sourceFileNameBody({ ...source, fileTemplate: '   ' }, t), '');
+});
+
+test('every monthly input has an English purpose, so the English UI never falls back to Chinese', () => {
+  const workflow = JSON.parse(
+    readFileSync(path.join(process.cwd(), 'database/workflows/gyre-captable-summary-v2.json'), 'utf8'),
+  ) as { runtimeParamsSchema: { fileRefs: { properties: Record<string, unknown> } } };
+
+  // `sourceDescription` falls back to the DB description, which is Chinese-only, so a source
+  // missing from this map silently renders Chinese text in the English UI.
+  const missing = Object.keys(workflow.runtimeParamsSchema.fileRefs.properties).filter(
+    (sourceKey) => !sourcePurposeEnglish[sourceKey]?.trim(),
+  );
+  assert.deepEqual(missing, []);
 });
