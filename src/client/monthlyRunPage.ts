@@ -88,7 +88,7 @@ export function monthlyRunSourceFolders(sourceKey: string | null | undefined, mo
   return month && /^\d{4}-\d{2}$/.test(month) ? [`input/${month}/`] : [];
 }
 
-const sourcePurposeEnglish: Record<string, string> = {
+export const sourcePurposeEnglish: Record<string, string> = {
   base_control_book: 'Prior month full EQ Control Book; base for the incremental merge.',
   incremental_control_book: 'Current month Control Book detail, merged into the base by transaction key.',
   series_b: 'Shares Issued × 5 gives Series B Preferred Stock; 0 when not supplied.',
@@ -106,15 +106,6 @@ const sourcePurposeEnglish: Record<string, string> = {
 };
 
 /**
- * File-name pattern for a monthly input, shown under its purpose so operators know which export to
- * upload. Patterns come from the DB workflow schema (`fileTemplate`); the wording of the label is
- * the only thing that differs per language, so the template itself is never translated.
- *
- * Untemplated sources render nothing: those are the ones the system carries over itself, whose
- * badge already says so, and inventing a file name for them only suggests there is something to go
- * and find.
- */
-/**
  * Renderers that live outside the page initializer cannot reach `deps.escapeHtml`, and the values
  * here come from the DB workflow schema, so they must still be escaped.
  */
@@ -127,17 +118,41 @@ function escapeTemplateText(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * File-name pattern for a monthly input, shown under its purpose so operators know which export to
+ * upload. Patterns come from the DB workflow schema (`fileTemplate`); the wording of the label is
+ * the only thing that differs per language, so the template itself is never translated.
+ *
+ * Untemplated sources render nothing: those are the ones the system carries over itself, whose
+ * badge already says so, and inventing a file name for them only suggests there is something to go
+ * and find.
+ *
+ * The pattern is split into the collapsed trigger and the panel it reveals, because the table puts
+ * them in different grid cells; both read the same `fileTemplate` through `readFileTemplate`.
+ */
+function readFileTemplate(
+  source: MonthlyRunSourceDefinition,
+  t: (key: 'fileTemplateLabel') => string,
+): { label: string; key: string; pattern: string } | null {
+  const pattern = source.fileTemplate?.trim();
+  if (!pattern) return null;
+  return {
+    label: t('fileTemplateLabel'),
+    key: escapeTemplateText(source.sourceKey),
+    pattern: escapeTemplateText(pattern),
+  };
+}
+
 export function sourceFileNameTrigger(
   source: MonthlyRunSourceDefinition,
   t: (key: 'fileTemplateLabel') => string,
 ): string {
-  const pattern = source.fileTemplate?.trim();
-  if (!pattern) return '';
-  const label = t('fileTemplateLabel');
-  const key = escapeTemplateText(source.sourceKey);
+  const template = readFileTemplate(source, t);
+  if (!template) return '';
+  const { label, key, pattern } = template;
   // Collapsed behind an icon: a pill on every row made the table noisy, and the pattern is only
   // needed while the operator is looking for the file.
-  return `<button type="button" class="source-file-template__trigger" data-source-template-toggle="${key}" aria-label="${label}: ${escapeTemplateText(pattern)}" title="${label}" aria-expanded="false">
+  return `<button type="button" class="source-file-template__trigger" data-source-template-toggle="${key}" aria-label="${label}: ${pattern}" title="${label}" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"></path><path d="M14 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg>
     </button>`;
 }
@@ -146,14 +161,41 @@ export function sourceFileNameBody(
   source: MonthlyRunSourceDefinition,
   t: (key: 'fileTemplateLabel') => string,
 ): string {
-  const pattern = source.fileTemplate?.trim();
-  if (!pattern) return '';
-  const label = t('fileTemplateLabel');
-  const key = escapeTemplateText(source.sourceKey);
+  const template = readFileTemplate(source, t);
+  if (!template) return '';
+  const { label, key, pattern } = template;
   return `<span class="source-file-template__body hidden" data-source-template-body="${key}">
       <span class="source-file-template__label">${label}</span>
-      <code class="source-file-template__pattern">${escapeTemplateText(pattern)}</code>
+      <code class="source-file-template__pattern">${pattern}</code>
     </span>`;
+}
+
+/**
+ * Wire the file-name pattern icons inside `root`.
+ *
+ * The panel is looked up from the clicked button's own block, not from the document: the table row
+ * and the configuration card render the same `data-source-template-*` keys for one source, and a
+ * document-wide lookup would always hit whichever came first in the DOM and toggle the wrong panel.
+ */
+function bindSourceTemplateToggles(root: ParentNode | null): void {
+  root?.querySelectorAll<HTMLButtonElement>('[data-source-template-toggle]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const block = button.closest('.source-description-inline, .monthly-run-source-card');
+      const body = block?.querySelector<HTMLElement>('[data-source-template-body]');
+      if (!body) return;
+      const willOpen = body.classList.contains('hidden');
+      // One open at a time: several expanded patterns push the layout apart.
+      root?.querySelectorAll<HTMLElement>('[data-source-template-body]').forEach((other) => {
+        other.classList.add('hidden');
+      });
+      root?.querySelectorAll<HTMLButtonElement>('[data-source-template-toggle]').forEach((other) => {
+        other.setAttribute('aria-expanded', 'false');
+      });
+      body.classList.toggle('hidden', !willOpen);
+      button.setAttribute('aria-expanded', String(willOpen));
+    });
+  });
 }
 
 function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLanguage): string {
@@ -734,25 +776,7 @@ export function createMonthlyRunPage({
       });
     });
 
-    document.querySelectorAll<HTMLButtonElement>('[data-source-template-toggle]').forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const sourceKey = button.dataset.sourceTemplateToggle;
-        if (!sourceKey) return;
-        const body = document.querySelector<HTMLElement>(`[data-source-template-body="${CSS.escape(sourceKey)}"]`);
-        if (!body) return;
-        const willOpen = body.classList.contains('hidden');
-        // One open at a time: several expanded patterns push the table apart.
-        document
-          .querySelectorAll<HTMLElement>('[data-source-template-body]')
-          .forEach((other) => other.classList.add('hidden'));
-        document
-          .querySelectorAll<HTMLButtonElement>('[data-source-template-toggle]')
-          .forEach((other) => other.setAttribute('aria-expanded', 'false'));
-        body.classList.toggle('hidden', !willOpen);
-        button.setAttribute('aria-expanded', String(willOpen));
-      });
-    });
+    bindSourceTemplateToggles(el('monthlyRunSourcesBody'));
 
     document.querySelectorAll<HTMLButtonElement>('[data-business-source-remove]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -1317,6 +1341,8 @@ export function createMonthlyRunPage({
         void uploadSourceFileFor(sourceKey);
       });
     });
+
+    bindSourceTemplateToggles(list);
   }
 
   async function uploadSourceFileFor(sourceKey: string) {

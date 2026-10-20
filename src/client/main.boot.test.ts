@@ -1349,3 +1349,51 @@ test('the file-name pattern starts collapsed and toggles from its icon', async (
   assert.ok(body.classList.contains('hidden'), 'clicking again hides it');
   assert.equal(trigger.getAttribute('aria-expanded'), 'false');
 });
+
+test('the file-name pattern also toggles inside the per-source configuration card', async () => {
+  const window = await bootApp([
+    ...API_STUBS,
+    {
+      match: /\/api\/monthly-runs\/source-config$/,
+      respond: {
+        workflowCode: 'gyre-captable-summary-v2',
+        workflowName: 'CapTable Summary',
+        workflowVersion: MONTHLY_WORKFLOW_VERSION,
+        sources: [
+          {
+            sourceKey: 'incremental_control_book',
+            sourceGroup: 'shareworks',
+            taskId: 'invoke_control_book_merge',
+            label: 'Control Book Detail update',
+            description: '',
+            required: false,
+            hidden: false,
+            allowSheetNameOverride: false,
+            fileTemplate: 'Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx',
+            order: 2,
+          },
+        ],
+        fixedValues: [],
+      },
+    },
+  ]);
+  const doc = window.document;
+
+  doc.querySelector<HTMLButtonElement>('[data-business-source-configure]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 120));
+
+  const modal = doc.getElementById('monthlyRunSourceModal');
+  const modalTrigger = modal?.querySelector<HTMLButtonElement>('[data-source-template-toggle]');
+  const modalBody = modal?.querySelector<HTMLElement>('[data-source-template-body]');
+  const tableBody = doc.querySelector<HTMLElement>('#monthlyRunSourcesBody [data-source-template-body]');
+  assert.ok(modalTrigger && modalBody, 'the configuration card must render the trigger and its panel');
+
+  modalTrigger.click();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.ok(!modalBody.classList.contains('hidden'), 'the card panel must open');
+  assert.ok(tableBody?.classList.contains('hidden'), 'the table panel must stay untouched');
+
+  modalTrigger.click();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.ok(modalBody.classList.contains('hidden'), 'the card panel must close again');
+});
