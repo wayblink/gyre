@@ -1,4 +1,4 @@
-export type EsopPageKey = 'grant-record' | 'exercise-record' | 'sold-shares' | 'transfer-plan';
+export type EsopPageKey = 'grant-record' | 'exercise-record' | 'sold-shares' | 'cancellation-record' | 'transfer-plan';
 
 export type EsopWorkflowSourceBindings = Record<string, { fileId?: number; fileKey?: string } | undefined>;
 
@@ -14,5 +14,6 @@ export const ESOP_PAGE_WORKFLOW_CONFIGS: Record<EsopPageKey, { pageKey: EsopPage
   'grant-record': { pageKey: 'grant-record', workflowCode: 'esop-grant-record-sync' },
   'exercise-record': { pageKey: 'exercise-record', workflowCode: 'esop-exercise-record-sync' },
   'sold-shares': { pageKey: 'sold-shares', workflowCode: 'esop-sold-shares-sync' },
+  'cancellation-record': { pageKey: 'cancellation-record', workflowCode: 'esop-cancellation-record-sync' },
   'transfer-plan': { pageKey: 'transfer-plan', workflowCode: 'esop-transfer-to-futu-sync' },
 };

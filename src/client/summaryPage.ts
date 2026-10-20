@@ -5,7 +5,14 @@ export type AvailableMonth = {
   hasData?: boolean;
   hasCapTableData?: boolean;
   hasPlanSummaryData?: boolean;
+  hasExerciseData?: boolean;
+  hasSoldSharesData?: boolean;
+  hasCancellationData?: boolean;
 };
+
+/** Keys on a month that say "this month has a snapshot for page X". */
+export type MonthAvailabilityKey =
+  'hasCapTableData' | 'hasPlanSummaryData' | 'hasExerciseData' | 'hasSoldSharesData' | 'hasCancellationData';
 
 export function sortAvailableMonths(months: ReadonlyArray<AvailableMonth>): AvailableMonth[] {
   return [...months].sort((left, right) => right.month.localeCompare(left.month));

@@ -225,6 +225,7 @@ export function inferOutputFolderFromProductFile(row: Record<string, unknown>): 
   if (originalName.includes('grant_record')) return 'output/grant-record';
   if (originalName.includes('exercise_record')) return 'output/exercise-record';
   if (originalName.includes('sold_shares')) return 'output/sold-shares';
+  if (originalName.includes('cancellation_records')) return 'output/cancellation-record';
   if (originalName.includes('transfer_plan')) return 'output/transfer-plan';
   if (originalName.includes('plan_summary')) return 'output/plan-summary';
   if (originalName.includes('five_percent_holders')) return 'output/five-percent-holders';

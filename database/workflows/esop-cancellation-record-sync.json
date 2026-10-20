@@ -1,0 +1,105 @@
+{
+  "code": "esop-cancellation-record-sync",
+  "name": "ESOP / Cancellation Records Sync",
+  "description": "读取取消与恢复报表的「取消与恢复明细」，并替换取消记录展示数据。",
+  "status": "active",
+  "version": 2,
+  "tasks": [
+    {
+      "x": 48,
+      "y": 48,
+      "id": "extract_cancellation_records",
+      "name": "Extract Cancel & Restore Detail",
+      "inputs": {},
+      "params": {
+        "range": "A1:W",
+        "fileRef": {
+          "$type": "object",
+          "$label": "Cancel & Restore Report workbook",
+          "$fromRuntime": "fileRefs.cancellation_report"
+        },
+        "headerRow": 1,
+        "sheetName": "取消与恢复明细",
+        "dropTrailingEmptyRows": true
+      },
+      "dependsOn": [],
+      "description": "从取消与恢复报表提取「取消与恢复明细」Sheet（23 列中文表头，第 1 行表头）。 该输入为可选：未提供时输出空 dataframe，月度运行不会因此中断（记录页该月显示为空）。",
+      "operatorCode": "sheet.optional-range.extract",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 284,
+      "y": 48,
+      "id": "filter_cancellation_records_rows",
+      "name": "Filter Cancellation Record Rows",
+      "inputs": {
+        "input1": {
+          "from": "extract_cancellation_records",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "sql": "select *\nfrom {cancellation_records}\nwhere trim(concat('', coalesce([工号], ''))) <> ''\n  and trim(concat('', coalesce([姓名], ''))) <> ''\n  and trim(concat('', coalesce([工号], ''))) <> '工号'",
+        "tableBindings": [
+          {
+            "inputSlot": "input1",
+            "tableName": "cancellation_records"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "description": "过滤报表顶部空行、说明行和表头噪音，只保留有员工工号和姓名的记录。",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 520,
+      "y": 48,
+      "id": "persist_cancellation_records_file",
+      "name": "Persist Cancellation Records File",
+      "inputs": {
+        "input1": {
+          "from": "filter_cancellation_records_rows",
+          "slot": "dataframe"
+        }
+      },
+      "params": {
+        "fileName": "cancellation_records.xlsx",
+        "sheetName": "Cancellation Records",
+        "sourceKey": "cancellation_report",
+        "uploadedBy": "Workflow",
+        "folderPrefix": "output/cancellation-record",
+        "fileNameSuffix": {
+          "$fromRuntime": "monthUnderscore"
+        }
+      },
+      "dependsOn": [],
+      "description": "将取消与恢复明细输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。",
+      "operatorCode": "dataframe.persist.excel",
+      "operatorVersion": "1.0.0"
+    }
+  ],
+  "runtimeParamsSchema": {
+    "fileRefs": {
+      "type": "object",
+      "label": "File References",
+      "properties": {
+        "cancellation_report": {
+          "type": "object",
+          "label": "Cancel & Restore Report workbook"
+        }
+      }
+    },
+    "month": {
+      "type": "string",
+      "label": "Month",
+      "description": "月度快照键（YYYY-MM）。展示层按该值取当月最新快照，并写入输出文件名后缀。"
+    },
+    "monthUnderscore": {
+      "type": "string",
+      "label": "Month (underscore)",
+      "description": "month 的下划线形式（YYYY_MM），用于输出文件名后缀。"
+    }
+  },
+  "runtimeParamsDefaults": {}
+}

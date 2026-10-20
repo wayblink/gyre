@@ -22,6 +22,7 @@ export function normalizeSchemaAssertTask(task: WorkflowTask) {
   if (task.operatorCode !== 'dataframe.schema.assert') return;
   task.params.mode = normalizeSchemaMode(task.params.mode);
   task.params.expectedColumns = parseExpectedColumns(task.params.expectedColumns).join(', ');
+  task.params.skipWhenEmpty = task.params.skipWhenEmpty === true;
   normalizeAssertBaseParams(task);
   task.inputs = {
     input1: {
@@ -38,6 +39,21 @@ export function evaluateSchemaAssertion(task: WorkflowTask, columns: string[]) {
   const mode = normalizeSchemaMode(task.params.mode);
   const expectedColumns = parseExpectedColumns(task.params.expectedColumns);
   const failureMessage = String(task.params.failureMessage ?? 'Assertion failed').trim() || 'Assertion failed';
+
+  // An optional input that was not supplied produces a dataframe with no columns. That is a
+  // documented state (see `sheet.optional-range.extract`), not a broken schema, so `skipWhenEmpty`
+  // lets the guard pass instead of demanding a schema from a file nobody handed over.
+  if (task.params.skipWhenEmpty === true && columns.length === 0) {
+    return buildAssertionResult({
+      task,
+      passed: true,
+      actualValue: '(not supplied)',
+      expectedValue: expectedColumns.join(', '),
+      actualLabel: '(not supplied)',
+      expectedLabel: `${mode}: ${expectedColumns.join(', ') || '(empty)'}`,
+      failureMessage,
+    });
+  }
 
   const missing = expectedColumns.filter((column) => !columns.includes(column));
   const unexpected = columns.filter((column) => !expectedColumns.includes(column));
@@ -78,6 +94,7 @@ export const dataframeSchemaAssertOperator = defineWorkflowOperator({
       '连接需要校验结构的 dataframe 输入。',
       'mode 选择 contains 只要求包含指定列，或 exact 要求列集合和顺序完全一致。',
       '在 expectedColumns 中填写逗号或换行分隔的列名，并配置失败策略。',
+      '可选输入把 skipWhenEmpty 设为 true，未提供文件时不报错。',
     ],
     example: `{
   "mode": "contains",
@@ -91,6 +108,13 @@ export const dataframeSchemaAssertOperator = defineWorkflowOperator({
   paramsSchema: {
     mode: { type: 'string', label: '匹配模式', required: true, enum: ['contains', 'exact'], default: 'contains' },
     expectedColumns: { type: 'string', label: '列名', required: true, placeholder: 'col_a, col_b', default: '' },
+    skipWhenEmpty: {
+      type: 'boolean',
+      label: '输入为空时跳过',
+      required: false,
+      default: false,
+      description: '可选输入未提供时（dataframe 无列）直接通过，不把「没给文件」当成「结构坏了」。',
+    },
     failureStrategy: {
       type: 'string',
       label: '失败策略',

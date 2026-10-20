@@ -3,7 +3,7 @@
   "name": "Read SERIES B",
   "description": "读取 GYRE THERAPEUTICS INC SERIES B 的 43105 Sheet，汇总 Shares Issued 列。",
   "status": "active",
-  "version": 1,
+  "version": 2,
   "tasks": [
     {
       "x": 48,
@@ -25,11 +25,12 @@
           "$default": "43105",
           "$fromRuntime": "fileRefs.series_b.sheet"
         },
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "Shares Issued"
       },
       "dependsOn": [],
-      "description": "读取 SERIES B Control Books 的 43105 Sheet，H 列表头位于第 10 行，数据从第 11 行开始。",
-      "operatorCode": "sheet.range.extract",
+      "description": "读取 SERIES B Control Books 的 43105 Sheet，H 列表头位于第 10 行，数据从第 11 行开始。该源是可选的：未提供文件时输出仅含 Shares Issued 列的空 dataframe，合计记为 0，而不是回落到默认值里的历史文件。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {
@@ -68,7 +69,7 @@
         }
       },
       "params": {
-        "sql": "select sum(coalesce([Shares Issued], 0)) as [Shares Issued Total] from {series_b}",
+        "sql": "select coalesce(sum(coalesce([Shares Issued], 0)), 0) as [Shares Issued Total] from {series_b}",
         "tableBindings": [
           {
             "inputSlot": "series_b",
@@ -77,7 +78,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "计算 43105 Sheet 的 Shares Issued 列合计值。",
+      "description": "计算 43105 Sheet 的 Shares Issued 列合计值；未提供文件时合计为 0（空表 sum 为 null，显式归一为 0）。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     }
@@ -103,10 +104,7 @@
   "runtimeParamsDefaults": {
     "fileRefs": {
       "series_b": {
-        "id": 195,
-        "key": "input/series-b/Control_Books_Detail_Data_16.09.2026_19.31.xlsx",
-        "sheet": "43105",
-        "provider": "product-files"
+        "sheet": "43105"
       }
     }
   }

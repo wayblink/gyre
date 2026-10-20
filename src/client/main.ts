@@ -31,7 +31,12 @@ import { createThemeControls } from './theme.js';
 import { confirmAction, notify } from './uiFeedback.js';
 import { createWorkflowPage } from './workflowPage.js';
 import { createDocsPage } from './docsPage.js';
-import { resolveDefaultSummaryMonth, sortAvailableMonths, type AvailableMonth } from './summaryPage.js';
+import {
+  resolveDefaultSummaryMonth,
+  sortAvailableMonths,
+  type AvailableMonth,
+  type MonthAvailabilityKey,
+} from './summaryPage.js';
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
 import { createTransferPlanPage } from './transferPlanPage.js';
 import { createCaptablePage } from './captablePage.js';
@@ -69,6 +74,7 @@ const pageTitles: Record<string, string> = {
   'grant-record': '授予记录',
   'exercise-record': '行权记录',
   'sold-shares': '卖出记录',
+  'cancellation-record': '取消记录',
   'transfer-plan': '2025 转仓至 Futu',
   'employee-management': '员工管理',
   'plan-summary': '计划汇总',
@@ -153,6 +159,8 @@ async function refreshWorkflowUpdatePage(page: WorkflowUpdatePageKey) {
     await esopTables.renderExercises();
   } else if (page === 'sold-shares') {
     await esopTables.renderSoldShares();
+  } else if (page === 'cancellation-record') {
+    await esopTables.renderCancellationRecords();
   } else if (page === 'transfer-plan') {
     await transferPlanPage.render();
   } else if (page === 'employee-management') {
@@ -171,6 +179,7 @@ const workflowUpdateModal = createWorkflowUpdateModal({
   notify,
   getLanguage: () => currentLanguage,
   getProductFiles: () => filesPage.getProductFiles(),
+  getMonth: () => currentMonth,
   refreshProductFiles: () => filesPage.refreshProductFiles(),
   openFilePicker: (options) => filePicker.open(options),
   productFileDisplayName,
@@ -443,6 +452,7 @@ const LANGUAGE_BINDINGS: LanguageBinding[] = [
   { kind: 'hero', page: 'grant-record', key: 'grantHeroText' },
   { kind: 'hero', page: 'exercise-record', key: 'exerciseHeroText' },
   { kind: 'hero', page: 'sold-shares', key: 'soldHeroText' },
+  { kind: 'hero', page: 'cancellation-record', key: 'cancellationHeroText' },
   { kind: 'hero', page: 'transfer-plan', key: 'transferHeroText' },
   { kind: 'hero', page: 'employee-management', key: 'employeeHeroText' },
   { kind: 'hero', page: 'plan-summary', key: 'planHeroText' },
@@ -473,12 +483,14 @@ const LANGUAGE_BINDINGS: LanguageBinding[] = [
   { kind: 'searchLabels', page: 'grant-record', keys: ['search', 'tag', 'incentiveType'] },
   { kind: 'searchLabels', page: 'exercise-record', keys: ['search', 'tag', 'grantYear'] },
   { kind: 'searchLabels', page: 'sold-shares', keys: ['search', 'tag', 'employmentStatus'] },
+  { kind: 'searchLabels', page: 'cancellation-record', keys: ['search', 'tag', 'employmentStatus'] },
   { kind: 'searchLabels', page: 'employee-management', keys: ['search', 'tag'] },
   { kind: 'option', id: 'capitalizationSourceFile', value: '', key: 'defaultSnapshot' },
   { kind: 'option', id: 'filterGrantType', value: '', key: 'allTypes' },
   { kind: 'option', id: 'filterHoldingsTag', value: '', key: 'allTags' },
   { kind: 'option', id: 'filterExerciseTag', value: '', key: 'allTags' },
   { kind: 'option', id: 'filterSoldSharesTag', value: '', key: 'allTags' },
+  { kind: 'option', id: 'filterCancellationTag', value: '', key: 'allTags' },
   { kind: 'option', id: 'filterEmployeesPageTag', value: '', key: 'allTags' },
   { kind: 'text', selector: '#settingsLanguageTitle', key: 'language' },
   { kind: 'text', selector: '#settingsLanguageSubtitle', key: 'languageSubtitle' },
@@ -1154,6 +1166,10 @@ async function activatePage(page: PageKey) {
       await esopTables.renderSoldShares();
     }
 
+    if (page === 'cancellation-record') {
+      await esopTables.renderCancellationRecords();
+    }
+
     if (page === 'transfer-plan') {
       await transferPlanPage.render();
     }
@@ -1339,6 +1355,30 @@ async function initSummaryPage() {
   });
 }
 
+/**
+ * Month snapshot picker for a record page: switching months re-renders the table against that
+ * month's snapshot (the workflow run is tagged with `month`). `has*Data` marks months that have one.
+ */
+function initRecordMonthPicker(options: {
+  pickerId: string;
+  dataKey: MonthAvailabilityKey;
+  render: (month: string) => Promise<void> | void;
+}) {
+  renderMonthPicker(options.pickerId, currentMonth, options.dataKey);
+  const picker = el<HTMLInputElement>(options.pickerId);
+  picker.value = currentMonth;
+  picker.addEventListener('change', () => {
+    const month = picker.value;
+    if (!month) {
+      notify('请选择月份', { type: 'warning' });
+      return;
+    }
+    currentMonth = month;
+    renderMonthPicker(options.pickerId, month, options.dataKey);
+    void options.render(month);
+  });
+}
+
 function initPlanSummaryPage() {
   renderMonthPicker('planSummaryMonthPicker', currentMonth, 'hasPlanSummaryData');
   const picker = el<HTMLInputElement>('planSummaryMonthPicker');
@@ -1367,7 +1407,7 @@ async function fetchAvailableMonths(): Promise<AvailableMonth[]> {
   return availableMonthOptions;
 }
 
-function renderMonthPicker(inputId: string, selectedMonth: string, dataKey: 'hasCapTableData' | 'hasPlanSummaryData') {
+function renderMonthPicker(inputId: string, selectedMonth: string, dataKey: MonthAvailabilityKey) {
   const picker = el<HTMLInputElement>(inputId);
   const control = picker.closest<HTMLElement>('.month-picker-control');
   const trigger = control?.querySelector<HTMLButtonElement>('.month-picker-trigger');
@@ -1665,6 +1705,13 @@ async function initEmployeesPage() {
     .forEach((header) =>
       header.addEventListener('click', () =>
         esopTables.toggleSoldSharesSort(header.dataset.soldSort as 'name' | 'empNo'),
+      ),
+    );
+  document
+    .querySelectorAll<HTMLElement>('[data-cancellation-sort]')
+    .forEach((header) =>
+      header.addEventListener('click', () =>
+        esopTables.toggleCancellationSort(header.dataset.cancellationSort as 'name' | 'empNo'),
       ),
     );
   await loadEmployeeLabels();
@@ -2206,6 +2253,21 @@ async function initializeApp() {
   await monthlyRunPage.init();
   await filesPage.init();
   await workflowPage.init();
+  initRecordMonthPicker({
+    pickerId: 'exerciseMonthPicker',
+    dataKey: 'hasExerciseData',
+    render: () => esopTables.renderExercises(),
+  });
+  initRecordMonthPicker({
+    pickerId: 'soldSharesMonthPicker',
+    dataKey: 'hasSoldSharesData',
+    render: () => esopTables.renderSoldShares(),
+  });
+  initRecordMonthPicker({
+    pickerId: 'cancellationMonthPicker',
+    dataKey: 'hasCancellationData',
+    render: () => esopTables.renderCancellationRecords(),
+  });
   await esopTables.init();
   await initTransferPlanPage();
   await initEmployeesPage();

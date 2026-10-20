@@ -28,6 +28,10 @@ test('monthly input sources render in the order the workflow definition declares
       'Previous Capitalization Summary',
       'Cancel & Restore Summary',
       'Cancel & Restore Detail',
+      // Record pages are refreshed at the end of the monthly run; all three are optional.
+      'Exercise Record · Futu 行权汇总',
+      'Exercise Record · Shareworks',
+      'Sold Shares · Futu 出售汇总',
     ],
   );
 
@@ -45,17 +49,21 @@ test('monthly Futu input sources are labelled for the monthly update flow', () =
   assert.equal(byKey.get('incremental_futu_exercises'), 'Futu Exercise Monthly Update');
 });
 
-test('monthly input sources distinguish required business files from optional compatibility inputs', () => {
+test('monthly input sources distinguish required business files from optional inputs', () => {
   const sources = monthlySourcesFromSchemaOrdered(monthlyWorkflowSchema());
   const byKey = new Map(sources.map((source) => [source.sourceKey, source]));
 
-  for (const sourceKey of [
-    'incremental_control_book',
-    'option_plans_summary',
-    'incremental_futu_exercises',
-    'incremental_cancel_restore_report',
-  ]) {
+  // Business files the operator must always bring: without them the month cannot be computed.
+  for (const sourceKey of ['incremental_control_book', 'option_plans_summary']) {
     assert.equal(byKey.get(sourceKey)?.required, true, `${sourceKey} should be required`);
+  }
+
+  // The two incremental merges are optional: months before the Futu exercise report and the
+  // cancel/restore report existed have no file to supply, and the merge sub-workflows fall back to
+  // their base alone (an unbound optional source resolves to a declared-but-empty dataframe).
+  for (const sourceKey of ['incremental_futu_exercises', 'incremental_cancel_restore_report']) {
+    assert.equal(byKey.get(sourceKey)?.required, false, `${sourceKey} should be optional`);
+    assert.equal(byKey.get(sourceKey)?.hidden, false, `${sourceKey} should stay visible`);
   }
 
   for (const sourceKey of [
@@ -98,8 +106,18 @@ test('2025 BC Subplan transfer remains as an optional compatibility input source
   );
   const controlMetrics = workflow.tasks.find((candidate) => candidate.id === 'calc_control_book_metrics') as
     { params?: { sql?: string } } | undefined;
-  assert.match(controlMetrics?.params?.sql ?? '', /Omnibus Inc\. Pl/);
+  assert.match(controlMetrics?.params?.sql ?? '', /Omnibus Inc%Pl%/);
+  assert.match(controlMetrics?.params?.sql ?? '', /Ominibus Inc%Pl%/);
   assert.match(controlMetrics?.params?.sql ?? '', /bc_subplan_transfer_control_book/);
+  // A non-canonical Omnibus spelling must be surfaced as a warning, never as a silent drop.
+  const controlMetricsGuards = JSON.stringify(
+    (
+      workflow.tasks.find((candidate) => candidate.id === 'calc_control_book_metrics') as
+        { inputs?: unknown } | undefined
+    )?.inputs ?? {},
+  );
+  assert.match(controlMetricsGuards, /guard_warn_control_book_comment_variants/);
+  assert.match(controlMetricsGuards, /"failureStrategy":"warning"/);
   const optionMetrics = workflow.tasks.find((candidate) => candidate.id === 'calc_option_metrics') as
     { inputs?: unknown; params?: { sql?: string } } | undefined;
   assert.equal(JSON.stringify(optionMetrics?.inputs ?? {}).includes('bc_subplan'), true);

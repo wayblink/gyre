@@ -8,6 +8,7 @@ import { defineWorkflowOperator, normalizeWorkflowTaskDependencies, requireInput
 import {
   buildAssertionResult,
   compareAssertValues,
+  formatAssertionFailureTail,
   isAssertOperator,
   normalizeAssertBaseParams,
 } from './assertUtils.js';
@@ -46,7 +47,7 @@ export function evaluateDataFrameAssertion(task: WorkflowTask, dataframe: Workfl
   const fallbackFailureMessage =
     dataframe.rows.length !== 1 || dataframe.columns.length !== 1
       ? `${failureMessage}: expected a 1x1 dataframe, got ${dataframe.rows.length}x${dataframe.columns.length}`
-      : `${failureMessage}: actual=${String(actualValue)} ${operator} expected=${String(expectedValue)} was false`;
+      : formatAssertionFailureTail(failureMessage, actualValue, expectedValue, operator);
 
   return buildAssertionResult({
     task,

@@ -109,14 +109,12 @@ test('runtime parameters build fileRefs from instance sources, adding sheet only
     },
     previous_capitalization_summary: { fileId: null, fileName: null, logicalPath: null, sheetName: null },
   });
-
   const runtime = monthlyRunInstanceToRuntimeParameters(instance);
 
   assert.equal(runtime.month, '2026-06');
   assert.equal(runtime.monthUnderscore, '2026_06');
   assert.deepEqual(runtime.fileRefs, {
     base_control_book: { provider: 'product-files', key: 'input/2026-06/control.xlsx', sheet: 'EQ Control Book' },
-    futu_exercises: { provider: 'product-files', key: 'input/2026-06/futu.xlsx' },
     option_plans_summary: { provider: 'product-files', key: 'input/2026-06/options.xlsx', sheet: 'Custom Sheet' },
     incremental_cancel_restore_report: {
       provider: 'product-files',
@@ -131,6 +129,27 @@ test('runtime parameters build fileRefs from instance sources, adding sheet only
     cullgenCommonStock: undefined,
     gyre2023ChinaSubplanTotal: undefined,
   });
+});
+
+test('runtime parameters drop the legacy single Futu source so a stale binding cannot fail validation', () => {
+  const instance = instanceRecord({
+    futu_exercises: {
+      fileId: 3,
+      fileName: '!!Gyre Cap Table 01.31.26.xlsx',
+      logicalPath: 'input/2026-01/!!Gyre Cap Table 01.31.26.xlsx',
+      sheetName: 'Futu BCI Exercises to Date',
+    },
+    base_futu_exercises: {
+      fileId: 9,
+      fileName: 'Futu_Exercises_Base_2026_05.xlsx',
+      logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_05.xlsx',
+      sheetName: 'Futu BCI Exercises',
+    },
+  });
+
+  const runtime = monthlyRunInstanceToRuntimeParameters(instance);
+
+  assert.deepEqual(Object.keys(runtime.fileRefs as Record<string, unknown>), ['base_futu_exercises']);
 });
 
 test('latest monthly output selects the newest successful execution with an existing result file', async () => {

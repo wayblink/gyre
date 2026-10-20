@@ -112,6 +112,12 @@
                     </span>
                     <span class="nav-text">Sold Shares</span>
                 </div>
+                <div class="nav-item nav-item--child" data-page="cancellation-record">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                    </span>
+                    <span class="nav-text">Cancellation Records</span>
+                </div>
                 <div class="nav-item nav-item--child" data-page="transfer-plan">
                     <span class="nav-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h12"/><path d="m13 4 3 3-3 3"/><path d="M20 17H8"/><path d="m11 14-3 3 3 3"/></svg>
@@ -206,7 +212,7 @@
                             <p>股权明细的业务总入口，包含授予、行权、卖出和 2025 转富途计划四类台账。</p>
                         </div>
                     </div>
-                    <div class="product-grid product-grid--four">
+                    <div class="product-grid product-grid--five">
                         <a class="product-card product-card--link" href="/grant-record" aria-label="进入授予记录页面">
                             <div class="product-card__label">Grant_record</div><h3>授予记录</h3><p>futu + shareworks 数据合并拼表。</p>
                         </a>
@@ -216,9 +222,109 @@
                         <a class="product-card product-card--link" href="/sold-shares" aria-label="进入卖出记录页面">
                             <div class="product-card__label">Sold shares</div><h3>卖出记录</h3><p>futu 卖出记录仅做管理。</p>
                         </a>
+                        <a class="product-card product-card--link" href="/cancellation-record" aria-label="进入取消记录页面">
+                            <div class="product-card__label">Cancellation records</div><h3>取消记录</h3><p>取消与恢复报表的明细台账。</p>
+                        </a>
                         <a class="product-card product-card--link" href="/transfer-plan" aria-label="进入 2025 年计划页面">
                             <div class="product-card__label">2025 transfer</div><h3>2025 年计划</h3><p>导入提醒、月度归属汇总和每月取消数量编辑入口。</p>
                         </a>
+                    </div>
+                </section>
+
+                <section class="page-section" id="page-cancellation-record">
+                    <div class="product-page-hero">
+                        <div>
+                            <div class="product-page-hero__eyebrow">取消记录</div>
+                            <h2>Cancellation Records</h2>
+                            <p>展示取消与恢复明细，数据来自 Files 中的取消与恢复报表。</p>
+                        </div>
+                        <div class="product-page-hero__metrics">
+                                                        <label class="product-page-hero__metric product-page-hero__metric--control" for="cancellationMonthPicker">
+                                <span>Month</span>
+                                <div class="month-picker-control" data-month-picker="cancellationMonthPicker">
+                                    <button type="button" id="cancellationMonthPickerTrigger" class="form-input form-input--compact month-picker-trigger" aria-haspopup="dialog" aria-expanded="false"><span id="cancellationMonthPickerLabel">-</span><span aria-hidden="true">▾</span></button>
+                                    <input type="hidden" id="cancellationMonthPicker">
+                                    <div id="cancellationMonthPickerPanel" class="month-picker-panel hidden" role="dialog" aria-label="Month picker"></div>
+                                </div>
+                            </label>
+<div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="cancellationSourceFilesName">-</strong></div>
+                        </div>
+                    </div>
+                    <div class="search-bar">
+                        <div class="search-group">
+                            <label class="search-label" for="searchCancellations">Search</label>
+                            <input type="text" id="searchCancellations" class="search-input" placeholder="Search by name, employee, grant, change type...">
+                            <label class="search-label" for="filterCancellationTag">Tag</label>
+                            <select id="filterCancellationTag" class="search-input">
+                                <option value="">All Tags</option>
+                            </select>
+                            <label class="search-label" for="filterCancellationEmploymentStatus">Employment Status</label>
+                            <select id="filterCancellationEmploymentStatus" class="form-input" style="min-width:150px;height:36px;">
+                                <option value="">All Statuses</option>
+                                <option value="在职">在职</option>
+                                <option value="离职">离职</option>
+                            </select>
+                            <button class="btn btn-primary" id="btnSearchCancellations">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+                                Cancellation Records
+                            </h3>
+                            <span class="card-subtitle">cancellation_records.xlsx</span>
+                            <div class="card-header-actions product-table-actions">
+                                <button class="btn btn-primary btn-sm" type="button" data-workflow-update-page="cancellation-record"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12a9 9 0 0 1 15.5-6.2"/><path d="M18.5 2.5v3.3h-3.3"/><path d="M5.5 21.5v-3.3h3.3"/></svg><span data-workflow-action-label>Update</span></button>
+                                <button class="btn btn-secondary btn-sm" type="button" data-workflow-export-page="cancellation-record"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span data-workflow-action-label>Export</span></button>
+                            </div>
+                        </div>
+                        <div class="card-body card-body--with-pagination">
+                            <div class="table-scroll">
+                                <table class="data-table table-cancellation-records" id="cancellationsTable">
+                                    <thead><tr>
+                                        <th>No.</th>
+                                        <th class="sortable-th" data-cancellation-sort="name">Name<br><span class="sub-label">姓名</span> <span class="sort-indicator" data-sort-key="name"></span></th>
+                                        <th class="sortable-th" data-cancellation-sort="empNo">Employee No.<br><span class="sub-label">工号</span> <span class="sort-indicator" data-sort-key="empNo"></span></th>
+                                        <th>Employment Status<br><span class="sub-label">在职状态</span></th>
+                                        <th>Grant No.<br><span class="sub-label">授予编号</span></th>
+                                        <th>Plan<br><span class="sub-label">所属计划</span></th>
+                                        <th>Incentive Type<br><span class="sub-label">激励类型</span></th>
+                                        <th>Grant Date<br><span class="sub-label">授予日期</span></th>
+                                        <th>Vesting Date<br><span class="sub-label">归属日期</span></th>
+                                        <th>Change Type<br><span class="sub-label">变更类型</span></th>
+                                        <th>Reason<br><span class="sub-label">取消/恢复原因</span></th>
+                                        <th class="col-number">Quantity<br><span class="sub-label">数量</span></th>
+                                        <th>Change Date<br><span class="sub-label">变更日期</span></th>
+                                        <th>Financial Change Date<br><span class="sub-label">财务变更日期</span></th>
+                                        <th>Creation No.<br><span class="sub-label">创建编号</span></th>
+                                        <th>Vesting Rule<br><span class="sub-label">归属规则</span></th>
+                                        <th>Operator<br><span class="sub-label">操作人</span></th>
+                                    </tr></thead>
+                                    <tbody id="cancellationRecordsBody"></tbody>
+                                </table>
+                            </div>
+                            <div class="table-pagination">
+                                <div class="pagination-summary" id="cancellationPaginationSummary">-</div>
+                                <div class="pagination-actions">
+                                    <label class="pagination-size-label"><span class="pagination-size-label-text">Rows</span>
+                                        <select class="form-input pagination-size-select" id="cancellationPageSizeSelect">
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                        </select>
+                                    </label>
+                                    <button class="btn btn-secondary btn-sm" id="btnCancellationsFirstPage">« First</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnCancellationsPrevPage">Previous</button>
+                                    <span class="pagination-page" id="cancellationPaginationPage">1 / 1</span>
+                                    <button class="btn btn-secondary btn-sm" id="btnCancellationsNextPage">Next</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnCancellationsLastPage">Last »</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -383,7 +489,15 @@
                             <p>展示 Futu 全部行权记录，数据来自 Files 中的独立工作簿。</p>
                         </div>
                         <div class="product-page-hero__metrics">
-                            <div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="exerciseRecordSourceFilesName">-</strong></div>
+                                                        <label class="product-page-hero__metric product-page-hero__metric--control" for="exerciseMonthPicker">
+                                <span>Month</span>
+                                <div class="month-picker-control" data-month-picker="exerciseMonthPicker">
+                                    <button type="button" id="exerciseMonthPickerTrigger" class="form-input form-input--compact month-picker-trigger" aria-haspopup="dialog" aria-expanded="false"><span id="exerciseMonthPickerLabel">-</span><span aria-hidden="true">▾</span></button>
+                                    <input type="hidden" id="exerciseMonthPicker">
+                                    <div id="exerciseMonthPickerPanel" class="month-picker-panel hidden" role="dialog" aria-label="Month picker"></div>
+                                </div>
+                            </label>
+<div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="exerciseRecordSourceFilesName">-</strong></div>
                         </div>
                     </div>
                     <div class="search-bar">
@@ -515,7 +629,15 @@
                             <p>展示 Futu 卖出汇总记录，数据来自 Files 中的独立工作簿。</p>
                         </div>
                         <div class="product-page-hero__metrics">
-                            <div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="soldSharesSourceFilesName">-</strong></div>
+                                                        <label class="product-page-hero__metric product-page-hero__metric--control" for="soldSharesMonthPicker">
+                                <span>Month</span>
+                                <div class="month-picker-control" data-month-picker="soldSharesMonthPicker">
+                                    <button type="button" id="soldSharesMonthPickerTrigger" class="form-input form-input--compact month-picker-trigger" aria-haspopup="dialog" aria-expanded="false"><span id="soldSharesMonthPickerLabel">-</span><span aria-hidden="true">▾</span></button>
+                                    <input type="hidden" id="soldSharesMonthPicker">
+                                    <div id="soldSharesMonthPickerPanel" class="month-picker-panel hidden" role="dialog" aria-label="Month picker"></div>
+                                </div>
+                            </label>
+<div class="product-page-hero__metric"><span data-page-file-label="source-files">SourceFiles</span><strong data-page-source-files-name id="soldSharesSourceFilesName">-</strong></div>
                         </div>
                     </div>
                     <div class="search-bar">
@@ -1246,7 +1368,7 @@
                                 <table class="source-table source-table--inputs" id="monthlyRunSourcesTable">
                                     <colgroup>
                                         <col class="source-table__col-file">
-                                        <col class="source-table__col-required">
+                                        <col class="source-table__col-description">
                                         <col class="source-table__col-uploaded">
                                         <col class="source-table__col-uploaded-time">
                                         <col class="source-table__col-actions">
@@ -1255,14 +1377,10 @@
                                         <tr>
                                             <th>
                                                 <span>File Name</span>
-                                                <button type="button" class="monthly-run-source-help monthly-run-source-help--header" aria-label="输入文件用途" title="输入文件用途" data-source-help-header="true">
-                                                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.3 2.3 0 1 1 3.8 1.7c-.9.7-1.6 1.1-1.6 2.3"></path><path d="M12 16.5h.01"></path></svg>
-                                                </button>
-                                                <span class="monthly-run-source-help-popover monthly-run-source-help-popover--header hidden" data-source-help-header-popover="true">输入文件用途</span>
                                             </th>
-                                            <th style="width:150px;">
-                                                <span>Is required</span>
-                                                <button type="button" class="monthly-run-source-help monthly-run-source-help--header" aria-label="Is required取值说明" title="Is required取值说明" data-required-help-header="true">
+                                            <th>
+                                                <span data-description-column-label="true">说明</span>
+                                                <button type="button" class="monthly-run-source-help monthly-run-source-help--header" aria-label="说明列取值含义" title="说明列取值含义" data-required-help-header="true">
                                                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.3 2.3 0 1 1 3.8 1.7c-.9.7-1.6 1.1-1.6 2.3"></path><path d="M12 16.5h.01"></path></svg>
                                                 </button>
                                                 <span class="monthly-run-source-help-popover monthly-run-source-help-popover--header hidden" data-required-help-header-popover="true"></span>
@@ -1347,7 +1465,7 @@
                                     <span>上传目录</span>
                                     <strong id="monthlyRunSourceModalMonth">2026-06</strong>
                                 </div>
-                                <p>各输入源只能选择当前月份目录内的文件；Control Book Summary 从 control_book 目录选择。</p>
+                                <p>各输入源默认只能选择当前月份目录内的文件；Control Book Summary、Futu Exercises Summary、Cancel &amp; Restore Summary 从各自的专属目录（control_book / futu_exercises / cancel_restore）选择。</p>
                             </div>
                             <div class="monthly-run-source-list" id="monthlyRunSourceList"></div>
                         </div>

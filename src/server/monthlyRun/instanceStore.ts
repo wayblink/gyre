@@ -406,6 +406,13 @@ export function monthlyRunInstanceToRuntimeParameters(instance: MonthlyRunInstan
     }
     delete fileRefs.cancel_restore_report;
   }
+  // `futu_exercises` was the single full-to-date Futu input before the base/increment split
+  // removed it from the workflow's runtime schema. `upsertMonthlyRunInstance` only touches the keys
+  // a page sends, so months saved back then still carry the binding — and the runtime-parameter
+  // validation rejects the whole run over a key nothing reads any more. Its role is now filled by
+  // `base_futu_exercises` (auto-injected from the previous month's merged output, or explicitly
+  // bound), so drop it rather than remap it.
+  delete fileRefs.futu_exercises;
   return {
     month: instance.monthKey,
     monthUnderscore: instance.monthKey.replace(/-/g, '_'),

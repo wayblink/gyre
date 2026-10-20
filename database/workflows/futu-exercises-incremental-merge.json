@@ -3,7 +3,7 @@
   "name": "Futu Exercises Incremental Merge",
   "description": "Futu 行权记录 base + 富途明细增量按行权订单编号幂等合并：base 是上月完整 to-date（含留空的历史订单号列），增量是富途平台导出的行权明细；按业务月截断后幂等合并，产出当月完整 base 供下游求和，并落盘固定路径供下月链式。",
   "status": "active",
-  "version": 3,
+  "version": 4,
   "tasks": [
     {
       "x": 48,
@@ -58,11 +58,12 @@
           "$default": "行权明细数据",
           "$fromRuntime": "fileRefs.incremental_futu_exercises.sheet"
         },
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "行权订单编号, 姓名, 工号, 牛牛号, 用户ID, 授予编号, 授予日期, 授予价(USD), 行权日期, 行权下单数量, 行权成功数量, 行权成本(USD), 扣除/卖出数量, 成交数量"
       },
       "dependsOn": [],
-      "description": "读取富途平台导出的员工行权记录『行权明细数据』sheet（59 列中文，第 1 行表头）。",
-      "operatorCode": "sheet.range.extract",
+      "description": "读取富途平台导出的员工行权记录『行权明细数据』sheet（59 列中文，第 1 行表头）。未提供该可选输入时输出带列契约的空 dataframe，由 base 独立成表。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {

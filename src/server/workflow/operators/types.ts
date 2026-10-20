@@ -40,7 +40,7 @@ export type WorkflowOperatorRuntime = {
   ) => WorkflowDataFrame;
   rowsToDataFrame: (
     rows: Array<Record<string, unknown>>,
-    options: { sheetName: string; a1Range: string },
+    options: { sheetName: string; a1Range: string; columns?: string[] },
   ) => WorkflowDataFrame;
   dataFrameToWorkbookBuffer: (dataframe: WorkflowDataFrame, options: { sheetName: string }) => Buffer;
   readFile: (ref: WorkflowFileReference) => Promise<Buffer>;

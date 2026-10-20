@@ -3,6 +3,7 @@ import { createTexts } from './texts.js';
 import type { NotifyFn } from './uiFeedback.js';
 import { paginationSummaryText, renderSortIndicators, sortQuery } from './tableSort.js';
 import type {
+  CancellationRecord,
   ExerciseRecord,
   Holding,
   SoldShare,
@@ -68,6 +69,7 @@ export type EsopTables = {
   renderHoldings: (month: string) => Promise<void>;
   renderExercises: () => Promise<void>;
   renderSoldShares: () => Promise<void>;
+  renderCancellationRecords: () => Promise<void>;
   applyGrantView: () => void;
   applyExerciseView: () => void;
   /** Re-render the three tables' pagination controls for the current language. */
@@ -76,6 +78,7 @@ export type EsopTables = {
   toggleGrantSort: (by: 'name' | 'empNo') => void;
   toggleExerciseSort: (by: 'name' | 'empNo') => void;
   toggleSoldSharesSort: (by: 'name' | 'empNo') => void;
+  toggleCancellationSort: (by: 'name' | 'empNo') => void;
   init: () => Promise<void>;
 };
 
@@ -104,6 +107,14 @@ const PAGINATION_IDS = {
     next: 'btnSoldSharesNextPage',
     last: 'btnSoldSharesLastPage',
   },
+  cancellations: {
+    summary: 'cancellationPaginationSummary',
+    page: 'cancellationPaginationPage',
+    first: 'btnCancellationsFirstPage',
+    prev: 'btnCancellationsPrevPage',
+    next: 'btnCancellationsNextPage',
+    last: 'btnCancellationsLastPage',
+  },
 } as const;
 
 export function formatCurrency(value: number, currency: 'USD' | 'CNY' = 'USD') {
@@ -130,6 +141,10 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
   let grantSort = { by: '' as '' | 'name' | 'empNo', dir: 'asc' as 'asc' | 'desc' };
   let exerciseSort = { by: '' as '' | 'name' | 'empNo', dir: 'asc' as 'asc' | 'desc' };
   let soldSharesSort = { by: '' as '' | 'name' | 'empNo', dir: 'asc' as 'asc' | 'desc' };
+  let cancellations = 1;
+  let cancellationsTotal = 0;
+  let cancellationsPageSize = 20;
+  let cancellationSort = { by: '' as '' | 'name' | 'empNo', dir: 'asc' as 'asc' | 'desc' };
 
   function renderHoldingsPagination(page: number, totalPages: number, total: number) {
     const view = paginationView({ page, pageSize: holdingsPageSize, total, totalPages });
@@ -156,6 +171,16 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     renderPaginationControls(
       el,
       PAGINATION_IDS.soldShares,
+      view,
+      paginationSummaryText(view.start, view.end, total, 'records', deps.getLanguage()),
+    );
+  }
+
+  function renderCancellationsPagination(page: number, totalPages: number, total: number) {
+    const view = paginationView({ page, pageSize: cancellationsPageSize, total, totalPages });
+    renderPaginationControls(
+      el,
+      PAGINATION_IDS.cancellations,
       view,
       paginationSummaryText(view.start, view.end, total, 'records', deps.getLanguage()),
     );
@@ -201,21 +226,47 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     const next = nextPageWithinBounds(soldSharesTotal, soldSharesPageSize, soldShares, delta);
     if (next === null) return;
     soldShares = next;
-    void renderExerciseRecords();
+    void renderSoldShares();
   }
 
   function goToSoldSharesPage(target: 'first' | 'last') {
     const next = edgePage(soldSharesTotal, soldSharesPageSize, soldShares, target);
     if (next === null) return;
     soldShares = next;
-    void renderExerciseRecords();
+    void renderSoldShares();
   }
 
   function changeSoldSharesPageSize(size: number) {
     if (size === soldSharesPageSize) return;
     soldSharesPageSize = size;
     soldShares = 1;
-    void renderExerciseRecords();
+    void renderSoldShares();
+  }
+
+  function searchCancellations() {
+    cancellations = 1;
+    void renderCancellationRecords();
+  }
+
+  function changeCancellationsPage(delta: number) {
+    const next = nextPageWithinBounds(cancellationsTotal, cancellationsPageSize, cancellations, delta);
+    if (next === null) return;
+    cancellations = next;
+    void renderCancellationRecords();
+  }
+
+  function goToCancellationsPage(target: 'first' | 'last') {
+    const next = edgePage(cancellationsTotal, cancellationsPageSize, cancellations, target);
+    if (next === null) return;
+    cancellations = next;
+    void renderCancellationRecords();
+  }
+
+  function changeCancellationsPageSize(size: number) {
+    if (size === cancellationsPageSize) return;
+    cancellationsPageSize = size;
+    cancellations = 1;
+    void renderCancellationRecords();
   }
 
   function applyGrantView() {
@@ -482,7 +533,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     const grantYear = deps.el<HTMLSelectElement>('filterExerciseGrantYear').value;
     renderSortIndicators('#exerciseTable', exerciseSort);
     const data = await deps.api<PaginatedResult<ExerciseRecord>>(
-      `/api/exercises?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&grantYear=${encodeURIComponent(grantYear)}&page=${exercises}&pageSize=${exercisePageSize}${sortQuery(exerciseSort)}`,
+      `/api/exercises?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&grantYear=${encodeURIComponent(grantYear)}&month=${encodeURIComponent(host.getMonth())}&page=${exercises}&pageSize=${exercisePageSize}${sortQuery(exerciseSort)}`,
     );
     deps.setPageSourceFiles('exercise-record', data);
     const items = data.items ?? [];
@@ -522,7 +573,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
 
   async function renderShareworksExercises(query: string, tagId: string) {
     const data = await deps.api<PaginatedResult<ShareworksExercise>>(
-      `/api/exercises/shareworks?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${exercises}&pageSize=${exercisePageSize}`,
+      `/api/exercises/shareworks?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&month=${encodeURIComponent(host.getMonth())}&page=${exercises}&pageSize=${exercisePageSize}`,
     );
     deps.setPageSourceFiles('exercise-record', data);
     const items = data.items ?? [];
@@ -570,7 +621,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
 
   async function renderMergedExercises(query: string, tagId: string) {
     const data = await deps.api<PaginatedResult<MergedExercise>>(
-      `/api/exercises/merge?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${exercises}&pageSize=${exercisePageSize}`,
+      `/api/exercises/merge?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&month=${encodeURIComponent(host.getMonth())}&page=${exercises}&pageSize=${exercisePageSize}`,
     );
     deps.setPageSourceFiles('exercise-record', data);
     const items = data.items ?? [];
@@ -623,7 +674,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     const employmentStatus = deps.el<HTMLSelectElement>('filterSoldSharesEmploymentStatus').value;
     renderSortIndicators('#soldSharesTable', soldSharesSort);
     const data = await deps.api<PaginatedResult<SoldShare>>(
-      `/api/sold-shares?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&employmentStatus=${encodeURIComponent(employmentStatus)}&page=${soldShares}&pageSize=${soldSharesPageSize}${sortQuery(soldSharesSort)}`,
+      `/api/sold-shares?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&employmentStatus=${encodeURIComponent(employmentStatus)}&month=${encodeURIComponent(host.getMonth())}&page=${soldShares}&pageSize=${soldSharesPageSize}${sortQuery(soldSharesSort)}`,
     );
     deps.setPageSourceFiles('sold-shares', data);
     const items = data.items ?? [];
@@ -666,6 +717,54 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
       .join('');
     deps.localizeDom();
   }
+
+  async function renderCancellationRecords() {
+    const query = deps.el<HTMLInputElement>('searchCancellations').value.trim();
+    const tagId = deps.el<HTMLSelectElement>('filterCancellationTag').value;
+    const employmentStatus = deps.el<HTMLSelectElement>('filterCancellationEmploymentStatus').value;
+    renderSortIndicators('#cancellationsTable', cancellationSort);
+    const data = await deps.api<PaginatedResult<CancellationRecord>>(
+      `/api/cancellation-records?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&employmentStatus=${encodeURIComponent(employmentStatus)}&month=${encodeURIComponent(host.getMonth())}&page=${cancellations}&pageSize=${cancellationsPageSize}${sortQuery(cancellationSort)}`,
+    );
+    deps.setPageSourceFiles('cancellation-record', data);
+    const items = data.items ?? [];
+    cancellations = data.page;
+    cancellationsTotal = data.total;
+    renderCancellationsPagination(data.page, data.totalPages, data.total);
+
+    const tbody = deps.el('cancellationRecordsBody');
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="17" class="table-empty-cell">暂无符合条件的取消记录</td></tr>';
+      deps.localizeDom();
+      return;
+    }
+    tbody.innerHTML = items
+      .map(
+        (item, index) => `
+    <tr>
+      <td>${(data.page - 1) * data.pageSize + index + 1}</td>
+      <td style="text-align:left; font-weight:var(--font-semibold);">${deps.escapeHtml(item.name)}${deps.linkedBadge((item as { linkedIdentities?: unknown }).linkedIdentities, deps.getLanguage(), deps.escapeHtml)}</td>
+      <td>${deps.escapeHtml(item.employeeNumber)}</td>
+      <td>${deps.escapeHtml(item.employmentStatus)}</td>
+      <td>${deps.escapeHtml(item.grantNumber)}</td>
+      <td style="text-align:left;">${deps.escapeHtml(item.planName)}</td>
+      <td>${deps.escapeHtml(item.incentiveType)}</td>
+      <td>${deps.escapeHtml(item.grantDate)}</td>
+      <td>${deps.escapeHtml(item.vestingDate)}</td>
+      <td>${deps.escapeHtml(item.changeType)}</td>
+      <td>${deps.escapeHtml(item.reason)}</td>
+      <td class="col-number">${deps.formatNumber(item.quantity)}</td>
+      <td>${deps.escapeHtml(item.changeDate)}</td>
+      <td>${deps.escapeHtml(item.financialChangeDate)}</td>
+      <td>${deps.escapeHtml(item.creationNumber)}</td>
+      <td style="text-align:left;">${deps.escapeHtml(item.vestingRule)}</td>
+      <td>${deps.escapeHtml(item.operator)}</td>
+    </tr>`,
+      )
+      .join('');
+    deps.localizeDom();
+  }
+
   function nextSort(current: { by: '' | 'name' | 'empNo'; dir: 'asc' | 'desc' }, by: 'name' | 'empNo') {
     if (current.by !== by) return { by, dir: 'asc' as const };
     return { by, dir: current.dir === 'asc' ? ('desc' as const) : ('asc' as const) };
@@ -687,6 +786,12 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     soldSharesSort = nextSort(soldSharesSort, by);
     soldShares = 1;
     void renderSoldShares();
+  }
+
+  function toggleCancellationSort(by: 'name' | 'empNo') {
+    cancellationSort = nextSort(cancellationSort, by);
+    cancellations = 1;
+    void renderCancellationRecords();
   }
 
   async function initEsopTables() {
@@ -742,6 +847,20 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     applyExerciseView();
 
     // Sold shares + search + pagination.
+    el('btnSearchCancellations').addEventListener('click', searchCancellations);
+    el<HTMLSelectElement>('filterCancellationTag').addEventListener('change', searchCancellations);
+    el('filterCancellationEmploymentStatus').addEventListener('change', searchCancellations);
+    el('searchCancellations').addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Enter') searchCancellations();
+    });
+    el('btnCancellationsFirstPage').addEventListener('click', () => goToCancellationsPage('first'));
+    el('btnCancellationsPrevPage').addEventListener('click', () => changeCancellationsPage(-1));
+    el('btnCancellationsNextPage').addEventListener('click', () => changeCancellationsPage(1));
+    el('btnCancellationsLastPage').addEventListener('click', () => goToCancellationsPage('last'));
+    el<HTMLSelectElement>('cancellationPageSizeSelect').addEventListener('change', (event) =>
+      changeCancellationsPageSize(Number((event.target as HTMLSelectElement).value)),
+    );
+
     el('btnSearchSoldShares').addEventListener('click', searchSoldShares);
     el<HTMLSelectElement>('filterSoldSharesTag').addEventListener('change', searchSoldShares);
     el('filterSoldSharesEmploymentStatus').addEventListener('change', searchSoldShares);
@@ -759,21 +878,29 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     await renderHoldings(host.getMonth());
     await renderExerciseRecords();
     await renderSoldShares();
+    await renderCancellationRecords();
   }
 
   return {
     renderHoldings: renderHoldings,
     renderExercises: renderExerciseRecords,
     renderSoldShares,
+    renderCancellationRecords,
     applyGrantView,
     applyExerciseView,
     toggleGrantSort,
     toggleExerciseSort,
     toggleSoldSharesSort,
+    toggleCancellationSort,
     applyLanguage() {
       renderHoldingsPagination(holdings, pageCountOf(holdingsTotal, holdingsPageSize), holdingsTotal);
       renderExercisePagination(exercises, pageCountOf(exerciseTotal, exercisePageSize), exerciseTotal);
       renderSoldSharesPagination(soldShares, pageCountOf(soldSharesTotal, soldSharesPageSize), soldSharesTotal);
+      renderCancellationsPagination(
+        cancellations,
+        pageCountOf(cancellationsTotal, cancellationsPageSize),
+        cancellationsTotal,
+      );
     },
     init: initEsopTables,
   };

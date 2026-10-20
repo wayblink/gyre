@@ -48,7 +48,46 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                   and artifact.artifact_type = 'file'
                   and artifact.file_id is not null
                   and run.runtime_parameters_json->>'month' = m.month_key
-             ) as "hasPlanSummaryData"
+             ) as "hasPlanSummaryData",
+             exists (
+               select 1
+                 from workflow_run_artifacts artifact
+                 join workflow_runs run on run.id = artifact.run_id
+                 join product_files file on file.id = artifact.file_id
+                where run.workflow_code = 'esop-exercise-record-sync'
+                  and run.status in ('completed', 'completed_with_warnings')
+                  and artifact.task_id = 'persist_exercise_record_file'
+                  and artifact.artifact_type = 'file'
+                  and artifact.file_id is not null
+                  and file.workbook_row_count > 0
+                  and run.runtime_parameters_json->>'month' = m.month_key
+             ) as "hasExerciseData",
+             exists (
+               select 1
+                 from workflow_run_artifacts artifact
+                 join workflow_runs run on run.id = artifact.run_id
+                 join product_files file on file.id = artifact.file_id
+                where run.workflow_code = 'esop-sold-shares-sync'
+                  and run.status in ('completed', 'completed_with_warnings')
+                  and artifact.task_id = 'persist_sold_shares_file'
+                  and artifact.artifact_type = 'file'
+                  and artifact.file_id is not null
+                  and file.workbook_row_count > 0
+                  and run.runtime_parameters_json->>'month' = m.month_key
+             ) as "hasSoldSharesData",
+             exists (
+               select 1
+                 from workflow_run_artifacts artifact
+                 join workflow_runs run on run.id = artifact.run_id
+                 join product_files file on file.id = artifact.file_id
+                where run.workflow_code = 'esop-cancellation-record-sync'
+                  and run.status in ('completed', 'completed_with_warnings')
+                  and artifact.task_id = 'persist_cancellation_records_file'
+                  and artifact.artifact_type = 'file'
+                  and artifact.file_id is not null
+                  and file.workbook_row_count > 0
+                  and run.runtime_parameters_json->>'month' = m.month_key
+             ) as "hasCancellationData"
         from months m
        order by m.month_key desc
     `);

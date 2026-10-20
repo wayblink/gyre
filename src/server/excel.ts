@@ -99,11 +99,27 @@ export type DataFrameWorkbookOptions = {
   sheetName?: string;
 };
 
+export type RowsToDataFrameOptions = Partial<WorkflowDataFrame['range']> & {
+  /**
+   * Column names to declare when the rows themselves carry none. An optional input that was not
+   * supplied produces zero rows, and without a declared contract its dataframe would have zero
+   * columns too — which makes every downstream `dataframe.schema.assert` guard fail on a state that
+   * is documented as legitimate.
+   */
+  columns?: string[];
+};
+
 export function rowsToDataFrame(
   rows: Array<Record<string, unknown>>,
-  range?: Partial<WorkflowDataFrame['range']>,
+  range?: RowsToDataFrameOptions,
 ): WorkflowDataFrame {
-  const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0)));
+  const derivedColumns = Array.from(
+    new Set(rows.flatMap((row) => Object.keys(row)).filter((key) => key.trim().length > 0)),
+  );
+  const declaredColumns = (range?.columns ?? []).map((column) => String(column ?? '').trim()).filter(Boolean);
+  const columns = declaredColumns.length
+    ? Array.from(new Set([...derivedColumns, ...declaredColumns]))
+    : derivedColumns;
 
   const normalizedRows = rows.map((row) =>
     Object.fromEntries(columns.map((column) => [column, normalizeDataFrameInputValue(row[column] ?? null, column)])),

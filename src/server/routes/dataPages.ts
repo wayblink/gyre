@@ -74,9 +74,20 @@ const paginationQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
-const esopPageKeySchema = z.enum(['grant-record', 'exercise-record', 'sold-shares', 'transfer-plan']);
+const esopPageKeySchema = z.enum([
+  'grant-record',
+  'exercise-record',
+  'sold-shares',
+  'cancellation-record',
+  'transfer-plan',
+]);
 
 const esopWorkflowRunBodySchema = z.object({
+  /** Month snapshot key (YYYY-MM). Tagged onto the run so the page can resolve it per month. */
+  month: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/)
+    .optional(),
   sources: z.record(
     z.string(),
     z.object({
@@ -264,6 +275,35 @@ function soldShareFromWorkflowRow(row: Record<string, unknown>, index: number, l
     withholdingTaxUsd: numberValue(row['本期合计代扣税额（美元）']),
     withholdingTaxCny: numberValue(row['本期合计代扣税额（人民币）']),
     cashNetProceedsUsd: numberValue(row['现金净收益(美元)']),
+  };
+}
+
+function cancellationRecordFromWorkflowRow(
+  row: Record<string, unknown>,
+  index: number,
+  labels: EmployeeLabelRef[] = [],
+) {
+  return {
+    id: index + 1,
+    name: textValue(row['姓名']) ?? '',
+    employeeNumber: textValue(row['工号']) ?? '',
+    labelIds: employeeLabelIds(labels),
+    labels,
+    tags: employeeLabelNames(labels),
+    employmentStatus: textValue(row['在职状态']) ?? '',
+    grantNumber: textValue(row['授予编号']) ?? '',
+    incentiveType: textValue(row['激励类型']) ?? '',
+    planName: textValue(row['所属计划']) ?? '',
+    grantDate: textValue(row['授予日期']) ?? '',
+    changeType: textValue(row['变更类型']) ?? '',
+    reason: textValue(row['取消/恢复原因']) ?? '',
+    quantity: numberValue(row['数量']),
+    vestingDate: textValue(row['归属日期']) ?? '',
+    changeDate: textValue(row['变更日期']) ?? '',
+    financialChangeDate: textValue(row['财务变更日期']) ?? '',
+    creationNumber: textValue(row['创建编号']) ?? '',
+    vestingRule: textValue(row['归属规则']) ?? '',
+    operator: textValue(row['操作人']) ?? '',
   };
 }
 
@@ -617,6 +657,11 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
 
   app.get('/api/exercises', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const requestedMonth = String((request.query as { month?: string }).month ?? '').trim();
+    if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
+      throw badRequest('Invalid month; expected YYYY-MM');
+    }
+
     const {
       query = '',
       grantYear = '',
@@ -637,6 +682,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       workflowCode: 'esop-exercise-record-sync',
       taskId: 'persist_exercise_record_file',
       fallbackSheetName: 'Futu BCI Exercises to Date',
+      month: requestedMonth || null,
     });
     const inputSourceBindings = await latestWorkflowInputSourceBindings(db, 'esop-exercise-record-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
@@ -695,6 +741,11 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
 
   app.get('/api/exercises/shareworks', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const requestedMonth = String((request.query as { month?: string }).month ?? '').trim();
+    if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
+      throw badRequest('Invalid month; expected YYYY-MM');
+    }
+
     const {
       query = '',
       tagId = '',
@@ -714,6 +765,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
           workflowCode: 'esop-exercise-record-sync',
           taskId: 'persist_exercise_record_shareworks_file',
           fallbackSheetName: 'Shareworks Exec Option OS',
+          month: requestedMonth || null,
         }),
         latestWorkflowInputSourceBindings(db, 'esop-exercise-record-sync'),
         employeeLabelsByNumber(db),
@@ -785,6 +837,10 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       tagId?: string;
       tag?: string;
     };
+    const requestedMonth = String((request.query as { month?: string }).month ?? '').trim();
+    if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
+      throw badRequest('Invalid month; expected YYYY-MM');
+    }
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedLabelId = Number(tagId);
     const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
@@ -802,11 +858,13 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
         workflowCode: 'esop-exercise-record-sync',
         taskId: 'persist_exercise_record_file',
         fallbackSheetName: 'Futu BCI Exercises to Date',
+        month: requestedMonth || null,
       }),
       readLatestWorkflowDataFrameArtifact(db, {
         workflowCode: 'esop-exercise-record-sync',
         taskId: 'persist_exercise_record_shareworks_file',
         fallbackSheetName: 'Shareworks Exec Option OS',
+        month: requestedMonth || null,
       }),
       latestWorkflowInputSourceBindings(db, 'esop-exercise-record-sync'),
       employeeLabelsByNumber(db),
@@ -881,6 +939,11 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
 
   app.get('/api/sold-shares', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const requestedMonth = String((request.query as { month?: string }).month ?? '').trim();
+    if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
+      throw badRequest('Invalid month; expected YYYY-MM');
+    }
+
     const {
       query = '',
       employmentStatus = '',
@@ -901,6 +964,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       workflowCode: 'esop-sold-shares-sync',
       taskId: 'persist_sold_shares_file',
       fallbackSheetName: 'Futu Sold Shares',
+      month: requestedMonth || null,
     });
     const inputSourceBindings = await latestWorkflowInputSourceBindings(db, 'esop-sold-shares-sync');
     const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
@@ -926,6 +990,84 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       canonicalByNumber,
       (row) =>
         [row.name, row.employeeNumber, row.futubullId, row.userId, row.employmentStatus, row.relatedPartyIdentity]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery),
+    ).sort((left, right) => left.employeeNumber.localeCompare(right.employeeNumber) || left.id - right.id);
+    const sortedRows = sortRowsByNameOrEmpNo(
+      rows,
+      readNameEmpNoSort(request.query),
+      (row) => row.name ?? '',
+      (row) => row.employeeNumber ?? '',
+    );
+    const paginated = paginateItems(sortedRows, page, pageSize);
+    return {
+      items: paginated.items,
+      sourceFiles: inputSourceFiles,
+      workflowSourceBindings: inputSourceBindings,
+      resultFileName: artifact?.fileName ?? null,
+      workflowResultFiles: resultFilesFromArtifacts(artifact),
+      resultFiles: sourceFilesFromArtifacts(artifact),
+      total: paginated.total,
+      page: paginated.page,
+      pageSize: paginated.pageSize,
+      totalPages: paginated.totalPages,
+    };
+  });
+
+  app.get('/api/cancellation-records', async (request) => {
+    const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const requestedMonth = String((request.query as { month?: string }).month ?? '').trim();
+    if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
+      throw badRequest('Invalid month; expected YYYY-MM');
+    }
+
+    const {
+      query = '',
+      employmentStatus = '',
+      tagId = '',
+      tag = '',
+    } = request.query as {
+      query?: string;
+      employmentStatus?: string;
+      tagId?: string;
+      tag?: string;
+    };
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedEmploymentStatus = employmentStatus.trim();
+    const normalizedLabelId = Number(tagId);
+    const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
+    const normalizedTag = tag.trim();
+    const artifact = await readLatestWorkflowDataFrameArtifact(db, {
+      workflowCode: 'esop-cancellation-record-sync',
+      taskId: 'persist_cancellation_records_file',
+      fallbackSheetName: 'Cancellation Records',
+      month: requestedMonth || null,
+    });
+    const inputSourceBindings = await latestWorkflowInputSourceBindings(db, 'esop-cancellation-record-sync');
+    const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
+    const labelsByEmployee = await employeeLabelsByNumber(db);
+    const canonicalByNumber = await employeeCanonicalByNumber(db);
+    const linkGroup = await employeeLinkGroupByNumber(db);
+    const rows = expandByLinkedGroup(
+      (artifact?.rows ?? [])
+        .map((row, index) => {
+          const employeeNumber = textValue(row['工号']) ?? '';
+          return {
+            ...cancellationRecordFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
+            linkedIdentities: linkGroup.get(employeeNumber) ?? [],
+          };
+        })
+        .filter((row) => {
+          if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+          if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+          return true;
+        })
+        .filter((row) => !normalizedEmploymentStatus || row.employmentStatus === normalizedEmploymentStatus),
+      normalizedQuery,
+      canonicalByNumber,
+      (row) =>
+        [row.name, row.employeeNumber, row.grantNumber, row.planName, row.changeType, row.reason, row.creationNumber]
           .join(' ')
           .toLowerCase()
           .includes(normalizedQuery),
@@ -1208,7 +1350,9 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       await getProductFileOrThrow(db, fileId);
     }
 
-    const run = await startEsopPageWorkflow(db, workflowRunStore, workflowRunExecutor, pageKey, body.sources);
+    const run = await startEsopPageWorkflow(db, workflowRunStore, workflowRunExecutor, pageKey, body.sources, {
+      month: body.month,
+    });
     return reply.code(201).send(workflowRunToExecutionResult(run));
   });
 

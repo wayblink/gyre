@@ -49,30 +49,58 @@ type SourceSheetSummaryState = {
 const sourceFileNameMatchers: Record<string, string[]> = {
   base_control_book: ['eq control book'],
   base_futu_exercises: ['futu exercises'],
+  base_cancel_restore_report: ['cancel_restore', 'cancel restore', '取消与恢复'],
   incremental_control_book: ['control books detail', 'control_books_detail', 'detail data', '27591'],
   option_plans_summary: ['option plans summary', 'gyre option plans summary sl', 'gyre cap table', 'cap table'],
   options_os_detail_by_plan: ['options os detail by plan', 'options os detail'],
 };
 
+/**
+ * Input sources whose files live in a dedicated folder rather than the current month's input folder.
+ *
+ * All three are *outputs* of a previous monthly run: the merge sub-workflows persist
+ * `<folder>/<Base name>_<yyyy_MM>.xlsx` so the next month can chain off them, and
+ * `injectPreviousMonthBase()` looks them up there. Scoping the picker to that folder stops an
+ * operator from binding a raw monthly export where a merged base belongs.
+ */
+const monthlySourceDedicatedFolders: Record<string, string> = {
+  base_control_book: 'control_book',
+  base_futu_exercises: 'futu_exercises',
+  base_cancel_restore_report: 'cancel_restore',
+};
+
+/**
+ * Folders a source's inputs are looked up from.
+ *
+ * These three sources are *outputs* of a previous monthly run: the merge sub-workflows persist
+ * `<folder>/<Base name>_<yyyy_MM>.xlsx` so the next month can chain off them, and
+ * `injectPreviousMonthBase()` looks them up there. Scoping the picker to that one folder is what keeps
+ * a raw monthly export from being bound where a merged base belongs.
+ *
+ * Deliberately a single root, with no `input/<folder>/` twin: uploads are normalised under `input/`
+ * by `inputStorageFolderPrefix()`, so that twin is where mis-filed copies accumulate (a raw
+ * cancel/restore report registered at `input/cancel_restore/` before the folder normalisation was
+ * fixed, plus duplicate Futu bases). Including it surfaced those in the picker.
+ */
+export function monthlyRunSourceFolders(sourceKey: string | null | undefined, month?: string | null): string[] {
+  const dedicated = sourceKey ? monthlySourceDedicatedFolders[sourceKey] : undefined;
+  if (dedicated) return [`${dedicated}/`];
+  return month && /^\d{4}-\d{2}$/.test(month) ? [`input/${month}/`] : [];
+}
+
 const sourcePurposeEnglish: Record<string, string> = {
-  base_control_book:
-    'The complete EQ Control Book from the prior month. It becomes the base for the incremental merge and can be carried forward to the next month.',
-  incremental_control_book:
-    'The current month Control Book detail export. It is merged with the base by the transaction natural key without duplicating prior records.',
-  series_b:
-    'The SERIES B Control Book workbook. Its Shares Issued total is used to calculate Series B Preferred Stock in the capitalization summary.',
-  option_plans_summary:
-    'The standalone Gyre Option Plans Summary workbook. It supplies each plan’s outstanding and available share totals.',
-  base_futu_exercises:
-    'The complete Futu BCI Exercises base from the prior month. It becomes the base for the incremental merge and is carried forward month to month.',
-  incremental_futu_exercises:
-    'The current month Futu exercise detail export. It is merged with the base by exercise order number without duplicating prior records.',
-  bc_subplan_transfer:
-    'Optional 2025 BC Subplan transfer or vesting data. When omitted, the related adjustment is skipped after warning review.',
+  base_control_book: 'Prior month full EQ Control Book; base for the incremental merge.',
+  incremental_control_book: 'Current month Control Book detail, merged into the base by transaction key.',
+  series_b: 'Shares Issued × 5 gives Series B Preferred Stock; 0 when not supplied.',
+  option_plans_summary: 'Per-plan outstanding and available share totals.',
+  base_futu_exercises: 'Prior month full Futu BCI Exercises base; base for the incremental merge.',
+  incremental_futu_exercises: 'Current month Futu exercise detail, merged by exercise order number.',
+  bc_subplan_transfer: 'Optional transfer/vesting data; fills in cancellations the OPS has not reflected.',
   previous_capitalization_summary:
-    'Automatically supplied from the prior month’s Capitalization Summary output to validate the current month EQ Control Book Last Month value.',
+    'Auto-supplied prior Capitalization Summary, used to validate this month Last Month.',
+  base_cancel_restore_report: 'Prior month full cancel & restore base, carried forward from last month’s merge.',
   incremental_cancel_restore_report:
-    'The current month cancel-and-restore report. It supplies the incremental cancellation adjustments used by Plan Summary.',
+    'Current month cancel & restore report (increment or full), merged by creation ID.',
 };
 
 function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLanguage): string {
@@ -88,7 +116,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 20;
+export const MONTHLY_WORKFLOW_VERSION = 28;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was
@@ -294,19 +322,15 @@ export function getMonthlyRunFileCandidatesForSource<
   currentFileKey?: string | null,
   month?: string | null,
 ): T[] {
-  // Control Book Summary (base_control_book) and Futu BCI Exercises base (base_futu_exercises)
-  // reuse the prior month's dated base, kept under their dedicated folders (control_book/ and
-  // futu_exercises/). Every other source is scoped to the current month's input folder.
-  const folderPrefix =
-    sourceKey === 'base_control_book'
-      ? 'control_book/'
-      : sourceKey === 'base_futu_exercises'
-        ? 'futu_exercises/'
-        : month && /^\d{4}-\d{2}$/.test(month)
-          ? `input/${month}/`
-          : null;
-  const scoped = folderPrefix
-    ? files.filter((file) => normalizedFileKey(file.logicalPath).startsWith(folderPrefix))
+  // Control Book Summary (base_control_book), the Futu BCI Exercises base (base_futu_exercises) and
+  // the Cancel & Restore base (base_cancel_restore_report) reuse the prior month's dated base, kept
+  // under their dedicated folders. Every other source is scoped to the current month's input folder.
+  const folderPrefixes = monthlyRunSourceFolders(sourceKey, month);
+  const scoped = folderPrefixes.length
+    ? files.filter((file) => {
+        const key = normalizedFileKey(file.logicalPath);
+        return folderPrefixes.some((prefix) => key.startsWith(prefix));
+      })
     : [...files];
   const currentBinding = currentFileId
     ? { fileId: currentFileId, logicalPath: currentFileKey ?? null, fileKey: currentFileKey ?? null }
@@ -620,14 +644,9 @@ export function createMonthlyRunPage({
     // One flat table in DB `order`; sources flagged hidden in the workflow definition are dropped
     // (e.g. Previous Capitalization Summary, which the business auto-derives from last month).
     el('monthlyRunSourcesBody').innerHTML = renderBusinessDefinedSourceRows();
-    const headerHelp = document.querySelector<HTMLButtonElement>('[data-source-help-header]');
-    const headerPopover = document.querySelector<HTMLElement>('[data-source-help-header-popover]');
-    if (headerHelp && headerPopover) {
-      headerHelp.setAttribute('aria-label', tt('fileNameHelp'));
-      headerHelp.title = tt('fileNameHelp');
-      headerPopover.textContent = tt('fileNameHelpHint');
-      headerHelp.onclick = () => headerPopover.classList.toggle('hidden');
-    }
+    const descriptionLabel = document.querySelector<HTMLElement>('[data-description-column-label]');
+    if (descriptionLabel) descriptionLabel.textContent = tt('descriptionColumn');
+    // The badge values (Required / Optional · Inherit / …) are jargon, so the column keeps a legend.
     const requiredHelp = document.querySelector<HTMLButtonElement>('[data-required-help-header]');
     const requiredPopover = document.querySelector<HTMLElement>('[data-required-help-header-popover]');
     if (requiredHelp && requiredPopover) {
@@ -643,20 +662,6 @@ export function createMonthlyRunPage({
         const sourceKey = button.dataset.businessSourceUpload;
         if (!sourceKey) return;
         void uploadSourceFileFor(sourceKey);
-      });
-    });
-
-    document.querySelectorAll<HTMLButtonElement>('[data-source-help]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const sourceKey = button.dataset.sourceHelp;
-        if (!sourceKey) return;
-        const popover = document.querySelector<HTMLElement>(`[data-source-help-popover="${CSS.escape(sourceKey)}"]`);
-        if (!popover) return;
-        const wasHidden = popover.classList.contains('hidden');
-        document
-          .querySelectorAll<HTMLElement>('[data-source-help-popover]')
-          .forEach((item) => item.classList.add('hidden'));
-        popover.classList.toggle('hidden', !wasHidden);
       });
     });
 
@@ -863,15 +868,19 @@ export function createMonthlyRunPage({
     const status = sheetState?.loading
       ? `<span class="source-sheet-control__status">Loading...</span>`
       : sheetState?.errorMessage
-        ? `<span class="source-sheet-control__status source-sheet-control__status--error">${escapeHtml(sheetState.errorMessage)}</span>`
+        ? `<span class="source-sheet-control__status source-sheet-control__status--error" title="${escapeHtml(sheetState.errorMessage)}">${escapeHtml(sheetState.errorMessage)}</span>`
         : '';
-    return `<label class="source-sheet-control">
-      <span class="source-sheet-control__label">${escapeHtml(tt('inputSheet'))}</span>
-      <select class="search-input source-sheet-control__select" data-business-source-sheet="${escapeHtml(source.sourceKey)}"${sheetState?.loading ? ' disabled' : ''}>
-        ${options}
-      </select>
+    // The bordered group holds only the label + select; the status sits beside it so a long error
+    // message is not clipped by the group's rounded, overflow-hidden frame.
+    return `<span class="source-sheet-field">
+      <label class="source-sheet-control">
+        <span class="source-sheet-control__label">${escapeHtml(tt('inputSheet'))}</span>
+        <select class="search-input source-sheet-control__select" data-business-source-sheet="${escapeHtml(source.sourceKey)}"${sheetState?.loading ? ' disabled' : ''}>
+          ${options}
+        </select>
+      </label>
       ${status}
-    </label>`;
+    </span>`;
   }
 
   async function saveBusinessSourceSheet(sourceKey: string, sheetName: string) {
@@ -906,8 +915,8 @@ export function createMonthlyRunPage({
         const binding = selectedSources[source.sourceKey] ?? null;
         const file = getFileForBinding(binding);
         const uploaded = file
-          ? `${renderUploadedFileCell(file)}${renderBusinessSourceSheetControl(source, binding)}`
-          : `<span class="source-not-uploaded">${escapeHtml(source.required ? tt('notUploaded') : tt('optionalNotConfigured'))}</span>`;
+          ? `<div class="source-uploaded-inline">${renderUploadedFileCell(file)}${renderBusinessSourceSheetControl(source, binding)}</div>`
+          : `<div class="source-uploaded-inline"><span class="source-not-uploaded">${escapeHtml(source.required ? tt('notUploaded') : tt('optionalNotConfigured'))}</span></div>`;
         const uploadedTime = file ? formatUploadedTimestamp(file.createdAt) : '-';
         const actions = file
           ? `<div class="source-file-action-group">
@@ -918,28 +927,29 @@ export function createMonthlyRunPage({
               <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">${escapeHtml(tt('selectSourceFile'))}</button>
             </div>`;
         const requirementLabel = source.required
-          ? 'Required'
+          ? tt('requiredBadge')
           : source.optionalCategory === 'inherit'
             ? tt('optionalInherit')
             : source.optionalCategory === 'validation'
               ? tt('optionalValidation')
               : source.optionalCategory === 'supplement'
                 ? tt('optionalSupplement')
-                : 'Optional';
+                : tt('optionalBadge');
+        // Requiredness and the file's purpose share one line: the badge alone made operators open a
+        // per-row "?" to find out what the file is for, so the two now sit together.
+        const requirementBadge = source.required
+          ? `<span class="source-required-badge">${escapeHtml(requirementLabel)}</span>`
+          : `<span class="source-optional-badge source-optional-badge--${escapeHtml(source.optionalCategory ?? 'default')}">${escapeHtml(requirementLabel)}</span>`;
         return `<tr>
-          <td style="text-align:left; font-weight:600; position:relative;">
-            <div class="monthly-run-source-name">
-              <span>${escapeHtml(source.label)}</span>
-              <button type="button" class="monthly-run-source-help" data-source-help="${escapeHtml(source.sourceKey)}" aria-label="${escapeHtml(tt('fileNameHelp'))}" title="${escapeHtml(tt('fileNameHelp'))}">
-                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M9.8 9a2.3 2.3 0 1 1 3.8 1.7c-.9.7-1.6 1.1-1.6 2.3"></path><path d="M12 16.5h.01"></path></svg>
-              </button>
-            </div>
-            <div class="monthly-run-source-help-popover hidden" data-source-help-popover="${escapeHtml(source.sourceKey)}">
-              <strong>${escapeHtml(tt('fileNameHelp'))}</strong>
-              <p>${escapeHtml(sourceDescription(source, lang()))}</p>
+          <td style="text-align:left; font-weight:600;">
+            <span>${escapeHtml(source.label)}</span>
+          </td>
+          <td class="source-description-cell">
+            <div class="source-description-inline">
+              ${requirementBadge}
+              <span class="source-purpose">${escapeHtml(sourceDescription(source, lang()))}</span>
             </div>
           </td>
-          <td>${source.required ? '<span class="source-required-badge">Required</span>' : `<span class="source-optional-badge source-optional-badge--${escapeHtml(source.optionalCategory ?? 'default')}">${escapeHtml(requirementLabel)}</span>`}</td>
           <td class="source-uploaded-cell">${uploaded}</td>
           <td class="source-uploaded-time">${escapeHtml(uploadedTime)}</td>
           <td>${actions}</td>
@@ -1134,7 +1144,9 @@ export function createMonthlyRunPage({
   }
 
   function renderSourceModal() {
-    el('monthlyRunSourceModalMonth').textContent = monthFolder(el<HTMLInputElement>('monthlyRunMonth').value);
+    const month = el<HTMLInputElement>('monthlyRunMonth').value;
+    el('monthlyRunSourceModalMonth').textContent =
+      monthlyRunSourceFolders(activeSourceModalKey, month)[0] ?? monthFolder(month);
     const list = el('monthlyRunSourceList');
     const modalSources = getMonthlyRunModalSourceDefinitions(sourceDefinitions, activeSourceModalKey);
     list.innerHTML = modalSources
@@ -1608,7 +1620,6 @@ export function createMonthlyRunPage({
         return `
         <div
           class="monthly-run-task monthly-run-task--${step.status} ${isWarningExpandable ? 'monthly-run-task--expandable' : ''} ${isExpanded ? 'is-expanded' : ''}"
-          ${isWarningExpandable ? `data-warning-task-id="${escapeHtml(step.taskId)}"` : ''}
         >
           <span class="monthly-run-task__index">${step.status === 'completed' ? '✓' : step.status === 'running' ? '…' : String(index + 1).padStart(2, '0')}</span>
           <div class="monthly-run-task__main">
@@ -1629,7 +1640,9 @@ export function createMonthlyRunPage({
       })
       .join('');
 
-    taskList.querySelectorAll<HTMLElement>('[data-warning-task-id]').forEach((node) => {
+    // Scope to the button: the row itself used to carry the same attribute, so a click ran the
+    // handler twice (button, then bubbled to the row) and toggled straight back to collapsed.
+    taskList.querySelectorAll<HTMLElement>('button[data-warning-task-id]').forEach((node) => {
       node.addEventListener('click', (event) => {
         event.preventDefault();
         const taskId = node.dataset.warningTaskId;

@@ -5,6 +5,15 @@ import {
   readWorkflowFile,
 } from './types.js';
 
+/** Comma/newline separated column list; mirrors how assert operators parse `expectedColumns`. */
+function parseEmptyColumns(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item ?? '').trim()).filter(Boolean);
+  return String(value ?? '')
+    .split(/[,\n]/)
+    .map((column) => column.trim())
+    .filter(Boolean);
+}
+
 export const sheetOptionalRangeExtractOperator = defineWorkflowOperator({
   code: 'sheet.optional-range.extract',
   name: 'Optional Excel Range Extract',
@@ -19,6 +28,13 @@ export const sheetOptionalRangeExtractOperator = defineWorkflowOperator({
     headerRow: { type: 'number', label: '表头行号', required: false, default: null },
     dropTrailingEmptyRows: { type: 'boolean', label: '剔除末尾空行', required: false, default: true },
     sheetName: { type: 'string', label: 'Sheet 名称', required: true, default: '' },
+    emptyColumns: {
+      type: 'string',
+      label: '未提供文件时的列契约',
+      required: false,
+      default: '',
+      description: '逗号或换行分隔。未配置文件时按此列名输出空 dataframe，供下游 schema 校验与 SQL 继续工作。',
+    },
   },
   documentation: {
     usage:
@@ -26,15 +42,18 @@ export const sheetOptionalRangeExtractOperator = defineWorkflowOperator({
     steps: [
       '配置 fileRef 为可选 runtime 参数并给默认空对象。',
       '配置 sheetName/range/headerRow。',
+      '用 emptyColumns 声明未提供文件时的列名，保证下游 schema 校验不把「未提供」当成「结构坏了」。',
       '下游 SQL 用 count(*) 判断是否传入了文件。',
     ],
     example: `{
   "fileRef": { "$fromRuntime": "fileRefs.previous_capitalization_summary", "$default": {} },
   "sheetName": "Capitalization Summary",
-  "range": "A1:E20"
+  "range": "A1:E20",
+  "emptyColumns": "Description, Common Shares Equivalent"
 }`,
   },
   normalizeTask(task) {
+    task.params.emptyColumns = parseEmptyColumns(task.params.emptyColumns).join(', ');
     task.inputs = {};
     normalizeWorkflowTaskDependencies(task);
   },
@@ -42,6 +61,7 @@ export const sheetOptionalRangeExtractOperator = defineWorkflowOperator({
     const fileRef = normalizeWorkflowFileReference(task.params.fileRef);
     const sheetName = String(task.params.sheetName ?? '').trim() || 'Optional Source';
     const range = String(task.params.range ?? '').trim();
+    const emptyColumns = parseEmptyColumns(task.params.emptyColumns);
     const rawHeaderRow = task.params.headerRow;
     const headerRow =
       typeof rawHeaderRow === 'number' && Number.isFinite(rawHeaderRow)
@@ -51,7 +71,9 @@ export const sheetOptionalRangeExtractOperator = defineWorkflowOperator({
           : undefined;
     const dropTrailingEmptyRows = task.params.dropTrailingEmptyRows !== false;
 
-    if (!fileRef) return runtime.rowsToDataFrame([], { sheetName, a1Range: range });
+    if (!fileRef) {
+      return runtime.rowsToDataFrame([], { sheetName, a1Range: range, columns: emptyColumns });
+    }
     if (!sheetName || !range) throw new Error(`Task ${task.name} requires sheetName and range`);
 
     const buffer = await readWorkflowFile(runtime, fileRef);

@@ -92,14 +92,14 @@
   --space-12: 48px;
 
   /* Typography Scale */
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13px;
-  --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 18px;
-  --text-2xl: 20px;
-  --text-3xl: 24px;
+  --text-xs: 13px;
+  --text-sm: 14px;
+  --text-base: 15px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 22px;
+  --text-3xl: 26px;
 
   /* Font Weights */
   --font-normal: 400;
@@ -368,7 +368,7 @@ body {
   justify-content: center;
   font-weight: var(--font-bold);
   color: var(--text-inverse);
-  font-size: 0.65rem;
+  font-size: var(--text-sm);
   letter-spacing: 0.02em;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--primary-600) 30%, transparent);
 }
@@ -630,7 +630,7 @@ body.sidebar-collapsed .sidebar-toggle {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 700;
   line-height: 1;
   padding: 9px 14px;
@@ -1007,6 +1007,10 @@ body[data-language="en-US"] .sub-label {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.product-grid--five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .product-card {
   min-width: 0;
   padding: var(--space-5);
@@ -1148,7 +1152,7 @@ a.product-card:focus-visible {
   width: 100%;
   min-height: 34px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .workflow-list,
@@ -1392,7 +1396,7 @@ a.product-card:focus-visible {
   padding: 0 10px;
   border-radius: 9999px;
   border: 1px solid var(--border-default);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: var(--font-semibold);
   line-height: 1;
 }
@@ -1509,7 +1513,7 @@ a.product-card:focus-visible {
   padding: 0 8px;
   border-radius: 9999px;
   border: 1px solid var(--border-default);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: var(--font-semibold);
   line-height: 1;
   white-space: nowrap;
@@ -1582,7 +1586,7 @@ a.product-card:focus-visible {
   border-color: var(--status-danger-border);
   background: var(--danger-500);
   color: var(--text-inverse);
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: 700;
 }
 
@@ -1600,7 +1604,7 @@ a.product-card:focus-visible {
   border-color: var(--status-warning-border);
   background: var(--warning-500);
   color: var(--text-inverse);
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: 700;
 }
 
@@ -1704,7 +1708,7 @@ a.product-card:focus-visible {
 .workflow-input--title {
   min-width: 0;
   width: min(420px, 100%);
-  font-size: 20px;
+  font-size: var(--text-2xl);
   font-weight: var(--font-semibold);
 }
 
@@ -1916,7 +1920,7 @@ a.product-card:focus-visible {
 .workflow-runtime-summary__technical-path {
   margin-top: 4px;
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
 
@@ -2226,7 +2230,7 @@ a.product-card:focus-visible {
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.94);
   color: #1e293b;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 700;
   line-height: 1;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
@@ -2247,7 +2251,7 @@ a.product-card:focus-visible {
   justify-content: center;
   width: 18px;
   height: 18px;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 400;
   line-height: 1;
 }
@@ -2276,7 +2280,7 @@ a.product-card:focus-visible {
   border-radius: 0;
   background: transparent;
   color: #1e293b;
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 400;
   line-height: 1;
   cursor: pointer;
@@ -2314,7 +2318,7 @@ a.product-card:focus-visible {
   border-radius: 999px;
   background: var(--surface-floating-bg);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: var(--font-semibold);
   text-align: center;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
@@ -2438,7 +2442,7 @@ a.product-card:focus-visible {
 }
 
 .workflow-node__id {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.25;
@@ -2454,7 +2458,7 @@ a.product-card:focus-visible {
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid transparent;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: 0.01em;
@@ -2489,7 +2493,7 @@ a.product-card:focus-visible {
 }
 
 .workflow-node__meta {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-tertiary);
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -2517,7 +2521,7 @@ a.product-card:focus-visible {
   background: var(--slate-50);
   border: none;
   padding: 5px 7px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-secondary);
   display: flex;
   flex-direction: column;
@@ -2616,7 +2620,7 @@ a.product-card:focus-visible {
 }
 
 .workflow-edge__label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   fill: var(--text-tertiary);
   text-anchor: middle;
@@ -2646,7 +2650,7 @@ a.product-card:focus-visible {
 
 .workflow-edge__guard-badge text {
   fill: var(--workflow-validation-text);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-anchor: middle;
   pointer-events: none;
@@ -3576,7 +3580,7 @@ a.product-card:focus-visible {
   background: var(--slate-950);
   color: var(--slate-50);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -3639,7 +3643,7 @@ a.product-card:focus-visible {
 
 .workflow-operator-details-modal .workflow-operator-card__example {
   max-height: 360px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .workflow-empty {
@@ -4144,7 +4148,7 @@ a.product-card:focus-visible {
   border: none;
   background: transparent;
   padding: 2px 6px;
-  font-size: 16px;
+  font-size: var(--text-lg);
   line-height: 1;
   color: #94a3b8;
   cursor: pointer;
@@ -4231,14 +4235,14 @@ a.product-card:focus-visible {
 }
 
 .rail__arrow {
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: 700;
   line-height: 1;
 }
 
 .rail__label {
   writing-mode: vertical-rl;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.5px;
 }
@@ -4257,7 +4261,7 @@ a.product-card:focus-visible {
   cursor: pointer;
   padding: 9px 14px;
   font-weight: 700;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-family: inherit;
 }
 
@@ -4265,7 +4269,7 @@ a.product-card:focus-visible {
   width: auto;
   min-width: 76px;
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.3;
 }
 
@@ -4289,19 +4293,19 @@ a.product-card:focus-visible {
 
 .workbook-list__header h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 
 .workbook-list__header p {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #94a3b8;
 }
 
 .workbook-list__header button {
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .workbook-list__view-switch {
@@ -4353,7 +4357,7 @@ a.product-card:focus-visible {
   width: 100%;
   min-height: 34px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .workbook-list__bulk-actions {
@@ -4371,7 +4375,7 @@ a.product-card:focus-visible {
   align-items: center;
   gap: 8px;
   color: var(--slate-700);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   user-select: none;
@@ -4429,7 +4433,7 @@ a.product-card:focus-visible {
   padding: 24px 12px;
   text-align: center;
   color: #94a3b8;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .workbook-item {
@@ -4458,7 +4462,7 @@ a.product-card:focus-visible {
   border: 1px solid color-mix(in srgb, var(--slate-400) 45%, transparent);
   background: var(--bg-card);
   color: var(--slate-600);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 900;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -4646,7 +4650,7 @@ a.product-card:focus-visible {
 }
 
 .workbook-item__name {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 700;
   padding-right: 56px;
   white-space: nowrap;
@@ -4657,7 +4661,7 @@ a.product-card:focus-visible {
 .workbook-item__path {
   margin-top: 4px;
   padding-right: 56px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--text-tertiary);
   line-height: 1.35;
@@ -4675,7 +4679,7 @@ a.product-card:focus-visible {
   background: var(--bg-card);
   padding: 6px 8px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 700;
   color: var(--text-primary);
   outline: none;
@@ -4698,7 +4702,7 @@ a.product-card:focus-visible {
   background: var(--bg-card);
   color: var(--slate-700);
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.6;
   cursor: pointer;
 }
@@ -4726,7 +4730,7 @@ a.product-card:focus-visible {
 
 .workbook-item__meta {
   margin-top: 3px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #64748b;
   padding-right: 56px;
   padding-bottom: 24px;
@@ -4734,7 +4738,7 @@ a.product-card:focus-visible {
 
 .workbook-item__status {
   margin-top: 6px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--primary-600);
   padding-right: 56px;
   padding-bottom: 24px;
@@ -4766,7 +4770,7 @@ a.product-card:focus-visible {
   padding: 7px 8px 7px calc(8px + var(--tree-indent));
   text-align: left;
   color: var(--slate-700);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 800;
 }
 
@@ -4777,7 +4781,7 @@ a.product-card:focus-visible {
 
 .workbook-tree__twisty {
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: 12px;
   transform: rotate(90deg);
   transition: transform 0.16s ease;
 }
@@ -4821,7 +4825,7 @@ a.product-card:focus-visible {
 
 .workbook-tree__dir-path {
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -4832,7 +4836,7 @@ a.product-card:focus-visible {
   border-radius: 999px;
   background: var(--surface-accent-soft);
   color: var(--primary-700);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   min-width: 20px;
   padding: 2px 6px;
@@ -4888,7 +4892,7 @@ a.product-card:focus-visible {
 }
 
 .workbook-tree__file-name {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 800;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4898,7 +4902,7 @@ a.product-card:focus-visible {
 .workbook-tree__file-path {
   margin-top: 3px;
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -4907,7 +4911,7 @@ a.product-card:focus-visible {
 .workbook-tree__file-meta {
   margin-top: 3px;
   color: #64748b;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -5795,7 +5799,7 @@ a.product-card:focus-visible {
 
 .auth-title {
   margin: 0;
-  font-size: 26px;
+  font-size: 28px;
   line-height: 1.2;
   color: var(--text-primary);
   letter-spacing: -0.025em;
@@ -6221,7 +6225,7 @@ textarea.form-input {
 .modal-close {
   background: none;
   border: none;
-  font-size: 22px;
+  font-size: 24px;
   color: var(--text-tertiary);
   cursor: pointer;
   padding: var(--space-1) var(--space-2);
@@ -6337,7 +6341,7 @@ textarea.form-input {
   width: 28px;
   height: 28px;
   line-height: 1;
-  font-size: 18px;
+  font-size: var(--text-xl);
 }
 
 .app-notice__close:hover,
@@ -6416,7 +6420,7 @@ textarea.form-input {
 .app-confirm__close {
   width: 32px;
   height: 32px;
-  font-size: 20px;
+  font-size: var(--text-2xl);
 }
 
 .app-confirm__body {
@@ -6828,7 +6832,7 @@ textarea.form-input {
   display: block;
   margin-bottom: 8px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: var(--font-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -6837,7 +6841,7 @@ textarea.form-input {
 .transfer-plan-metric strong {
   color: var(--text-primary);
   font-family: var(--font-display);
-  font-size: 25px;
+  font-size: 27px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -6942,7 +6946,7 @@ textarea.form-input {
   padding: 14px 18px;
   border-top: 1px solid var(--border-color);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 @media (max-width: 900px) {
@@ -7025,7 +7029,7 @@ textarea.form-input {
   background: transparent;
   color: var(--danger-600);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1;
   padding: 0;
 }
@@ -7403,7 +7407,7 @@ textarea.form-input {
 .doc-article {
   max-width: 880px;
   color: var(--slate-700);
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.75;
 }
 
@@ -7422,14 +7426,14 @@ textarea.form-input {
   display: block;
   margin: 0 0 20px;
   color: var(--slate-500);
-  font-size: 13px;
+  font-size: var(--text-base);
   font-style: normal;
   text-align: center;
 }
 
 .doc-article h1 {
   margin: 28px 0 12px;
-  font-size: 26px;
+  font-size: 28px;
   font-weight: var(--font-bold, 700);
   color: var(--slate-900, var(--slate-800));
   letter-spacing: -0.01em;
@@ -7438,7 +7442,7 @@ textarea.form-input {
 .doc-article h2 {
   margin: 30px 0 12px;
   padding-bottom: 8px;
-  font-size: 19px;
+  font-size: 21px;
   font-weight: var(--font-semibold);
   color: var(--slate-800);
   border-bottom: 1px solid var(--border-light);
@@ -7446,7 +7450,7 @@ textarea.form-input {
 
 .doc-article h3 {
   margin: 22px 0 8px;
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: var(--font-semibold);
   color: var(--slate-800);
 }
@@ -7503,7 +7507,7 @@ textarea.form-input {
   border: none;
   background: transparent;
   color: var(--slate-100);
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.6;
 }
 
@@ -7524,7 +7528,7 @@ textarea.form-input {
   width: 100%;
   margin: 16px 0;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--text-md);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -7737,7 +7741,8 @@ textarea.form-input {
   .product-page-hero,
   .product-grid,
   .product-grid--three,
-  .product-grid--four {
+  .product-grid--four,
+  .product-grid--five {
     grid-template-columns: 1fr;
   }
 
@@ -8603,23 +8608,60 @@ textarea.form-input {
 }
 
 .source-table__col-file {
-    width: 24%;
+    width: 15%;
 }
 
-.source-table__col-required {
-    width: 110px;
+.source-table__col-description {
+    width: 20%;
+}
+
+/* Keep the <td> a table cell: `display: flex` on a cell drops it out of the table layout, which
+   broke the column's vertical alignment against the File Name cell. The flex row lives inside. */
+.source-table--inputs .source-description-cell {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.source-description-inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.source-description-inline .source-required-badge,
+.source-description-inline .source-optional-badge {
+    flex: none;
+}
+
+.source-purpose {
+    flex: 1 1 12em;
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: 400;
+    line-height: 1.5;
 }
 
 .source-table__col-uploaded {
-    width: 30%;
+    width: 43%;
 }
 
+/* Sized for the longest timestamp (`YYYY-MM-DD HH:MM:SS` in 14px mono) plus cell padding, so the
+   widened Uploaded-file column does not eat the Sheet control. */
 .source-table__col-uploaded-time {
-    width: 150px;
+    width: 190px;
 }
 
+/* Actions only holds two short buttons; the freed width goes to the Sheet selector. */
 .source-table__col-actions {
-    width: 250px;
+    width: 145px;
+}
+
+/* Header and values share the column's left edge: right-aligning them put the (shorter) header
+   label further right than the timestamps below it, so the two never lined up. */
+.source-table--inputs .source-file-action-group {
+    justify-content: flex-start;
 }
 
 .monthly-run-constants {
@@ -8840,12 +8882,6 @@ textarea.form-input {
     text-transform: uppercase;
 }
 
-.monthly-run-source-name {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
 .source-table th {
     position: relative;
 }
@@ -9017,7 +9053,7 @@ textarea.form-input {
     background: var(--warning-50);
     color: var(--warning-700);
     border: 1px solid #fde68a;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: var(--font-semibold);
 }
 
@@ -9102,6 +9138,21 @@ textarea.form-input {
     white-space: normal;
 }
 
+/* File name and its sheet selector share one line: the name truncates with an ellipsis and the
+   selector keeps its width, so the row never wraps into three stacked lines. */
+.source-uploaded-inline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    flex-wrap: nowrap;
+}
+
+.source-uploaded-inline > .source-file-actions {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .source-sheet-name {
     margin-top: 5px;
     color: var(--text-tertiary);
@@ -9109,30 +9160,69 @@ textarea.form-input {
     overflow-wrap: anywhere;
 }
 
-.source-sheet-control {
-    display: grid;
-    gap: 5px;
-    margin-top: 8px;
+/* Grouped control: the "Sheet" label is a prefix segment attached to the select, so the pair reads
+   as one prominent control instead of a faint caption floating above a dropdown. */
+.source-sheet-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    min-width: 0;
     max-width: 100%;
 }
 
+.source-sheet-control {
+    display: inline-flex;
+    align-items: stretch;
+    flex: 0 0 auto;
+    max-width: 100%;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-card);
+    overflow: hidden;
+}
+
+.source-sheet-control:focus-within {
+    border-color: var(--primary-500);
+    box-shadow: var(--surface-input-focus-ring);
+}
+
 .source-sheet-control__label {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 var(--space-2);
+    background-color: var(--slate-100);
     color: var(--text-secondary);
     font-size: var(--text-xs);
     font-weight: var(--font-semibold);
+    white-space: nowrap;
+    border-right: 1px solid var(--border-default);
 }
 
-.source-sheet-control__select {
-    width: 100%;
+/* The group owns the border; the select drops its own so the two segments look welded together. */
+.source-sheet-control .source-sheet-control__select {
+    width: 320px;
     min-width: 0;
-    height: 34px;
-    padding: 5px 30px 5px 9px;
+    height: 32px;
+    padding: 4px 28px 4px 9px;
     font-size: var(--text-sm);
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+}
+
+.source-sheet-control .source-sheet-control__select:focus {
+    box-shadow: none;
 }
 
 .source-sheet-control__status {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
     color: var(--text-tertiary);
     font-size: var(--text-xs);
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .source-sheet-control__status--error {
@@ -9156,7 +9246,9 @@ textarea.form-input {
 .source-file-link {
     display: inline-flex;
     align-items: flex-start;
-    flex: 1 1 auto;
+    /* Shrink-to-fit: the copy button sits right after the name instead of being pushed to the
+       far edge of the cell. */
+    flex: 0 1 auto;
     min-width: 0;
     max-width: 100%;
     padding: 0;
@@ -9229,7 +9321,7 @@ textarea.form-input {
     border: none;
     background-color: var(--danger-50);
     color: var(--danger-600);
-    font-size: 12px;
+    font-size: var(--text-sm);
     cursor: pointer;
     transition: all 0.15s ease;
     flex-shrink: 0;
@@ -9401,7 +9493,7 @@ textarea.form-input {
     background: transparent;
     color: var(--text-tertiary);
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 700;
     line-height: 1.4;
     padding: 3px 8px;

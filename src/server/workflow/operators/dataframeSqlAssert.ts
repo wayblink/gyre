@@ -2,6 +2,7 @@ import type { WorkflowAssertOperator, WorkflowTask } from '../../../shared/types
 import {
   buildAssertionResult,
   compareAssertValues,
+  formatAssertionFailureTail,
   isAssertOperator,
   normalizeAssertBaseParams,
 } from './assertUtils.js';
@@ -58,7 +59,7 @@ export async function evaluateSqlAssertion(
   const passed = isOneCell ? compareAssertValues(actualValue, expectedValue, operator) : false;
   const message = !isOneCell
     ? `${failureMessage}: SQL assertion must return a 1x1 dataframe, got ${sqlResult.rows.length}x${sqlResult.columns.length}`
-    : `${failureMessage}: actual=${String(actualValue)} ${operator} expected=${String(expectedValue)} was false`;
+    : formatAssertionFailureTail(failureMessage, actualValue, expectedValue, operator);
 
   return {
     assertion: buildAssertionResult({

@@ -30,6 +30,7 @@ const SPA_PAGES = [
   'grant-record',
   'exercise-record',
   'sold-shares',
+  'cancellation-record',
   'transfer-plan',
   'employee-management',
   'plan-summary',

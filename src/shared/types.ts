@@ -160,6 +160,30 @@ export type SoldShare = {
   cashNetProceedsUsd: number;
 };
 
+export type CancellationRecord = {
+  id: number;
+  name: string;
+  employeeNumber: string;
+  labelIds: number[];
+  labels: EmployeeLabelRef[];
+  tags: string[];
+  linkedIdentities?: LinkedEmployeeIdentity[];
+  employmentStatus: string;
+  grantNumber: string;
+  incentiveType: string;
+  planName: string;
+  grantDate: string;
+  changeType: string;
+  reason: string;
+  quantity: number;
+  vestingDate: string;
+  changeDate: string;
+  financialChangeDate: string;
+  creationNumber: string;
+  vestingRule: string;
+  operator: string;
+};
+
 export type TransferPlanPeriod = {
   id: number;
   sourceFileId: number | null;

@@ -3,7 +3,7 @@
   "name": "ESOP / Exercise to Date Sync",
   "description": "读取 Futu 员工行权记录源工作簿的行权汇总数据，并替换 Exercise Record 展示数据。",
   "status": "active",
-  "version": 3,
+  "version": 4,
   "tasks": [
     {
       "x": 48,
@@ -23,8 +23,8 @@
         "dropTrailingEmptyRows": true
       },
       "dependsOn": [],
-      "description": "从 Futu 员工行权记录源工作簿提取行权汇总数据（行权汇总数据 Sheet）。",
-      "operatorCode": "sheet.range.extract",
+      "description": "从 Futu 员工行权记录源工作簿提取行权汇总数据（行权汇总数据 Sheet）。 该输入为可选：未提供时输出空 dataframe，月度运行不会因此中断（记录页该月显示为空）。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {
@@ -68,10 +68,13 @@
         "sheetName": "Futu BCI Exercises to Date",
         "sourceKey": "futu_exercises",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/exercise-record"
+        "folderPrefix": "output/exercise-record",
+        "fileNameSuffix": {
+          "$fromRuntime": "monthUnderscore"
+        }
       },
       "dependsOn": [],
-      "description": "将标准化后的 Futu 行权汇总数据输出为 Excel 文件，展示层读取最新成功执行的输出文件。",
+      "description": "将标准化后的 Futu 行权汇总数据输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     },
@@ -93,8 +96,8 @@
         "dropTrailingEmptyRows": true
       },
       "dependsOn": [],
-      "description": "从独立业务输入 Shareworks Exec Option OS 提取 Executive Awards OS Only（逐授予的期权存量，含累计已行权/释放数量）。",
-      "operatorCode": "sheet.range.extract",
+      "description": "从独立业务输入 Shareworks Exec Option OS 提取 Executive Awards OS Only（逐授予的期权存量，含累计已行权/释放数量）。 该输入为可选：未提供时输出空 dataframe，月度运行不会因此中断（记录页该月显示为空）。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {
@@ -113,10 +116,13 @@
         "sheetName": "Shareworks Exec Option OS",
         "sourceKey": "shareworks_exercises",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/exercise-record"
+        "folderPrefix": "output/exercise-record",
+        "fileNameSuffix": {
+          "$fromRuntime": "monthUnderscore"
+        }
       },
       "dependsOn": [],
-      "description": "将 Shareworks Exec Option OS dataframe 原样输出为 Excel 文件（保留全部 22 列），展示层读取最新成功执行的输出文件。",
+      "description": "将 Shareworks Exec Option OS dataframe 原样输出为 Excel 文件（保留全部 22 列），展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     }
@@ -135,6 +141,16 @@
           "label": "Shareworks Exec Option OS"
         }
       }
+    },
+    "month": {
+      "type": "string",
+      "label": "Month",
+      "description": "月度快照键（YYYY-MM）。展示层按该值取当月最新快照，并写入输出文件名后缀。"
+    },
+    "monthUnderscore": {
+      "type": "string",
+      "label": "Month (underscore)",
+      "description": "month 的下划线形式（YYYY_MM），用于输出文件名后缀。"
     }
   },
   "runtimeParamsDefaults": {}

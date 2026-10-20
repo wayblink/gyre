@@ -3,7 +3,7 @@
   "name": "Gyre Therapeutics Cancel & Restore Incremental Merge",
   "description": "将取消与恢复报表基表与本月增量按创建编号幂等合并，不在合并阶段按日期过滤，输出完整历史基表供下游按业务月份计算。",
   "status": "active",
-  "version": 1,
+  "version": 2,
   "tasks": [
     {
       "x": 48,
@@ -58,11 +58,12 @@
           "$default": "取消与恢复明细",
           "$fromRuntime": "fileRefs.incremental_cancel_restore_report.sheet"
         },
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "姓名, 工号, 牛牛号, 员工邮箱, 手机号, 证件号, 在职状态, 授予编号, 激励类型, 所属计划, 授予日期, 授予数量, 授予价(USD), 创建日期(GMT+8), 创建编号, 归属日期, 财务变更日期, 变更日期, 变更类型, 取消/恢复原因, 数量, 归属规则, 操作人"
       },
       "dependsOn": [],
-      "description": "读取本月取消与恢复报表；报表可以是增量，也可以是重复导出的全量表。",
-      "operatorCode": "sheet.range.extract",
+      "description": "读取本月取消与恢复报表；报表可以是增量，也可以是重复导出的全量表。未提供该可选输入时输出带列契约的空 dataframe，由 base 独立成表。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {

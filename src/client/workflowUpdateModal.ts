@@ -24,6 +24,7 @@ export type WorkflowUpdatePageKey =
   | 'grant-record'
   | 'exercise-record'
   | 'sold-shares'
+  | 'cancellation-record'
   | 'transfer-plan'
   | 'employee-management'
   | 'plan-summary'
@@ -38,6 +39,8 @@ export type WorkflowUpdateModalDeps = {
   notify: (message: string, options?: { type?: 'info' | 'success' | 'warning' | 'error' }) => void;
   getLanguage: () => AppLanguage;
   getProductFiles: () => ProductFileRecord[];
+  /** Current month, used as the snapshot key for month-scoped pages. */
+  getMonth?: () => string;
   refreshProductFiles: () => Promise<unknown>;
   openFilePicker: (options: {
     sourceKey: string;
@@ -51,10 +54,18 @@ export type WorkflowUpdateModalDeps = {
   refreshPage: (page: WorkflowUpdatePageKey) => Promise<void> | void;
 };
 
+/**
+ * Pages whose workflow stores a month snapshot. Their runs carry `month` so the page can resolve
+ * the artifact per month; the other ESOP pages have no `month` runtime param (sending it would be
+ * rejected as an unknown parameter).
+ */
+const MONTH_SCOPED_PAGES = new Set<WorkflowUpdatePageKey>(['exercise-record', 'sold-shares', 'cancellation-record']);
+
 const PAGE_KINDS: Record<WorkflowUpdatePageKey, WorkflowUpdateKind> = {
   'grant-record': 'esop',
   'exercise-record': 'esop',
   'sold-shares': 'esop',
+  'cancellation-record': 'esop',
   'transfer-plan': 'esop',
   'employee-management': 'data-management',
   'plan-summary': 'data-management',
@@ -437,9 +448,10 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
           },
         ]),
       );
+      const month = MONTH_SCOPED_PAGES.has(page) ? deps.getMonth?.() : undefined;
       const result = await api<WorkflowExecutionResult>(runEndpoint(page), {
         method: 'POST',
-        body: JSON.stringify({ sources }),
+        body: JSON.stringify(month ? { sources, month } : { sources }),
       });
       const runId = result.run?.id;
       if (!runId) throw new Error('Workflow run was not created');

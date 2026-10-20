@@ -15,6 +15,7 @@ import {
   MONTHLY_FIXED_VALUE_DEFS,
   MONTHLY_WORKFLOW_VERSION,
   monthlyWorkflowVersionMismatch,
+  monthlyRunSourceFolders,
   resolveMonthlyRunPreviewFileId,
   retainAvailableSourceBindings,
 } from './monthlyRunPage.js';
@@ -149,6 +150,100 @@ test('Base Futu BCI Exercises candidates come from futu_exercises dated archives
   );
 });
 
+test('Cancel & Restore Summary candidates come from the cancel_restore folder, not the month input folder', () => {
+  const files = [
+    {
+      id: 20,
+      originalName: 'Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+      displayName: '',
+      logicalPath: 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+    },
+    {
+      id: 21,
+      originalName: 'Gyre Therapeutics取消与恢复报表.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-06/Gyre Therapeutics取消与恢复报表.xlsx',
+    },
+    {
+      id: 22,
+      originalName: 'Control_Books_Detail_Data.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-06/Control_Books_Detail_Data.xlsx',
+    },
+  ] as const;
+
+  // The raw monthly export (21) must not be offered as the base; only the merged base is.
+  assert.deepEqual(
+    getMonthlyRunFileCandidatesForSource('base_cancel_restore_report', files, null, null, '2026-06').map(
+      (file) => file.id,
+    ),
+    [20],
+  );
+});
+
+test('a base source keeps its dedicated folder regardless of the month being viewed', () => {
+  assert.deepEqual(monthlyRunSourceFolders('base_cancel_restore_report', '2026-01'), ['cancel_restore/']);
+  assert.deepEqual(monthlyRunSourceFolders('base_control_book', '2026-01'), ['control_book/']);
+  assert.deepEqual(monthlyRunSourceFolders('base_futu_exercises', '2026-01'), ['futu_exercises/']);
+  // Non-base sources stay on the month folder, and an unparseable month leaves them unscoped.
+  assert.deepEqual(monthlyRunSourceFolders('incremental_cancel_restore_report', '2026-06'), ['input/2026-06/']);
+  assert.deepEqual(monthlyRunSourceFolders('incremental_control_book', 'not-a-month'), []);
+});
+
+test('a base picker never reaches into the input/ twin of its dedicated folder', () => {
+  // Regression: uploads are normalised under input/, so mis-filed copies pile up there — a raw
+  // cancel/restore report at input/cancel_restore/ and duplicate Futu bases at
+  // input/futu_exercises/. Neither belongs in a base picker.
+  const files = [
+    {
+      id: 20,
+      originalName: 'Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+      displayName: '',
+      logicalPath: 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+    },
+    {
+      id: 21,
+      originalName: 'Gyre Therapeutics取消与恢复报表.xlsx',
+      displayName: '',
+      logicalPath: 'input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx',
+    },
+    {
+      id: 22,
+      originalName: 'Gyre Therapeutics取消与恢复报表.xlsx',
+      displayName: '',
+      logicalPath: 'input/2026-06/Gyre Therapeutics取消与恢复报表.xlsx',
+    },
+  ] as const;
+
+  assert.deepEqual(
+    getMonthlyRunFileCandidatesForSource('base_cancel_restore_report', files, null, null, '2026-06').map(
+      (file) => file.id,
+    ),
+    [20],
+  );
+
+  const futuFiles = [
+    {
+      id: 30,
+      originalName: 'Futu_Exercises_Base_2026_06.xlsx',
+      displayName: '',
+      logicalPath: 'futu_exercises/Futu_Exercises_Base_2026_06.xlsx',
+    },
+    {
+      id: 31,
+      originalName: 'Futu_Exercises_Base_2026_06.xlsx',
+      displayName: '',
+      logicalPath: 'input/futu_exercises/Futu_Exercises_Base_2026_06.xlsx',
+    },
+  ] as const;
+
+  assert.deepEqual(
+    getMonthlyRunFileCandidatesForSource('base_futu_exercises', futuFiles, null, null, '2026-06').map(
+      (file) => file.id,
+    ),
+    [30],
+  );
+});
 test('monthly source candidates always keep the configured file even from a historical month', () => {
   const files = [
     {
@@ -457,12 +552,22 @@ test('input configuration renders one flat source list: hidden dropped, group ig
   );
 });
 
-test('monthly input rows expose an accessible purpose help icon and bilingual source purpose', () => {
+test('monthly input rows state requiredness and purpose in one column, without a per-row help icon', () => {
   const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
-  assert.match(source, /data-source-help/);
-  assert.match(source, /data-source-help-popover/);
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+
+  // The "Is required" column became the Notes column carrying badge + purpose together.
+  assert.match(html, /data-description-column-label/);
+  assert.doesNotMatch(html, /Is required/);
+  assert.match(source, /source-description-cell/);
+  assert.match(source, /source-purpose/);
+
+  // The purpose text renders inline, and the per-row question mark that used to hide it is gone.
   assert.match(source, /sourcePurposeEnglish/);
-  assert.match(source, /fileNameHelpHint/);
+  assert.doesNotMatch(source, /data-source-help/);
+  assert.doesNotMatch(source, /data-source-help-popover/);
+
+  // The badge legend stays, explaining what Required / Optional · Inherit and friends mean.
   assert.match(source, /requiredHelpHint/);
   assert.match(source, /data-required-help-header-popover/);
 });

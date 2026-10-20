@@ -21,9 +21,14 @@ export async function startEsopPageWorkflow(
   executor: WorkflowRunStarter,
   pageKey: EsopPageKey,
   sources: EsopWorkflowSourceBindings,
+  options: { month?: string } = {},
 ): Promise<WorkflowRunRecord> {
   const config = ESOP_PAGE_WORKFLOW_CONFIGS[pageKey];
   const workflow = await loadActiveWorkflowDefinition(db, config.workflowCode);
   if (!workflow) throw new Error(`ESOP workflow is not available: ${config.workflowCode}`);
-  return startWorkflowRun({ db, runStore, executor, workflow, sources });
+  // Tag the run with the month snapshot key: pages resolve their artifact by
+  // `runtime_parameters_json->>'month'`, and the persist task suffixes the output file name.
+  const month = options.month?.trim();
+  const runtimeParameters = month ? { month, monthUnderscore: month.replace('-', '_') } : undefined;
+  return startWorkflowRun({ db, runStore, executor, workflow, sources, runtimeParameters });
 }

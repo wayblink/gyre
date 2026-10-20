@@ -63,6 +63,32 @@ export function compareAssertValues(actual: unknown, expected: unknown, operator
   return actualComparable !== expectedComparable;
 }
 
+/**
+ * Tail appended to a failed assertion's message.
+ *
+ * Reads as a parenthetical note rather than a shout: the old `actual=X = expected=Y was false` form
+ * made an operator-facing warning look like a test failure dump, which is exactly the kind of
+ * message that gets approved without being read.
+ *
+ * A multi-line actual value is a *findings block* (e.g. the offending rows), not a scalar, so it is
+ * appended as its own paragraph instead of being crammed into parentheses — and the expected value is
+ * dropped, because a block that already says what was found does not need a "expected 0" tail.
+ */
+export function formatAssertionFailureTail(
+  failureMessage: string,
+  actualValue: unknown,
+  expectedValue: unknown,
+  operator: WorkflowAssertOperator,
+): string {
+  const actual = String(actualValue);
+  if (actual.includes('\n')) return `${failureMessage}\n\n${actual}`;
+  const comparison =
+    operator === '='
+      ? `actual=${actual}, expected=${String(expectedValue)}`
+      : `actual=${actual} ${operator} expected=${String(expectedValue)}`;
+  return `${failureMessage} (${comparison})`;
+}
+
 export function buildAssertionResult(params: {
   task: WorkflowTask;
   passed: boolean;

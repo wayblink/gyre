@@ -53,6 +53,7 @@ test('primary navigation follows the product menu layout before dev tools', () =
     'grant-record',
     'exercise-record',
     'sold-shares',
+    'cancellation-record',
     'transfer-plan',
     'employee-management',
     'plan-summary',
@@ -68,6 +69,7 @@ test('primary navigation follows the product menu layout before dev tools', () =
       'Grant Record',
       'Exercise Record',
       'Sold Shares',
+      'Cancellation Records',
       '2025 Transfer to Futu',
       'Employee Management',
       'Plan Summary',
@@ -101,6 +103,7 @@ test('captable is the renamed Summary page and new product pages have matching s
     'grant-record',
     'exercise-record',
     'sold-shares',
+    'cancellation-record',
     'transfer-plan',
     'employee-management',
     'plan-summary',
@@ -526,7 +529,9 @@ test('Sold Shares workflow reads the Futu source workbook summary sheet', () => 
     'utf8',
   );
 
-  assert.match(soldSharesWorkflow, /"version": 2/);
+  assert.match(soldSharesWorkflow, /"version": 3/);
+  assert.match(soldSharesWorkflow, /sheet\.optional-range\.extract/);
+  assert.match(soldSharesWorkflow, /"month"/);
   assert.match(soldSharesWorkflow, /"sheetName": "出售汇总数据"/);
   assert.match(soldSharesWorkflow, /Futu employee sold-share source workbook/);
   assert.match(soldSharesWorkflow, /出售汇总数据 Sheet/);
@@ -566,7 +571,14 @@ test('Transfer to Futu exposes file-backed monthly summary, cancellation editing
 });
 
 test('workflow-backed product pages expose update actions and shared update modal', () => {
-  for (const page of ['grant-record', 'exercise-record', 'sold-shares', 'transfer-plan', 'five-percent-holders']) {
+  for (const page of [
+    'grant-record',
+    'exercise-record',
+    'sold-shares',
+    'cancellation-record',
+    'transfer-plan',
+    'five-percent-holders',
+  ]) {
     assert.match(html, new RegExp(`data-workflow-update-page="${page}"`));
     assert.match(html, new RegExp(`data-workflow-export-page="${page}"`));
   }
@@ -1062,7 +1074,9 @@ test('Global Parameter editing uses the application modal instead of a browser p
 test('page size selectors survive language switches because only the label text is translated', () => {
   // Each paginated table keeps its <select> inside the .pagination-size-label element, so
   // writing textContent onto that label deletes the control. Only the inner span may be rewritten.
+  // Listed in document order: the cancellation-records section sits before grant-record.
   const sizeSelects = [
+    'cancellationPageSizeSelect',
     'holdingsPageSizeSelect',
     'exercisePageSizeSelect',
     'soldSharesPageSizeSelect',
@@ -1141,4 +1155,97 @@ test('main.ts renders every bilingual string through the translation table', () 
   assert.match(source, /function applyLanguageBindings\(\)/);
   assert.match(source, /\{ kind: 'button', id: 'btnEditTransferPlan', key: 'edit' \}/);
   assert.match(source, /kind: 'allText', selector: '\.pagination-size-label-text', key: 'rows'/);
+});
+
+test('Cancellation Records exposes file-backed filters, table, and pagination', () => {
+  const cancellationPage = html.match(/id="page-cancellation-record"[\s\S]*?id="page-grant-record"/)?.[0] ?? '';
+
+  assert.match(cancellationPage, /id="searchCancellations"/);
+  assert.match(cancellationPage, /id="filterCancellationTag"/);
+  assert.match(cancellationPage, /id="filterCancellationEmploymentStatus"/);
+  assert.match(cancellationPage, /id="cancellationsTable"/);
+  assert.match(cancellationPage, /id="cancellationRecordsBody"/);
+  assert.match(cancellationPage, /Grant No\./);
+  assert.match(cancellationPage, /Change Type/);
+  assert.match(cancellationPage, /Creation No\./);
+  assert.match(cancellationPage, /Vesting Rule/);
+  assert.match(cancellationPage, /id="cancellationPaginationSummary"/);
+  assert.match(cancellationPage, /id="cancellationPageSizeSelect"/);
+  assert.match(cancellationPage, /id="btnCancellationsFirstPage"/);
+  assert.match(cancellationPage, /id="btnCancellationsPrevPage"/);
+  assert.match(cancellationPage, /id="btnCancellationsNextPage"/);
+  assert.match(cancellationPage, /id="btnCancellationsLastPage"/);
+});
+
+test('Cancellation Records workflow reads the cancel-and-restore detail sheet', () => {
+  const cancellationWorkflow = readFileSync(
+    new URL('../../database/workflows/esop-cancellation-record-sync.json', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(cancellationWorkflow, /"code": "esop-cancellation-record-sync"/);
+  assert.match(cancellationWorkflow, /"sheetName": "取消与恢复明细"/);
+  assert.match(cancellationWorkflow, /"sourceKey": "cancellation_report"/);
+  assert.match(cancellationWorkflow, /"folderPrefix": "output\/cancellation-record"/);
+  // Three-step shape, same as the other ESOP sync workflows. The extract is the *optional* one so a
+  // missing monthly input yields an empty snapshot instead of failing the monthly run.
+  assert.match(cancellationWorkflow, /sheet\.optional-range\.extract/);
+  assert.match(cancellationWorkflow, /"month"/);
+  assert.match(cancellationWorkflow, /"fileNameSuffix"/);
+  assert.match(cancellationWorkflow, /sql\.compute/);
+  assert.match(cancellationWorkflow, /dataframe\.persist\.excel/);
+});
+
+test('Cancellation Records is wired through the ESOP page registry and API', () => {
+  const workflowDefinitions = readFileSync(
+    new URL('../server/esopWorkflow/workflowDefinitions.ts', import.meta.url),
+    'utf8',
+  );
+  const serverSource = readFileSync(new URL('../server/routes/dataPages.ts', import.meta.url), 'utf8');
+  const appSource = readFileSync(new URL('../server/app.ts', import.meta.url), 'utf8');
+  const esopTablesSource = readFileSync(new URL('./esopTables.ts', import.meta.url), 'utf8');
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+
+  assert.match(
+    workflowDefinitions,
+    /'cancellation-record': \{ pageKey: 'cancellation-record', workflowCode: 'esop-cancellation-record-sync' \}/,
+  );
+  assert.match(serverSource, /'cancellation-record',/);
+  assert.match(serverSource, /app\.get\('\/api\/cancellation-records'/);
+  assert.match(appSource, /'cancellation-record',/);
+  assert.match(esopTablesSource, /\/api\/cancellation-records\?query=.*tagId=/);
+  assert.match(esopTablesSource, /filterCancellationTag'\)\.addEventListener\('change', searchCancellations\)/);
+  assert.match(mainSource, /esopTables\.renderCancellationRecords\(\)/);
+});
+
+test('record pages are month-scoped: snapshot key, picker, and per-month artifact lookup', () => {
+  const serverSource = readFileSync(new URL('../server/routes/dataPages.ts', import.meta.url), 'utf8');
+  const monthsSource = readFileSync(new URL('../server/routes/months.ts', import.meta.url), 'utf8');
+  const serviceSource = readFileSync(new URL('../server/esopWorkflow/service.ts', import.meta.url), 'utf8');
+  const modalSource = readFileSync(new URL('./workflowUpdateModal.ts', import.meta.url), 'utf8');
+  const esopTablesSource = readFileSync(new URL('./esopTables.ts', import.meta.url), 'utf8');
+  const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+
+  // The run is tagged with the snapshot key and the persist task suffixes the file name with it.
+  assert.match(serverSource, /month: z\s*\n\s*\.string\(\)\s*\n\s*\.regex\(\/\^\\d\{4\}-\\d\{2\}\$\/\)/);
+  assert.match(serviceSource, /monthUnderscore: month\.replace\('-', '_'\)/);
+
+  // Every record API resolves its artifact for the requested month: exercises (futu), shareworks,
+  // the merge view (two artifacts), sold-shares, cancellation — plus the pre-existing plan-summary.
+  assert.equal((serverSource.match(/month: requestedMonth \|\| null/g) ?? []).length, 7);
+
+  // Months advertise which pages have a snapshot; an empty snapshot does not count.
+  for (const flag of ['hasExerciseData', 'hasSoldSharesData', 'hasCancellationData']) {
+    assert.match(monthsSource, new RegExp(`as "${flag}"`));
+  }
+  assert.equal((monthsSource.match(/file\.workbook_row_count > 0/g) ?? []).length, 3);
+
+  // The UI sends the selected month, and only the month-scoped pages send it on update.
+  assert.equal((esopTablesSource.match(/month=\$\{encodeURIComponent\(host\.getMonth\(\)\)\}/g) ?? []).length, 5);
+  assert.match(modalSource, /const MONTH_SCOPED_PAGES = new Set<WorkflowUpdatePageKey>\(\[/);
+  assert.match(modalSource, /MONTH_SCOPED_PAGES\.has\(page\) \? deps\.getMonth\?\.\(\)/);
+  for (const picker of ['exerciseMonthPicker', 'soldSharesMonthPicker', 'cancellationMonthPicker']) {
+    assert.match(html, new RegExp(`id="${picker}"`));
+    assert.match(mainSource, new RegExp(`pickerId: '${picker}'`));
+  }
 });

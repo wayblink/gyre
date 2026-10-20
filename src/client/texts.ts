@@ -120,6 +120,11 @@ export const TEXTS = {
       'zh-CN': '展示 Futu 卖出汇总记录，数据来自 Files 中的独立工作簿。',
       'en-US': 'View Futu sold-share summary records from the workbook stored in Files.',
     },
+    cancellationHeroEyebrow: { 'zh-CN': '取消记录', 'en-US': 'Cancellation Records' },
+    cancellationHeroText: {
+      'zh-CN': '展示取消与恢复明细，数据来自 Files 中的取消与恢复报表。',
+      'en-US': 'View cancel-and-restore detail records from the report stored in Files.',
+    },
     transferHeroEyebrow: { 'zh-CN': '2025年计划', 'en-US': '2025 Plan' },
     transferHeroText: {
       'zh-CN': '按月汇总归属记录；取消数量需进入 Edit 模式修改，保存后生成新输入文件并运行 workflow。',
@@ -335,6 +340,7 @@ export const TEXTS = {
     'grant-record': { 'zh-CN': '授予记录', 'en-US': 'Grant Record' },
     'exercise-record': { 'zh-CN': '行权记录', 'en-US': 'Exercise Record' },
     'sold-shares': { 'zh-CN': '卖出记录', 'en-US': 'Sold Shares' },
+    'cancellation-record': { 'zh-CN': '取消记录', 'en-US': 'Cancellation Records' },
     'transfer-plan': { 'zh-CN': '2025 转仓至 Futu', 'en-US': '2025 Transfer to Futu' },
     'employee-management': { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
     'plan-summary': { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
@@ -364,9 +370,11 @@ export const TEXTS = {
     notConfigured: { 'zh-CN': '未配置', 'en-US': 'Not configured' },
     notUploaded: { 'zh-CN': '未上传', 'en-US': 'Not uploaded' },
     optionalNotConfigured: { 'zh-CN': '未配置（可选）', 'en-US': 'Not configured (optional)' },
-    optionalInherit: { 'zh-CN': 'Optional · 继承', 'en-US': 'Optional · Inherit' },
-    optionalValidation: { 'zh-CN': 'Optional · 校验', 'en-US': 'Optional · Validation' },
-    optionalSupplement: { 'zh-CN': 'Optional · 补充', 'en-US': 'Optional · Supplement' },
+    requiredBadge: { 'zh-CN': '必须', 'en-US': 'Required' },
+    optionalBadge: { 'zh-CN': '可选', 'en-US': 'Optional' },
+    optionalInherit: { 'zh-CN': '可选 · 继承', 'en-US': 'Optional · Inherit' },
+    optionalValidation: { 'zh-CN': '可选 · 校验', 'en-US': 'Optional · Validation' },
+    optionalSupplement: { 'zh-CN': '可选 · 补充', 'en-US': 'Optional · Supplement' },
     optionalSourceHint: {
       'zh-CN': '可选输入：未提供时运行会产生 warning，批准后跳过该输入对应的修正。',
       'en-US':
@@ -394,18 +402,14 @@ export const TEXTS = {
     defaultSheet: { 'zh-CN': '默认 Sheet', 'en-US': 'Default Sheet' },
     sheetName: { 'zh-CN': 'Sheet 名称', 'en-US': 'Sheet name' },
     sheetNameRequired: { 'zh-CN': '请填写 Sheet 名称', 'en-US': 'Enter a sheet name' },
-    inputSheet: { 'zh-CN': '输入 Sheet', 'en-US': 'Input sheet' },
+    inputSheet: { 'zh-CN': 'Sheet', 'en-US': 'Sheet' },
     sheetSaved: { 'zh-CN': '输入 Sheet 已保存', 'en-US': 'Input sheet saved' },
     sheetSaveFailed: { 'zh-CN': '输入 Sheet 保存失败', 'en-US': 'Failed to save input sheet' },
     copy: { 'zh-CN': '复制', 'en-US': 'Copy' },
     copiedFileName: { 'zh-CN': '文件名已复制', 'en-US': 'File name copied' },
     copyFileNameFailed: { 'zh-CN': '复制文件名失败', 'en-US': 'Failed to copy file name' },
-    fileNameHelp: { 'zh-CN': '输入文件用途', 'en-US': 'Input file purpose' },
-    fileNameHelpHint: {
-      'zh-CN': '点击每个输入项旁的问号，可查看该文件在 Monthly Update 中的用途。',
-      'en-US': 'Click the question mark beside an input to see how the file is used in Monthly Update.',
-    },
-    requiredHelp: { 'zh-CN': 'Is required 取值说明', 'en-US': 'Is required value meanings' },
+    descriptionColumn: { 'zh-CN': '说明', 'en-US': 'Notes' },
+    requiredHelp: { 'zh-CN': '说明列取值含义', 'en-US': 'Notes column value meanings' },
     requiredHelpHint: {
       'zh-CN':
         'Required：必需提供，缺少时不能执行。\nOptional · Inherit：继承上一轮输出，缺少时使用系统已保存结果。\nOptional · Validation：仅用于校验，不影响核心计算。\nOptional · Supplement：可选补充逻辑，缺少时仍可计算。',

@@ -184,7 +184,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 - **期末余额**：取月份小于等于运行月份、Issued & Outstanding 非空的最后一行。
 - **上月余额**：取月份严格小于运行月份的最后一行 Issued & Outstanding。
 - **输入月份校验**：最后一行月份必须等于运行月份；否则阻断。
-- **BC Subplan 转移量**：Comment 为 Omnibus Inc. Pl 或 Omnibus Inc. Pl. 的 Shares Issued，在运行月份以前求和。
+- **BC Subplan 转移量**：Comment 模糊匹配 Omnibus Inc%Pl% / Ominibus Inc%Pl%（容忍空格、标点、大小写差异与两种拼写）的 Shares Issued，在运行月份以前求和；命中但拼写非规范的行会给出 warning 提示而不阻断。
 - **Cullgen common stock**：Trans. Type 为 Agr. & Pl. of Merger 的 Shares Issued 最大值。
 - **GYRE 2023 China Subplan 总量**：Comment 为 Equity Inc.Sub-Pl. Futu Network Technology 的 Shares Issued 最大值。
 
@@ -619,7 +619,7 @@ From EQ Control Book, the workflow reads Issued & Outstanding, Shares Issued, As
 - EOM Equity Balance OS is the last non-empty Issued & Outstanding at or before the workflow month.
 - Last Month Equity Balance OS is the last non-empty value strictly before the workflow month.
 - The last Control Book month must equal the workflow month.
-- BC Subplan Transfer is the sum of Shares Issued where Comment is Omnibus Inc. Pl or Omnibus Inc. Pl., up to the workflow month.
+- BC Subplan Transfer is the sum of Shares Issued where Comment fuzzy-matches Omnibus Inc%Pl% / Ominibus Inc%Pl% (tolerating spacing, punctuation, case and both spellings), up to the workflow month; rows that match but are spelled non-canonically raise a warning instead of blocking the run.
 - Cullgen common stock is the maximum Shares Issued where Trans. Type is Agr. & Pl. of Merger.
 - The GYRE 2023 China Subplan total is the maximum Shares Issued where Comment is Equity Inc.Sub-Pl. Futu Network Technology.
 
