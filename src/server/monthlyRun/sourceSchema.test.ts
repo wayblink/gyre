@@ -33,6 +33,8 @@ test('monthly input sources render in the order the workflow definition declares
       // exercise export above (same workbook, other sheet), so only these two are extra uploads.
       'Exercise Record · Shareworks',
       'Sold Shares · Futu 出售汇总',
+      'Grant Record · Shareworks',
+      'Grant Record · Futu 授予记录',
     ],
   );
 
@@ -78,6 +80,8 @@ test('only sources the operator uploads carry a file-name template', () => {
     'incremental_cancel_restore_report',
     'exercise_record_shareworks',
     'sold_shares_futu',
+    'shareworks_grants',
+    'futu_grants',
   ]) {
     assert.ok(byKey.get(sourceKey)?.fileTemplate?.trim(), `${sourceKey} needs a template`);
   }

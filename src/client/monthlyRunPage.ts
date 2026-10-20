@@ -103,6 +103,8 @@ export const sourcePurposeEnglish: Record<string, string> = {
     'Current month cancel & restore report (increment or full), merged by creation ID.',
   exercise_record_shareworks: 'Shareworks exec option export; refreshes the Exercise Record page (Shareworks view).',
   sold_shares_futu: 'Futu sold-shares export; refreshes the Sold Shares page.',
+  shareworks_grants: 'Shareworks options OS detail export; refreshes the Grant Record page (Shareworks view).',
+  futu_grants: 'Futu grant export; refreshes the Grant Record page (Futu view).',
 };
 
 /**
@@ -211,7 +213,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 34;
+export const MONTHLY_WORKFLOW_VERSION = 36;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was

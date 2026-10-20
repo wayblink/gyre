@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 34,
+  "version": 36,
   "tasks": [
     {
       "x": 48,
@@ -1108,6 +1108,42 @@
           }
         }
       }
+    },
+    {
+      "id": "invoke_grant_record_sync",
+      "name": "Invoke Grant Record Sync",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0",
+      "description": "调用 ESOP 授予记录同步，写出本月「授予记录」快照（月份透传，文件名带月份后缀）。两个来源都可选：都未提供时跳过，任一提供则执行。",
+      "dependsOn": [],
+      "inputs": {},
+      "x": 804,
+      "y": 1470,
+      "params": {
+        "workflowCode": "esop-grant-record-sync",
+        "outputTaskId": "",
+        "inputMappings": [],
+        "inheritRuntimeParameters": true,
+        "propagateChildArtifacts": true,
+        "skipWhenEmpty": [
+          "fileRefs.futu_grants",
+          "fileRefs.shareworks_grants"
+        ],
+        "runtimeParameters": {
+          "fileRefs": {
+            "futu_grants": {
+              "$type": "object",
+              "$label": "futu_grants",
+              "$fromRuntime": "fileRefs.futu_grants"
+            },
+            "shareworks_grants": {
+              "$type": "object",
+              "$label": "shareworks_grants",
+              "$fromRuntime": "fileRefs.shareworks_grants"
+            }
+          }
+        }
+      }
     }
   ],
   "runtimeParamsSchema": {
@@ -1333,6 +1369,42 @@
           },
           "description": "富途「出售汇总」导出，用于「卖出记录」页的当月快照；未提供时该页当月为空。",
           "fileTemplate": "Gyre Therapeutics-公司出售记录YYYY-MM-DD-YYYY-MM-DD.xlsx"
+        },
+        "shareworks_grants": {
+          "type": "object",
+          "label": "Grant Record · Shareworks",
+          "description": "Shareworks「Options OS Detail by Plan」导出，用于「授予记录」页的 Shareworks 视图；未提供时该视图当月为空。",
+          "defaultSheetName": "Personnel Summary (Options OS D",
+          "allowSheetNameOverride": true,
+          "required": false,
+          "hidden": false,
+          "optionalCategory": "supplement",
+          "taskId": "invoke_grant_record_sync",
+          "fileTemplate": "DD-M-YYYY_HH-mm-ss_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx",
+          "order": 13,
+          "$type": "object",
+          "$label": "Grant Record · Shareworks",
+          "$default": {
+            "sheet": "Personnel Summary (Options OS D"
+          }
+        },
+        "futu_grants": {
+          "type": "object",
+          "label": "Grant Record · Futu 授予记录",
+          "description": "富途「授予记录」导出，用于「授予记录」页的 Futu 视图；未提供时该视图当月为空。",
+          "defaultSheetName": "授予记录",
+          "allowSheetNameOverride": true,
+          "required": false,
+          "hidden": false,
+          "optionalCategory": "supplement",
+          "taskId": "invoke_grant_record_sync",
+          "fileTemplate": "Gyre Therapeutics授予数据导出报表YYYYMMDD.xlsx",
+          "order": 14,
+          "$type": "object",
+          "$label": "Grant Record · Futu 授予记录",
+          "$default": {
+            "sheet": "授予记录"
+          }
         }
       }
     },
@@ -1408,7 +1480,13 @@
         "sheet": "取消与恢复明细"
       },
       "exercise_record_shareworks": {},
-      "sold_shares_futu": {}
+      "sold_shares_futu": {},
+      "shareworks_grants": {
+        "sheet": "Personnel Summary (Options OS D"
+      },
+      "futu_grants": {
+        "sheet": "授予记录"
+      }
     },
     "fixedValues": {
       "cullgenCommonStock": 14450527,
