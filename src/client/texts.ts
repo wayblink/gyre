@@ -98,6 +98,9 @@ export const TEXTS = {
     editUser: { 'zh-CN': '编辑用户', 'en-US': 'Edit User' },
     noUsers: { 'zh-CN': '暂无用户', 'en-US': 'No users' },
     sourceFile: { 'zh-CN': 'SourceFile', 'en-US': 'SourceFile' },
+    // Caption of a month picker in a page hero. It needs its own key because the generic hero label
+    // rule rewrites every metric span to "SourceFile".
+    monthCaption: { 'zh-CN': '月份', 'en-US': 'Month' },
     sourceFiles: { 'zh-CN': 'SourceFiles', 'en-US': 'SourceFiles' },
     resultFile: { 'zh-CN': 'Output File', 'en-US': 'Output File' },
     captableHeroEyebrow: { 'zh-CN': '股本汇总', 'en-US': 'Equity Summary' },
