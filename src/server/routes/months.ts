@@ -56,7 +56,11 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                  join product_files file on file.id = artifact.file_id
                 where run.workflow_code in ('esop-exercise-record-sync', 'gyre-captable-summary-v2')
                   and run.status in ('completed', 'completed_with_warnings')
-                  and artifact.task_id = 'persist_exercise_record_file'
+                  -- The exercise page has two views (Futu / Shareworks); either one counts as data.
+                  and artifact.task_id in (
+                    'persist_exercise_record_file',
+                    'persist_exercise_record_shareworks_file'
+                  )
                   and artifact.artifact_type = 'file'
                   and artifact.file_id is not null
                   and file.workbook_row_count > 0
