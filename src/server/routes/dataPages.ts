@@ -1373,7 +1373,12 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
 
     for (const source of sourceDescriptors) {
       const fileId = body.sources[source.sourceKey]?.fileId;
-      if (!fileId) throw new Error(`Missing ESOP workflow source: ${source.sourceKey}`);
+      // Optional sources stay optional here too: the monthly runs the same workflow with only one
+      // of them supplied, so the page must not be stricter than the workflow itself.
+      if (!fileId) {
+        if (source.required) throw new Error(`Missing ESOP workflow source: ${source.sourceKey}`);
+        continue;
+      }
       await getProductFileOrThrow(db, fileId);
     }
 

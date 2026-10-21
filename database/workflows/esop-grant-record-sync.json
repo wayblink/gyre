@@ -3,7 +3,7 @@
   "name": "ESOP / Grant Record Sync",
   "description": "分别读取 Futu 授予记录与 Shareworks Options OS Detail 源表，并更新 Grant Record 三个展示视图。",
   "status": "active",
-  "version": 4,
+  "version": 5,
   "tasks": [
     {
       "x": 48,
@@ -156,11 +156,13 @@
       "properties": {
         "futu_grants": {
           "type": "object",
-          "label": "Futu 授予记录"
+          "label": "Futu 授予记录",
+          "required": false
         },
         "shareworks_grants": {
           "type": "object",
-          "label": "Shareworks Options OS Detail source workbook"
+          "label": "Shareworks Options OS Detail source workbook",
+          "required": false
         }
       }
     },

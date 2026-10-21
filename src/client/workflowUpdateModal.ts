@@ -432,9 +432,18 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
     const page = activePage;
     if (!page) return;
     const config = getConfig(page);
-    const missing = config.sources.find((source) => !selectedFiles[source.sourceKey]);
+    // Optional sources may be left empty — the monthly runs the same workflow with only some of them
+    // supplied. The run still needs at least one file to have anything to read.
+    const missing = config.sources.find((source) => source.required !== false && !selectedFiles[source.sourceKey]);
     if (missing) {
       notify(tt('pickSource', lang()).replace('{label}', missing.label), { type: 'warning' });
+      return;
+    }
+    const picked = config.sources.filter((source) => selectedFiles[source.sourceKey]);
+    if (!picked.length) {
+      notify(tt('pickSource', lang()).replace('{label}', config.sources.map((source) => source.label).join(' / ')), {
+        type: 'warning',
+      });
       return;
     }
 
@@ -445,7 +454,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
     el('workflowUpdateProgress').classList.remove('hidden');
     try {
       const sources = Object.fromEntries(
-        config.sources.map((source) => [
+        picked.map((source) => [
           source.sourceKey,
           {
             fileId: selectedFiles[source.sourceKey],

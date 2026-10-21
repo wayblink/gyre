@@ -70,7 +70,16 @@ export type LatestWorkflowDataFrameArtifact = {
   buffer: Buffer;
 };
 
-export type WorkflowPageSourceDescriptor = { sourceKey: string; label: string; sheet?: string | null };
+export type WorkflowPageSourceDescriptor = {
+  sourceKey: string;
+  label: string;
+  sheet?: string | null;
+  /**
+   * `false` only when the workflow schema says so. Every page that predates optional sources leaves
+   * the flag out, so its sources stay mandatory.
+   */
+  required: boolean;
+};
 export type WorkflowPageSourceBindingResponse = WorkflowPageSourceDescriptor & {
   fileId: number | null;
   fileName: string | null;
@@ -377,6 +386,7 @@ export function sourcesFromWorkflowSchemaJson(schemaJson: unknown): WorkflowPage
       sourceKey,
       label: isRecord(field) && typeof field.label === 'string' && field.label.trim() ? field.label.trim() : sourceKey,
       ...(sheet ? { sheet } : {}),
+      required: !(isRecord(field) && field.required === false),
     };
   });
 }
@@ -759,6 +769,7 @@ export async function latestWorkflowInputSourceBindings(
     return {
       sourceKey: source.sourceKey,
       label: source.label,
+      required: source.required,
       fileId,
       fileName: fileId ? nameById.get(fileId)?.trim() || null : null,
       sheet: selectedSheet || source.sheet || null,

@@ -642,7 +642,11 @@ export type WorkflowPageConfig = {
   workflowCode: string;
   workflowName: string;
   description: string;
-  sources: Array<{ sourceKey: string; label: string; sheet?: string | null }>;
+  /**
+   * Inputs the page must supply. `required` is false only where the workflow schema says so, letting
+   * the page run with a subset the way the monthly workflow does.
+   */
+  sources: Array<{ sourceKey: string; label: string; sheet?: string | null; required?: boolean }>;
 };
 
 export type WorkflowOperatorSlot = {

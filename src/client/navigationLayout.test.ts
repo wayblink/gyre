@@ -26,7 +26,7 @@ const grantRecordWorkflow = JSON.parse(
     params?: { sheetName?: string; headerRow?: number; emptyColumns?: string };
     inputs?: Record<string, { guards?: Array<{ type?: string; params?: { expectedColumns?: string } }> }>;
   }>;
-  runtimeParamsSchema: { fileRefs: { properties: Record<string, { label?: string }> } };
+  runtimeParamsSchema: { fileRefs: { properties: Record<string, { label?: string; required?: boolean }> } };
   runtimeParamsDefaults: { fileRefs: Record<string, { key?: string; sheet?: string }> };
 };
 
@@ -376,7 +376,16 @@ test('Grant Record workflow uses the Shareworks source workbook contract', () =>
   const project = grantRecordWorkflow.tasks.find((task) => task.id === 'project_shareworks_grants_columns');
   const schemaGuard = project?.inputs?.input1?.guards?.find((guard) => guard.type === 'dataframe.schema.assert');
 
-  assert.equal(grantRecordWorkflow.version, 4);
+  assert.equal(grantRecordWorkflow.version, 5);
+  // Both sources are optional in the workflow, so the page entry must not demand them either.
+  for (const key of ['futu_grants', 'shareworks_grants']) {
+    assert.equal(
+      (grantRecordWorkflow.runtimeParamsSchema.fileRefs.properties as Record<string, { required?: boolean }>)[key]
+        ?.required,
+      false,
+      `${key} must be optional`,
+    );
+  }
   assert.equal(extract?.params?.sheetName, 'Personnel Summary (Options OS D');
   assert.equal(extract?.params?.headerRow, 2);
   // The source is optional now, so the extract yields an empty frame instead of failing — and that
