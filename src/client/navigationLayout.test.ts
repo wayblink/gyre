@@ -23,8 +23,11 @@ const grantRecordWorkflow = JSON.parse(
   tasks: Array<{
     id: string;
     operatorCode?: string;
-    params?: { sheetName?: string; headerRow?: number; emptyColumns?: string };
-    inputs?: Record<string, { guards?: Array<{ type?: string; params?: { expectedColumns?: string } }> }>;
+    params?: { sheetName?: string; headerRow?: number; emptyColumns?: string; columns?: string };
+    inputs?: Record<
+      string,
+      { from?: string; guards?: Array<{ type?: string; params?: { expectedColumns?: string } }> }
+    >;
   }>;
   runtimeParamsSchema: { fileRefs: { properties: Record<string, { label?: string; required?: boolean }> } };
   runtimeParamsDefaults: { fileRefs: Record<string, { key?: string; sheet?: string }> };
@@ -376,7 +379,7 @@ test('Grant Record workflow uses the Shareworks source workbook contract', () =>
   const project = grantRecordWorkflow.tasks.find((task) => task.id === 'project_shareworks_grants_columns');
   const schemaGuard = project?.inputs?.input1?.guards?.find((guard) => guard.type === 'dataframe.schema.assert');
 
-  assert.equal(grantRecordWorkflow.version, 5);
+  assert.equal(grantRecordWorkflow.version, 6);
   // Both sources are optional in the workflow, so the page entry must not demand them either.
   for (const key of ['futu_grants', 'shareworks_grants']) {
     assert.equal(
@@ -391,6 +394,12 @@ test('Grant Record workflow uses the Shareworks source workbook contract', () =>
   // The source is optional now, so the extract yields an empty frame instead of failing — and that
   // frame must still declare the columns the projection reads, or the SQL breaks on a missing file.
   assert.equal(extract?.operatorCode, 'sheet.optional-range.extract');
+  // 2026-08 dropped Middle Name from the export; a dedicated step fills just that column so the
+  // projection SQL still resolves while any other missing column trips the schema guard.
+  const ensure = grantRecordWorkflow.tasks.find((task) => task.id === 'ensure_shareworks_grant_middle_name');
+  assert.equal(ensure?.operatorCode, 'dataframe.ensure.columns');
+  assert.equal(ensure?.params?.columns, 'Middle Name');
+  assert.equal(project?.inputs?.input1?.from, 'ensure_shareworks_grant_middle_name');
   for (const column of ['Employee Number', 'Shares Outstanding', 'Last Name']) {
     assert.match(extract?.params?.emptyColumns ?? '', new RegExp(column.replace('/', '\\/')));
   }

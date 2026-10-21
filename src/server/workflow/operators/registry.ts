@@ -4,6 +4,7 @@ import { dataframePersistExcelOperator } from './dataframePersistExcel.js';
 import { dataframeSchemaAssertOperator } from './dataframeSchemaAssert.js';
 import { dataframeShapeAssertOperator } from './dataframeShapeAssert.js';
 import { dataframeSqlAssertOperator } from './dataframeSqlAssert.js';
+import { dataframeEnsureColumnsOperator } from './dataframeEnsureColumns.js';
 import { dataframeUnionOperator } from './dataframeUnion.js';
 import { dbUpsertOperator } from './dbUpsert.js';
 import { sheetRangeExtractOperator } from './sheetRangeExtract.js';
@@ -18,6 +19,7 @@ export const workflowOperatorDefinitions = [
   sheetOptionalRangeExtractOperator,
   sheetSectionsExtractOperator,
   sqlComputeOperator,
+  dataframeEnsureColumnsOperator,
   dataframeUnionOperator,
   dataframeKeyedMergeOperator,
   dataframeAssertOperator,

@@ -3,7 +3,7 @@
   "name": "ESOP / Grant Record Sync",
   "description": "分别读取 Futu 授予记录与 Shareworks Options OS Detail 源表，并更新 Grant Record 三个展示视图。",
   "status": "active",
-  "version": 5,
+  "version": 6,
   "tasks": [
     {
       "x": 48,
@@ -54,13 +54,33 @@
       "operatorVersion": "1.0.0"
     },
     {
+      "id": "ensure_shareworks_grant_middle_name",
+      "name": "Ensure Shareworks Grant Middle Name",
+      "operatorCode": "dataframe.ensure.columns",
+      "operatorVersion": "1.0.0",
+      "description": "上游导出的列集合在年中变过：2026-08 起去掉了 Middle Name。这里只补这一个可选列，其余列缺失仍由下游 schema 校验拦下。",
+      "dependsOn": [],
+      "inputs": {
+        "input1": {
+          "from": "extract_shareworks_grants",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "params": {
+        "columns": "Middle Name"
+      },
+      "x": 300,
+      "y": 0
+    },
+    {
       "x": 468,
       "y": 245,
       "id": "project_shareworks_grants_columns",
       "name": "Project Shareworks Grant Columns",
       "inputs": {
         "input1": {
-          "from": "extract_shareworks_grants",
+          "from": "ensure_shareworks_grant_middle_name",
           "slot": "dataframe",
           "guards": [
             {
