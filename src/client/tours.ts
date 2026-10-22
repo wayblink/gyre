@@ -71,52 +71,33 @@ export const TOURS: TourDefinition[] = [
     id: 'overview',
     title: 'overviewTitle',
     description: 'overviewDescription',
+    // An overview walks the navigation, not the widgets: one step per module, each pointing at its
+    // entry in the sidebar, so the reader learns where things live without leaving the page.
     steps: [
       { page: 'captable', target: 'aside.sidebar', title: 'overviewNavTitle', body: 'overviewNavBody' },
-      // The step is about "this is where you land", so the stage covers the page, not just its header.
-      { target: '#page-captable', title: 'overviewHomeTitle', body: 'overviewHomeBody' },
-      { target: '#monthPickerTrigger', title: 'overviewMonthTitle', body: 'overviewMonthBody' },
       {
-        target: '#capitalizationTable',
-        title: 'overviewResultTitle',
-        body: 'overviewResultBody',
-        dynamic: true,
+        target: '.nav-item[data-page="captable"]',
+        title: 'overviewCaptableTitle',
+        body: 'overviewCaptableBody',
       },
       {
-        // The overview stays on the current page and points at the sidebar entry: jumping into the
-        // run page would drop the reader into a month's execution screen instead of showing where
-        // the module lives.
         target: '.nav-item[data-page="monthly"]',
-        title: 'overviewInputsTitle',
-        body: 'overviewInputsBody',
+        title: 'overviewMonthlyTitle',
+        body: 'overviewMonthlyBody',
       },
+      { target: '.nav-item[data-page="esop-detail"]', title: 'overviewEsopTitle', body: 'overviewEsopBody' },
       {
-        page: 'grant-record',
-        target: '#grantMonthPickerTrigger',
-        title: 'overviewRecordsTitle',
-        body: 'overviewRecordsBody',
-      },
-      {
-        page: 'plan-summary',
-        target: '#planSummaryBody',
-        title: 'overviewPlanTitle',
-        body: 'overviewPlanBody',
-        dynamic: true,
-      },
-      {
-        page: 'employee-management',
-        target: '#employeesPageBody',
+        target: '.nav-item[data-page="employee-management"]',
         title: 'overviewEmployeesTitle',
         body: 'overviewEmployeesBody',
-        dynamic: true,
       },
+      { target: '.nav-item[data-page="plan-summary"]', title: 'overviewPlanTitle', body: 'overviewPlanBody' },
       {
-        page: 'five-percent-holders',
-        target: '#fivePercentHoldersBody',
+        target: '.nav-item[data-page="five-percent-holders"]',
         title: 'overviewHoldersTitle',
         body: 'overviewHoldersBody',
-        dynamic: true,
       },
+      { target: '.nav-section-label', title: 'overviewAdminTitle', body: 'overviewAdminBody', dynamic: true },
       {
         target: '#btnStartTour',
         title: 'overviewHelpTitle',

@@ -815,74 +815,6 @@ export const TEXTS = {
       'en-US':
         'Equity summary shows results, the monthly run produces them, ESOP detail holds the four record pages.\nFurther down are the employee, plan and holder views.\nAdmins also get Files, Workflows and Users.',
     },
-    overviewHomeTitle: {
-      'zh-CN': '默认进入股权汇总',
-      'en-US': 'It opens on the equity summary',
-    },
-    overviewHomeBody: {
-      'zh-CN': '每次登录先落在这一页：本月资本结构的结果视图。',
-      'en-US': 'Every login lands here: the capital structure for the selected month.',
-    },
-    overviewMonthTitle: {
-      'zh-CN': '所有视图都按月份切',
-      'en-US': 'Everything is scoped by month',
-    },
-    overviewMonthBody: {
-      'zh-CN': '汇总表、四个记录页、计划汇总都按同一个月取数，切换月份就切换整套数据。',
-      'en-US':
-        'The summary, the four record pages and the plan summary all read the same month — switching it switches the whole set.',
-    },
-    overviewResultTitle: {
-      'zh-CN': '结果是月度跑出来的',
-      'en-US': 'The numbers come from the monthly run',
-    },
-    overviewResultBody: {
-      'zh-CN': '这张表不是手填的：它由月度更新读取各类 Excel 后计算得出。',
-      'en-US': 'Nothing here is typed by hand: the monthly run reads the Excel inputs and computes it.',
-    },
-    overviewInputsTitle: {
-      'zh-CN': '月度更新是入口',
-      'en-US': 'The monthly run is the entry point',
-    },
-    overviewInputsBody: {
-      'zh-CN':
-        '点左侧「月度更新」：每月在这里上传 Futu / Shareworks / Control Book 等输入，跑完后汇总表和记录页的快照都会更新。',
-      'en-US':
-        'Open the monthly update entry on the left: upload the Futu / Shareworks / Control Book inputs each month, and the summary and record snapshots all follow.',
-    },
-    overviewRecordsTitle: {
-      'zh-CN': '明细在 ESOP 明细下',
-      'en-US': 'Details live under ESOP detail',
-    },
-    overviewRecordsBody: {
-      'zh-CN': '授予、行权、卖出、取消四个记录页，都支持按月份看历史快照。',
-      'en-US': 'Grants, exercises, sold shares and cancellations, each with per-month snapshots.',
-    },
-    overviewPlanTitle: {
-      'zh-CN': '计划汇总按计划看',
-      'en-US': 'Plan summary is per plan',
-    },
-    overviewPlanBody: {
-      'zh-CN': '把期权按计划维度聚合：授予、取消、行权、在外，一眼看各计划还剩多少。',
-      'en-US': 'Aggregates options per plan: granted, cancelled, exercised, outstanding.',
-    },
-    overviewEmployeesTitle: {
-      'zh-CN': '员工管理是主数据',
-      'en-US': 'Employee management is the master data',
-    },
-    overviewEmployeesBody: {
-      'zh-CN': '员工、标签、关联身份在这里维护；记录页的标签筛选和合并视图都依赖它。',
-      'en-US':
-        'Employees, tags and linked identities live here; the record pages’ tag filters and merged views depend on it.',
-    },
-    overviewHoldersTitle: {
-      'zh-CN': '5% 股东是披露口径',
-      'en-US': '5% holders is the disclosure view',
-    },
-    overviewHoldersBody: {
-      'zh-CN': '按 SEC 披露口径单独维护的持股 5% 以上股东，与汇总表分母对齐。',
-      'en-US': 'Holders above 5%, maintained separately to line up with the summary denominator.',
-    },
     overviewHelpTitle: {
       'zh-CN': '随时可以再看',
       'en-US': 'Replay any time',
@@ -1141,6 +1073,65 @@ export const TEXTS = {
       'zh-CN': '手动更新会重跑这份输出；数字来源是 Global Parameter 与 Capitalization Summary。',
       'en-US':
         'A manual update re-runs the output; the numbers come from Global Parameters and the Capitalization Summary.',
+    },
+    overviewCaptableTitle: {
+      'zh-CN': '股权汇总：一切的落点',
+      'en-US': 'Equity summary: where it all lands',
+    },
+    overviewCaptableBody: {
+      'zh-CN': '结果视图。这里的每个数字都是月度运行算出来的，不是手填的。',
+      'en-US': 'The results view. Every number here is computed by a monthly run, nothing is typed by hand.',
+    },
+    overviewMonthlyTitle: {
+      'zh-CN': '月度更新：数据的入口',
+      'en-US': 'Monthly update: the way in',
+    },
+    overviewMonthlyBody: {
+      'zh-CN': '每月在这里上传 Futu / Shareworks / Control Book 等输入并跑一次，汇总表和记录页的快照都从这次运行产出。',
+      'en-US':
+        'Upload the Futu / Shareworks / Control Book inputs here each month and run it; the summary and the record snapshots all come out of that run.',
+    },
+    overviewEsopTitle: {
+      'zh-CN': 'ESOP 明细：四个记录页',
+      'en-US': 'ESOP detail: four record pages',
+    },
+    overviewEsopBody: {
+      'zh-CN': '点开是授予、行权、卖出、取消四个记录页，都能按月份翻历史快照。',
+      'en-US': 'Expands into grants, exercises, sold shares and cancellations, each with per-month snapshots.',
+    },
+    overviewEmployeesTitle: {
+      'zh-CN': '员工管理：主数据',
+      'en-US': 'Employee management: master data',
+    },
+    overviewEmployeesBody: {
+      'zh-CN': '员工、标签、关联身份都在这里维护；记录页的标签筛选和合并视图依赖它。',
+      'en-US':
+        'People, tags and linked identities live here; the record pages’ tag filters and merged views depend on it.',
+    },
+    overviewPlanTitle: {
+      'zh-CN': '计划汇总：按计划看期权',
+      'en-US': 'Plan summary: options per plan',
+    },
+    overviewPlanBody: {
+      'zh-CN': '把期权按计划聚合：授予、取消、行权、在外，看每个计划还剩多少。',
+      'en-US': 'Aggregates options per plan — granted, cancelled, exercised, outstanding.',
+    },
+    overviewHoldersTitle: {
+      'zh-CN': '5% 股东：披露口径',
+      'en-US': '5% holders: the disclosure view',
+    },
+    overviewHoldersBody: {
+      'zh-CN': '按对外披露口径单独维护的 5% 以上股东，与汇总表的分母对齐。',
+      'en-US': 'Holders above 5%, maintained separately to line up with the summary denominator.',
+    },
+    overviewAdminTitle: {
+      'zh-CN': '以下是管理员的工具',
+      'en-US': 'What follows is admin-only',
+    },
+    overviewAdminBody: {
+      'zh-CN': '文件中心、工作流、用户管理只对管理员显示，用来传文件、改工作流和管账号。',
+      'en-US':
+        'Files, workflows and user management appear for admins only: upload files, edit workflows, manage accounts.',
     },
   },
 };
