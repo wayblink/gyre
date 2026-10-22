@@ -936,9 +936,9 @@ export const TEXTS = {
     },
     monthlyBadgeBody: {
       'zh-CN':
-        '「必须」缺失就跑不了。\n「可选」分三类：\n· 继承：系统自动带出上月基表\n· 补充：提供时才参与计算\n· 校验：补齐未反映的取消数\n缺失时，对应那一步直接跳过。',
+        '「必须」缺失就跑不了；「可选」分继承、补充、校验三类，分别是系统自动带出上月基表、提供时才参与计算、补齐未反映的取消数。缺失时，对应那一步直接跳过。',
       'en-US':
-        'A required source blocks the run when missing.\nOptional ones come in three kinds:\n· inherited — carried over from last month\n· supplementary — used only when supplied\n· validation — fills in missing cancellations\nThe step is skipped when its source is absent.',
+        'A required source blocks the run when missing; optional ones are inherited (carried over from last month), supplementary (used only when supplied) or validation (fills in missing cancellations), and the step is skipped when its source is absent.',
     },
     monthlyPurposeTitle: {
       'zh-CN': '用途文字',
