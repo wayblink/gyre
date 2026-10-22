@@ -993,21 +993,15 @@ export const TEXTS = {
       'zh-CN': '这个文件上传到系统的时间。',
       'en-US': 'When this file was uploaded.',
     },
-    monthlyColActionsTitle: {
+    monthlyActionsCellTitle: {
       'zh-CN': '第五列：操作',
       'en-US': 'Column 5: actions',
     },
-    monthlyColActionsBody: {
-      'zh-CN': '「选择」换文件或重选 sheet，「删除」解除绑定。删除不影响文件中心里的原件。',
-      'en-US': 'Select swaps the file or re-picks the sheet; delete only unbinds — the file stays in Files.',
-    },
-    monthlyActionsCellTitle: {
-      'zh-CN': '每行的按钮',
-      'en-US': 'Per-row buttons',
-    },
     monthlyActionsCellBody: {
-      'zh-CN': '选择可以从已上传的文件里挑，也可以现场上传；删除只是解绑，不会删文件。',
-      'en-US': 'Select picks from files already uploaded or uploads a new one; delete only unbinds.',
+      'zh-CN':
+        '「选择」用来换文件或重选 Sheet——可以从已上传的文件里挑，也可以现场上传；「删除」只解除绑定，文件中心里的原件不受影响。',
+      'en-US':
+        'Select swaps the file or re-picks the sheet — choose one already uploaded or upload a new one; delete only unbinds, the file stays in Files.',
     },
     employeesTitle: {
       'zh-CN': '员工管理：记录页的主数据',

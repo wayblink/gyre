@@ -228,11 +228,7 @@ export const TOURS: TourDefinition[] = [
         body: 'monthlyColTimeBody',
       },
       {
-        target: '#monthlyRunColActions',
-        title: 'monthlyColActionsTitle',
-        body: 'monthlyColActionsBody',
-      },
-      {
+        // One step for this column: the header and the buttons were explaining the same two actions.
         target: '#monthlyRunSourcesBody .source-file-action-group',
         title: 'monthlyActionsCellTitle',
         body: 'monthlyActionsCellBody',
