@@ -916,9 +916,9 @@ export const TEXTS = {
     },
     monthlyColFileBody: {
       'zh-CN':
-        '这些名称来自工作流定义的输入源；这里的顺序是定义里的展示顺序（order），只为阅读方便——真正谁先读、谁后读由工作流节点依赖决定，和这个顺序无关。',
+        '这一列是本月要读的输入文件。大部分需要你从 Futu、Shareworks、Control Book 等外部系统导出后再上传进来；少数由系统自动带出（没有文档图标），不需要你去找。',
       'en-US':
-        'These names come from the workflow definition. The order here is the schema display order, kept for readability — what runs first is decided by the task dependencies, not by this list.',
+        'These are the input files this month’s run reads. Most have to be exported from another system — Futu, Shareworks, the control book — and uploaded here; the few the system carries over itself have no document icon.',
     },
     monthlyColDescTitle: {
       'zh-CN': '第二列：说明',
