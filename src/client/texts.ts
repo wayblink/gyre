@@ -846,9 +846,9 @@ export const TEXTS = {
     },
     overviewInputsBody: {
       'zh-CN':
-        '点左侧「月度更新」：每月在这里上传 Futu / Shareworks / Control Book 等输入。\n跑完后，汇总表和记录页的快照都会更新。',
+        '点左侧「月度更新」：每月在这里上传 Futu / Shareworks / Control Book 等输入，跑完后汇总表和记录页的快照都会更新。',
       'en-US':
-        'Open the monthly update entry on the left: upload the Futu / Shareworks / Control Book inputs each month.\nThe summary and the record snapshots all follow.',
+        'Open the monthly update entry on the left: upload the Futu / Shareworks / Control Book inputs each month, and the summary and record snapshots all follow.',
     },
     overviewRecordsTitle: {
       'zh-CN': '明细在 ESOP 明细下',
