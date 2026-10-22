@@ -19,22 +19,22 @@ test('monthly input sources render in the order the workflow definition declares
     visible.map((source) => source.label),
     [
       'Control Book Summary',
-      'Control Book Detail update',
+      'Control Book Detail',
       'SERIES B Control Book',
-      'Gyre Option Plans Summary SL',
+      'Gyre Option Plans Summary',
       'Futu Exercises Summary',
       'Futu Exercise Export',
       '2025 BC Subplan Transfer',
       // Previous Capitalization Summary sits between these two in `order` but stays hidden: the
       // system injects last month's output itself, so there is nothing for the operator to upload.
       'Cancel & Restore Summary',
-      'Cancel & Restore Detail',
+      'Cancel & Restore Record',
       // Record pages are refreshed at the end of the monthly run. The Futu view reuses the Futu
       // exercise export above (same workbook, other sheet), so only these two are extra uploads.
-      'Exercise Record · Shareworks',
-      'Sold Shares · Futu 出售汇总',
-      'Grant Record · Shareworks',
-      'Grant Record · Futu 授予记录',
+      'Shareworks Exercise Record',
+      'Futu Sold Shares Record',
+      'Shareworks Grant Record',
+      'Futu Grant Record',
     ],
   );
 

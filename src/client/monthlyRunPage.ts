@@ -213,7 +213,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 36;
+export const MONTHLY_WORKFLOW_VERSION = 37;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was

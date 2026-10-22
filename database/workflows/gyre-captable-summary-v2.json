@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 36,
+  "version": 37,
   "tasks": [
     {
       "x": 48,
@@ -1232,7 +1232,7 @@
         },
         "option_plans_summary": {
           "type": "object",
-          "label": "Gyre Option Plans Summary SL",
+          "label": "Gyre Option Plans Summary",
           "order": 4,
           "hidden": false,
           "allowSheetNameOverride": true,
@@ -1250,7 +1250,7 @@
         },
         "incremental_control_book": {
           "type": "object",
-          "label": "Control Book Detail update",
+          "label": "Control Book Detail",
           "order": 2,
           "hidden": false,
           "allowSheetNameOverride": true,
@@ -1316,7 +1316,7 @@
         },
         "incremental_cancel_restore_report": {
           "type": "object",
-          "label": "Cancel & Restore Detail",
+          "label": "Cancel & Restore Record",
           "order": 10,
           "hidden": false,
           "allowSheetNameOverride": true,
@@ -1334,7 +1334,7 @@
         },
         "exercise_record_shareworks": {
           "type": "object",
-          "label": "Exercise Record · Shareworks",
+          "label": "Shareworks Exercise Record",
           "order": 11,
           "hidden": false,
           "allowSheetNameOverride": true,
@@ -1353,7 +1353,7 @@
         },
         "sold_shares_futu": {
           "type": "object",
-          "label": "Sold Shares · Futu 出售汇总",
+          "label": "Futu Sold Shares Record",
           "order": 12,
           "hidden": false,
           "allowSheetNameOverride": true,
@@ -1372,7 +1372,7 @@
         },
         "shareworks_grants": {
           "type": "object",
-          "label": "Grant Record · Shareworks",
+          "label": "Shareworks Grant Record",
           "description": "Shareworks「Options OS Detail by Plan」导出，用于「授予记录」页的 Shareworks 视图；未提供时该视图当月为空。",
           "defaultSheetName": "Personnel Summary (Options OS D",
           "allowSheetNameOverride": true,
@@ -1383,14 +1383,14 @@
           "fileTemplate": "DD-M-YYYY_HH-mm-ss_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx",
           "order": 13,
           "$type": "object",
-          "$label": "Grant Record · Shareworks",
+          "$label": "Shareworks Grant Record",
           "$default": {
             "sheet": "Personnel Summary (Options OS D"
           }
         },
         "futu_grants": {
           "type": "object",
-          "label": "Grant Record · Futu 授予记录",
+          "label": "Futu Grant Record",
           "description": "富途「授予记录」导出，用于「授予记录」页的 Futu 视图；未提供时该视图当月为空。",
           "defaultSheetName": "授予记录",
           "allowSheetNameOverride": true,
@@ -1401,7 +1401,7 @@
           "fileTemplate": "Gyre Therapeutics授予数据导出报表YYYYMMDD.xlsx",
           "order": 14,
           "$type": "object",
-          "$label": "Grant Record · Futu 授予记录",
+          "$label": "Futu Grant Record",
           "$default": {
             "sheet": "授予记录"
           }
