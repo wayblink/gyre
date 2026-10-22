@@ -207,7 +207,7 @@ export function createFilePickerModal({
       </div>`;
   }
 
-  function render() {
+  function render(options: { focusActiveFile?: boolean } = {}) {
     const files = visibleFiles();
     if (highlightedFileId && !files.some((file) => file.id === highlightedFileId) && !searchQuery) {
       highlightedFileId = null;
@@ -255,6 +255,7 @@ export function createFilePickerModal({
     syncActionState();
     const active = container.querySelector<HTMLElement>('.workflow-file-picker__file.is-active');
     active?.scrollIntoView({ block: 'nearest' });
+    if (options.focusActiveFile) active?.focus({ preventScroll: true });
   }
 
   function syncActionState() {
@@ -333,9 +334,11 @@ export function createFilePickerModal({
         body: JSON.stringify({ folder }),
       });
       await refreshProductFiles();
+      // Same reason as an upload: the file now lives in another folder, which may be collapsed.
+      expandFoldersFor(response.file);
       highlightedFileId = response.file.id;
       closeMovePanel();
-      render();
+      render({ focusActiveFile: true });
       const workflowsNote =
         response.rewrittenWorkflows > 0 ? `，${response.rewrittenWorkflows} ${tt('movedWorkflows')}` : '';
       notify(`${tt('moved')}: ${response.file.displayPath}${workflowsNote}`, { type: 'success' });
@@ -344,15 +347,35 @@ export function createFilePickerModal({
     }
   }
 
+  /**
+   * A newly uploaded file is no use if its folder is collapsed: the list would render without it and
+   * the highlight would have nothing to point at. Open every ancestor of the file's path.
+   */
+  function expandFoldersFor(file: ProductFileRecord) {
+    const segments = productFileLogicalTreePath(file).split('/');
+    segments.pop();
+    let path = '';
+    for (const segment of segments) {
+      path = path ? `${path}/${segment}` : segment;
+      expandedFolders.add(path);
+    }
+  }
+
   async function uploadFile() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.xlsx,.xls,.csv';
+    input.id = 'workflowFilePickerUploadInput';
+    input.className = 'hidden';
     input.addEventListener('change', () => {
       const file = input.files?.[0];
+      input.remove();
       if (!file) return;
       void uploadSelectedFile(file);
     });
+    // Some browsers ignore a click on a detached input; keeping it in the document also lets the
+    // picker be driven end to end in tests.
+    document.body.appendChild(input);
     input.click();
   }
 
@@ -385,8 +408,13 @@ export function createFilePickerModal({
         data = await upload(true);
       }
       await refreshProductFiles();
+      // The operator just uploaded this file, so put the cursor on it: clear a search that would
+      // hide it, open its folder, highlight it and move focus there.
+      searchQuery = '';
+      el<HTMLInputElement>('workflowFilePickerSearch').value = '';
+      expandFoldersFor(data.file);
       highlightedFileId = data.file.id;
-      render();
+      render({ focusActiveFile: true });
       notify(`${tt('uploaded')}: ${data.file.displayPath}`, { type: 'success' });
     } catch (error) {
       notify(error instanceof Error ? error.message : tt('uploadFailed'), { type: 'error' });
