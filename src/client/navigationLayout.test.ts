@@ -379,7 +379,7 @@ test('Grant Record workflow uses the Shareworks source workbook contract', () =>
   const project = grantRecordWorkflow.tasks.find((task) => task.id === 'project_shareworks_grants_columns');
   const schemaGuard = project?.inputs?.input1?.guards?.find((guard) => guard.type === 'dataframe.schema.assert');
 
-  assert.equal(grantRecordWorkflow.version, 6);
+  assert.equal(grantRecordWorkflow.version, 10);
   // Both sources are optional in the workflow, so the page entry must not demand them either.
   for (const key of ['futu_grants', 'shareworks_grants']) {
     assert.equal(
@@ -561,7 +561,7 @@ test('Sold Shares workflow reads the Futu source workbook summary sheet', () => 
     'utf8',
   );
 
-  assert.match(soldSharesWorkflow, /"version": 3/);
+  assert.match(soldSharesWorkflow, /"version": 6/);
   assert.match(soldSharesWorkflow, /sheet\.optional-range\.extract/);
   assert.match(soldSharesWorkflow, /"month"/);
   assert.match(soldSharesWorkflow, /"sheetName": "出售汇总数据"/);

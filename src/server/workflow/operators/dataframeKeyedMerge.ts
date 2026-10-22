@@ -214,11 +214,17 @@ export function mergeKeyedDataFrames(params: {
 
   const baseColumns = params.base.columns;
   const incrementColumns = params.increment.columns;
-  for (const column of keyColumns) {
-    if (!baseColumns.includes(column)) throw new Error(`Keyed merge base input is missing key column: ${column}`);
-    if (!incrementColumns.includes(column))
-      throw new Error(`Keyed merge increment input is missing key column: ${column}`);
-  }
+  // An input with no rows carries no information — an optional source that was not supplied, or a
+  // SQL projection over such a source. Demanding its key columns would fail the merge for a month
+  // that simply has nothing new, so only non-empty inputs are held to the contract.
+  const requireKeys = (columns: string[], rows: number, side: string) => {
+    if (rows === 0) return;
+    for (const column of keyColumns) {
+      if (!columns.includes(column)) throw new Error(`Keyed merge ${side} input is missing key column: ${column}`);
+    }
+  };
+  requireKeys(baseColumns, params.base.rows.length, 'base');
+  requireKeys(incrementColumns, params.increment.rows.length, 'increment');
 
   const outputColumns = (params.outputColumns?.length ? params.outputColumns : [...baseColumns, ...incrementColumns])
     .map((column) => column.trim())

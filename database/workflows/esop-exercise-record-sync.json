@@ -3,7 +3,7 @@
   "name": "ESOP / Exercise to Date Sync",
   "description": "读取 Futu 员工行权记录源工作簿的行权汇总数据，并替换 Exercise Record 展示数据。",
   "status": "active",
-  "version": 5,
+  "version": 10,
   "tasks": [
     {
       "x": 48,
@@ -20,10 +20,11 @@
         },
         "headerRow": 1,
         "sheetName": "行权汇总数据",
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "姓名, 工号, 牛牛号, 用户ID, 授予编号, 授予日期, 授予价(USD), 行权日期, 行权下单数量, 行权成功数量, 行权成本(USD), 扣除/卖出数量, 成交数量"
       },
       "dependsOn": [],
-      "description": "从 Futu 员工行权记录源工作簿提取行权汇总数据（行权汇总数据 Sheet）。 该输入为可选：未提供时输出空 dataframe，月度运行不会因此中断（记录页该月显示为空）。",
+      "description": "从 Futu 员工行权记录源工作簿提取行权汇总数据（行权汇总数据 Sheet）。 该输入为可选：未提供时输出空 dataframe，月度运行不会因此中断（记录页该月显示为空）。 未提供文件时按 emptyColumns 输出空表，供下游合并使用。",
       "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
@@ -53,13 +54,84 @@
       "operatorVersion": "1.0.0"
     },
     {
+      "id": "extract_exercise_futu_base",
+      "name": "Extract exercise_futu base",
+      "operatorCode": "sheet.optional-range.extract",
+      "operatorVersion": "1.0.0",
+      "description": "读取上一月的累计快照作为 base；未提供时输出空表，合并结果即当月增量。",
+      "dependsOn": [],
+      "inputs": {},
+      "x": 48,
+      "y": -160,
+      "params": {
+        "range": "A1:AZ50000",
+        "fileRef": {
+          "$type": "object",
+          "$label": "exercise_futu base",
+          "$default": {},
+          "$fromRuntime": "fileRefs.base_exercise_futu"
+        },
+        "headerRow": 1,
+        "sheetName": "Futu BCI Exercises to Date",
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "Name, Employee No., Futubull ID, User ID, Grant No., Grant Date, Grant Price(USD), Exercise Date, Ordered Qty, Exercised Qty, Exercise Cost(USD), Deduction/Selling Qty., Dealt Qty."
+      }
+    },
+    {
+      "id": "merge_exercise_futu_records",
+      "name": "Merge exercise_futu records",
+      "operatorCode": "dataframe.keyed.merge",
+      "operatorVersion": "1.0.0",
+      "description": "按 Employee No. + Grant No. + Exercise Date 幂等合并 base 与本月增量：同键以增量覆盖，base 独有的行保留（历史不丢）。",
+      "dependsOn": [],
+      "inputs": {
+        "base": {
+          "from": "extract_exercise_futu_base",
+          "slot": "dataframe",
+          "guards": []
+        },
+        "increment": {
+          "from": "project_futu_exercise_summary",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "x": 228,
+      "y": -160,
+      "params": {
+        "keyColumns": [
+          "Employee No.",
+          "Grant No.",
+          "Exercise Date"
+        ],
+        "outputColumns": [
+          "Name",
+          "Employee No.",
+          "Futubull ID",
+          "User ID",
+          "Grant No.",
+          "Grant Date",
+          "Grant Price(USD)",
+          "Exercise Date",
+          "Ordered Qty",
+          "Exercised Qty",
+          "Exercise Cost(USD)",
+          "Deduction/Selling Qty.",
+          "Dealt Qty."
+        ],
+        "conflictPolicy": "increment-wins",
+        "incomingBlankPolicy": "preserve",
+        "emitAuditColumns": false
+      }
+    },
+    {
       "x": 520,
       "y": 48,
       "id": "persist_exercise_record_file",
       "name": "Persist Futu BCI Exercises to Date File",
       "inputs": {
         "input1": {
-          "from": "project_futu_exercise_summary",
+          "from": "merge_exercise_futu_records",
           "slot": "dataframe"
         }
       },
@@ -75,7 +147,7 @@
         "skipWhenEmpty": true
       },
       "dependsOn": [],
-      "description": "将标准化后的 Futu 行权汇总数据输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。 输入为空时不落盘，避免覆盖上一次有效快照。",
+      "description": "将标准化后的 Futu 行权汇总数据输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。 输入为空时不落盘，避免覆盖上一次有效快照。 输入为 base 与本月的幂等合并结果，即截至当月的累计快照。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     },
@@ -94,12 +166,91 @@
         },
         "headerRow": 2,
         "sheetName": "Executive Awards OS Only",
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "Last Name, First Name, Middle Name, Plan Name, Grant Type, Employee Grant Number, Grant Date, No. of Shares Granted, Exercise Price per Share, Vesting Schedule, Vesting Start Date, Original VCD (assumed grants), Expire Date, Early Exercise Allowed, No. of Shares Vested, No. of Shares Unvested, Shares Exercised / Released, Shares Subject To Repurchase, Shares Cancelled/Expired, Shares Outstanding, Outstanding Vested/Exercisable, Outstanding Unvested"
       },
       "dependsOn": [],
-      "description": "从独立业务输入 Shareworks Exec Option OS 提取 Executive Awards OS Only（逐授予的期权存量，含累计已行权/释放数量）。 该输入为可选：未提供时输出空 dataframe，月度运行不会因此中断（记录页该月显示为空）。",
+      "description": "从独立业务输入 Shareworks Exec Option OS 提取 Executive Awards OS Only（逐授予的期权存量，含累计已行权/释放数量）。 该输入为可选：未提供时输出空 dataframe，月度运行不会因此中断（记录页该月显示为空）。 未提供文件时按 emptyColumns 输出空表，供下游合并使用。",
       "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
+    },
+    {
+      "id": "extract_exercise_shareworks_base",
+      "name": "Extract exercise_shareworks base",
+      "operatorCode": "sheet.optional-range.extract",
+      "operatorVersion": "1.0.0",
+      "description": "读取上一月的累计快照作为 base；未提供时输出空表，合并结果即当月增量。",
+      "dependsOn": [],
+      "inputs": {},
+      "x": 48,
+      "y": -160,
+      "params": {
+        "range": "A1:AZ50000",
+        "fileRef": {
+          "$type": "object",
+          "$label": "exercise_shareworks base",
+          "$default": {},
+          "$fromRuntime": "fileRefs.base_exercise_shareworks"
+        },
+        "headerRow": 1,
+        "sheetName": "Shareworks Exec Option OS",
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "Last Name, First Name, Middle Name, Plan Name, Grant Type, Employee Grant Number, Grant Date, No. of Shares Granted, Exercise Price per Share, Vesting Schedule, Vesting Start Date, Original VCD (assumed grants), Expire Date, Early Exercise Allowed, No. of Shares Vested, No. of Shares Unvested, Shares Exercised / Released, Shares Subject To Repurchase, Shares Cancelled/Expired, Shares Outstanding, Outstanding Vested/Exercisable, Outstanding Unvested"
+      }
+    },
+    {
+      "id": "merge_exercise_shareworks_records",
+      "name": "Merge exercise_shareworks records",
+      "operatorCode": "dataframe.keyed.merge",
+      "operatorVersion": "1.0.0",
+      "description": "按 Employee Grant Number 幂等合并 base 与本月增量：同键以增量覆盖，base 独有的行保留（历史不丢）。",
+      "dependsOn": [],
+      "inputs": {
+        "base": {
+          "from": "extract_exercise_shareworks_base",
+          "slot": "dataframe",
+          "guards": []
+        },
+        "increment": {
+          "from": "extract_shareworks_exec",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "x": 228,
+      "y": -160,
+      "params": {
+        "keyColumns": [
+          "Employee Grant Number"
+        ],
+        "outputColumns": [
+          "Last Name",
+          "First Name",
+          "Middle Name",
+          "Plan Name",
+          "Grant Type",
+          "Employee Grant Number",
+          "Grant Date",
+          "No. of Shares Granted",
+          "Exercise Price per Share",
+          "Vesting Schedule",
+          "Vesting Start Date",
+          "Original VCD (assumed grants)",
+          "Expire Date",
+          "Early Exercise Allowed",
+          "No. of Shares Vested",
+          "No. of Shares Unvested",
+          "Shares Exercised / Released",
+          "Shares Subject To Repurchase",
+          "Shares Cancelled/Expired",
+          "Shares Outstanding",
+          "Outstanding Vested/Exercisable",
+          "Outstanding Unvested"
+        ],
+        "conflictPolicy": "increment-wins",
+        "incomingBlankPolicy": "preserve",
+        "emitAuditColumns": false
+      }
     },
     {
       "x": 284,
@@ -108,7 +259,7 @@
       "name": "Persist Shareworks Exec Option OS File",
       "inputs": {
         "input1": {
-          "from": "extract_shareworks_exec",
+          "from": "merge_exercise_shareworks_records",
           "slot": "dataframe"
         }
       },
@@ -124,7 +275,7 @@
         "skipWhenEmpty": true
       },
       "dependsOn": [],
-      "description": "将 Shareworks Exec Option OS dataframe 原样输出为 Excel 文件（保留全部 22 列），展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。 输入为空时不落盘，避免覆盖上一次有效快照。",
+      "description": "将 Shareworks Exec Option OS dataframe 原样输出为 Excel 文件（保留全部 22 列），展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。 输入为空时不落盘，避免覆盖上一次有效快照。 输入为 base 与本月的幂等合并结果，即截至当月的累计快照。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     }
@@ -141,6 +292,18 @@
         "shareworks_exercises": {
           "type": "object",
           "label": "Shareworks Exec Option OS"
+        },
+        "base_exercise_futu": {
+          "type": "object",
+          "label": "Base · Futu BCI Exercises to Date (上月快照)",
+          "description": "上一月累计快照；月度运行自动带入，留空时即当月增量本身。",
+          "required": false
+        },
+        "base_exercise_shareworks": {
+          "type": "object",
+          "label": "Base · Shareworks Exec Option OS (上月快照)",
+          "description": "上一月累计快照；月度运行自动带入，留空时即当月增量本身。",
+          "required": false
         }
       }
     },

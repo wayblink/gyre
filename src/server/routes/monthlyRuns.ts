@@ -167,6 +167,85 @@ function requiredMonthlySourceKeys(sources: Awaited<ReturnType<typeof monthlySou
   return new Set(sources.filter((source) => source.required && !source.hidden).map((source) => source.sourceKey));
 }
 
+/**
+ * Record pages show cumulative-as-of-month data, so each view merges its previous month's snapshot
+ * with this month's export. The base is that previous snapshot artifact.
+ */
+async function injectRecordPageBases(
+  db: RouteContext['db'],
+  fileRefs: Record<string, unknown> | undefined,
+  previousMonth: string,
+): Promise<void> {
+  if (!fileRefs) return;
+  const targets: Array<{ sourceKey: string; workflowCode: string; taskId: string; sheet: string }> = [
+    {
+      sourceKey: 'cancellation_record_base',
+      workflowCode: 'esop-cancellation-record-sync',
+      taskId: 'persist_cancellation_records_file',
+      sheet: 'Cancellation Records',
+    },
+    {
+      sourceKey: 'sold_shares_base',
+      workflowCode: 'esop-sold-shares-sync',
+      taskId: 'persist_sold_shares_file',
+      sheet: 'Futu Sold Shares',
+    },
+    {
+      sourceKey: 'grant_record_futu_base',
+      workflowCode: 'esop-grant-record-sync',
+      taskId: 'persist_grant_record_futu_file',
+      sheet: 'Futu Grants',
+    },
+    {
+      sourceKey: 'grant_record_shareworks_base',
+      workflowCode: 'esop-grant-record-sync',
+      taskId: 'persist_grant_record_shareworks_file',
+      sheet: 'Shareworks Grants',
+    },
+    {
+      sourceKey: 'exercise_record_futu_base',
+      workflowCode: 'esop-exercise-record-sync',
+      taskId: 'persist_exercise_record_file',
+      sheet: 'Futu BCI Exercises to Date',
+    },
+    {
+      sourceKey: 'exercise_record_shareworks_base',
+      workflowCode: 'esop-exercise-record-sync',
+      taskId: 'persist_exercise_record_shareworks_file',
+      sheet: 'Shareworks Exec Option OS',
+    },
+  ];
+  const previous = await Promise.all(
+    targets.map((target) =>
+      // The artifact *path* is all the merge needs; reading rows here would parse six workbooks on
+      // every trigger, so the lookup goes through the same artifact table directly.
+      db.queryOne<Record<string, unknown>>(
+        `select file.logical_path as logical_path, artifact.metadata_json as metadata_json
+           from workflow_run_artifacts artifact
+           join workflow_runs run on run.id = artifact.run_id
+           join product_files file on file.id = artifact.file_id
+          where run.workflow_code = any($1::text[])
+            and run.status in ('completed', 'completed_with_warnings')
+            and artifact.task_id = $2
+            and artifact.artifact_type = 'file'
+            and artifact.file_id is not null
+            and run.runtime_parameters_json->>'month' < $3
+          -- The latest snapshot *before* this month: a month nobody ran (February, July) must not
+          -- break the chain, otherwise the next month would start from zero.
+          order by run.runtime_parameters_json->>'month' desc, artifact.id desc
+          limit 1`,
+        [[target.workflowCode, MONTHLY_WORKFLOW_CODE], target.taskId, previousMonth],
+      ),
+    ),
+  );
+  targets.forEach((target, index) => {
+    if (fileRefs[target.sourceKey]) return;
+    const logicalPath = String(previous[index]?.logical_path ?? '').trim();
+    if (!logicalPath) return;
+    fileRefs[target.sourceKey] = { provider: 'product-files', key: logicalPath, sheet: target.sheet };
+  });
+}
+
 async function assertMonthlyRunInstanceReady(
   db: RouteContext['db'],
   instance: MonthlyRunInstanceRecord,
@@ -290,6 +369,10 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
         prevFileRefs.previous_capitalization_summary = { provider: 'product-files', key: previousOutput.logicalPath };
       }
     }
+
+    // 四个记录页的「上月累计快照」: 记录页展示的是截至当月的累计数据（base + 增量幂等合并），所以每个
+    // 视图的 base 取上一条该月的快照。无则置空——合并结果即本月增量，链条自然从有数据的那一月开始。
+    await injectRecordPageBases(db, prevFileRefs, previousMonthKey(monthlyRunInstance.monthKey));
 
     // The cancel/restore base is maintained internally: when last month's merged
     // workbook exists, feed it into this run automatically instead of requiring a

@@ -756,9 +756,10 @@ export const TEXTS = {
       'en-US': 'One snapshot per month',
     },
     recordMonthBody: {
-      'zh-CN': '和汇总表一样按月份取数。有数据的月份带 ✓；切到空月份会提示「暂无记录」，而不是显示别的月份的数据。',
+      'zh-CN':
+        '每个月一份「截至当月」的累计快照：上月快照 + 本月增量按自然键幂等合并。有数据的月份带 ✓；切到空月份会提示「暂无记录」。',
       'en-US':
-        'Same month scoping as the summary. Months with data carry a ✓; an empty month says so instead of showing rows from another month.',
+        'Each month holds a cumulative snapshot through that month: the previous snapshot merged with this month’s export, deduplicated on the natural key. Months with data carry a ✓; an empty month says so.',
     },
     recordSourceTitle: {
       'zh-CN': '数据来自哪个文件',

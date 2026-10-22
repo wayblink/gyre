@@ -107,6 +107,17 @@ export const sourcePurposeEnglish: Record<string, string> = {
   sold_shares_futu: 'Futu sold-shares export; refreshes the Sold Shares page.',
   shareworks_grants: 'Shareworks options OS detail export; refreshes the Grant Record page (Shareworks view).',
   futu_grants: 'Futu grant export; refreshes the Grant Record page (Futu view).',
+
+  // Bases are injected by the monthly trigger (last snapshot before this month), never uploaded; the
+  // English UI still needs a purpose for them so it does not fall back to the Chinese description.
+  cancellation_record_base: 'Previous month cancel-record snapshot, merged with this month for the cumulative view.',
+  sold_shares_base: 'Previous month sold-shares snapshot, merged with this month for the cumulative view.',
+  grant_record_futu_base: 'Previous month Futu grant snapshot, merged with this month for the cumulative view.',
+  grant_record_shareworks_base:
+    'Previous month Shareworks grant snapshot, merged with this month for the cumulative view.',
+  exercise_record_futu_base: 'Previous month Futu exercise snapshot, merged with this month for the cumulative view.',
+  exercise_record_shareworks_base:
+    'Previous month Shareworks exercise snapshot, merged with this month for the cumulative view.',
 };
 
 /**
@@ -215,7 +226,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 42;
+export const MONTHLY_WORKFLOW_VERSION = 43;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was

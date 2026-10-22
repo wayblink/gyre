@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 42,
+  "version": 43,
   "tasks": [
     {
       "x": 48,
@@ -1044,6 +1044,16 @@
               "$type": "object",
               "$label": "shareworks_exercises",
               "$fromRuntime": "fileRefs.exercise_record_shareworks"
+            },
+            "base_exercise_futu": {
+              "$type": "object",
+              "$label": "base_exercise_futu",
+              "$fromRuntime": "fileRefs.exercise_record_futu_base"
+            },
+            "base_exercise_shareworks": {
+              "$type": "object",
+              "$label": "base_exercise_shareworks",
+              "$fromRuntime": "fileRefs.exercise_record_shareworks_base"
             }
           }
         }
@@ -1074,6 +1084,11 @@
               "$type": "object",
               "$label": "futu_sold_shares",
               "$fromRuntime": "fileRefs.sold_shares_futu"
+            },
+            "base_sold_shares": {
+              "$type": "object",
+              "$label": "base_sold_shares",
+              "$fromRuntime": "fileRefs.sold_shares_base"
             }
           }
         }
@@ -1104,6 +1119,11 @@
               "$type": "object",
               "$label": "cancellation_report",
               "$fromRuntime": "fileRefs.incremental_cancel_restore_report"
+            },
+            "base_cancellation_records": {
+              "$type": "object",
+              "$label": "base_cancellation_records",
+              "$fromRuntime": "fileRefs.cancellation_record_base"
             }
           }
         }
@@ -1140,6 +1160,16 @@
               "$type": "object",
               "$label": "shareworks_grants",
               "$fromRuntime": "fileRefs.shareworks_grants"
+            },
+            "base_grant_futu": {
+              "$type": "object",
+              "$label": "base_grant_futu",
+              "$fromRuntime": "fileRefs.grant_record_futu_base"
+            },
+            "base_grant_shareworks": {
+              "$type": "object",
+              "$label": "base_grant_shareworks",
+              "$fromRuntime": "fileRefs.grant_record_shareworks_base"
             }
           }
         }
@@ -1405,6 +1435,84 @@
           "$default": {
             "sheet": "授予记录"
           }
+        },
+        "cancellation_record_base": {
+          "type": "object",
+          "label": "Base · 取消记录（上月快照）",
+          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "required": false,
+          "hidden": true,
+          "optionalCategory": "inherit",
+          "taskId": "invoke_cancellation_record_sync",
+          "order": 15,
+          "$type": "object",
+          "$label": "Base · 取消记录（上月快照）",
+          "$default": {}
+        },
+        "sold_shares_base": {
+          "type": "object",
+          "label": "Base · 卖出记录（上月快照）",
+          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "required": false,
+          "hidden": true,
+          "optionalCategory": "inherit",
+          "taskId": "invoke_sold_shares_sync",
+          "order": 16,
+          "$type": "object",
+          "$label": "Base · 卖出记录（上月快照）",
+          "$default": {}
+        },
+        "grant_record_futu_base": {
+          "type": "object",
+          "label": "Base · 授予记录 Futu（上月快照）",
+          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "required": false,
+          "hidden": true,
+          "optionalCategory": "inherit",
+          "taskId": "invoke_grant_record_sync",
+          "order": 17,
+          "$type": "object",
+          "$label": "Base · 授予记录 Futu（上月快照）",
+          "$default": {}
+        },
+        "grant_record_shareworks_base": {
+          "type": "object",
+          "label": "Base · 授予记录 Shareworks（上月快照）",
+          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "required": false,
+          "hidden": true,
+          "optionalCategory": "inherit",
+          "taskId": "invoke_grant_record_sync",
+          "order": 18,
+          "$type": "object",
+          "$label": "Base · 授予记录 Shareworks（上月快照）",
+          "$default": {}
+        },
+        "exercise_record_futu_base": {
+          "type": "object",
+          "label": "Base · 行权记录 Futu（上月快照）",
+          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "required": false,
+          "hidden": true,
+          "optionalCategory": "inherit",
+          "taskId": "invoke_exercise_record_sync",
+          "order": 19,
+          "$type": "object",
+          "$label": "Base · 行权记录 Futu（上月快照）",
+          "$default": {}
+        },
+        "exercise_record_shareworks_base": {
+          "type": "object",
+          "label": "Base · 行权记录 Shareworks（上月快照）",
+          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "required": false,
+          "hidden": true,
+          "optionalCategory": "inherit",
+          "taskId": "invoke_exercise_record_sync",
+          "order": 20,
+          "$type": "object",
+          "$label": "Base · 行权记录 Shareworks（上月快照）",
+          "$default": {}
         }
       }
     },
@@ -1486,7 +1594,13 @@
       },
       "futu_grants": {
         "sheet": "授予记录"
-      }
+      },
+      "cancellation_record_base": {},
+      "sold_shares_base": {},
+      "grant_record_futu_base": {},
+      "grant_record_shareworks_base": {},
+      "exercise_record_futu_base": {},
+      "exercise_record_shareworks_base": {}
     },
     "fixedValues": {
       "cullgenCommonStock": 14450527,

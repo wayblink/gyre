@@ -3,7 +3,7 @@
   "name": "ESOP / Grant Record Sync",
   "description": "分别读取 Futu 授予记录与 Shareworks Options OS Detail 源表，并更新 Grant Record 三个展示视图。",
   "status": "active",
-  "version": 6,
+  "version": 10,
   "tasks": [
     {
       "x": 48,
@@ -22,10 +22,10 @@
         "headerRow": 1,
         "sheetName": "授予记录",
         "dropTrailingEmptyRows": true,
-        "emptyColumns": ""
+        "emptyColumns": "姓名, 授予编号, 用户ID, 工号, 激励类型, 授予日期, 授予数量, 授予价(USD), 失效日期, 所属计划, 条件规则, 员工端, 登记日收盘价(USD), 代扣成本, 代算税款, 代扣税款, 授予统一结汇, 授予计税规则, 确认取消日期, 数据来源, 归属规则名称, 归属起算日期, 已归属, 有效已归属, 待归属, 已归属取消, 待归属取消, 已行权, 待行权, Outstanding, 可出售数量, 关联出售订单编号, 协议信息"
       },
       "dependsOn": [],
-      "description": "从独立业务输入 Futu 授予记录 提取 授予记录。 来源可选：未提供时输出空 dataframe，不阻断运行。",
+      "description": "从独立业务输入 Futu 授予记录 提取 授予记录。 来源可选：未提供时输出空 dataframe，不阻断运行。 未提供文件时按 emptyColumns 输出空表，供下游合并使用。",
       "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
@@ -113,13 +113,102 @@
       "operatorVersion": "1.0.0"
     },
     {
+      "id": "extract_grant_futu_base",
+      "name": "Extract grant_futu base",
+      "operatorCode": "sheet.optional-range.extract",
+      "operatorVersion": "1.0.0",
+      "description": "读取上一月的累计快照作为 base；未提供时输出空表，合并结果即当月增量。",
+      "dependsOn": [],
+      "inputs": {},
+      "x": 48,
+      "y": -160,
+      "params": {
+        "range": "A1:AZ50000",
+        "fileRef": {
+          "$type": "object",
+          "$label": "grant_futu base",
+          "$default": {},
+          "$fromRuntime": "fileRefs.base_grant_futu"
+        },
+        "headerRow": 1,
+        "sheetName": "Futu Grants",
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "姓名, 授予编号, 用户ID, 工号, 激励类型, 授予日期, 授予数量, 授予价(USD), 失效日期, 所属计划, 条件规则, 员工端, 登记日收盘价(USD), 代扣成本, 代算税款, 代扣税款, 授予统一结汇, 授予计税规则, 确认取消日期, 数据来源, 归属规则名称, 归属起算日期, 已归属, 有效已归属, 待归属, 已归属取消, 待归属取消, 已行权, 待行权, Outstanding, 可出售数量, 关联出售订单编号, 协议信息"
+      }
+    },
+    {
+      "id": "merge_grant_futu_records",
+      "name": "Merge grant_futu records",
+      "operatorCode": "dataframe.keyed.merge",
+      "operatorVersion": "1.0.0",
+      "description": "按 授予编号 幂等合并 base 与本月增量：同键以增量覆盖，base 独有的行保留（历史不丢）。",
+      "dependsOn": [],
+      "inputs": {
+        "base": {
+          "from": "extract_grant_futu_base",
+          "slot": "dataframe",
+          "guards": []
+        },
+        "increment": {
+          "from": "extract_futu_grants",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "x": 228,
+      "y": -160,
+      "params": {
+        "keyColumns": [
+          "授予编号"
+        ],
+        "outputColumns": [
+          "姓名",
+          "授予编号",
+          "用户ID",
+          "工号",
+          "激励类型",
+          "授予日期",
+          "授予数量",
+          "授予价(USD)",
+          "失效日期",
+          "所属计划",
+          "条件规则",
+          "员工端",
+          "登记日收盘价(USD)",
+          "代扣成本",
+          "代算税款",
+          "代扣税款",
+          "授予统一结汇",
+          "授予计税规则",
+          "确认取消日期",
+          "数据来源",
+          "归属规则名称",
+          "归属起算日期",
+          "已归属",
+          "有效已归属",
+          "待归属",
+          "已归属取消",
+          "待归属取消",
+          "已行权",
+          "待行权",
+          "Outstanding",
+          "可出售数量",
+          "关联出售订单编号",
+          "协议信息"
+        ],
+        "conflictPolicy": "increment-wins",
+        "incomingBlankPolicy": "preserve",
+        "emitAuditColumns": false
+      }
+    },
+    {
       "x": 468,
       "y": 48,
       "id": "persist_grant_record_futu_file",
       "name": "Persist Futu 授予记录 File",
       "inputs": {
         "input1": {
-          "from": "extract_futu_grants",
+          "from": "merge_grant_futu_records",
           "slot": "dataframe",
           "guards": []
         }
@@ -136,9 +225,93 @@
         "skipWhenEmpty": true
       },
       "dependsOn": [],
-      "description": "将 Futu 授予记录 dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀；输入为空时不落盘。",
+      "description": "将 Futu 授予记录 dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀；输入为空时不落盘。 输入为 base 与本月的幂等合并结果，即截至当月的累计快照。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
+    },
+    {
+      "id": "extract_grant_shareworks_base",
+      "name": "Extract grant_shareworks base",
+      "operatorCode": "sheet.optional-range.extract",
+      "operatorVersion": "1.0.0",
+      "description": "读取上一月的累计快照作为 base；未提供时输出空表，合并结果即当月增量。",
+      "dependsOn": [],
+      "inputs": {},
+      "x": 48,
+      "y": -160,
+      "params": {
+        "range": "A1:AZ50000",
+        "fileRef": {
+          "$type": "object",
+          "$label": "grant_shareworks base",
+          "$default": {},
+          "$fromRuntime": "fileRefs.base_grant_shareworks"
+        },
+        "headerRow": 1,
+        "sheetName": "Shareworks Grants",
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "Employee Number, Last Name, First Name, Middle Name, Plan Name, Grant Name, Grant Type, Employee Grant Number, Grant Date, Vesting Start Date, Service Start Date, Original VCD (migrated grants), Expire Date, Expire Date (participant view), Earliest Expire Cancel Date, Latest Expire Cancel Date, No. of Shares Granted, Exercise Price per Share, Vesting Schedule, Early Exercise Allowed, No. of Shares Vested, No. of Shares Unvested, Shares Exercised / Released, Shares Subject To Repurchase, Shares Cancelled/Expired, Shares Outstanding, Outstanding Unvested, Outstanding Vested/Exercisable"
+      }
+    },
+    {
+      "id": "merge_grant_shareworks_records",
+      "name": "Merge grant_shareworks records",
+      "operatorCode": "dataframe.keyed.merge",
+      "operatorVersion": "1.0.0",
+      "description": "按 Employee Grant Number 幂等合并 base 与本月增量：同键以增量覆盖，base 独有的行保留（历史不丢）。",
+      "dependsOn": [],
+      "inputs": {
+        "base": {
+          "from": "extract_grant_shareworks_base",
+          "slot": "dataframe",
+          "guards": []
+        },
+        "increment": {
+          "from": "project_shareworks_grants_columns",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
+      "x": 228,
+      "y": -160,
+      "params": {
+        "keyColumns": [
+          "Employee Grant Number"
+        ],
+        "outputColumns": [
+          "Employee Number",
+          "Last Name",
+          "First Name",
+          "Middle Name",
+          "Plan Name",
+          "Grant Name",
+          "Grant Type",
+          "Employee Grant Number",
+          "Grant Date",
+          "Vesting Start Date",
+          "Service Start Date",
+          "Original VCD (migrated grants)",
+          "Expire Date",
+          "Expire Date (participant view)",
+          "Earliest Expire Cancel Date",
+          "Latest Expire Cancel Date",
+          "No. of Shares Granted",
+          "Exercise Price per Share",
+          "Vesting Schedule",
+          "Early Exercise Allowed",
+          "No. of Shares Vested",
+          "No. of Shares Unvested",
+          "Shares Exercised / Released",
+          "Shares Subject To Repurchase",
+          "Shares Cancelled/Expired",
+          "Shares Outstanding",
+          "Outstanding Unvested",
+          "Outstanding Vested/Exercisable"
+        ],
+        "conflictPolicy": "increment-wins",
+        "incomingBlankPolicy": "preserve",
+        "emitAuditColumns": false
+      }
     },
     {
       "x": 888,
@@ -147,7 +320,7 @@
       "name": "Persist Shareworks Grant Record File",
       "inputs": {
         "input1": {
-          "from": "project_shareworks_grants_columns",
+          "from": "merge_grant_shareworks_records",
           "slot": "dataframe",
           "guards": []
         }
@@ -164,7 +337,7 @@
         "skipWhenEmpty": true
       },
       "dependsOn": [],
-      "description": "将 Shareworks 源表投影后的 Grant Record dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀；输入为空时不落盘。",
+      "description": "将 Shareworks 源表投影后的 Grant Record dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀；输入为空时不落盘。 输入为 base 与本月的幂等合并结果，即截至当月的累计快照。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     }
@@ -182,6 +355,18 @@
         "shareworks_grants": {
           "type": "object",
           "label": "Shareworks Options OS Detail source workbook",
+          "required": false
+        },
+        "base_grant_futu": {
+          "type": "object",
+          "label": "Base · Futu Grants (上月快照)",
+          "description": "上一月累计快照；月度运行自动带入，留空时即当月增量本身。",
+          "required": false
+        },
+        "base_grant_shareworks": {
+          "type": "object",
+          "label": "Base · Shareworks Grants (上月快照)",
+          "description": "上一月累计快照；月度运行自动带入，留空时即当月增量本身。",
           "required": false
         }
       }
