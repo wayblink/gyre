@@ -3,7 +3,7 @@
   "name": "ESOP / Grant Record Sync",
   "description": "分别读取 Futu 授予记录与 Shareworks Options OS Detail 源表，并更新 Grant Record 三个展示视图。",
   "status": "active",
-  "version": 10,
+  "version": 12,
   "tasks": [
     {
       "x": 48,
@@ -214,18 +214,19 @@
         }
       },
       "params": {
-        "fileName": "Grant_Record_Futu.xlsx",
+        "fileName": "Futu_Grants_Base.xlsx",
         "sheetName": "Futu Grants",
         "sourceKey": "futu_grants",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/grant-record",
+        "folderPrefix": "grant_record",
         "fileNameSuffix": {
           "$fromRuntime": "monthUnderscore"
         },
-        "skipWhenEmpty": true
+        "skipWhenEmpty": true,
+        "overwrite": true
       },
       "dependsOn": [],
-      "description": "将 Futu 授予记录 dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀；输入为空时不落盘。 输入为 base 与本月的幂等合并结果，即截至当月的累计快照。",
+      "description": "写出截至当月的累计快照（base + 本月增量幂等合并），放在独立目录、文件名带月份后缀，既给页面按月读取，也作为下一月合并的 base。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     },
@@ -326,18 +327,19 @@
         }
       },
       "params": {
-        "fileName": "Grant_Record_Shareworks.xlsx",
+        "fileName": "Shareworks_Grants_Base.xlsx",
         "sheetName": "Shareworks Grants",
         "sourceKey": "shareworks_grants",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/grant-record",
+        "folderPrefix": "grant_record",
         "fileNameSuffix": {
           "$fromRuntime": "monthUnderscore"
         },
-        "skipWhenEmpty": true
+        "skipWhenEmpty": true,
+        "overwrite": true
       },
       "dependsOn": [],
-      "description": "将 Shareworks 源表投影后的 Grant Record dataframe 输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀；输入为空时不落盘。 输入为 base 与本月的幂等合并结果，即截至当月的累计快照。",
+      "description": "写出截至当月的累计快照（base + 本月增量幂等合并），放在独立目录、文件名带月份后缀，既给页面按月读取，也作为下一月合并的 base。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     }
@@ -360,14 +362,16 @@
         "base_grant_futu": {
           "type": "object",
           "label": "Base · Futu Grants (上月快照)",
-          "description": "上一月累计快照；月度运行自动带入，留空时即当月增量本身。",
-          "required": false
+          "description": "上一月的累计快照，由系统按月自动带入（独立目录中的 *_Base_*.xlsx），无需人工上传。",
+          "required": false,
+          "hidden": true
         },
         "base_grant_shareworks": {
           "type": "object",
           "label": "Base · Shareworks Grants (上月快照)",
-          "description": "上一月累计快照；月度运行自动带入，留空时即当月增量本身。",
-          "required": false
+          "description": "上一月的累计快照，由系统按月自动带入（独立目录中的 *_Base_*.xlsx），无需人工上传。",
+          "required": false,
+          "hidden": true
         }
       }
     },

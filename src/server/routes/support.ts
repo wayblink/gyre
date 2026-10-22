@@ -379,16 +379,23 @@ export function sourcesFromWorkflowSchemaJson(schemaJson: unknown): WorkflowPage
   const schema = parseJson<Record<string, unknown>>(schemaJson, {});
   const fileRefs = isRecord(schema.fileRefs) ? schema.fileRefs : {};
   const properties = isRecord(fileRefs.properties) ? (fileRefs.properties as Record<string, unknown>) : {};
-  return Object.entries(properties).map(([sourceKey, field]) => {
-    const nested = isRecord(field) && isRecord(field.properties) ? field.properties : {};
-    const sheet = isRecord(nested.sheet) ? String(nested.sheet.default ?? '').trim() : '';
-    return {
-      sourceKey,
-      label: isRecord(field) && typeof field.label === 'string' && field.label.trim() ? field.label.trim() : sourceKey,
-      ...(sheet ? { sheet } : {}),
-      required: !(isRecord(field) && field.required === false),
-    };
-  });
+  return (
+    Object.entries(properties)
+      // Hidden sources are system-supplied (record-page bases, last month's summary): the page's
+      // update dialog must not offer them as pickable files.
+      .filter(([, field]) => !(isRecord(field) && field.hidden === true))
+      .map(([sourceKey, field]) => {
+        const nested = isRecord(field) && isRecord(field.properties) ? field.properties : {};
+        const sheet = isRecord(nested.sheet) ? String(nested.sheet.default ?? '').trim() : '';
+        return {
+          sourceKey,
+          label:
+            isRecord(field) && typeof field.label === 'string' && field.label.trim() ? field.label.trim() : sourceKey,
+          ...(sheet ? { sheet } : {}),
+          required: !(isRecord(field) && field.required === false),
+        };
+      })
+  );
 }
 
 export async function getOrCreateMonth(db: AppDb, monthKey: string): Promise<number> {

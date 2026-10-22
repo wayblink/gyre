@@ -7,6 +7,7 @@ import {
   type WorkflowBootstrapDb,
   type WorkflowSourceBinding,
 } from '../workflow/startWorkflowRun.js';
+import { injectPageRecordBases } from './recordBases.js';
 import { ESOP_PAGE_WORKFLOW_CONFIGS, type EsopPageKey } from './workflowDefinitions.js';
 
 export type EsopWorkflowSourceBindings = Record<string, WorkflowSourceBinding | undefined>;
@@ -29,6 +30,13 @@ export async function startEsopPageWorkflow(
   // Tag the run with the month snapshot key: pages resolve their artifact by
   // `runtime_parameters_json->>'month'`, and the persist task suffixes the output file name.
   const month = options.month?.trim();
-  const runtimeParameters = month ? { month, monthUnderscore: month.replace('-', '_') } : undefined;
+  const runtimeParameters: Record<string, unknown> | undefined = month
+    ? { month, monthUnderscore: month.replace('-', '_'), fileRefs: {} }
+    : undefined;
+  // The pages merge into their previous snapshot; fill that base in here as well, so a manual
+  // update is cumulative too and the operator never has to pick the file.
+  if (runtimeParameters && month) {
+    await injectPageRecordBases(db, runtimeParameters.fileRefs as Record<string, unknown>, month, config.workflowCode);
+  }
   return startWorkflowRun({ db, runStore, executor, workflow, sources, runtimeParameters });
 }

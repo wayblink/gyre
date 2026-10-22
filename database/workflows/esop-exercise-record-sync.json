@@ -3,7 +3,7 @@
   "name": "ESOP / Exercise to Date Sync",
   "description": "读取 Futu 员工行权记录源工作簿的行权汇总数据，并替换 Exercise Record 展示数据。",
   "status": "active",
-  "version": 10,
+  "version": 12,
   "tasks": [
     {
       "x": 48,
@@ -136,18 +136,19 @@
         }
       },
       "params": {
-        "fileName": "exercise_record.xlsx",
+        "fileName": "Futu_Exercises_Base.xlsx",
         "sheetName": "Futu BCI Exercises to Date",
         "sourceKey": "futu_exercises",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/exercise-record",
+        "folderPrefix": "exercise_record",
         "fileNameSuffix": {
           "$fromRuntime": "monthUnderscore"
         },
-        "skipWhenEmpty": true
+        "skipWhenEmpty": true,
+        "overwrite": true
       },
       "dependsOn": [],
-      "description": "将标准化后的 Futu 行权汇总数据输出为 Excel 文件，展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。 输入为空时不落盘，避免覆盖上一次有效快照。 输入为 base 与本月的幂等合并结果，即截至当月的累计快照。",
+      "description": "写出截至当月的累计快照（base + 本月增量幂等合并），放在独立目录、文件名带月份后缀，既给页面按月读取，也作为下一月合并的 base。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     },
@@ -264,18 +265,19 @@
         }
       },
       "params": {
-        "fileName": "exercise_record_shareworks.xlsx",
+        "fileName": "Shareworks_Exec_Base.xlsx",
         "sheetName": "Shareworks Exec Option OS",
         "sourceKey": "shareworks_exercises",
         "uploadedBy": "Workflow",
-        "folderPrefix": "output/exercise-record",
+        "folderPrefix": "exercise_record",
         "fileNameSuffix": {
           "$fromRuntime": "monthUnderscore"
         },
-        "skipWhenEmpty": true
+        "skipWhenEmpty": true,
+        "overwrite": true
       },
       "dependsOn": [],
-      "description": "将 Shareworks Exec Option OS dataframe 原样输出为 Excel 文件（保留全部 22 列），展示层读取最新成功执行的输出文件。 输出文件名带月份后缀，便于在 Files 中辨认当月快照。 输入为空时不落盘，避免覆盖上一次有效快照。 输入为 base 与本月的幂等合并结果，即截至当月的累计快照。",
+      "description": "写出截至当月的累计快照（base + 本月增量幂等合并），放在独立目录、文件名带月份后缀，既给页面按月读取，也作为下一月合并的 base。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     }
@@ -296,14 +298,16 @@
         "base_exercise_futu": {
           "type": "object",
           "label": "Base · Futu BCI Exercises to Date (上月快照)",
-          "description": "上一月累计快照；月度运行自动带入，留空时即当月增量本身。",
-          "required": false
+          "description": "上一月的累计快照，由系统按月自动带入（独立目录中的 *_Base_*.xlsx），无需人工上传。",
+          "required": false,
+          "hidden": true
         },
         "base_exercise_shareworks": {
           "type": "object",
           "label": "Base · Shareworks Exec Option OS (上月快照)",
-          "description": "上一月累计快照；月度运行自动带入，留空时即当月增量本身。",
-          "required": false
+          "description": "上一月的累计快照，由系统按月自动带入（独立目录中的 *_Base_*.xlsx），无需人工上传。",
+          "required": false,
+          "hidden": true
         }
       }
     },

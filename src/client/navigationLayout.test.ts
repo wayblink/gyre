@@ -379,7 +379,7 @@ test('Grant Record workflow uses the Shareworks source workbook contract', () =>
   const project = grantRecordWorkflow.tasks.find((task) => task.id === 'project_shareworks_grants_columns');
   const schemaGuard = project?.inputs?.input1?.guards?.find((guard) => guard.type === 'dataframe.schema.assert');
 
-  assert.equal(grantRecordWorkflow.version, 10);
+  assert.equal(grantRecordWorkflow.version, 12);
   // Both sources are optional in the workflow, so the page entry must not demand them either.
   for (const key of ['futu_grants', 'shareworks_grants']) {
     assert.equal(
@@ -561,7 +561,7 @@ test('Sold Shares workflow reads the Futu source workbook summary sheet', () => 
     'utf8',
   );
 
-  assert.match(soldSharesWorkflow, /"version": 6/);
+  assert.match(soldSharesWorkflow, /"version": 8/);
   assert.match(soldSharesWorkflow, /sheet\.optional-range\.extract/);
   assert.match(soldSharesWorkflow, /"month"/);
   assert.match(soldSharesWorkflow, /"sheetName": "出售汇总数据"/);
@@ -1218,9 +1218,12 @@ test('Cancellation Records workflow reads the cancel-and-restore detail sheet', 
   assert.match(cancellationWorkflow, /"code": "esop-cancellation-record-sync"/);
   assert.match(cancellationWorkflow, /"sheetName": "取消与恢复明细"/);
   assert.match(cancellationWorkflow, /"sourceKey": "cancellation_report"/);
-  assert.match(cancellationWorkflow, /"folderPrefix": "output\/cancellation-record"/);
-  // Three-step shape, same as the other ESOP sync workflows. The extract is the *optional* one so a
-  // missing monthly input yields an empty snapshot instead of failing the monthly run.
+  // The cumulative snapshot lives in its own folder (not under output/) so the next month can find
+  // it by path and inherit it as a base.
+  assert.match(cancellationWorkflow, /"folderPrefix": "cancellation_record"/);
+  assert.match(cancellationWorkflow, /Cancellation_Records_Base\.xlsx/);
+  // Shape: optional extract → merge with last month's base → persist. The extract is optional so a
+  // missing monthly input yields an empty increment instead of failing the monthly run.
   assert.match(cancellationWorkflow, /sheet\.optional-range\.extract/);
   assert.match(cancellationWorkflow, /"month"/);
   assert.match(cancellationWorkflow, /"fileNameSuffix"/);

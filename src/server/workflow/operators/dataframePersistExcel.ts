@@ -98,6 +98,14 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
     folderPrefix: { type: 'string', label: '输出目录', required: false, placeholder: 'output/captable', default: '' },
     sheetName: { type: 'string', label: 'Sheet 名称', required: false, placeholder: 'Sheet1', default: 'Sheet1' },
     uploadedBy: { type: 'string', label: '上传人', required: false, placeholder: 'Workflow', default: 'Workflow' },
+    overwrite: {
+      type: 'boolean',
+      label: '覆盖同名文件',
+      required: false,
+      description:
+        '同名文件已存在时覆盖而不是报错。幂等产物（如按月累计的 base）应该打开：重跑同一个月即以新结果替换旧快照。',
+      default: false,
+    },
     skipWhenEmpty: {
       type: 'boolean',
       label: '空输入不落盘',
@@ -128,6 +136,7 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
       },
     };
     task.params.skipWhenEmpty = task.params.skipWhenEmpty === true;
+    task.params.overwrite = task.params.overwrite === true;
     normalizeWorkflowTaskDependencies(task);
   },
   async execute(context) {
@@ -157,6 +166,9 @@ export const dataframePersistExcelOperator = defineWorkflowOperator({
       buffer,
       uploadedBy,
       folderPrefix,
+      // A month's snapshot is a function of its inputs: re-running the month replaces it rather
+      // than failing on "file already exists".
+      ...(task.params.overwrite === true ? { conflictPolicy: 'overwrite' as const } : {}),
     });
 
     return {

@@ -94,3 +94,14 @@ test('normalizeTask coerces skipWhenEmpty to a real boolean', () => {
 
   assert.equal((task as { params: Record<string, unknown> }).params.skipWhenEmpty, false);
 });
+
+test('overwrite replaces an existing file instead of failing on the name', async () => {
+  const { context, saved } = buildContext({ overwrite: true }, [{ a: 1 }]);
+
+  await dataframePersistExcelOperator.execute(context);
+
+  assert.equal((saved[0] as { conflictPolicy?: string }).conflictPolicy, 'overwrite');
+  const plain = buildContext({}, [{ a: 1 }]);
+  await dataframePersistExcelOperator.execute(plain.context);
+  assert.equal((plain.saved[0] as { conflictPolicy?: string }).conflictPolicy, undefined);
+});
