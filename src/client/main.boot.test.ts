@@ -1397,3 +1397,25 @@ test('the file-name pattern also toggles inside the per-source configuration car
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.ok(modalBody.classList.contains('hidden'), 'the card panel must close again');
 });
+
+test('the tour picker marks the page you are actually on', async () => {
+  const window = await bootApp();
+  const doc = window.document;
+  const marker = () =>
+    doc.querySelector('#tourMenu .tour-menu__item.is-current')?.getAttribute('data-tour-start') ?? null;
+  const open = async () => {
+    doc.getElementById('btnStartTour')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  };
+
+  // The picker is built at boot, but the marker has to follow the route.
+  await open();
+  assert.equal(marker(), 'captable');
+
+  doc.body.click();
+  doc.querySelector<HTMLElement>('.nav-item[data-page="exercise-record"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  await open();
+  assert.equal(marker(), 'record-pages');
+});

@@ -2292,6 +2292,9 @@ function toggleTourPicker() {
   const menu = document.getElementById('tourMenu');
   if (!menu) return;
   const opening = menu.classList.contains('hidden');
+  // Re-render before showing: the "current page" marker depends on the route, and the picker is
+  // otherwise only built at boot and on a language switch.
+  if (opening) renderTourPicker();
   menu.classList.toggle('hidden', !opening);
   document.getElementById('btnStartTour')?.setAttribute('aria-expanded', String(opening));
 }
