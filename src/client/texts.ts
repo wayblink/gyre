@@ -990,10 +990,8 @@ export const TEXTS = {
       'en-US': 'Column 4: uploaded at',
     },
     monthlyColTimeBody: {
-      'zh-CN':
-        '用来判断这份文件是不是当月的：把上月导出传到本月，是这类系统最常见的错。\nControl Book 有月份校验，会直接拦下；其他源只能靠这里的时间人工核对。',
-      'en-US':
-        'Tells you whether the file belongs to this month — uploading last month’s export is the most common mistake.\nThe control book has a month guard that blocks a mismatch; for the other sources this timestamp is the only clue.',
+      'zh-CN': '这个文件上传到系统的时间。',
+      'en-US': 'When this file was uploaded.',
     },
     monthlyColActionsTitle: {
       'zh-CN': '第五列：操作',
