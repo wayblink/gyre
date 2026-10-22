@@ -14,7 +14,14 @@ import type { TextKey } from './texts.js';
  * change is exactly how tours start pointing at nothing.
  */
 
-export type TourId = 'captable' | 'monthlyrun' | 'record-pages' | 'docs';
+export type TourId =
+  | 'overview'
+  | 'captable'
+  | 'monthlyrun'
+  | 'record-pages'
+  | 'employee-management'
+  | 'plan-summary'
+  | 'five-percent-holders';
 
 export type TourStep = {
   /** Page the step lives on; when it differs from the current page the tour navigates first. */
@@ -123,6 +130,29 @@ export async function resolveTourSteps(
     if (element && isElementVisible(element)) usable.push(step);
   }
   return usable;
+}
+
+/**
+ * Split a script into consecutive same-page runs.
+ *
+ * driver.js highlights one list of steps in place, so a script that spans pages has to be played in
+ * chunks: navigate to the page, play its steps, navigate again. Resolving every step up front instead
+ * would leave the app on the last page while the first step pointed at a hidden element.
+ */
+export function planSegments(
+  steps: ReadonlyArray<TourStep>,
+  startPage: string,
+): Array<{ page: string; steps: TourStep[] }> {
+  const segments: Array<{ page: string; steps: TourStep[] }> = [];
+  let currentPage = startPage;
+  for (const step of steps) {
+    const page = step.page ?? currentPage;
+    currentPage = page;
+    const last = segments[segments.length - 1];
+    if (last && last.page === page) last.steps.push(step);
+    else segments.push({ page, steps: [step] });
+  }
+  return segments;
 }
 
 /** Maps tour steps to driver.js steps. Pure, so the copy/language mapping is testable in node. */

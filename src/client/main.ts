@@ -1280,7 +1280,10 @@ async function openMonthlyRunFromUrl() {
 }
 
 function initNavigation() {
-  document.querySelectorAll<HTMLElement>('.nav-item').forEach((item) => {
+  // Only real navigation items: the top bar also uses `.nav-item` for plain action buttons (the
+  // walkthrough "?" carries no `data-page`), and treating those as navigation sent the click to the
+  // default page before the action ran.
+  document.querySelectorAll<HTMLElement>('.nav-item[data-page]').forEach((item) => {
     item.setAttribute('role', 'link');
     item.tabIndex = 0;
     item.addEventListener('click', () => {

@@ -7,6 +7,12 @@ import type { TourDefinition, TourStep } from './tour.js';
  * AGENTS.md is about `workflow_definitions`. If a non-developer ever needs to edit the copy or the
  * order, this becomes a DB-backed JSON exactly like the monthly input schema; until then, code keeps
  * selectors and copy reviewed together.
+ *
+ * Rules the steps follow (they are what make a tour survive real data):
+ * - only targets that are on screen in the page's normal state (a step pointing into a modal would
+ *   need the modal opened first, and driver.js has no async per-step hook);
+ * - row-level targets use the first row's class inside the table body and are marked `dynamic`, so a
+ *   month with nothing rendered simply skips them instead of pointing at empty space.
  */
 
 /** The four record pages share one script; only the element ids differ. */
@@ -62,6 +68,61 @@ function recordPageTour(params: {
 
 export const TOURS: TourDefinition[] = [
   {
+    id: 'overview',
+    title: 'overviewTitle',
+    description: 'overviewDescription',
+    steps: [
+      { page: 'captable', target: 'aside.sidebar', title: 'overviewNavTitle', body: 'overviewNavBody' },
+      { target: '#page-captable .product-page-hero', title: 'overviewHomeTitle', body: 'overviewHomeBody' },
+      { target: '#monthPickerTrigger', title: 'overviewMonthTitle', body: 'overviewMonthBody' },
+      {
+        target: '#capitalizationTable',
+        title: 'overviewResultTitle',
+        body: 'overviewResultBody',
+        dynamic: true,
+      },
+      {
+        page: 'monthlyrun',
+        target: '#monthlyRunSourcesBody',
+        title: 'overviewInputsTitle',
+        body: 'overviewInputsBody',
+        dynamic: true,
+      },
+      {
+        page: 'grant-record',
+        target: '#grantMonthPickerTrigger',
+        title: 'overviewRecordsTitle',
+        body: 'overviewRecordsBody',
+      },
+      {
+        page: 'plan-summary',
+        target: '#planSummaryBody',
+        title: 'overviewPlanTitle',
+        body: 'overviewPlanBody',
+        dynamic: true,
+      },
+      {
+        page: 'employee-management',
+        target: '#employeesPageBody',
+        title: 'overviewEmployeesTitle',
+        body: 'overviewEmployeesBody',
+        dynamic: true,
+      },
+      {
+        page: 'five-percent-holders',
+        target: '#fivePercentHoldersBody',
+        title: 'overviewHoldersTitle',
+        body: 'overviewHoldersBody',
+        dynamic: true,
+      },
+      {
+        target: '#btnStartTour',
+        title: 'overviewHelpTitle',
+        body: 'overviewHelpBody',
+      },
+    ],
+  },
+  {
     id: 'captable',
     title: 'captableTitle',
     description: 'captableDescription',
@@ -98,17 +159,81 @@ export const TOURS: TourDefinition[] = [
     title: 'monthlyTitle',
     description: 'monthlyDescription',
     steps: [
+      // The month is created on the plan list; the run itself happens on its own page.
+      { page: 'monthly', target: '#btnAddUpdate', title: 'monthlyCreateTitle', body: 'monthlyCreateBody' },
+      {
+        target: '#monthlyUpdateTable',
+        title: 'monthlyPlansTitle',
+        body: 'monthlyPlansBody',
+      },
       { page: 'monthlyrun', target: '#monthlyRunMonth', title: 'monthlyMonthTitle', body: 'monthlyMonthBody' },
       {
-        target: '#monthlyRunSourcesBody',
+        target: '#monthlyRunSourcesTable',
         title: 'monthlyInputsTitle',
         body: 'monthlyInputsBody',
         dynamic: true,
       },
+      // Column by column, left to right.
       {
-        target: '#btnMonthlyRunConfigureSources',
-        title: 'monthlyConfigureTitle',
-        body: 'monthlyConfigureBody',
+        target: '#monthlyRunColFile',
+        title: 'monthlyColFileTitle',
+        body: 'monthlyColFileBody',
+      },
+      {
+        target: '#monthlyRunColDescription',
+        title: 'monthlyColDescTitle',
+        body: 'monthlyColDescBody',
+      },
+      {
+        target: '#monthlyRunSourcesBody .source-required-badge',
+        title: 'monthlyBadgeTitle',
+        body: 'monthlyBadgeBody',
+        dynamic: true,
+      },
+      {
+        target: '#monthlyRunSourcesBody .source-purpose',
+        title: 'monthlyPurposeTitle',
+        body: 'monthlyPurposeBody',
+        dynamic: true,
+      },
+      {
+        target: '#monthlyRunSourcesBody .source-file-template__trigger',
+        title: 'monthlyTemplateTitle',
+        body: 'monthlyTemplateBody',
+        dynamic: true,
+      },
+      {
+        target: '#monthlyRunColUploaded',
+        title: 'monthlyColUploadedTitle',
+        body: 'monthlyColUploadedBody',
+      },
+      {
+        target: '#monthlyRunSourcesBody .source-uploaded-cell',
+        title: 'monthlyUploadedCellTitle',
+        body: 'monthlyUploadedCellBody',
+        dynamic: true,
+      },
+      {
+        target: '#monthlyRunSourcesBody .source-sheet-control',
+        title: 'monthlySheetTitle',
+        body: 'monthlySheetBody',
+        dynamic: true,
+      },
+      {
+        target: '#monthlyRunColUploadedTime',
+        title: 'monthlyColTimeTitle',
+        body: 'monthlyColTimeBody',
+      },
+      {
+        target: '#monthlyRunColActions',
+        title: 'monthlyColActionsTitle',
+        body: 'monthlyColActionsBody',
+      },
+      {
+        target: '#monthlyRunSourcesBody .source-file-action-group',
+        title: 'monthlyActionsCellTitle',
+        body: 'monthlyActionsCellBody',
+        dynamic: true,
       },
       {
         target: '#monthlyRunConstantsBlock',
@@ -159,13 +284,102 @@ export const TOURS: TourDefinition[] = [
     ],
   },
   {
-    id: 'docs',
-    title: 'docsTitle',
-    description: 'docsDescription',
+    id: 'employee-management',
+    title: 'employeesTitle',
+    description: 'employeesDescription',
     steps: [
-      { page: 'docs', target: '#docNav', title: 'docsNavTitle', body: 'docsNavBody', dynamic: true },
-      { target: '#tourStartPanel', title: 'docsTourTitle', body: 'docsTourBody' },
-      { target: '#docContent', title: 'docsContentTitle', body: 'docsContentBody' },
+      {
+        page: 'employee-management',
+        target: '#searchEmployeesPage',
+        title: 'employeesSearchTitle',
+        body: 'employeesSearchBody',
+      },
+      {
+        target: '#filterEmployeesPageSource',
+        title: 'employeesSourceTitle',
+        body: 'employeesSourceBody',
+      },
+      {
+        target: '#filterEmployeesPageTag',
+        title: 'employeesTagTitle',
+        body: 'employeesTagBody',
+      },
+      {
+        target: '#btnManageEmployeeLabels',
+        title: 'employeesLabelsTitle',
+        body: 'employeesLabelsBody',
+      },
+      {
+        target: '#btnAddEmployeesPage',
+        title: 'employeesAddTitle',
+        body: 'employeesAddBody',
+      },
+      {
+        target: '#employeesPageBody',
+        title: 'employeesTableTitle',
+        body: 'employeesTableBody',
+        dynamic: true,
+      },
+    ],
+  },
+  {
+    id: 'plan-summary',
+    title: 'planSummaryTitle',
+    description: 'planSummaryDescription',
+    steps: [
+      {
+        page: 'plan-summary',
+        target: '#planSummaryMonthPickerTrigger',
+        title: 'planSummaryMonthTitle',
+        body: 'planSummaryMonthBody',
+      },
+      {
+        target: '#planSummaryResultFileName',
+        title: 'planSummaryFileTitle',
+        body: 'planSummaryFileBody',
+        dynamic: true,
+      },
+      {
+        target: '#planSummaryGranted',
+        title: 'planSummaryMetricsTitle',
+        body: 'planSummaryMetricsBody',
+        dynamic: true,
+      },
+      {
+        target: '#planSummaryBody',
+        title: 'planSummaryTableTitle',
+        body: 'planSummaryTableBody',
+        dynamic: true,
+      },
+      {
+        target: '#btnOpenMonthlyUpdateFromPlanSummary',
+        title: 'planSummaryToMonthlyTitle',
+        body: 'planSummaryToMonthlyBody',
+      },
+    ],
+  },
+  {
+    id: 'five-percent-holders',
+    title: 'holdersTitle',
+    description: 'holdersDescription',
+    steps: [
+      {
+        page: 'five-percent-holders',
+        target: '#page-five-percent-holders .product-page-hero',
+        title: 'holdersWhatTitle',
+        body: 'holdersWhatBody',
+      },
+      {
+        target: '#fivePercentHoldersBody',
+        title: 'holdersTableTitle',
+        body: 'holdersTableBody',
+        dynamic: true,
+      },
+      {
+        target: '[data-workflow-update-page="five-percent-holders"]',
+        title: 'holdersUpdateTitle',
+        body: 'holdersUpdateBody',
+      },
     ],
   },
 ];
@@ -173,12 +387,15 @@ export const TOURS: TourDefinition[] = [
 /** Page → the tour the top-bar question mark should play. */
 const TOUR_BY_PAGE: Record<string, TourDefinition['id']> = {
   captable: 'captable',
+  monthly: 'monthlyrun',
   monthlyrun: 'monthlyrun',
   'grant-record': 'record-pages',
   'exercise-record': 'record-pages',
   'sold-shares': 'record-pages',
   'cancellation-record': 'record-pages',
-  docs: 'docs',
+  'employee-management': 'employee-management',
+  'plan-summary': 'plan-summary',
+  'five-percent-holders': 'five-percent-holders',
 };
 
 export function tourForPage(page: string): TourDefinition | null {

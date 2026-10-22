@@ -797,37 +797,351 @@ export const TEXTS = {
       'en-US':
         'A manual update carries the selected month and writes that month snapshot — the same kind of file the monthly run produces.',
     },
-    docsTitle: {
-      'zh-CN': '使用手册',
-      'en-US': 'Handbook',
+    overviewTitle: {
+      'zh-CN': '系统总览：数据从哪来、到哪去',
+      'en-US': 'System overview: where the data comes from and goes',
     },
-    docsDescription: {
-      'zh-CN': '文档 + 可播放的引导。',
-      'en-US': 'Documentation plus the walkthroughs.',
+    overviewDescription: {
+      'zh-CN': '一次看完五个模块的分工。',
+      'en-US': 'The five modules in one pass.',
     },
-    docsNavTitle: {
-      'zh-CN': '按主题翻',
-      'en-US': 'Browse by topic',
+    overviewNavTitle: {
+      'zh-CN': '左侧是五个模块',
+      'en-US': 'Five modules on the left',
     },
-    docsNavBody: {
-      'zh-CN': '左侧是目录，右侧是正文与截图。',
-      'en-US': 'Topics on the left, content and screenshots on the right.',
+    overviewNavBody: {
+      'zh-CN':
+        '股权汇总看结果，月度更新跑数据，ESOP 明细看四个记录页，再往上是员工、计划与股东维度的视图。管理员还会多出文件中心、工作流和用户管理。',
+      'en-US':
+        'Equity summary shows results, the monthly run produces them, ESOP detail holds the four record pages, and the rest covers employees, plans and holders. Admins also get Files, Workflows and Users.',
     },
-    docsTourTitle: {
-      'zh-CN': '也可以直接跟着做',
-      'en-US': 'Or follow along instead',
+    overviewHomeTitle: {
+      'zh-CN': '默认进入股权汇总',
+      'en-US': 'It opens on the equity summary',
     },
-    docsTourBody: {
-      'zh-CN': '这里是可播放的引导，选了会先跳到对应页面再开始。',
-      'en-US': 'These walkthroughs jump to the page and start there.',
+    overviewHomeBody: {
+      'zh-CN': '每次登录先落在这一页：本月资本结构的结果视图。',
+      'en-US': 'Every login lands here: the capital structure for the selected month.',
     },
-    docsContentTitle: {
-      'zh-CN': '正文',
-      'en-US': 'The content',
+    overviewMonthTitle: {
+      'zh-CN': '所有视图都按月份切',
+      'en-US': 'Everything is scoped by month',
     },
-    docsContentBody: {
-      'zh-CN': '想找具体字段或口径，在这里搜。',
-      'en-US': 'Look here for specific fields and definitions.',
+    overviewMonthBody: {
+      'zh-CN': '汇总表、四个记录页、计划汇总都按同一个月取数，切换月份就切换整套数据。',
+      'en-US':
+        'The summary, the four record pages and the plan summary all read the same month — switching it switches the whole set.',
+    },
+    overviewResultTitle: {
+      'zh-CN': '结果是月度跑出来的',
+      'en-US': 'The numbers come from the monthly run',
+    },
+    overviewResultBody: {
+      'zh-CN': '这张表不是手填的：它由月度更新读取各类 Excel 后计算得出。',
+      'en-US': 'Nothing here is typed by hand: the monthly run reads the Excel inputs and computes it.',
+    },
+    overviewInputsTitle: {
+      'zh-CN': '月度更新是入口',
+      'en-US': 'The monthly run is the entry point',
+    },
+    overviewInputsBody: {
+      'zh-CN': '每月在这里上传 Futu / Shareworks / Control Book 等输入，跑完后汇总表和记录页的快照都会更新。',
+      'en-US':
+        'Upload the Futu / Shareworks / Control Book inputs here each month; the summary and the record snapshots all follow.',
+    },
+    overviewRecordsTitle: {
+      'zh-CN': '明细在 ESOP 明细下',
+      'en-US': 'Details live under ESOP detail',
+    },
+    overviewRecordsBody: {
+      'zh-CN': '授予、行权、卖出、取消四个记录页，都支持按月份看历史快照。',
+      'en-US': 'Grants, exercises, sold shares and cancellations, each with per-month snapshots.',
+    },
+    overviewPlanTitle: {
+      'zh-CN': '计划汇总按计划看',
+      'en-US': 'Plan summary is per plan',
+    },
+    overviewPlanBody: {
+      'zh-CN': '把期权按计划维度聚合：授予、取消、行权、在外，一眼看各计划还剩多少。',
+      'en-US': 'Aggregates options per plan: granted, cancelled, exercised, outstanding.',
+    },
+    overviewEmployeesTitle: {
+      'zh-CN': '员工管理是主数据',
+      'en-US': 'Employee management is the master data',
+    },
+    overviewEmployeesBody: {
+      'zh-CN': '员工、标签、关联身份在这里维护；记录页的标签筛选和合并视图都依赖它。',
+      'en-US':
+        'Employees, tags and linked identities live here; the record pages’ tag filters and merged views depend on it.',
+    },
+    overviewHoldersTitle: {
+      'zh-CN': '5% 股东是披露口径',
+      'en-US': '5% holders is the disclosure view',
+    },
+    overviewHoldersBody: {
+      'zh-CN': '按 SEC 披露口径单独维护的持股 5% 以上股东，与汇总表分母对齐。',
+      'en-US': 'Holders above 5%, maintained separately to line up with the summary denominator.',
+    },
+    overviewHelpTitle: {
+      'zh-CN': '随时可以再看',
+      'en-US': 'Replay any time',
+    },
+    overviewHelpBody: {
+      'zh-CN': '点这个问号播当前页的引导；完整列表在使用手册页顶部。',
+      'en-US':
+        'This question mark replays the current page’s walkthrough; the full list is at the top of the handbook.',
+    },
+    monthlyCreateTitle: {
+      'zh-CN': '第一步：创建月度计划',
+      'en-US': 'Step one: create the month',
+    },
+    monthlyCreateBody: {
+      'zh-CN': '先在这里新建一个月份并写备注。创建后该月才会出现在运行页和月份选择器里。',
+      'en-US': 'Create the month here and add a note. Only then does it appear on the run page and in month pickers.',
+    },
+    monthlyPlansTitle: {
+      'zh-CN': '计划列表',
+      'en-US': 'The plan list',
+    },
+    monthlyPlansBody: {
+      'zh-CN': '每行一个月度计划，带状态与备注；点进去执行、配置输入或回看历史。',
+      'en-US': 'One row per month with its status and note; open it to run, configure inputs or review history.',
+    },
+    monthlyColFileTitle: {
+      'zh-CN': '第一列：输入名称',
+      'en-US': 'Column 1: input name',
+    },
+    monthlyColFileBody: {
+      'zh-CN': '这里是工作流定义的输入源名称，顺序也是工作流读它们的顺序。',
+      'en-US': 'The input names declared by the workflow, in the order the workflow reads them.',
+    },
+    monthlyColDescTitle: {
+      'zh-CN': '第二列：说明',
+      'en-US': 'Column 2: the description',
+    },
+    monthlyColDescBody: {
+      'zh-CN': '这一列回答三个问题：是否必填、这个文件是干什么的、它长什么样。下面逐个拆开。',
+      'en-US':
+        'This column answers three questions: is it required, what the file is for, and what it looks like. We break it down next.',
+    },
+    monthlyBadgeTitle: {
+      'zh-CN': '徽标：必填还是可选',
+      'en-US': 'The badge: required or optional',
+    },
+    monthlyBadgeBody: {
+      'zh-CN':
+        '「必须」缺失就跑不了；「可选」分为继承（系统自动带出上月基表）、补充（提供时才参与计算）和校验（只用于交叉校验），缺失时该步直接跳过。',
+      'en-US':
+        'A required source blocks the run when missing. Optional ones split into inherited (carried over from last month), supplementary (used only when supplied) and validation (cross-check only); a missing optional step is skipped.',
+    },
+    monthlyPurposeTitle: {
+      'zh-CN': '用途文字',
+      'en-US': 'The purpose text',
+    },
+    monthlyPurposeBody: {
+      'zh-CN': '一句话说明这份文件来自哪个系统、喂给哪一步计算，方便判断该传哪一份导出。',
+      'en-US':
+        'One sentence on which system the file comes from and which step consumes it, so you know which export to upload.',
+    },
+    monthlyTemplateTitle: {
+      'zh-CN': '文档图标：文件名模板',
+      'en-US': 'The document icon: name pattern',
+    },
+    monthlyTemplateBody: {
+      'zh-CN':
+        '点开显示这个输入期望的文件名样式，例如 Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx；没有图标的行表示系统自动带出，不需要上传。',
+      'en-US':
+        'Opens the expected file name, e.g. Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx. Rows without the icon are supplied by the system and need no upload.',
+    },
+    monthlyColUploadedTitle: {
+      'zh-CN': '第三列：已上传文件',
+      'en-US': 'Column 3: the uploaded file',
+    },
+    monthlyColUploadedBody: {
+      'zh-CN': '当前绑定到这一行的文件；为空表示还没选。',
+      'en-US': 'The file currently bound to this row; empty means nothing is selected yet.',
+    },
+    monthlyUploadedCellTitle: {
+      'zh-CN': '文件名与快捷操作',
+      'en-US': 'File name and shortcuts',
+    },
+    monthlyUploadedCellBody: {
+      'zh-CN': '文件名过长会截断，鼠标悬停可看全名；旁边的复制按钮直接复制文件名，方便去文件中心找同一份。',
+      'en-US':
+        'Long names are truncated — hover to see the full one; the copy button puts the name on the clipboard so you can find it in Files.',
+    },
+    monthlySheetTitle: {
+      'zh-CN': 'Sheet 选择器',
+      'en-US': 'The sheet selector',
+    },
+    monthlySheetBody: {
+      'zh-CN': '同一个 Excel 常含多个 sheet。默认值来自工作流定义，选错会直接导致当月数字不对。',
+      'en-US':
+        'One workbook often holds several sheets. The default comes from the workflow definition; picking the wrong one silently changes the month’s numbers.',
+    },
+    monthlyColTimeTitle: {
+      'zh-CN': '第四列：上传时间',
+      'en-US': 'Column 4: uploaded at',
+    },
+    monthlyColTimeBody: {
+      'zh-CN': '用来判断这份文件是不是当月的：把上月导出传到本月，是这类系统最常见的错。',
+      'en-US':
+        'Tells you whether the file is actually from this month — uploading last month’s export is the most common mistake here.',
+    },
+    monthlyColActionsTitle: {
+      'zh-CN': '第五列：操作',
+      'en-US': 'Column 5: actions',
+    },
+    monthlyColActionsBody: {
+      'zh-CN': '「选择」换文件或重选 sheet，「删除」解除绑定。删除不影响文件中心里的原件。',
+      'en-US': 'Select swaps the file or re-picks the sheet; delete only unbinds — the file stays in Files.',
+    },
+    monthlyActionsCellTitle: {
+      'zh-CN': '每行的按钮',
+      'en-US': 'Per-row buttons',
+    },
+    monthlyActionsCellBody: {
+      'zh-CN': '选择可以从已上传的文件里挑，也可以现场上传；删除只是解绑，不会删文件。',
+      'en-US': 'Select picks from files already uploaded or uploads a new one; delete only unbinds.',
+    },
+    employeesTitle: {
+      'zh-CN': '员工管理：记录页的主数据',
+      'en-US': 'Employee management: the record pages’ master data',
+    },
+    employeesDescription: {
+      'zh-CN': '员工、标签、来源与合并。',
+      'en-US': 'People, tags, sources and merges.',
+    },
+    employeesSearchTitle: {
+      'zh-CN': '先搜人',
+      'en-US': 'Search first',
+    },
+    employeesSearchBody: {
+      'zh-CN': '按姓名或工号搜索。记录页的姓名匹配依赖这里的员工档案。',
+      'en-US': 'Search by name or employee number. The record pages match names against these profiles.',
+    },
+    employeesSourceTitle: {
+      'zh-CN': '按来源筛',
+      'en-US': 'Filter by source',
+    },
+    employeesSourceBody: {
+      'zh-CN': '区分 Futu 与 Shareworks 导入的员工，便于核对哪一侧缺人。',
+      'en-US': 'Separates Futu and Shareworks imports so you can see which side is missing someone.',
+    },
+    employeesTagTitle: {
+      'zh-CN': '标签',
+      'en-US': 'Tags',
+    },
+    employeesTagBody: {
+      'zh-CN': '标签会带到记录页做筛选，比如「离职」「顾问」。',
+      'en-US': 'Tags carry over to the record pages as filters, e.g. departed or advisor.',
+    },
+    employeesLabelsTitle: {
+      'zh-CN': '管理标签',
+      'en-US': 'Manage tags',
+    },
+    employeesLabelsBody: {
+      'zh-CN': '这里维护标签本身（名称、颜色、增删），改完所有页面一起生效。',
+      'en-US': 'Maintain the tags themselves here — name, colour, add or remove — and every page follows.',
+    },
+    employeesAddTitle: {
+      'zh-CN': '新增员工',
+      'en-US': 'Add a person',
+    },
+    employeesAddBody: {
+      'zh-CN': '手工补录员工；也可以在这里合并重复档案（合并后编号归并，记录不丢）。',
+      'en-US': 'Add someone by hand, or merge duplicate profiles here — numbers merge and no records are lost.',
+    },
+    employeesTableTitle: {
+      'zh-CN': '员工列表',
+      'en-US': 'The employee list',
+    },
+    employeesTableBody: {
+      'zh-CN': '每行一个员工，显示编号、姓名、来源和标签；点标签可继续筛选。',
+      'en-US': 'One row per person with number, name, source and tags; click a tag to filter further.',
+    },
+    planSummaryTitle: {
+      'zh-CN': '计划汇总：按计划看期权',
+      'en-US': 'Plan summary: options per plan',
+    },
+    planSummaryDescription: {
+      'zh-CN': '授予 / 取消 / 行权 / 在外，四个数看懂每个计划。',
+      'en-US': 'Granted, cancelled, exercised, outstanding — four numbers per plan.',
+    },
+    planSummaryMonthTitle: {
+      'zh-CN': '同样按月份',
+      'en-US': 'Also per month',
+    },
+    planSummaryMonthBody: {
+      'zh-CN': '和汇总表同一个月份口径，可以互相印证。',
+      'en-US': 'Same month scoping as the summary, so the two can be cross-checked.',
+    },
+    planSummaryFileTitle: {
+      'zh-CN': '数据来自哪份输出',
+      'en-US': 'Which output it reads',
+    },
+    planSummaryFileBody: {
+      'zh-CN': '这一页读的是月度运行产出的 Plan Summary 文件。',
+      'en-US': 'This page reads the Plan Summary file produced by the monthly run.',
+    },
+    planSummaryMetricsTitle: {
+      'zh-CN': '顶部四个合计',
+      'en-US': 'The four totals',
+    },
+    planSummaryMetricsBody: {
+      'zh-CN': '计划数、累计授予、累计行权、当前在外——先看合计，再看下面的分计划明细。',
+      'en-US':
+        'Plan count, total granted, total exercised and current outstanding — read the totals first, then the per-plan rows.',
+    },
+    planSummaryTableTitle: {
+      'zh-CN': '分计划明细',
+      'en-US': 'Per-plan detail',
+    },
+    planSummaryTableBody: {
+      'zh-CN': '每行一个计划；取消数会扣减在外数量，所以「授予 − 取消 − 行权 = 在外」应当成立。',
+      'en-US':
+        'One row per plan; cancellations reduce the outstanding, so granted − cancelled − exercised should equal outstanding.',
+    },
+    planSummaryToMonthlyTitle: {
+      'zh-CN': '数字不对就去月度',
+      'en-US': 'Wrong numbers? Go to the monthly run',
+    },
+    planSummaryToMonthlyBody: {
+      'zh-CN': '这一页只读，要重算就跳到月度更新重跑当月。',
+      'en-US': 'This page is read-only; re-run the month from the monthly page to recompute.',
+    },
+    holdersTitle: {
+      'zh-CN': '5% 股东：披露口径',
+      'en-US': '5% holders: the disclosure view',
+    },
+    holdersDescription: {
+      'zh-CN': '与汇总表分母对齐的持股 5% 以上股东。',
+      'en-US': 'Holders above 5%, aligned with the summary denominator.',
+    },
+    holdersWhatTitle: {
+      'zh-CN': '这一页是干什么的',
+      'en-US': 'What this page is for',
+    },
+    holdersWhatBody: {
+      'zh-CN': '按 SEC 披露口径单独维护的 5% 以上股东名单，用于对外披露与交叉核对。',
+      'en-US': 'A separately maintained list of holders above 5% for SEC-style disclosure and cross-checking.',
+    },
+    holdersTableTitle: {
+      'zh-CN': '股东明细',
+      'en-US': 'The holder list',
+    },
+    holdersTableBody: {
+      'zh-CN': '每行一个股东及其持股，合计会与汇总表的分母对照。',
+      'en-US': 'One row per holder with their stake; the total is checked against the summary denominator.',
+    },
+    holdersUpdateTitle: {
+      'zh-CN': '需要更新就点这里',
+      'en-US': 'Update it from here',
+    },
+    holdersUpdateBody: {
+      'zh-CN': '手动更新会重跑这份输出；数字来源是 Global Parameter 与 Capitalization Summary。',
+      'en-US':
+        'A manual update re-runs the output; the numbers come from Global Parameters and the Capitalization Summary.',
     },
   },
 };

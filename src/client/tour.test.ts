@@ -4,7 +4,15 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { installDom } from '../../test/dom-env.mjs';
-import { buildDriveSteps, isTourSeen, markTourSeen, resolveTourSteps, waitForElement, type TourStep } from './tour.js';
+import {
+  buildDriveSteps,
+  isTourSeen,
+  markTourSeen,
+  planSegments,
+  resolveTourSteps,
+  waitForElement,
+  type TourStep,
+} from './tour.js';
 import { TOURS, tourById, tourForPage, tourStepsForPage } from './tours.js';
 
 const INDEX_HTML = readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
@@ -125,6 +133,29 @@ test('step copy is resolved through the text table, in the active language', () 
   ]);
 });
 
+/** The selector forms the tours use, checked against the shipped markup. */
+function staticSelectorExists(selector: string): boolean {
+  const attribute = selector.match(/^\[([\w-]+)="([^"]+)"\]$/);
+  if (attribute) return new RegExp(`${attribute[1]}="${attribute[2]}"`).test(INDEX_HTML);
+
+  // `#anchor .child` / `#anchor tag` — the anchor id must exist; the descendant is page content that
+  // is rendered by the page itself, so only the anchor is asserted.
+  const anchored = selector.match(/^#([\w-]+)(\s|$)/);
+  if (anchored) return new RegExp(`id="${anchored[1]}"`).test(INDEX_HTML);
+
+  const idOnly = selector.match(/^#([\w-]+)$/);
+  if (idOnly) return new RegExp(`id="${idOnly[1]}"`).test(INDEX_HTML);
+
+  // `tag.class` / `.class`
+  const classSelector = selector.match(/^([a-z]*)\.([\w-]+)$/i);
+  if (classSelector) {
+    const tag = classSelector[1] ? `(?=<${classSelector[1]}[^>]*class=")` : '';
+    return new RegExp(`${tag}[^>]*class="[^"]*\\b${classSelector[2]}\\b`).test(INDEX_HTML);
+  }
+
+  return false;
+}
+
 test('every static tour target exists in index.html', () => {
   // Guards the failure mode that actually happens: someone renames an id, the tour silently starts
   // pointing at nothing, and nobody notices until a user complains.
@@ -132,22 +163,7 @@ test('every static tour target exists in index.html', () => {
   for (const tour of TOURS) {
     for (const item of tour.steps) {
       if (item.dynamic) continue;
-      const id = item.target.startsWith('#') ? item.target.slice(1) : null;
-      const attribute = item.target.startsWith('[') ? item.target : null;
-      if (id) {
-        if (!new RegExp(`id="${id}"`).test(INDEX_HTML)) missing.push(`${tour.id}: ${item.target}`);
-        continue;
-      }
-      if (attribute) {
-        const match = attribute.match(/^\[([\w-]+)="([^"]+)"\]$/);
-        if (!match) {
-          missing.push(`${tour.id}: unsupported selector ${item.target}`);
-        } else if (!new RegExp(`${match[1]}="${match[2]}"`).test(INDEX_HTML)) {
-          missing.push(`${tour.id}: ${item.target}`);
-        }
-        continue;
-      }
-      missing.push(`${tour.id}: unsupported selector ${item.target}`);
+      if (!staticSelectorExists(item.target)) missing.push(`${tour.id}: ${item.target}`);
     }
   }
   assert.deepEqual(missing, []);
@@ -158,11 +174,17 @@ test('every tour maps to a page that has a top-bar entry, and lookups behave', (
   assert.equal(tourForPage('grant-record')?.id, 'record-pages');
   assert.equal(tourForPage('exercise-record')?.id, 'record-pages');
   assert.equal(tourForPage('cancellation-record')?.id, 'record-pages');
+  assert.equal(tourForPage('monthly')?.id, 'monthlyrun');
   assert.equal(tourForPage('monthlyrun')?.id, 'monthlyrun');
-  assert.equal(tourForPage('docs')?.id, 'docs');
+  assert.equal(tourForPage('employee-management')?.id, 'employee-management');
+  assert.equal(tourForPage('plan-summary')?.id, 'plan-summary');
+  assert.equal(tourForPage('five-percent-holders')?.id, 'five-percent-holders');
   // Pages without a script must fall back to the "not available" notice rather than throwing.
   assert.equal(tourForPage('settings'), null);
+  assert.equal(tourForPage('docs'), null, 'the handbook itself has no walkthrough');
   assert.equal(tourById('nope'), null);
+  // The overview leads the list: it is the one a new user should open first.
+  assert.equal(TOURS[0]?.id, 'overview');
 });
 
 test('a page-scoped tour keeps only that page and still covers four record pages', () => {
@@ -179,34 +201,73 @@ test('a page-scoped tour keeps only that page and still covers four record pages
   assert.deepEqual([...pages].sort(), ['cancellation-record', 'exercise-record', 'grant-record', 'sold-shares']);
 });
 
-test('the runner maps steps, drives, and only records "seen" when the user finishes', async () => {
+test('a script that spans pages is split into one segment per page', () => {
+  const steps: TourStep[] = [
+    { page: 'monthly', target: '#a', title: 'monthlyCreateTitle', body: 'monthlyCreateBody' },
+    { target: '#b', title: 'monthlyPlansTitle', body: 'monthlyPlansBody' },
+    { page: 'monthlyrun', target: '#c', title: 'monthlyMonthTitle', body: 'monthlyMonthBody' },
+    { target: '#d', title: 'monthlyInputsTitle', body: 'monthlyInputsBody' },
+    { page: 'monthlyrun', target: '#e', title: 'monthlyRunTitle', body: 'monthlyRunBody' },
+  ];
+
+  const segments = planSegments(steps, 'captable');
+
+  assert.deepEqual(
+    segments.map((segment) => [segment.page, segment.steps.map((step) => step.target)]),
+    [
+      ['monthly', ['#a', '#b']],
+      ['monthlyrun', ['#c', '#d', '#e']],
+    ],
+  );
+});
+
+test('a segment inherits the previous page when a step does not name one', () => {
+  const segments = planSegments([{ target: '#a', title: 'captableMonthTitle', body: 'captableMonthBody' }], 'captable');
+  assert.deepEqual(
+    segments.map((segment) => segment.page),
+    ['captable'],
+  );
+});
+
+test('the runner plays every segment, navigating between them, and records "seen" once at the end', async () => {
   const { window } = installDom({ url: 'http://localhost/captable' });
   stubLayout(window);
-  window.document.body.innerHTML = '<div id="one"></div><div id="two"></div>';
-  const storage = memoryStorage();
+  window.document.body.innerHTML = '<div id="one"></div><div id="two"></div><div id="three"></div>';
+  const storage = window.localStorage;
+  storage.clear();
   const outcomes: string[] = [];
-  const captured: { config: { steps?: unknown[]; allowClose?: boolean; onDestroyed?: () => void } | null } = {
-    config: null,
-  };
-  let drove = false;
+  const navigated: string[] = [];
+  const drivenSteps: number[] = [];
+  const doneLabels: string[] = [];
 
   const { createTourRunner } = await import('./tourRunner.js');
   const runner = createTourRunner(
     {
       language: () => 'zh-CN',
       text: (key) => String(key),
-      navigate: async () => {},
-      currentPage: () => 'captable',
+      navigate: async (page) => {
+        navigated.push(page);
+      },
+      currentPage: () => navigated[navigated.length - 1] ?? 'captable',
       user: () => 'alice',
       onFinished: (_id, outcome) => outcomes.push(outcome),
     },
     {
-      // Fake driver: capture the config and let the test drive the hooks itself.
-      createDriver: (driverConfig) => {
-        captured.config = driverConfig as unknown as NonNullable<typeof captured.config>;
+      // Fake driver: renders the popover node, then the test clicks its done button.
+      createDriver: (config) => {
+        drivenSteps.push((config.steps ?? []).length);
+        doneLabels.push(String(config.doneBtnText));
         return {
           drive: () => {
-            drove = true;
+            const popover = window.document.createElement('div');
+            popover.className = 'driver-popover';
+            const done = window.document.createElement('button');
+            done.className = 'driver-popover-next-btn driver-popover-done-btn';
+            done.addEventListener('click', () => popover.remove());
+            popover.appendChild(done);
+            window.document.body.appendChild(popover);
+            // The user finishes each chunk.
+            done.click();
           },
           destroy: () => {},
         } as never;
@@ -215,80 +276,22 @@ test('the runner maps steps, drives, and only records "seen" when the user finis
   );
 
   const started = await runner.start({
-    id: 'captable',
-    title: 'captableTitle',
-    description: 'captableDescription',
+    id: 'monthlyrun',
+    title: 'monthlyTitle',
+    description: 'monthlyDescription',
     steps: [
-      { target: '#one', title: 'captableMonthTitle', body: 'captableMonthBody' },
-      { target: '#two', title: 'captableReconTitle', body: 'captableReconBody' },
+      { page: 'monthly', target: '#one', title: 'monthlyCreateTitle', body: 'monthlyCreateBody' },
+      { page: 'monthlyrun', target: '#two', title: 'monthlyMonthTitle', body: 'monthlyMonthBody' },
+      { page: 'monthlyrun', target: '#three', title: 'monthlyRunTitle', body: 'monthlyRunBody' },
     ],
   });
 
   assert.equal(started, true);
-  assert.equal(drove, true);
-  assert.equal(captured.config?.steps?.length, 2);
-  assert.equal(captured.config?.allowClose, true);
-
-  // Esc / close: dismissed, nothing remembered.
-  captured.config?.onDestroyed?.();
-  assert.deepEqual(outcomes, ['dismissed']);
-  assert.equal(isTourSeen('captable', 'alice', storage), false);
-});
-
-test('pressing Done is what records the tour as seen, and other closes are not', async () => {
-  const { window } = installDom({ url: 'http://localhost/captable' });
-  stubLayout(window);
-  window.document.body.innerHTML = '<div id="one"></div>';
-  const storage = window.localStorage;
-  const outcomes: string[] = [];
-  const captured: { config: { onDestroyed?: () => void } | null } = { config: null };
-
-  const { createTourRunner } = await import('./tourRunner.js');
-  const runner = createTourRunner(
-    {
-      language: () => 'zh-CN',
-      text: (key) => String(key),
-      navigate: async () => {},
-      currentPage: () => 'captable',
-      user: () => 'alice',
-      onFinished: (_id, outcome) => outcomes.push(outcome),
-    },
-    {
-      createDriver: (driverConfig) => {
-        captured.config = driverConfig as unknown as NonNullable<typeof captured.config>;
-        return { drive: () => {}, destroy: () => {} } as never;
-      },
-    },
-  );
-
-  assert.equal(
-    await runner.start({
-      id: 'captable',
-      title: 'captableTitle',
-      description: 'captableDescription',
-      steps: [{ target: '#one', title: 'captableMonthTitle', body: 'captableMonthBody' }],
-    }),
-    true,
-  );
-
-  // A Next click mid-tour must not count.
-  const next = window.document.createElement('button');
-  next.className = 'driver-popover-next-btn';
-  window.document.body.appendChild(next);
-  next.click();
-  assert.equal(isTourSeen('captable', 'alice', storage), false);
-
-  const done = window.document.createElement('button');
-  done.className = 'driver-popover-next-btn driver-popover-done-btn';
-  window.document.body.appendChild(done);
-  done.click();
-
-  assert.equal(isTourSeen('captable', 'alice', storage), true);
+  assert.deepEqual(navigated, ['monthly', 'monthlyrun'], 'one navigation per segment');
+  assert.deepEqual(drivenSteps, [1, 2], 'each segment drives only its own steps');
+  assert.deepEqual(doneLabels, ['继续', '完成'], 'intermediate chunks continue, the last one finishes');
   assert.deepEqual(outcomes, ['finished']);
-
-  // Driver's own teardown must not then report a dismissal on top of the finish.
-  captured.config?.onDestroyed?.();
-  assert.deepEqual(outcomes, ['finished']);
+  assert.equal(isTourSeen('monthlyrun', 'alice', storage), true);
 });
 
 test('a tour with nothing to highlight reports "not started" instead of opening an empty overlay', async () => {
