@@ -93,7 +93,8 @@ export const sourcePurposeEnglish: Record<string, string> = {
   incremental_control_book: 'Current month Control Book detail, merged into the base.',
   series_b: 'Shares Issued × 5 gives Series B Preferred Stock; 0 when not supplied.',
   option_plans_summary: 'Per-plan outstanding and available share totals.',
-  base_futu_exercises: 'Prior month full Futu BCI Exercises base; base for the incremental merge.',
+  base_futu_exercises:
+    'Prior month full Futu BCI Exercises base for the incremental merge; normally carried over from last month, but can be set manually.',
   incremental_futu_exercises: 'Current month Futu exercise detail, merged by exercise order number.',
   bc_subplan_transfer: 'Optional transfer/vesting data; fills in cancellations the OPS has not reflected.',
   previous_capitalization_summary:
@@ -213,7 +214,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 40;
+export const MONTHLY_WORKFLOW_VERSION = 41;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was
