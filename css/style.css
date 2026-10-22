@@ -10577,6 +10577,8 @@ textarea.form-input {
     font-size: var(--text-sm);
     line-height: 1.6;
     color: var(--text-secondary);
+    /* The copy carries explicit line breaks for the list-like steps; without this they collapse. */
+    white-space: pre-line;
 }
 
 .gyre-tour-popover .driver-popover-progress-text {

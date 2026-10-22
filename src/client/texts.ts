@@ -708,9 +708,9 @@ export const TEXTS = {
     },
     monthlyInputsBody: {
       'zh-CN':
-        '这一块是本月要读的全部输入：一行一个源，五列分别是输入名称、说明、已上传文件、上传时间、操作。下面按列逐个看。',
+        '这一块是本月要读的全部输入：一行一个源。\n五列分别是输入名称、说明、已上传文件、上传时间、操作。\n下面按列逐个看。',
       'en-US':
-        'Every input this month’s run reads: one row per source with five columns — input name, description, uploaded file, uploaded at, and actions. We take them one by one next.',
+        'Every input this month’s run reads: one row per source.\nThe five columns are input name, description, uploaded file, uploaded at and actions.\nWe take them one by one next.',
     },
     monthlyConfigureTitle: {
       'zh-CN': '配置输入源',
@@ -811,9 +811,9 @@ export const TEXTS = {
     },
     overviewNavBody: {
       'zh-CN':
-        '股权汇总看结果，月度更新跑数据，ESOP 明细看四个记录页，再往下是员工、计划与股东维度的视图。管理员还会多出文件中心、工作流和用户管理。',
+        '股权汇总看结果，月度更新跑数据，ESOP 明细看四个记录页。\n再往下是员工、计划与股东维度的视图。\n管理员还会多出文件中心、工作流和用户管理。',
       'en-US':
-        'Equity summary shows results, the monthly run produces them, ESOP detail holds the four record pages, and further down are the employee, plan and holder views. Admins also get Files, Workflows and Users.',
+        'Equity summary shows results, the monthly run produces them, ESOP detail holds the four record pages.\nFurther down are the employee, plan and holder views.\nAdmins also get Files, Workflows and Users.',
     },
     overviewHomeTitle: {
       'zh-CN': '默认进入股权汇总',
@@ -846,9 +846,9 @@ export const TEXTS = {
     },
     overviewInputsBody: {
       'zh-CN':
-        '点左侧「月度更新」：每月在这里上传 Futu / Shareworks / Control Book 等输入，跑完后汇总表和记录页的快照都会更新。',
+        '点左侧「月度更新」：每月在这里上传 Futu / Shareworks / Control Book 等输入。\n跑完后，汇总表和记录页的快照都会更新。',
       'en-US':
-        'Open the monthly update entry on the left: upload the Futu / Shareworks / Control Book inputs each month and the summary and record snapshots all follow.',
+        'Open the monthly update entry on the left: upload the Futu / Shareworks / Control Book inputs each month.\nThe summary and the record snapshots all follow.',
     },
     overviewRecordsTitle: {
       'zh-CN': '明细在 ESOP 明细下',
@@ -916,9 +916,9 @@ export const TEXTS = {
     },
     monthlyColFileBody: {
       'zh-CN':
-        '这一列是本月要读的输入文件。大部分需要你从 Futu、Shareworks、Control Book 等外部系统导出后再上传进来；少数由系统自动带出（没有文档图标），不需要你去找。',
+        '这一列是本月要读的输入文件。\n大部分需要你从 Futu、Shareworks、Control Book 等外部系统导出后再上传进来；\n少数由系统自动带出（没有文档图标），不需要你去找。',
       'en-US':
-        'These are the input files this month’s run reads. Most have to be exported from another system — Futu, Shareworks, the control book — and uploaded here; the few the system carries over itself have no document icon.',
+        'These are the input files this month’s run reads.\nMost have to be exported from another system — Futu, Shareworks, the control book — and uploaded here;\nthe few the system carries over itself have no document icon.',
     },
     monthlyColDescTitle: {
       'zh-CN': '第二列：说明',
@@ -926,9 +926,9 @@ export const TEXTS = {
     },
     monthlyColDescBody: {
       'zh-CN':
-        '说明列由三块组成：最左边是必填/可选徽标，中间一句话说明这份文件的用途，右边若有文档图标，点开就是它期望的文件名。下面逐个拆开看。',
+        '说明列由三块组成：\n· 左边：必填 / 可选徽标\n· 中间：一句话说明这份文件的用途\n· 右边：若有文档图标，点开是它期望的文件名\n下面逐个拆开看。',
       'en-US':
-        'The description column holds three things: the required/optional badge on the left, one sentence on what the file is for, and — when present — a document icon that reveals the expected file name. We take them in turn.',
+        'The description column holds three things:\n· left — the required / optional badge\n· middle — one sentence on what the file is for\n· right — a document icon that reveals the expected file name\nWe take them in turn.',
     },
     monthlyBadgeTitle: {
       'zh-CN': '徽标：必填还是可选',
@@ -936,9 +936,9 @@ export const TEXTS = {
     },
     monthlyBadgeBody: {
       'zh-CN':
-        '「必须」缺失就跑不了；「可选」分三类：继承（系统自动带出上月基表）、补充（提供时才参与计算）、校验（用来补齐 Option Plans Summary 未反映的取消数）。缺失时对应那一步直接跳过。',
+        '「必须」缺失就跑不了。\n「可选」分三类：\n· 继承：系统自动带出上月基表\n· 补充：提供时才参与计算\n· 校验：用来补齐 Option Plans Summary 未反映的取消数\n缺失时，对应那一步直接跳过。',
       'en-US':
-        'A required source blocks the run when missing. Optional ones come in three kinds: inherited (carried over from last month), supplementary (used only when supplied) and validation (fills in cancellations the Option Plans Summary has not reflected). The step is skipped when its source is absent.',
+        'A required source blocks the run when missing.\nOptional ones come in three kinds:\n· inherited — carried over from last month\n· supplementary — used only when supplied\n· validation — fills in cancellations the Option Plans Summary has not reflected\nThe step is skipped when its source is absent.',
     },
     monthlyPurposeTitle: {
       'zh-CN': '用途文字',
@@ -955,9 +955,9 @@ export const TEXTS = {
     },
     monthlyTemplateBody: {
       'zh-CN':
-        '点开显示这个输入期望的文件名样式，例如 Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx；没有图标的行表示系统自动带出，不需要上传。',
+        '点开显示这个输入期望的文件名样式，例如 Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx。\n没有图标的行表示系统自动带出，不需要上传。',
       'en-US':
-        'Opens the expected file name, e.g. Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx. Rows without the icon are supplied by the system and need no upload.',
+        'Opens the expected file name, e.g. Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx.\nRows without the icon are supplied by the system and need no upload.',
     },
     monthlyColUploadedTitle: {
       'zh-CN': '第三列：已上传文件',
@@ -991,9 +991,9 @@ export const TEXTS = {
     },
     monthlyColTimeBody: {
       'zh-CN':
-        '用来判断这份文件是不是当月的：把上月导出传到本月是这类系统最常见的错。Control Book 有月份校验会直接拦下，其他源只能靠这里的时间人工核对。',
+        '用来判断这份文件是不是当月的：把上月导出传到本月，是这类系统最常见的错。\nControl Book 有月份校验，会直接拦下；其他源只能靠这里的时间人工核对。',
       'en-US':
-        'Tells you whether the file belongs to this month — uploading last month’s export is the most common mistake. The control book has a month guard that blocks a mismatch; for the other sources this timestamp is the only clue.',
+        'Tells you whether the file belongs to this month — uploading last month’s export is the most common mistake.\nThe control book has a month guard that blocks a mismatch; for the other sources this timestamp is the only clue.',
     },
     monthlyColActionsTitle: {
       'zh-CN': '第五列：操作',
