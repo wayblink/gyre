@@ -416,9 +416,9 @@ export const TEXTS = {
     requiredHelp: { 'zh-CN': '说明列取值含义', 'en-US': 'Notes column value meanings' },
     requiredHelpHint: {
       'zh-CN':
-        'Required：必需提供，缺少时不能执行。\nOptional · Inherit：继承上一轮输出，缺少时使用系统已保存结果。\nOptional · Validation：仅用于校验，不影响核心计算。\nOptional · Supplement：可选补充逻辑，缺少时仍可计算。',
+        'Required：必需提供，缺少时不能执行。\nOptional · Inherit：继承上一轮输出，缺少时使用系统已保存结果。\nOptional · Validation：仅用于校验，不影响核心计算。\nOptional · Supplement：补充逻辑，用于联动更新【ESOP明细】，缺少不影响 CapTable 的计算。',
       'en-US':
-        'Required: must be provided or execution is blocked.\nOptional · Inherit: carries forward the prior output when no new file is provided.\nOptional · Validation: used only for validation and does not affect core calculations.\nOptional · Supplement: adds optional logic; calculation can continue without it.',
+        'Required: must be provided or execution is blocked.\nOptional · Inherit: carries forward the prior output when no new file is provided.\nOptional · Validation: used only for validation and does not affect core calculations.\nOptional · Supplement: supplementary logic that refreshes the ESOP detail pages; the cap table still calculates without it.',
     },
     removeConfigTitle: { 'zh-CN': '删除 Uploaded file 配置', 'en-US': 'Delete Uploaded file configuration' },
     removeConfigConfirm: { 'zh-CN': '确定删除', 'en-US': 'Delete the Uploaded file configuration for' },
