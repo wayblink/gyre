@@ -68,12 +68,6 @@ export const TOURS: TourDefinition[] = [
     steps: [
       { page: 'captable', target: '#monthPickerTrigger', title: 'captableMonthTitle', body: 'captableMonthBody' },
       {
-        target: '#capitalizationSourceFile',
-        title: 'captableSourceTitle',
-        body: 'captableSourceBody',
-        dynamic: true,
-      },
-      {
         target: '#reconciliationTable',
         title: 'captableReconTitle',
         body: 'captableReconBody',

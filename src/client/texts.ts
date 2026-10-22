@@ -651,15 +651,6 @@ export const TEXTS = {
       'en-US':
         'Each month has its own snapshot. Months with data show a ✓; a month without one opens as an empty table.',
     },
-    captableSourceTitle: {
-      'zh-CN': '数据来源',
-      'en-US': 'Where the numbers come from',
-    },
-    captableSourceBody: {
-      'zh-CN': '这里显示当前汇总表读的是哪个文件——通常是月度运行产出的 Capitalization Summary。',
-      'en-US':
-        'This is the file the summary is reading — normally the Capitalization Summary produced by the monthly run.',
-    },
     captableReconTitle: {
       'zh-CN': '先看核对表',
       'en-US': 'Check the reconciliation first',

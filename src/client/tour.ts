@@ -64,6 +64,17 @@ export function markTourSeen(tourId: string, user: string, storage: Storage | nu
   }
 }
 
+/**
+ * `querySelector` finds elements that are present but not on screen — a legacy control kept inside a
+ * `display: none` wrapper, a collapsed section, a zero-size placeholder. driver.js would then put its
+ * spotlight at the top-left corner, which looks like a bug to the user.
+ */
+export function isElementVisible(element: HTMLElement): boolean {
+  if (element.getClientRects().length === 0) return false;
+  const style = window.getComputedStyle(element);
+  return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+}
+
 /** Resolves once `selector` matches, or to null after `timeoutMs`. */
 export async function waitForElement(
   selector: string,
@@ -108,7 +119,8 @@ export async function resolveTourSteps(
     }
     const timeoutMs = index === 0 ? (options.firstStepTimeoutMs ?? 1500) : (options.stepTimeoutMs ?? 300);
     const element = await waitForElement(step.target, { timeoutMs });
-    if (element) usable.push(step);
+    // Present but not on screen counts as missing: there is nothing to point at.
+    if (element && isElementVisible(element)) usable.push(step);
   }
   return usable;
 }

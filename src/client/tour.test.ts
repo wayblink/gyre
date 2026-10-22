@@ -9,6 +9,31 @@ import { TOURS, tourById, tourForPage, tourStepsForPage } from './tours.js';
 
 const INDEX_HTML = readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
 
+/**
+ * jsdom implements no layout, so `getClientRects()` is empty for every element and the visibility
+ * check would drop all steps. Tests declare elements visible; `display: none` still works through
+ * `getComputedStyle`, which is what the "invisible target" test relies on.
+ */
+function stubLayout(window: Window & typeof globalThis): void {
+  // Mimics a browser: a box exists unless the element or an ancestor is display:none.
+  window.Element.prototype.getClientRects = function getClientRects(this: Element) {
+    // `closest` would stop at the element itself; walk up so an ancestor's display:none counts too.
+    const hidden = [this, ...Array.from(documentAncestors(this))].some(
+      (node) => (node as HTMLElement).style?.display === 'none',
+    );
+    if (hidden) return [] as unknown as DOMRectList;
+    return [{ width: 8, height: 8 }] as unknown as DOMRectList;
+  } as typeof window.Element.prototype.getClientRects;
+}
+
+function* documentAncestors(element: Element): Generator<Element> {
+  let node = element.parentElement;
+  while (node) {
+    yield node;
+    node = node.parentElement;
+  }
+}
+
 function step(target: string, extra: Partial<TourStep> = {}): TourStep {
   return { target, title: 'captableMonthTitle', body: 'captableMonthBody', ...extra };
 }
@@ -29,6 +54,7 @@ function memoryStorage(): Storage {
 
 test('a tour only keeps steps whose target exists, and navigates for steps on another page', async () => {
   const { window } = installDom({ url: 'http://localhost/captable' });
+  stubLayout(window);
   window.document.body.innerHTML = '<div id="here"></div>';
 
   const navigated: string[] = [];
@@ -58,6 +84,7 @@ test('a tour only keeps steps whose target exists, and navigates for steps on an
 
 test('waitForElement gives up after the timeout instead of hanging', async () => {
   const { window } = installDom({ url: 'http://localhost/captable' });
+  stubLayout(window);
   window.document.body.innerHTML = '';
 
   const started = Date.now();
@@ -154,6 +181,7 @@ test('a page-scoped tour keeps only that page and still covers four record pages
 
 test('the runner maps steps, drives, and only records "seen" when the user finishes', async () => {
   const { window } = installDom({ url: 'http://localhost/captable' });
+  stubLayout(window);
   window.document.body.innerHTML = '<div id="one"></div><div id="two"></div>';
   const storage = memoryStorage();
   type CapturedConfig = {
@@ -197,7 +225,7 @@ test('the runner maps steps, drives, and only records "seen" when the user finis
     description: 'captableDescription',
     steps: [
       { target: '#one', title: 'captableMonthTitle', body: 'captableMonthBody' },
-      { target: '#two', title: 'captableSourceTitle', body: 'captableSourceBody' },
+      { target: '#two', title: 'captableReconTitle', body: 'captableReconBody' },
     ],
   });
 
@@ -219,6 +247,7 @@ test('the runner maps steps, drives, and only records "seen" when the user finis
 
 test('a tour with nothing to highlight reports "not started" instead of opening an empty overlay', async () => {
   const { window } = installDom({ url: 'http://localhost/captable' });
+  stubLayout(window);
   window.document.body.innerHTML = '<div id="present"></div>';
 
   const { createTourRunner } = await import('./tourRunner.js');
@@ -251,4 +280,24 @@ test('a tour with nothing to highlight reports "not started" instead of opening 
 
   assert.equal(started, false);
   assert.equal(driveCalled, false);
+});
+
+test('a target that exists but is not on screen is skipped like a missing one', async () => {
+  const { window } = installDom({ url: 'http://localhost/captable' });
+  stubLayout(window);
+  // A legacy control kept inside a hidden wrapper: `querySelector` finds it, the user cannot see it.
+  window.document.body.innerHTML =
+    '<div id="visible"></div><div id="wrapped" style="display: none"><select id="hiddenControl"></select></div>';
+
+  const steps = await resolveTourSteps([step('#visible'), step('#hiddenControl'), step('#not-there-at-all')], {
+    page: 'captable',
+    navigate: async () => {},
+    firstStepTimeoutMs: 20,
+    stepTimeoutMs: 20,
+  });
+
+  assert.deepEqual(
+    steps.map((item) => item.target),
+    ['#visible'],
+  );
 });
