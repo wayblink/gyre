@@ -3,9 +3,9 @@
 > 面向在云上执行部署的 agent。本文自包含：每条命令都可直接复制运行，每个破坏性操作前都有检查点。
 > **不要跳过第 1 节的安全边界。** 遇到「停下来报告」的条件时，停下来，把输出原样贴回给需求方，不要自行决定继续。
 
-- 适用代码版本：`feat/esop-workflows-docs-deploy` 分支 HEAD `a9ced7d`（提交清单见第 9 节）
-- 上一轮部署的基线：`44dcec8`（月度工作流定义 v20）
-- 本轮目标：月度工作流定义 **v36**，另有 7 个子工作流定义需要发布
+- 适用代码版本：`feat/esop-workflows-docs-deploy` 分支 HEAD（见第 9 节提交清单）
+- 上一轮部署的基线：`7a48fe6`（月度工作流 v36）
+- 本轮目标：月度工作流 **v43**，另有 4 个子工作流需要发布（取消/卖出/授予/行权记录同步）
 - 部署形态：Fastify + 打包前端 + Postgres，单容器（Dockerfile 两阶段构建）
 - 云上编排：`docker-compose.prod.yml`（app + postgres + Caddy 反代网）
 
@@ -13,13 +13,17 @@
 
 ## 0. 一分钟背景（为什么有这些步骤）
 
-这一轮只有一项**必须人工执行**的数据库变更：发布工作流定义。本轮涉及的 8 个定义版本都变了，而应用启动时的 seed 逻辑是 `insert ... on conflict (code) do nothing`——**只补缺失的定义，绝不覆盖已有行**。已有的（月度、行权、卖出、计划汇总等）必须显式发布，重启容器不会带上它们。
+这一轮必须人工执行的一步仍然是**发布工作流定义**：`workflow_definitions` 的启动 seed 只插入缺失行、绝不覆盖已有行，而本轮 5 个定义的版本都变了。
 
-为什么必须发布，而不是「旧的就旧着用」：前端硬编码了 `MONTHLY_WORKFLOW_VERSION = 36`，服务端拿数据库里的 `workflow_definitions.version` 跟它比对。**不一致时月度更新页报「版本不匹配」并拒绝执行**（`POST /api/monthly-runs` 返回 409）。这不是降级，是硬失效。
+前端硬编码 `MONTHLY_WORKFLOW_VERSION = 43` 与服务端版本比对，不一致时月度页报「版本不匹配」并拒绝执行（409）——不发布就是硬失效。
 
-本轮不含任何 `schema.ts` 变更（建表/加列都是更早的版本做的），所以**没有手写 DDL**；重启时应用会照旧执行幂等迁移。
+本轮新增的**语义变化**，部署后需要知道（详见 4.5）：
 
-其余改动（记录页月级快照、月度集成、输入源说明与文件名模板、若干 UI 修复）都在代码里，随镜像上线。
+1. **四个记录页改为「截至当月的累计快照」**：每个视图 = 上一月快照(base) + 本月导出，按自然键幂等合并。
+2. base 落在独立目录（`grant_record/`、`exercise_record/`、`sold_shares/`、`cancellation_record/`），文件名 `*_Base_YYYY_MM.xlsx`，由月度触发时自动注入，**页面上不显示、无需人工上传**。
+3. 空库第一次跑某个月时没有 base，该月快照 = 当月增量本身；**从第二个月起才累计**。所以新环境要看到累计数据，需要按月顺序跑（见 6.5）。
+
+本轮不含任何 `schema.ts` 变更，**没有手写 DDL**。
 
 ---
 
@@ -38,14 +42,14 @@
 | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
 | 触发任何一次月度运行（`POST /api/monthly-runs`）                       | 会真实执行业务工作流、写文件、改 `monthly_run_instances` 状态 |
 | `delete` / `update` / `drop` 任何业务表                                | 本手册没有需要你手写 DML 的步骤                               |
-| `--force` 发布工作流定义                                               | 只有云端版本**高于** 36 时才需要，那是异常状态                |
+| `--force` 发布工作流定义                                               | 只有云端版本**高于** 43 时才需要，那是异常状态                |
 | 修改 `AUTH_DISABLED`、`AUTH_BOOTSTRAP_SECRET`、`SESSION_COOKIE_SECURE` | 安全相关配置                                                  |
 | 导入演示数据（`DEMO_SEED_ON_INIT=true` / `npm run seed:demo`）         | 会写业务数据                                                  |
 
 ### 停下来报告的条件
 
 - 第 3 节预检 SQL ① 返回非 0
-- `workflow_definitions` 里 `gyre-captable-summary-v2` 的 version **大于 36**
+- `workflow_definitions` 里 `gyre-captable-summary-v2` 的 version **大于 43**
 - 应用容器反复重启 / 健康检查不过
 - `docker compose logs app` 里出现 `Runtime parameter reference not found` 或 `Missing element #`
 
@@ -79,7 +83,7 @@ rm -f \
   'five-percent-holders.png' \
   'monthly-run-inline-sheet.png' \
   'gyre-cloud-44dcec8.tar.gz' \
-  'gyre-cloud-a9ced7d.tar.gz' \
+  'gyre-cloud-7a48fe6.tar.gz' \
   'gyre-cloud-HEAD.tar.gz' \
   'gyre-cloud-eaaa775.tar.gz' \
   'todo.md' \
@@ -167,22 +171,19 @@ select count(*) as monthly_instances from monthly_run_instances;
 
 ### 4.1 要发布哪些
 
-本轮 `database/workflows/*.json` 里版本有变化的定义如下。**全部都要发布**——子工作流虽然由月度 invoke 调用，但它们读的也是 DB 里的定义，旧版本会让月度写不出记录页快照。
+本轮 `database/workflows/*.json` 里版本有变化的定义如下。**全部都要发布**——子工作流读的也是 DB 里的定义，旧版本会让月度写不出记录页快照。
 
-| code                                                   | 目标版本 | 说明                                            |
-| ------------------------------------------------------ | -------- | ----------------------------------------------- |
-| `gyre-captable-summary-v2`                             | **36**   | 月度主工作流（前端版本守卫比的就是它）          |
-| `esop-exercise-record-sync`                            | **5**    | 行权记录（含 Shareworks 视图，可空输入不落盘）  |
-| `esop-sold-shares-sync`                                | **3**    | 卖出记录                                        |
-| `esop-cancellation-record-sync`                        | **2**    | 取消记录（本轮新增页面用）                      |
-| `esop-grant-record-sync`                               | **6**    | 授予记录（含 `dataframe.ensure.columns` 新算子） |
-| `read-series-b`                                        | **2**    | 月度子流程：Series B                           |
-| `futu-exercises-incremental-merge`                     | **4**    | 月度子流程：富途行权增量合并                    |
-| `gyre-therapeutics-cancel-restore-incremental-merge`   | **2**    | 月度子流程：取消与恢复增量合并                  |
+| code                            | 目标版本 | 说明                                          |
+| ------------------------------- | -------- | --------------------------------------------- |
+| `gyre-captable-summary-v2`      | **43**   | 月度主工作流（前端版本守卫比的就是它）        |
+| `esop-cancellation-record-sync` | **7**    | 取消记录：base + 增量幂等合并                 |
+| `esop-sold-shares-sync`         | **8**    | 卖出记录：同上                                |
+| `esop-grant-record-sync`        | **12**   | 授予记录：同上，含 `dataframe.ensure.columns` |
+| `esop-exercise-record-sync`     | **12**   | 行权记录：同上（Futu / Shareworks 两个视图）  |
 
-其余定义（`plan-summary-sync`、`option-plans-summary-values`、`eq-control-book-incremental-merge`、`five-percent-holders-sync`、`esop-transfer-to-futu-sync`、`employee-import` 等）本轮未改版本；若云端缺失会被启动时的 seed 自动补上，**已存在且版本一致就不用动**。
+其余定义（`plan-summary-sync` v5、`read-series-b` v2、`futu-exercises-incremental-merge` v4、`gyre-therapeutics-cancel-restore-incremental-merge` v2、`option-plans-summary-values` v1、`eq-control-book-incremental-merge` v4 等）本轮**未改版本**；若云端缺失会被启动 seed 自动补上，已存在且版本一致就不用动。
 
-> 判断方法：`select code, version from workflow_definitions;` 与上表对比。低于目标版本的才需要发布；发布脚本会拒绝版本倒退，所以重复执行是安全的。
+> 判断方法：`select code, version from workflow_definitions;` 与上表对比。低于目标版本的才需要发布；发布脚本拒绝版本倒退，重复执行是安全的。
 
 ### 4.2 方式 A（推荐）：在运行中的应用容器内执行
 
@@ -194,31 +195,25 @@ cd <项目根目录>
 # 1) 先全部 dry-run：同一事务但 rollback，只验证能读、能连、版本没倒退
 for code in \
   gyre-captable-summary-v2 \
-  esop-exercise-record-sync \
-  esop-sold-shares-sync \
   esop-cancellation-record-sync \
+  esop-sold-shares-sync \
   esop-grant-record-sync \
-  read-series-b \
-  futu-exercises-incremental-merge \
-  gyre-therapeutics-cancel-restore-incremental-merge; do
+  esop-exercise-record-sync; do
   docker compose -f docker-compose.prod.yml exec app \
     node dist/src/server/workflow/publishWorkflowSeed.js "$code" --dry-run
 done
 
 # 期望：每个都输出
 #   validated <code> v<N> from database/workflows/<code>.json (workflow_id=..., version_id=...)
-# 其中 gyre-captable-summary-v2 必须是 v36
+# 其中 gyre-captable-summary-v2 必须是 v43
 
 # 2) 确认无误后正式发布
 for code in \
   gyre-captable-summary-v2 \
-  esop-exercise-record-sync \
-  esop-sold-shares-sync \
   esop-cancellation-record-sync \
+  esop-sold-shares-sync \
   esop-grant-record-sync \
-  read-series-b \
-  futu-exercises-incremental-merge \
-  gyre-therapeutics-cancel-restore-incremental-merge; do
+  esop-exercise-record-sync; do
   docker compose -f docker-compose.prod.yml exec app \
     node dist/src/server/workflow/publishWorkflowSeed.js "$code"
 done
@@ -238,9 +233,8 @@ done
 ```bash
 cd <项目根目录>
 export DATABASE_URL='postgres://captable:<密码>@<db-host>:5432/captable'
-for code in gyre-captable-summary-v2 esop-exercise-record-sync esop-sold-shares-sync \
-            esop-cancellation-record-sync esop-grant-record-sync read-series-b \
-            futu-exercises-incremental-merge gyre-therapeutics-cancel-restore-incremental-merge; do
+for code in gyre-captable-summary-v2 esop-cancellation-record-sync esop-sold-shares-sync \
+            esop-grant-record-sync esop-exercise-record-sync; do
   npm run workflow:publish-seed -- "$code" --dry-run
 done
 # 逐条确认后去掉 --dry-run 再跑一遍
@@ -281,14 +275,14 @@ psql "$DATABASE_URL" -f /tmp/publish.sql
 
 ### 4.5 这一轮到底改了什么
 
-| 范围 | 变更 |
-| ---- | ---- |
-| `gyre-captable-summary-v2` v20 → v36 | 输入源 10 → **14**（新增 `exercise_record_shareworks`、`sold_shares_futu`、`shareworks_grants`、`futu_grants`，全部可选且带文件名模板）；任务 19 → **23**（新增 4 个 `workflow.invoke`：行权/卖出/取消/授予记录同步）；`previous_capitalization_summary` 改为 `hidden: true`（系统自动注入，不再占一行） |
-| 新增算子 | `dataframe.ensure.columns`：输入缺声明列时补空。由启动时的 `workflow_operators` upsert 自动注册，**无需手工操作**（第 6.2 节有校验 SQL） |
-| 记录页月级快照 | 行权/卖出/取消/授予四个 sync 定义都加了 `month`、`monthUnderscore`、文件名月份后缀；输出文件名形如 `cancellation_records_2026_08.v20261020….xlsx` |
-| 月度集成 | 月度运行结束时通过 `workflow.invoke` 调上述四个 sync，并把子流程 `persist` 产物按子节点 task id 级联到月度 run 上；`skipWhenEmpty` 保证未配置的源直接跳过、不产空快照、不阻断 |
-| 记录页入口 | 四个页面都有月份选择器；`/api/holdings`、`/api/exercises(+shareworks/merge)`、`/api/sold-shares`、`/api/cancellation-records` 都接受 `?month=`；`/api/months` 增加 `hasExerciseData` / `hasSoldSharesData` / `hasCancellationData` / `hasGrantData` |
-| 新增页面 | 「取消记录」（`/cancellation-record`，导航在「卖出记录」下面） |
+| 范围       | 变更                                                                                                                                                                                                                                                                                                                                           |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 月度输入源 | 12 → **20**：新增 6 个 `*_base`（隐藏、自动注入），以及上一轮已有的 4 个记录页源；源名称统一改成 `Control Book Detail` / `Gyre Option Plans Summary` / `Cancel & Restore Record` / `Shareworks Exercise Record` / `Futu Sold Shares Record` / `Shareworks Grant Record` / `Futu Grant Record` / `Futu Exercise Report`                         |
+| 记录页语义 | **从「按月切片」改为「截至当月的累计快照」**：每个视图 = 上一月快照 + 本月导出，用 `dataframe.keyed.merge` 幂等合并（增量覆盖、空值保留、base 独有行保留）。合并键：取消=创建编号、卖出=工号、授予·Futu=授予编号、授予·Shareworks=Employee Grant Number、行权·Futu=Employee No.+Grant No.+Exercise Date、行权·Shareworks=Employee Grant Number |
+| base 存放  | 每个视图的快照改为写在独立目录 `grant_record/` `exercise_record/` `sold_shares/` `cancellation_record/`，文件名 `*_Base_YYYY_MM.xlsx`（不再放 `output/`、不带版本号后缀），既是页面按月的快照，也是下月的 base                                                                                                                                 |
+| 引擎       | `dataframe.keyed.merge` 允许「0 行的输入」缺键列（空 = 本月没有新增）；`dataframe.persist.excel` 新增 `overwrite`（同月重跑替换而非报错）与 `skipWhenEmpty`（空输入不落盘）                                                                                                                                                                    |
+| 页面       | 授予/行权记录页在某视图当月为空但另一视图有数据时自动切换并提示；显式选择的视图不会被弹回；空态里提示另一视图的条数；`/api/grants/merge` 补上月份过滤（此前 Merge 视图永远读全局最新）                                                                                                                                                         |
+| 其他       | 新增功能引导（顶栏「?」下拉，按左侧导航分组）；文件选择器上传/移动后光标立即落到该文件且自动展开其目录；月度输入源名称与说明文案统一                                                                                                                                                                                                           |
 
 **已存在的 `workflow_runs` 不受影响**：它们各自快照了 `tasks_snapshot_json`，并通过 `version_id` 指向旧版本行。
 
@@ -312,15 +306,17 @@ docker compose -f docker-compose.prod.yml logs --tail=80 app
 
 启动时应用会自动做这些（无需人工干预）：
 
-| 动作                                 | 机制                                                                                  |
-| ------------------------------------ | ------------------------------------------------------------------------------------- |
-| 建表 / 加列                          | `schema.ts` 追加式 DDL，`create ... if not exists` + `add column if not exists`，幂等 |
-| 插入缺失的工作流定义                 | `WORKFLOW_SEED_ON_INIT=true`（compose 默认开启）                                      |
-| upsert `workflow_operators`          | `on conflict (code, version) do update`                                               |
-| upsert `global_parameters` 的 label  | **value 永不被覆盖**，线上调过的数值安全                                              |
-| `app_users.role` 默认值改为 `'user'` | `alter column ... set default`，只影响新建用户，已有管理员角色不变                    |
+| 动作                                 | 机制                                                                                     |
+| ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| 建表 / 加列                          | `schema.ts` 追加式 DDL，`create ... if not exists` + `add column if not exists`，幂等    |
+| 插入缺失的工作流定义                 | `WORKFLOW_SEED_ON_INIT=true`（compose 默认开启）                                         |
+| upsert `workflow_operators`          | `on conflict (code, version) do update`（本轮新增 `dataframe.keyed.merge` 已在注册表里） |
+| upsert `global_parameters` 的 label  | **value 永不被覆盖**，线上调过的数值安全                                                 |
+| `app_users.role` 默认值改为 `'user'` | `alter column ... set default`，只影响新建用户，已有管理员角色不变                       |
 
 **启动成功后回到第 4 节执行发布**，然后继续第 6 节。
+
+> 本轮前端新增了一个运行时依赖 `driver.js`（功能引导）。镜像里是 `npm ci` + 构建产物，不需要在云上额外装包；**但要用仓库里的 `package-lock.json`**，不要删掉它再 `npm install`。
 
 ### 环境变量核对
 
@@ -353,31 +349,27 @@ docker compose -f docker-compose.prod.yml logs --tail=200 app | grep -iE 'error|
 ### 6.2 数据库状态
 
 ```sql
--- ① 八个定义的版本必须与第 4.1 节的表一致
+-- ① 五个定义的版本必须与 4.1 节一致
 select code, version, status
   from workflow_definitions
  where code in (
-   'gyre-captable-summary-v2', 'esop-exercise-record-sync', 'esop-sold-shares-sync',
-   'esop-cancellation-record-sync', 'esop-grant-record-sync', 'read-series-b',
-   'futu-exercises-incremental-merge', 'gyre-therapeutics-cancel-restore-incremental-merge'
+   'gyre-captable-summary-v2', 'esop-cancellation-record-sync',
+   'esop-sold-shares-sync', 'esop-grant-record-sync', 'esop-exercise-record-sync'
  )
  order by code;
--- 期望：gyre-captable-summary-v2 = 36，其余见 4.1 表格
+-- 期望：gyre-captable-summary-v2 = 43，其余 7 / 8 / 12 / 12
 
--- ② v36 已 published；更早版本仍在（历史 run 指着各自版本）
-select version, status, published_at
-  from workflow_definition_versions
- where workflow_id = (select id from workflow_definitions where code = 'gyre-captable-summary-v2')
- order by version desc limit 3;
+-- ② 新算子已由启动时的 upsert 注册（授权记录依赖它）
+select code, version from workflow_operators
+ where code in ('dataframe.keyed.merge', 'dataframe.ensure.columns', 'dataframe.persist.excel');
+-- 期望：3 行；空行说明 WORKFLOW_SEED_ON_INIT 没开
 
--- ③ 新算子已由启动时的 upsert 注册（grant v6 依赖它）
-select code, version from workflow_operators where code = 'dataframe.ensure.columns';
--- 期望：1 行，v1.0.0；若为空说明 WORKFLOW_SEED_ON_INIT 没开或启动日志有错，先解决再继续
-
--- ④ 月度输入源个数（schema 里 14 个，含 1 个 hidden）
-select jsonb_object_keys(runtime_params_schema_json->'fileRefs'->'properties') as source
-  from workflow_definitions where code = 'gyre-captable-summary-v2';
--- 期望：14 行
+-- ③ 月度输入源个数（schema 里 20 个，其中 7 个 hidden）
+select count(*) as sources from jsonb_object_keys(
+  (select runtime_params_schema_json->'fileRefs'->'properties'
+     from workflow_definitions where code = 'gyre-captable-summary-v2')
+);
+-- 期望：20
 ```
 
 ### 6.3 HTTP 接口
@@ -385,50 +377,41 @@ select jsonb_object_keys(runtime_params_schema_json->'fileRefs'->'properties') a
 ```bash
 BASE='https://<你的域名>'
 
-# 健康检查（应返回 200，且响应里不含数据库连接串）
-curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/health"
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/health"     # 200
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/files"      # 未登录 401
 
-# 未登录访问受保护接口应为 401（不是 500）
-curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/files"
-
-# 关键：版本守卫两侧必须对上
+# 版本守卫两侧必须对上
 curl -s "$BASE/api/monthly-runs/source-config" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print('workflowVersion =', d['workflowVersion'])
 print('sources =', len(d['sources']))
+print('visible =', len([s for s in d['sources'] if not s.get('hidden')]))
 print('required =', [s['sourceKey'] for s in d['sources'] if s.get('required')])
-print('hidden =', [s['sourceKey'] for s in d['sources'] if s.get('hidden')])
-for s in d['sources']:
-    print('  ', s['sourceKey'], '| sheet:', repr(s.get('defaultSheetName')), '| template:', s.get('fileTemplate'))
 "
 ```
 
-**期望**：
-
-- `workflowVersion = 36`
-- `sources = 14`
-- `required = ['incremental_control_book', 'option_plans_summary']`（**只有这两个必填**，其余都可选）
-- `hidden = ['previous_capitalization_summary']`（系统自动注入，页面上不显示）
-
-若 `workflowVersion` 还是 20，说明第 4 节没生效——**不要继续**，回去重跑。
+**期望**：`workflowVersion = 43`、`sources = 20`、`visible = 13`（7 个 base 隐藏）、`required = ['option_plans_summary', 'incremental_control_book']`。
 
 ```bash
-# 月份标记接口（本轮新增四个 has*Data）
+# 月份标记：本轮新增 hasGrantData
 curl -s "$BASE/api/months" | python3 -c "
 import sys, json
 months = json.load(sys.stdin)['months']
-keys = [k for k in months[0] if k.startswith('has')]
-print('flags =', keys)
+print('flags =', [k for k in months[0] if k.startswith('has')])
 print('latest =', months[0])
 "
 ```
 
-**期望** `flags` 含 `hasCapTableData` / `hasPlanSummaryData` / `hasExerciseData` / `hasSoldSharesData` / `hasCancellationData` / `hasGrantData` 六项。新库这些标记全为 `false` 是正常的（还没有按下月的快照）。
+**期望** flags 含 `hasCapTableData` / `hasPlanSummaryData` / `hasExerciseData` / `hasSoldSharesData` / `hasCancellationData` / `hasGrantData` 六项。空库全为 `false` 是正常的。
 
 ```bash
-# 新页面接口：未登录 401；登录后无快照月份返回空集合而不是 500
-curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/cancellation-records?month=2026-09"
+# 记录页接口都必须接受 month（空月份返回空集合而不是 500）
+for path in 'exercises' 'exercises/shareworks' 'exercises/merge' 'sold-shares' \
+            'cancellation-records' 'holdings' 'grants/shareworks' 'grants/merge'; do
+  printf '%-24s ' "$path"
+  curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/$path?month=2026-09&pageSize=1"
+done
 ```
 
 ### 6.4 页面冒烟（只读）
@@ -440,7 +423,7 @@ curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/cancellation-records?month=2
 在「月度更新」页额外确认：
 
 - 顶部**没有**「版本不匹配」红色提示
-- 输入文件表格是 **13 行**（14 个源减去 hidden 的 `previous_capitalization_summary`）
+- 输入文件表格是 **13 行**（20 个源减去 7 个 hidden：`previous_capitalization_summary` + 6 个 `*_base`）
 - 每个需要上传的源，说明文字右边有一个 📄 图标；点开显示「文件名参考」和对应的文件名模板；自动带出的源没有图标
 - 「配置输入源」弹窗里，选好文件后出现 **输入 Sheet** 下拉，默认选中配置的 sheet
 
@@ -448,6 +431,7 @@ curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/cancellation-records?month=2
 
 - hero 区有 **月份** 选择器（不是「SourceFile」字样）
 - 切换到没有快照的月份时，表格显示「暂无符合条件的…记录」，而不是上一个月的数据
+- 全年只有一个月有某一侧数据时（例如 2026-08 只有 Shareworks 授予），打开页面应**自动切到有数据的视图**并弹出提示；手动切回空视图时，空态里会写明「本月「X 视图」有 N 条记录」
 
 ### 6.5 月度运行冒烟（需需求方明确批准）
 
@@ -455,33 +439,36 @@ curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/cancellation-records?month=2
 
 若需求方批准：
 
-1. 在「月度更新」页把**两个必填源**选好（`incremental_control_book`、`option_plans_summary`），并按需补可选源
-2. 点执行
-3. 期望：不再出现启动前的拒绝（`Missing source binding:` / `Missing source sheet name:` / `月度运行输入文件不可用：`）
-4. 运行面板应有 **23 个步骤**；四个 `invoke_*_record_sync` 只要对应源已配置就会 completed，未配置的直接跳过（不产空文件、不报错）
-5. 跑完后 `/api/months` 里该月的 `has*Data` 应变为 `true`，对应记录页能看到当月快照
+1. 在「月度更新」页把两个必填源选好（`incremental_control_book`、`option_plans_summary`），按需补可选源
+2. 点执行 → 期望 23 个步骤全部 completed（四个 `invoke_*_record_sync` 按是否配置源决定 completed 或跳过）
+3. 运行常在 `calc_control_book_metrics` 因 Omnibus 拼写变体停在 `waiting_approval`，批准后继续——**这是预期行为**
+4. 跑完后该月的 `has*Data` 变为 true
 
-> 注意：月度运行常在 `calc_control_book_metrics` 因 Omnibus 拼写变体告警暂停在 `waiting_approval`，需要人工批准后继续——这是**预期行为**，不是故障。
+**累计快照的特别说明**：记录页展示的是「截至当月」的数据，链是按月接力的。
+
+- 空库第一次跑某个月：没有 base，该月快照 = 当月增量
+- 要看到累计效果，**必须按月份升序逐月跑**（例如 2026-01 → 03 → 04 …）
+- 校验累计是否生效：`select logical_path, workbook_row_count from product_files where logical_path like '%_Base_2026_08.xlsx'` —— 08 的行数应 ≥ 06 的行数（同一视图）
 
 ## 7. 回滚
 
 ### 7.1 只回滚工作流定义（保留新镜像）
 
-**没有意义**：前端常量是 36，把数据库回滚到 35 或更早，月度页会重新进入「版本不匹配」并拒绝执行。要回滚定义就必须连镜像一起回。
+**没有意义**：前端常量是 43，把数据库回滚到 42 或更早，月度页会重新进入「版本不匹配」并拒绝执行。要回滚定义就必须连镜像一起回。
 
 ### 7.2 回滚整个版本
 
 ```bash
 # 回到本轮之前的基线
-git checkout 44dcec8
+git checkout 7a48fe6
 AUTH_BOOTSTRAP_SECRET='<口令>' docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-镜像起来后，数据库里的定义仍是 v36，而旧镜像的前端期望 v20 → 月度页会报版本不匹配。**必须把定义也随之回退**：
+镜像起来后，数据库里的定义仍是 v43，而旧镜像的前端期望 v36 → 月度页会报版本不匹配。**必须把定义也随之回退**：
 
 ```bash
 # 用基线里的 JSON 覆盖工作区里的种子文件，再强制发布（--force 因为云端版本高于种子）
-git show 44dcec8:database/workflows/gyre-captable-summary-v2.json \
+git show 7a48fe6:database/workflows/gyre-captable-summary-v2.json \
   > database/workflows/gyre-captable-summary-v2.json
 docker compose -f docker-compose.prod.yml exec app \
   node dist/src/server/workflow/publishWorkflowSeed.js gyre-captable-summary-v2 --dry-run --force
@@ -489,24 +476,26 @@ docker compose -f docker-compose.prod.yml exec app \
   node dist/src/server/workflow/publishWorkflowSeed.js gyre-captable-summary-v2 --force
 ```
 
-> `--force` 是本节唯一许可的强制发布场景（云端 36 高于种子 20）。子工作流的回退按同样方式逐个处理。
+> `--force` 是本节唯一许可的强制发布场景（云端 43 高于种子 36）。四个子工作流按同样方式逐个回退（各自 `git show 7a48fe6:database/workflows/<code>.json`）。
 
 数据卷 `pgdata` / `appdata` 不动。已产生的 `workflow_runs`、`monthly_run_history`、`product_files` 记录保留；本轮新产生的带月份后缀的快照文件也可以留着（旧代码不会读它们，只是 Files 里多几个文件）。
 
 ## 8. 完成标准（全部打勾才算完成）
 
 - [ ] 第 3 节预检 ① 返回 0；② ③ 若为 1 已报告并得到许可
-- [ ] 八个定义已发布，版本与 4.1 节表格一致（`gyre-captable-summary-v2` = **36**）
-- [ ] `workflow_operators` 里有 `dataframe.ensure.columns` v1.0.0（6.2 ③）
+- [ ] **五个定义已发布**，版本与 4.1 节一致（月度 = **43**，记录页 7/8/12/12）
+- [ ] `workflow_operators` 里有 `dataframe.keyed.merge`、`dataframe.ensure.columns`、`dataframe.persist.excel`（6.2 ②）
+- [ ] 月度输入源 **20** 个（6.2 ③）
 - [ ] `docker compose ps` 两个服务均 Up / healthy
 - [ ] `app` 日志无 error / fatal / unhandled / reference not found
-- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 36`、**14** 个源、只有两个必填、hidden 只有一处（6.3）
+- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 43`、`sources = 20`、`visible = 13`、只有两个必填（6.3）
 - [ ] `GET /api/months` 的标记里含 `hasGrantData` 在内的六个 `has*Data`（6.3）
-- [ ] `/api/cancellation-records` 未登录 401、无快照月份返回空集合（6.3）
+- [ ] 八个记录页接口带 `?month=` 都返回 2xx（6.3）
 - [ ] `GET /api/files` 未登录返回 401
 - [ ] 「月度更新」页无版本不匹配提示；输入表格 13 行；文件名模板图标只在需上传的行出现（6.4）
-- [ ] 四个记录页都有「月份」选择器，无快照月份显示空提示（6.4）
-- [ ] 第 6.5 节若已执行：月度 23 个步骤，四个 invoke 按配置情况 completed 或跳过
+- [ ] 四个记录页都有「月份」选择器，无快照月份显示空提示；单侧有数据时自动换视图并提示（6.4）
+- [ ] 顶栏「?」能打开引导下拉，条目按左侧导航分组，「当前页」标记跟随当前路由
+- [ ] 第 6.5 节若已执行：月度 23 个步骤；记录页快照写在 `<folder>/*_Base_YYYY_MM.xlsx`，并按月累计
 - [ ] 冷启动种子已注册：`select count(*) from product_files where uploaded_by = 'BaseSeed'` 返回 3（见 10.4）
 - [ ] 错位 base 已搬迁：`input/cancel_restore/`、`input/futu_exercises/` 下不再有 `*_Base_*.xlsx`（见 10.8）
 - [ ] `git status --short` 干净（若执行了第 2 节）
@@ -531,36 +520,19 @@ docker compose -f docker-compose.prod.yml exec app \
 
 ## 9. 附：本次发布涉及的代码提交
 
-本轮（`44dcec8..a9ced7d`，24 个提交）：
+本轮（`7a48fe6..HEAD`）：
 
-```
-a9ced7d fix(grant): tolerate an export that drops the Middle Name column
-c7ab23f fix(grant): let the page run with only one optional source
-8165f58 feat(monthly): invoke the grant record sync
-112cb02 fix(ui): month picker caption rendered as "SourceFile" on every record page
-7f90fa4 feat(grant): month picker on the grant record page
-a5a4a2a feat(grant): resolve grant snapshots per month
-8d0ff8e feat(grant): month snapshot support in the grant record sync
-e8db15d refactor(months): stop hardcoding the monthly workflow code
-4fdfa84 refactor(monthly): one reader for the file-name template; fix the dangling doc
-a42c012 fix(workflow): cascade a child's files whatever its final result is
-cf6cd6c fix(invoke): reject a skipWhenEmpty path nobody declares
-a74c48d feat(persist): let an empty input leave the folder alone
-272a5fa fix(monthly): wire the pattern icon in the configuration card too
-9ccd36e style(monthly): put the file-name icon under the required/optional badge
-6be9306 style(monthly): collapse the file-name pattern behind an icon
-c23e7f3 feat(monthly): hide Previous Capitalization Summary from the input table
-f2b8346 feat(monthly): no file-name pattern on inherited inputs
-4357808 style(monthly): give the file-name pattern the input badge treatment
-5ab35ef feat(monthly): show each input's file-name pattern
-b8f1adf fix(months): count either exercise view when flagging a month
-2dcf2d9 feat(monthly): invoke the record-page syncs instead of spawning runs
-8807538 fix(monthly): give each record page its own month-tagged run
-aff9fb1 refactor(monthly): read the exercise-record snapshot from the same Futu export
-12f8ec3 checkpoint: monthly inputs, cancellation records page, and month snapshots
-```
+- 记录页累计化：`feat(records): month snapshots become cumulative, merged base + increment`、
+  `feat(records): keep the cumulative snapshot in its own folder as an inherited base`
+- 月度输入与文案：源改名（`feat(monthly): rename seven input sources…`、`Futu Exercise Report`）、
+  说明列文案修订、`Supplement` 图例改成「用于联动更新 ESOP 明细，缺少不影响 CapTable 的计算」
+- 记录页体验：`fix(grants): stop showing an empty page for a month that has data`（含
+  `/api/grants/merge` 补月份过滤）
+- 功能引导：`feat(ui): passive product tours…`、`feat(tour): move the walkthrough list into a
+top-bar dropdown`、`docs(tour): make the overview a walk down the sidebar` 等
+- 文件中心：`fix(files): put the cursor on a file right after uploading or moving it`
 
-上一轮的基线 `44dcec8` 及其之前的提交不在此列（那次部署已经在云端生效）。
+完整的 `git log 7a48fe6..HEAD` 为准；更早的提交属于上一轮已上线的代码。
 
 ## 10. 冷启动 base 种子（`database/base-seeds/`）
 
@@ -720,13 +692,15 @@ update product_files
 
 ## 11. 本轮新增的运行时注意事项
 
-### 11.1 记录页快照需要「按月」的输入
+### 11.1 记录页快照是「截至当月」的累计，输入要按月给增量
 
-四个记录页（授予 / 行权 / 卖出 / 取消）按 `run.runtime_parameters_json->>'month'` 取快照。月度运行会把当前月份透传给子工作流，所以：
+四个记录页（授予 / 行权 / 卖出 / 取消）的快照 = 上一月快照 + 本月导出，幂等合并。由此带来几条操作规则：
 
-- 月度里**没有**配置某个记录页的源 → 该页当月为空，但**不会**产出一个 0 行的空文件去覆盖已有的快照（`skipWhenEmpty`）
-- 想看到某月的记录页数据，就要么在月度里配置该月的源、要么在记录页手动「更新」并选好月份
-- `shareworks_grants` / `futu_grants` / `sold_shares_futu` / `incremental_futu_exercises` 这些源都是按月不同的导出，**不要把某个月的文件复用到别的月份**（会得到数据正确、月份标签错误的快照）
+- **按月份升序跑**才能看到累计效果；跳着跑（比如先跑 8 月再跑 5 月）不会补上中间月份的数据
+- base 由系统自动注入，页面上不显示，**不需要也不要手工上传**；想覆盖就显式选一个文件（显式绑定优先）
+- 每个视图的快照写在 `<folder>/*_Base_YYYY_MM.xlsx`（`grant_record/` `exercise_record/` `sold_shares/` `cancellation_record/`），同一月重跑会**覆盖**同一路径（`overwrite`）
+- `shareworks_grants` / `futu_grants` / `sold_shares_futu` / `incremental_futu_exercises` 这些是「当月增量或截至当月的全量导出」，两种都能吃（合并不产生重复行），但**不要把某个月的导出当作另一个月的增量**——数据会被贴错月份
+- 空输入不会写入 0 行文件（`skipWhenEmpty`），所以某月没配置某视图时，该视图保留上一月的内容而不是被清空
 
 ### 11.2 `historical_runs` 没有 month 的老数据
 
@@ -738,8 +712,8 @@ update product_files
 
 ### 11.4 已知遗留（不影响本轮验收）
 
-| 项 | 说明 |
-| --- | --- |
-| 同月重复运行会累积快照文件 | 页面按 `finished_at` 取最新，功能无影响；Files 里会看到多份带版本号的文件 |
-| 空行残留 | Shareworks 两个视图的快照里可能带 1-2 行全空行（源表中间的空行），页面按工号/授予编号过滤，展示不受影响 |
-| 2026-08 授予记录 | 该月 Shareworks 导出缺 `Middle Name` 列，已由 `dataframe.ensure.columns` 兜住；Futu 侧没有分月导出，故 Futu 视图为空 |
+| 项                         | 说明                                                                                                                 |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 同月重复运行会累积快照文件 | 页面按 `finished_at` 取最新，功能无影响；Files 里会看到多份带版本号的文件                                            |
+| 空行残留                   | Shareworks 两个视图的快照里可能带 1-2 行全空行（源表中间的空行），页面按工号/授予编号过滤，展示不受影响              |
+| 2026-08 授予记录           | 该月 Shareworks 导出缺 `Middle Name` 列，已由 `dataframe.ensure.columns` 兜住；Futu 侧没有分月导出，故 Futu 视图为空 |
