@@ -496,7 +496,7 @@ docker compose -f docker-compose.prod.yml exec app \
 - [ ] 四个记录页都有「月份」选择器，无快照月份显示空提示；单侧有数据时自动换视图并提示（6.4）
 - [ ] 顶栏「?」能打开引导下拉，条目按左侧导航分组，「当前页」标记跟随当前路由
 - [ ] 第 6.5 节若已执行：月度 23 个步骤；记录页快照写在 `<folder>/*_Base_YYYY_MM.xlsx`，并按月累计
-- [ ] 冷启动种子已注册：`select count(*) from product_files where uploaded_by = 'BaseSeed'` 返回 3（见 10.4）
+- [ ] 冷启动种子已注册：`select count(*) from product_files where uploaded_by = 'BaseSeed'` 返回 **9**（见 10.4）
 - [ ] 错位 base 已搬迁：`input/cancel_restore/`、`input/futu_exercises/` 下不再有 `*_Base_*.xlsx`（见 10.8）
 - [ ] `git status --short` 干净（若执行了第 2 节）
 
@@ -554,21 +554,36 @@ top-bar dropdown`、`docs(tour): make the overview a walk down the sidebar` 等
 
 ```
 database/base-seeds/
-├── manifest.json                                              # 每个种子的契约、列、行数、sha256、base 月份
-├── control_book/EQ_Control_Book_Base_2026_06.xlsx             # base_control_book
-├── futu_exercises/Futu_Exercises_Base_2026_06.xlsx            # base_futu_exercises
-└── cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx  # base_cancel_restore_report
+├── manifest.json                                                        # 契约、列、行数、sha256、base 月份
+├── control_book/EQ_Control_Book_Base_2026_06.xlsx                       # base_control_book
+├── futu_exercises/Futu_Exercises_Base_2026_06.xlsx                      # base_futu_exercises
+├── cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx    # base_cancel_restore_report
+├── cancellation_record/Cancellation_Records_Base_2026_08.xlsx           # cancellation_record_base
+├── sold_shares/Futu_Sold_Shares_Base_2026_08.xlsx                       # sold_shares_base
+├── grant_record/Futu_Grants_Base_2026_08.xlsx                           # grant_record_futu_base
+├── grant_record/Shareworks_Grants_Base_2026_08.xlsx                     # grant_record_shareworks_base
+├── exercise_record/Futu_Exercises_Base_2026_08.xlsx                     # exercise_record_futu_base
+└── exercise_record/Shareworks_Exec_Base_2026_08.xlsx                    # exercise_record_shareworks_base
 ```
 
-| 源                           | 契约实测                                    |
-| ---------------------------- | ------------------------------------------- |
-| `base_control_book`          | `EQ Control Book` / A9:L / 12 列 120 行     |
-| `base_futu_exercises`        | `Futu BCI Exercises` / A1:N / 14 列 1025 行 |
-| `base_cancel_restore_report` | `取消与恢复明细` / A1:W / 23 列 758 行      |
+| 源                                | 契约实测                                    | 行数 |
+| --------------------------------- | ------------------------------------------- | ---- |
+| `base_control_book`               | `EQ Control Book` / A9:L / 12 列            | 120  |
+| `base_futu_exercises`             | `Futu BCI Exercises` / A1:N / 14 列         | 1025 |
+| `base_cancel_restore_report`      | `取消与恢复明细` / A1:W / 23 列             | 758  |
+| `cancellation_record_base`        | `Cancellation Records` / A1:W / 23 列       | 766  |
+| `sold_shares_base`                | `Futu Sold Shares` / A1:S / 19 列           | 21   |
+| `grant_record_futu_base`          | `Futu Grants` / A1:AG / 33 列               | 513  |
+| `grant_record_shareworks_base`    | `Shareworks Grants` / A1:AB / 28 列         | 126  |
+| `exercise_record_futu_base`       | `Futu BCI Exercises to Date` / A1:M / 13 列 | 88   |
+| `exercise_record_shareworks_base` | `Shareworks Exec Option OS` / A1:V / 22 列  | 64   |
 
-三个种子统一取 **2026-06** 的合并产出。
+- 三个月度 `inherit` base 取 **2026-06** 的合并产出（首月可运行月份 = 2026-07）
+- 六个记录页 base 取 **2026-08** 的累计快照（**截至 2026-08**，含此前全部记录）
 
-**为什么一个月份就够。** base 是「截至上月末的累计 to-date 状态」，不是当月快照；月度合并按自然键幂等，且增量只取当月行。所以拿 2026-06 的 base 去跑 2026-07、2026-09 或更晚都成立——**首月可运行月份统一是 2026-07**。已在 dev 库实测：2026-06 种子下，2026-07 与 2026-09 的计划里三个 `base_*` 都解析到真实文件。
+**为什么带上记录页的 base。** 记录页的快照写在 `<folder>/<Name>_Base_YYYY_MM.xlsx`，下个月的合并就按这个路径去继承。空库没有任何 `*_Base_*.xlsx` 时，第一个月只能得到当月增量——把 2026-08 的快照作为种子放进去，新环境**第一次跑 2026-09 就能继承完整历史**，不需要人工上传任何 base。
+
+`previous_capitalization_summary` 仍然**不在种子集里**：它由运行期从上一月 Capitalization Summary 输出自动注入，放种子只会白占体积并且第一月后就过期。
 
 `manifest.json` 里每个种子都记录了**消费任务的抽取契约**（sheet、range、headerRow）和按该契约实测出的列名/行数/校验和。初始化注册前会重新校验：字节对不上、或按契约抽出来的行列数和清单不一致，就**跳过并告警**，不会注册一个会在空库上跑到一半才失败的表。
 
@@ -592,12 +607,18 @@ select logical_path, uploaded_by, workbook_sheet_count, workbook_row_count
  order by logical_path;
 ```
 
-期望 3 行。容器日志里对应：
+期望 **9 行**。容器日志里对应 9 条 `[base-seeds] registered …`：
 
 ```
 [base-seeds] registered base_control_book @ control_book/EQ_Control_Book_Base_2026_06.xlsx (id=..., 65027 bytes, 1 sheets, 121 rows)
 [base-seeds] registered base_futu_exercises @ futu_exercises/Futu_Exercises_Base_2026_06.xlsx (id=..., 519770 bytes, 1 sheets, 1025 rows)
 [base-seeds] registered base_cancel_restore_report @ cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx (id=..., 756036 bytes, 1 sheets, 758 rows)
+[base-seeds] registered cancellation_record_base @ cancellation_record/Cancellation_Records_Base_2026_08.xlsx (id=..., 763992 bytes, 1 sheets, 766 rows)
+[base-seeds] registered sold_shares_base @ sold_shares/Futu_Sold_Shares_Base_2026_08.xlsx (id=..., 29584 bytes, 1 sheets, 21 rows)
+[base-seeds] registered grant_record_futu_base @ grant_record/Futu_Grants_Base_2026_08.xlsx (id=..., 639945 bytes, 1 sheets, 513 rows)
+[base-seeds] registered grant_record_shareworks_base @ grant_record/Shareworks_Grants_Base_2026_08.xlsx (id=..., 127302 bytes, 1 sheets, 126 rows)
+[base-seeds] registered exercise_record_futu_base @ exercise_record/Futu_Exercises_Base_2026_08.xlsx (id=..., 58347 bytes, 1 sheets, 88 rows)
+[base-seeds] registered exercise_record_shareworks_base @ exercise_record/Shareworks_Exec_Base_2026_08.xlsx (id=..., 61558 bytes, 1 sheets, 64 rows)
 ```
 
 ### 10.5 换一批种子 / 重新生成
@@ -609,6 +630,15 @@ git add database/base-seeds
 ```
 
 注意：换了种子文件必须同步改 `gyre-captable-summary-v2` 的 `runtimeParamsDefaults.fileRefs.*.key`，否则默认值指向的路径和种子登记的路径不一致，冷启动依然解析不到。改完按第 4 节重新发布，并 bump 版本。
+
+导出后建议跑一次冷启动校验（用一次性数据库，避免污染现有数据）：
+
+```bash
+docker exec <postgres 容器> psql -U captable -d captable -c 'create database gyre_seedtest;'
+BASE_SEED_TEST_DATABASE_URL='postgres://captable:captable@127.0.0.1:55433/gyre_seedtest' \
+  DATABASE_URL="$BASE_SEED_TEST_DATABASE_URL" npx tsx --test src/server/baseSeeds.test.ts
+# 期望 3 tests pass：契约自检、冷启动注册后每个种子都可抽取、错位 base 会被搬迁
+```
 
 ### 10.6 已修复：cancel_restore base 一直写错目录
 

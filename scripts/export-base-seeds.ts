@@ -65,6 +65,53 @@ export const BASE_SEEDS: BaseSeedDefinition[] = [
       '2026-06 的取消与恢复合并 base。此前该 base 一直被写进 input/cancel_restore/（输出目录被' +
       '重写成 input/ 子目录），继承链找不到它；已修正为声明式输出目录。',
   },
+
+  // The four record pages merge into their previous snapshot. Those snapshots are written to their
+  // own folders as `<folder>/<Name>_Base_YYYY_MM.xlsx`, so a seed registers at exactly the path the
+  // monthly injection looks up — a fresh environment then starts with the accumulated history
+  // instead of an empty chain that only fills from the first month it happens to run.
+  {
+    sourceKey: 'cancellation_record_base',
+    logicalPath: 'cancellation_record/Cancellation_Records_Base_2026_08.xlsx',
+    sheetName: 'Cancellation Records',
+    contract: { range: 'A1:W', headerRow: 1 },
+    note: '2026-08 的取消记录累计快照（2025-12 起全部取消/恢复明细）。',
+  },
+  {
+    sourceKey: 'sold_shares_base',
+    logicalPath: 'sold_shares/Futu_Sold_Shares_Base_2026_08.xlsx',
+    sheetName: 'Futu Sold Shares',
+    contract: { range: 'A1:S', headerRow: 1 },
+    note: '2026-08 的卖出记录累计快照（按工号聚合的出售汇总）。',
+  },
+  {
+    sourceKey: 'grant_record_futu_base',
+    logicalPath: 'grant_record/Futu_Grants_Base_2026_08.xlsx',
+    sheetName: 'Futu Grants',
+    contract: { range: 'A1:AG', headerRow: 1 },
+    note: '2026-08 的 Futu 授予记录累计快照（按授予编号合并）。',
+  },
+  {
+    sourceKey: 'grant_record_shareworks_base',
+    logicalPath: 'grant_record/Shareworks_Grants_Base_2026_08.xlsx',
+    sheetName: 'Shareworks Grants',
+    contract: { range: 'A1:AB', headerRow: 1 },
+    note: '2026-08 的 Shareworks 授予记录累计快照（按 Employee Grant Number 合并）。',
+  },
+  {
+    sourceKey: 'exercise_record_futu_base',
+    logicalPath: 'exercise_record/Futu_Exercises_Base_2026_08.xlsx',
+    sheetName: 'Futu BCI Exercises to Date',
+    contract: { range: 'A1:M', headerRow: 1 },
+    note: '2026-08 的 Futu 行权记录累计快照（按 工号+授予编号+行权日期 合并）。',
+  },
+  {
+    sourceKey: 'exercise_record_shareworks_base',
+    logicalPath: 'exercise_record/Shareworks_Exec_Base_2026_08.xlsx',
+    sheetName: 'Shareworks Exec Option OS',
+    contract: { range: 'A1:V', headerRow: 1 },
+    note: '2026-08 的 Shareworks 行权记录累计快照（按 Employee Grant Number 合并）。',
+  },
 ];
 
 const SEED_DIR = path.join(process.cwd(), 'database', 'base-seeds');

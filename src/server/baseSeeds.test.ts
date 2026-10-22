@@ -32,13 +32,19 @@ const seeded =
 test('the committed seed set satisfies each base contract', seeded, async () => {
   const manifest = loadBaseSeedManifest();
   assert.ok(manifest, 'database/base-seeds/manifest.json must exist');
-  assert.equal(manifest.seeds.length, 3);
+  assert.equal(manifest.seeds.length, 9);
 
-  // The three `optionalCategory: 'inherit'` sources that need a base...
+  // The three monthly `inherit` bases plus the six record-page snapshots the pages merge into.
   assert.deepEqual(manifest.seeds.map((seed) => seed.sourceKey).sort(), [
     'base_cancel_restore_report',
     'base_control_book',
     'base_futu_exercises',
+    'cancellation_record_base',
+    'exercise_record_futu_base',
+    'exercise_record_shareworks_base',
+    'grant_record_futu_base',
+    'grant_record_shareworks_base',
+    'sold_shares_base',
   ]);
   // ...and not the one that is injected at run time from the previous month's output.
   assert.ok(!manifest.seeds.some((seed) => seed.sourceKey === 'previous_capitalization_summary'));
@@ -46,7 +52,9 @@ test('the committed seed set satisfies each base contract', seeded, async () => 
   for (const seed of manifest.seeds) {
     const filePath = path.join(config.rootDir, 'database', 'base-seeds', seed.logicalPath);
     assert.ok(existsSync(filePath), `seed file missing: ${seed.logicalPath}`);
-    const buffer = await fileStorage.read(filePath);
+    // A seed is a repository file; reading it through `fileStorage` would look in the object store
+    // (and fail as soon as STORAGE_DRIVER is not `local`).
+    const buffer = readFileSync(filePath);
     const frame = extractSheetRangeAsDataFrame(buffer, seed.sheetName, {
       range: seed.contract.range,
       headerRow: seed.contract.headerRow,
@@ -85,7 +93,7 @@ test('a cold-start init registers the bases and makes each one extractable', see
     // already run months keeps its own newer bases.
     const second = await seedBaseSeedFiles(db);
     assert.equal(second.registered.length, 0, 're-running must not re-register');
-    assert.equal(second.skipped.length, 3);
+    assert.equal(second.skipped.length, 9);
   } finally {
     await db.close();
   }
