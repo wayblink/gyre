@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 38,
+  "version": 40,
   "tasks": [
     {
       "x": 48,
@@ -1245,7 +1245,7 @@
               "label": "Sheet"
             }
           },
-          "description": "各计划的 outstanding 与 available 股数，用于计算 Options Outstanding / Available；必填。",
+          "description": "各计划的 outstanding 与 available 股数，用于计算 Options Outstanding / Available。",
           "fileTemplate": "DD-M-YYYY_HH-mm-ss_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx"
         },
         "incremental_control_book": {
@@ -1263,7 +1263,7 @@
               "label": "Increment sheet"
             }
           },
-          "description": "本月 Control Book 明细导出，按交易自然键合并进基表；必填，且报告期必须是本月，否则运行会被拦下。",
+          "description": "本月 Control Book 明细导出，合并进基表；报告期必须是本月，否则运行会被拦下。",
           "fileTemplate": "Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx"
         },
         "base_cancel_restore_report": {

@@ -90,7 +90,7 @@ export function monthlyRunSourceFolders(sourceKey: string | null | undefined, mo
 
 export const sourcePurposeEnglish: Record<string, string> = {
   base_control_book: 'Prior month full EQ Control Book; base for the incremental merge.',
-  incremental_control_book: 'Current month Control Book detail, merged into the base by transaction key.',
+  incremental_control_book: 'Current month Control Book detail, merged into the base.',
   series_b: 'Shares Issued × 5 gives Series B Preferred Stock; 0 when not supplied.',
   option_plans_summary: 'Per-plan outstanding and available share totals.',
   base_futu_exercises: 'Prior month full Futu BCI Exercises base; base for the incremental merge.',
@@ -213,7 +213,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 38;
+export const MONTHLY_WORKFLOW_VERSION = 40;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was
