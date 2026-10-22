@@ -811,9 +811,9 @@ export const TEXTS = {
     },
     overviewNavBody: {
       'zh-CN':
-        '股权汇总看结果，月度更新跑数据，ESOP 明细看四个记录页，再往上是员工、计划与股东维度的视图。管理员还会多出文件中心、工作流和用户管理。',
+        '股权汇总看结果，月度更新跑数据，ESOP 明细看四个记录页，再往下是员工、计划与股东维度的视图。管理员还会多出文件中心、工作流和用户管理。',
       'en-US':
-        'Equity summary shows results, the monthly run produces them, ESOP detail holds the four record pages, and the rest covers employees, plans and holders. Admins also get Files, Workflows and Users.',
+        'Equity summary shows results, the monthly run produces them, ESOP detail holds the four record pages, and further down are the employee, plan and holder views. Admins also get Files, Workflows and Users.',
     },
     overviewHomeTitle: {
       'zh-CN': '默认进入股权汇总',
