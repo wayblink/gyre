@@ -73,7 +73,8 @@ export const TOURS: TourDefinition[] = [
     description: 'overviewDescription',
     steps: [
       { page: 'captable', target: 'aside.sidebar', title: 'overviewNavTitle', body: 'overviewNavBody' },
-      { target: '#page-captable .product-page-hero', title: 'overviewHomeTitle', body: 'overviewHomeBody' },
+      // The step is about "this is where you land", so the stage covers the page, not just its header.
+      { target: '#page-captable', title: 'overviewHomeTitle', body: 'overviewHomeBody' },
       { target: '#monthPickerTrigger', title: 'overviewMonthTitle', body: 'overviewMonthBody' },
       {
         target: '#capitalizationTable',
@@ -364,7 +365,7 @@ export const TOURS: TourDefinition[] = [
     steps: [
       {
         page: 'five-percent-holders',
-        target: '#page-five-percent-holders .product-page-hero',
+        target: '#page-five-percent-holders',
         title: 'holdersWhatTitle',
         body: 'holdersWhatBody',
       },
