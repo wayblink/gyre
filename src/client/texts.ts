@@ -708,9 +708,9 @@ export const TEXTS = {
     },
     monthlyInputsBody: {
       'zh-CN':
-        '标「必须」的两个源没有就跑不了；其余都可选，没配置就跳过、不会拖垮整次运行。说明右边的文档图标点开是这个文件的名字模板。',
+        '这一块是本月要读的全部输入：一行一个源，五列分别是输入名称、说明、已上传文件、上传时间、操作。下面按列逐个看。',
       'en-US':
-        'The two required sources must be present; everything else is optional and is skipped when missing instead of failing the run. The document icon next to a description reveals that file name pattern.',
+        'Every input this month’s run reads: one row per source with five columns — input name, description, uploaded file, uploaded at, and actions. We take them one by one next.',
     },
     monthlyConfigureTitle: {
       'zh-CN': '配置输入源',
@@ -925,9 +925,10 @@ export const TEXTS = {
       'en-US': 'Column 2: the description',
     },
     monthlyColDescBody: {
-      'zh-CN': '这一列回答三个问题：是否必填、这个文件是干什么的、它长什么样。下面逐个拆开。',
+      'zh-CN':
+        '说明列由三块组成：最左边是必填/可选徽标，中间一句话说明这份文件的用途，右边若有文档图标，点开就是它期望的文件名。下面逐个拆开看。',
       'en-US':
-        'This column answers three questions: is it required, what the file is for, and what it looks like. We break it down next.',
+        'The description column holds three things: the required/optional badge on the left, one sentence on what the file is for, and — when present — a document icon that reveals the expected file name. We take them in turn.',
     },
     monthlyBadgeTitle: {
       'zh-CN': '徽标：必填还是可选',

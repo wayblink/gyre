@@ -169,7 +169,9 @@ export const TOURS: TourDefinition[] = [
       },
       { page: 'monthlyrun', target: '#monthlyRunMonth', title: 'monthlyMonthTitle', body: 'monthlyMonthBody' },
       {
-        target: '#monthlyRunSourcesTable',
+        // The header row, not the whole table: a 16-row table as a spotlight puts the popover on top
+        // of the rows it is describing.
+        target: '#monthlyRunSourcesTable thead',
         title: 'monthlyInputsTitle',
         body: 'monthlyInputsBody',
         dynamic: true,
