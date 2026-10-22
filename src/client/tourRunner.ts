@@ -45,9 +45,21 @@ export function createTourRunner(deps: TourRunnerDeps, options: { createDriver?:
     if (!steps.length) return false;
 
     const language = deps.language();
-    // `onDestroyed` reports a reason, but "the user pressed Done" is the exact event we care about
-    // for the seen flag, and driver.js exposes it directly.
-    let reachedEnd = false;
+    // "Finished" must not depend on driver's destroy bookkeeping: on the last step driver clears
+    // `__activeStep` before destroying, then skips both `onDeselected` and `onDestroyed`, and the
+    // button node it hands to `onPopoverRender` is replaced on the next render. A capture-phase
+    // listener on the document survives both, and "the Done button was pressed" is exactly the
+    // moment the walkthrough is complete.
+    let finished = false;
+    const onDocumentClick = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest?.('.driver-popover-done-btn')) return;
+      finished = true;
+      markTourSeen(tour.id, deps.user());
+      deps.onFinished?.(tour.id, 'finished');
+    };
+    document.addEventListener('click', onDocumentClick, true);
+
     const instance = createDriver({
       steps: buildDriveSteps(steps, deps.text, language),
       showProgress: true,
@@ -65,14 +77,11 @@ export function createTourRunner(deps: TourRunnerDeps, options: { createDriver?:
       stageRadius: 10,
       popoverClass: 'gyre-tour-popover',
       smoothScroll: true,
-      onDoneClick: () => {
-        reachedEnd = true;
-      },
-      onDestroyed: (_element, _step, opts) => {
-        const outcome = reachedEnd || opts.reason === 'done' ? 'finished' : 'dismissed';
-        if (outcome === 'finished') markTourSeen(tour.id, deps.user());
+      onDestroyed: () => {
+        document.removeEventListener('click', onDocumentClick, true);
         active = null;
-        deps.onFinished?.(tour.id, outcome);
+        // Any other close (Esc, overlay, the X) leaves the tour un-finished, so it is offered again.
+        if (!finished) deps.onFinished?.(tour.id, 'dismissed');
       },
     });
     active = instance;

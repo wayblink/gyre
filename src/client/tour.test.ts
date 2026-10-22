@@ -184,15 +184,10 @@ test('the runner maps steps, drives, and only records "seen" when the user finis
   stubLayout(window);
   window.document.body.innerHTML = '<div id="one"></div><div id="two"></div>';
   const storage = memoryStorage();
-  type CapturedConfig = {
-    steps?: unknown[];
-    allowClose?: boolean;
-    onDoneClick?: () => void;
-    onDestroyed?: (element: unknown, step: unknown, opts: { reason: string }) => void;
-  };
   const outcomes: string[] = [];
-  // Holder object: assignments inside the callback do not narrow a plain `let`.
-  const captured: { config: CapturedConfig | null } = { config: null };
+  const captured: { config: { steps?: unknown[]; allowClose?: boolean; onDestroyed?: () => void } | null } = {
+    config: null,
+  };
   let drove = false;
 
   const { createTourRunner } = await import('./tourRunner.js');
@@ -206,9 +201,9 @@ test('the runner maps steps, drives, and only records "seen" when the user finis
       onFinished: (_id, outcome) => outcomes.push(outcome),
     },
     {
-      // Fake driver: capture the config and let the test trigger the hooks itself.
+      // Fake driver: capture the config and let the test drive the hooks itself.
       createDriver: (driverConfig) => {
-        captured.config = driverConfig as unknown as CapturedConfig;
+        captured.config = driverConfig as unknown as NonNullable<typeof captured.config>;
         return {
           drive: () => {
             drove = true;
@@ -235,14 +230,65 @@ test('the runner maps steps, drives, and only records "seen" when the user finis
   assert.equal(captured.config?.allowClose, true);
 
   // Esc / close: dismissed, nothing remembered.
-  captured.config?.onDestroyed?.(undefined, undefined, { reason: 'escape' });
+  captured.config?.onDestroyed?.();
   assert.deepEqual(outcomes, ['dismissed']);
   assert.equal(isTourSeen('captable', 'alice', storage), false);
+});
 
-  // Done: finished, and the flag is written.
-  captured.config?.onDoneClick?.();
-  captured.config?.onDestroyed?.(undefined, undefined, { reason: 'done' });
-  assert.deepEqual(outcomes, ['dismissed', 'finished']);
+test('pressing Done is what records the tour as seen, and other closes are not', async () => {
+  const { window } = installDom({ url: 'http://localhost/captable' });
+  stubLayout(window);
+  window.document.body.innerHTML = '<div id="one"></div>';
+  const storage = window.localStorage;
+  const outcomes: string[] = [];
+  const captured: { config: { onDestroyed?: () => void } | null } = { config: null };
+
+  const { createTourRunner } = await import('./tourRunner.js');
+  const runner = createTourRunner(
+    {
+      language: () => 'zh-CN',
+      text: (key) => String(key),
+      navigate: async () => {},
+      currentPage: () => 'captable',
+      user: () => 'alice',
+      onFinished: (_id, outcome) => outcomes.push(outcome),
+    },
+    {
+      createDriver: (driverConfig) => {
+        captured.config = driverConfig as unknown as NonNullable<typeof captured.config>;
+        return { drive: () => {}, destroy: () => {} } as never;
+      },
+    },
+  );
+
+  assert.equal(
+    await runner.start({
+      id: 'captable',
+      title: 'captableTitle',
+      description: 'captableDescription',
+      steps: [{ target: '#one', title: 'captableMonthTitle', body: 'captableMonthBody' }],
+    }),
+    true,
+  );
+
+  // A Next click mid-tour must not count.
+  const next = window.document.createElement('button');
+  next.className = 'driver-popover-next-btn';
+  window.document.body.appendChild(next);
+  next.click();
+  assert.equal(isTourSeen('captable', 'alice', storage), false);
+
+  const done = window.document.createElement('button');
+  done.className = 'driver-popover-next-btn driver-popover-done-btn';
+  window.document.body.appendChild(done);
+  done.click();
+
+  assert.equal(isTourSeen('captable', 'alice', storage), true);
+  assert.deepEqual(outcomes, ['finished']);
+
+  // Driver's own teardown must not then report a dismissal on top of the finish.
+  captured.config?.onDestroyed?.();
+  assert.deepEqual(outcomes, ['finished']);
 });
 
 test('a tour with nothing to highlight reports "not started" instead of opening an empty overlay', async () => {
