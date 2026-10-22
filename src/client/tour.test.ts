@@ -135,8 +135,13 @@ test('step copy is resolved through the text table, in the active language', () 
 
 /** The selector forms the tours use, checked against the shipped markup. */
 function staticSelectorExists(selector: string): boolean {
-  const attribute = selector.match(/^\[([\w-]+)="([^"]+)"\]$/);
-  if (attribute) return new RegExp(`${attribute[1]}="${attribute[2]}"`).test(INDEX_HTML);
+  // `[attr="value"]`, optionally prefixed with a tag or a class: `.nav-item[data-page="monthly"]`.
+  const attribute = selector.match(/^(?:([a-z]+)|\.[\w-]+)?\[([\w-]+)="([^"]+)"\]$/i);
+  if (attribute) {
+    const [, tag, name, value] = attribute;
+    const prefix = tag ? `(?=<${tag}\\b)[^>]*` : '[^>]*';
+    return new RegExp(`${prefix}\\b${name}="${value}"`).test(INDEX_HTML);
+  }
 
   // `#anchor .child` / `#anchor tag` — the anchor id must exist; the descendant is page content that
   // is rendered by the page itself, so only the anchor is asserted.

@@ -845,9 +845,10 @@ export const TEXTS = {
       'en-US': 'The monthly run is the entry point',
     },
     overviewInputsBody: {
-      'zh-CN': '每月在这里上传 Futu / Shareworks / Control Book 等输入，跑完后汇总表和记录页的快照都会更新。',
+      'zh-CN':
+        '点左侧「月度更新」：每月在这里上传 Futu / Shareworks / Control Book 等输入，跑完后汇总表和记录页的快照都会更新。',
       'en-US':
-        'Upload the Futu / Shareworks / Control Book inputs here each month; the summary and the record snapshots all follow.',
+        'Open the monthly update entry on the left: upload the Futu / Shareworks / Control Book inputs each month and the summary and record snapshots all follow.',
     },
     overviewRecordsTitle: {
       'zh-CN': '明细在 ESOP 明细下',
@@ -896,24 +897,28 @@ export const TEXTS = {
       'en-US': 'Step one: create the month',
     },
     monthlyCreateBody: {
-      'zh-CN': '先在这里新建一个月份并写备注。创建后该月才会出现在运行页和月份选择器里。',
-      'en-US': 'Create the month here and add a note. Only then does it appear on the run page and in month pickers.',
+      'zh-CN': '先在这里新建一个月度计划，选一个月份即可。创建后该月才会出现在本列表和运行页的月份选择器里。',
+      'en-US':
+        'Create the month here by picking it. Only then does it appear in this list and in the run page’s month picker.',
     },
     monthlyPlansTitle: {
       'zh-CN': '计划列表',
       'en-US': 'The plan list',
     },
     monthlyPlansBody: {
-      'zh-CN': '每行一个月度计划，带状态与备注；点进去执行、配置输入或回看历史。',
-      'en-US': 'One row per month with its status and note; open it to run, configure inputs or review history.',
+      'zh-CN': '每行是一个月份的运行计划及其状态。点月份或「查看详情」进入该月的执行页，「删除」移除这条计划。',
+      'en-US':
+        'One row per month with its status. Open the month, or its detail button, to run it; the delete button removes the plan.',
     },
     monthlyColFileTitle: {
       'zh-CN': '第一列：输入名称',
       'en-US': 'Column 1: input name',
     },
     monthlyColFileBody: {
-      'zh-CN': '这里是工作流定义的输入源名称，顺序也是工作流读它们的顺序。',
-      'en-US': 'The input names declared by the workflow, in the order the workflow reads them.',
+      'zh-CN':
+        '这些名称来自工作流定义的输入源；这里的顺序是定义里的展示顺序（order），只为阅读方便——真正谁先读、谁后读由工作流节点依赖决定，和这个顺序无关。',
+      'en-US':
+        'These names come from the workflow definition. The order here is the schema display order, kept for readability — what runs first is decided by the task dependencies, not by this list.',
     },
     monthlyColDescTitle: {
       'zh-CN': '第二列：说明',
@@ -930,9 +935,9 @@ export const TEXTS = {
     },
     monthlyBadgeBody: {
       'zh-CN':
-        '「必须」缺失就跑不了；「可选」分为继承（系统自动带出上月基表）、补充（提供时才参与计算）和校验（只用于交叉校验），缺失时该步直接跳过。',
+        '「必须」缺失就跑不了；「可选」分三类：继承（系统自动带出上月基表）、补充（提供时才参与计算）、校验（用来补齐 Option Plans Summary 未反映的取消数）。缺失时对应那一步直接跳过。',
       'en-US':
-        'A required source blocks the run when missing. Optional ones split into inherited (carried over from last month), supplementary (used only when supplied) and validation (cross-check only); a missing optional step is skipped.',
+        'A required source blocks the run when missing. Optional ones come in three kinds: inherited (carried over from last month), supplementary (used only when supplied) and validation (fills in cancellations the Option Plans Summary has not reflected). The step is skipped when its source is absent.',
     },
     monthlyPurposeTitle: {
       'zh-CN': '用途文字',
@@ -984,9 +989,10 @@ export const TEXTS = {
       'en-US': 'Column 4: uploaded at',
     },
     monthlyColTimeBody: {
-      'zh-CN': '用来判断这份文件是不是当月的：把上月导出传到本月，是这类系统最常见的错。',
+      'zh-CN':
+        '用来判断这份文件是不是当月的：把上月导出传到本月是这类系统最常见的错。Control Book 有月份校验会直接拦下，其他源只能靠这里的时间人工核对。',
       'en-US':
-        'Tells you whether the file is actually from this month — uploading last month’s export is the most common mistake here.',
+        'Tells you whether the file belongs to this month — uploading last month’s export is the most common mistake. The control book has a month guard that blocks a mismatch; for the other sources this timestamp is the only clue.',
     },
     monthlyColActionsTitle: {
       'zh-CN': '第五列：操作',

@@ -82,11 +82,12 @@ export const TOURS: TourDefinition[] = [
         dynamic: true,
       },
       {
-        page: 'monthlyrun',
-        target: '#monthlyRunSourcesBody',
+        // The overview stays on the current page and points at the sidebar entry: jumping into the
+        // run page would drop the reader into a month's execution screen instead of showing where
+        // the module lives.
+        target: '.nav-item[data-page="monthly"]',
         title: 'overviewInputsTitle',
         body: 'overviewInputsBody',
-        dynamic: true,
       },
       {
         page: 'grant-record',
