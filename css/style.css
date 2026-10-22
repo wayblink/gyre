@@ -10493,3 +10493,122 @@ textarea.form-input {
         grid-template-columns: 1fr;
     }
 }
+
+/* ============ 27. Product tours (driver.js) ============ */
+
+/* Entry list on the handbook page. Rendered from TOURS in tours.ts. */
+.tour-start-panel {
+    margin-bottom: var(--space-5);
+    padding: var(--space-5);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-xs);
+}
+
+.tour-start-panel__head h3 {
+    margin: 0 0 var(--space-1);
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+}
+
+.tour-start-panel__head p {
+    margin: 0 0 var(--space-4);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
+
+.tour-start-panel__list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-3);
+}
+
+.tour-start-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.tour-start-card:hover,
+.tour-start-card:focus-visible {
+    border-color: var(--primary-400);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+
+.tour-start-card strong {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+}
+
+.tour-start-card span {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+/* driver.js ships its own palette; only override what makes it feel foreign. */
+.gyre-tour-popover.driver-popover {
+    max-width: 360px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-default);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-lg);
+    font-family: inherit;
+}
+
+.gyre-tour-popover .driver-popover-title {
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+}
+
+.gyre-tour-popover .driver-popover-description {
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.gyre-tour-popover .driver-popover-progress-text {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.gyre-tour-popover .driver-popover-next-btn,
+.gyre-tour-popover .driver-popover-prev-btn {
+    padding: 4px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    text-shadow: none;
+}
+
+.gyre-tour-popover .driver-popover-next-btn {
+    border-color: var(--primary-600);
+    background: var(--primary-600);
+    color: #fff;
+}
+
+.gyre-tour-popover .driver-popover-close-btn {
+    color: var(--text-muted);
+}
+
+.gyre-tour-popover .driver-popover-arrow-side-left.driver-popover-arrow,
+.gyre-tour-popover .driver-popover-arrow-side-right.driver-popover-arrow,
+.gyre-tour-popover .driver-popover-arrow-side-top.driver-popover-arrow,
+.gyre-tour-popover .driver-popover-arrow-side-bottom.driver-popover-arrow {
+    border-color: var(--bg-card);
+}

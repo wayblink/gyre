@@ -608,6 +608,237 @@ export const TEXTS = {
     uploading: { 'zh-CN': '正在上传...', 'en-US': 'Uploading...' },
     completed: { 'zh-CN': '上传完成', 'en-US': 'Upload completed' },
   },
+  /** tour.ts / tours.ts: guided walkthroughs. */
+  tour: {
+    topbarLabel: {
+      'zh-CN': '功能引导',
+      'en-US': 'Show a walkthrough of this page',
+    },
+    unavailable: {
+      'zh-CN': '这个页面还没有引导',
+      'en-US': 'No walkthrough for this page yet',
+    },
+    panelTitle: {
+      'zh-CN': '功能引导',
+      'en-US': 'Guided walkthroughs',
+    },
+    panelIntro: {
+      'zh-CN': '点开任意一条，系统会带你按步骤过一遍对应页面。随时可以按 Esc 退出。',
+      'en-US': 'Pick one and the app walks you through that page step by step. Press Esc to leave at any time.',
+    },
+    start: {
+      'zh-CN': '开始',
+      'en-US': 'Start',
+    },
+    restart: {
+      'zh-CN': '再看一遍',
+      'en-US': 'Show again',
+    },
+    captableTitle: {
+      'zh-CN': '股权汇总：看懂本月资本表',
+      'en-US': 'Equity summary: read the monthly cap table',
+    },
+    captableDescription: {
+      'zh-CN': '从选月份到导出，一条主线。',
+      'en-US': 'From picking the month to exporting it.',
+    },
+    captableMonthTitle: {
+      'zh-CN': '先选月份',
+      'en-US': 'Pick the month first',
+    },
+    captableMonthBody: {
+      'zh-CN': '每个月一份快照。有数据的月份会显示一个 ✓，没有快照的月份点开会是空表。',
+      'en-US':
+        'Each month has its own snapshot. Months with data show a ✓; a month without one opens as an empty table.',
+    },
+    captableSourceTitle: {
+      'zh-CN': '数据来源',
+      'en-US': 'Where the numbers come from',
+    },
+    captableSourceBody: {
+      'zh-CN': '这里显示当前汇总表读的是哪个文件——通常是月度运行产出的 Capitalization Summary。',
+      'en-US':
+        'This is the file the summary is reading — normally the Capitalization Summary produced by the monthly run.',
+    },
+    captableReconTitle: {
+      'zh-CN': '先看核对表',
+      'en-US': 'Check the reconciliation first',
+    },
+    captableReconBody: {
+      'zh-CN': 'Shares OS Reconciliation 会列出各项股数与 Control Book 的差异。有差异时先查这里，再看下面的汇总。',
+      'en-US':
+        'Shares OS Reconciliation lists where share counts disagree with the control book. Look here before trusting the summary below.',
+    },
+    captableSummaryTitle: {
+      'zh-CN': '再看汇总表',
+      'en-US': 'Then the summary',
+    },
+    captableSummaryBody: {
+      'zh-CN': '15 行的资本结构：已发行股份、各类期权、Series B、认股权证，以及完全稀释后的总数与占比。',
+      'en-US':
+        'A 15-row capital structure: shares outstanding, options by plan, Series B, warrants, plus fully diluted totals and percentages.',
+    },
+    captableExportTitle: {
+      'zh-CN': '导出这一份',
+      'en-US': 'Export it',
+    },
+    captableExportBody: {
+      'zh-CN': '导出的是当前月份的汇总表，可以直接发给审计或投资人。',
+      'en-US': 'Exports the summary for the selected month, ready to send to auditors or investors.',
+    },
+    captableToMonthlyTitle: {
+      'zh-CN': '要更新就去月度',
+      'en-US': 'Updating? Go to the monthly run',
+    },
+    captableToMonthlyBody: {
+      'zh-CN': '汇总表的数字来自月度运行。想刷新，就从这里跳到月度更新页。',
+      'en-US': 'These numbers come from the monthly run. Use this to jump there and refresh them.',
+    },
+    monthlyTitle: {
+      'zh-CN': '月度更新：一次跑完一个月的账',
+      'en-US': 'Monthly update: close a month in one run',
+    },
+    monthlyDescription: {
+      'zh-CN': '输入文件 → 运行 → 审批 → 结果。',
+      'en-US': 'Inputs, run, approve, results.',
+    },
+    monthlyMonthTitle: {
+      'zh-CN': '选要跑的月份',
+      'en-US': 'Pick the month to run',
+    },
+    monthlyMonthBody: {
+      'zh-CN': '月度运行以「月」为单位：产出文件名带月份后缀，记录页也按月份取快照。',
+      'en-US':
+        'A monthly run is per month: output files carry the month suffix and the record pages read snapshots by month.',
+    },
+    monthlyInputsTitle: {
+      'zh-CN': '输入文件清单',
+      'en-US': 'The input list',
+    },
+    monthlyInputsBody: {
+      'zh-CN':
+        '标「必须」的两个源没有就跑不了；其余都可选，没配置就跳过、不会拖垮整次运行。说明右边的文档图标点开是这个文件的名字模板。',
+      'en-US':
+        'The two required sources must be present; everything else is optional and is skipped when missing instead of failing the run. The document icon next to a description reveals that file name pattern.',
+    },
+    monthlyConfigureTitle: {
+      'zh-CN': '配置输入源',
+      'en-US': 'Configure the sources',
+    },
+    monthlyConfigureBody: {
+      'zh-CN': '在这里为每个源选文件、选 Sheet。已绑定的源可以从历史文件里挑，不用每次重新上传。',
+      'en-US':
+        'Pick the file and sheet per source here. A bound source can be re-pointed at an existing file instead of uploading again.',
+    },
+    monthlyConstantsTitle: {
+      'zh-CN': '月度常量',
+      'en-US': 'Monthly constants',
+    },
+    monthlyConstantsBody: {
+      'zh-CN': '这些数值按月保存，新月份会继承上个月，可以在运行前改。',
+      'en-US': 'These values are stored per month and inherited from the previous month; adjust them before running.',
+    },
+    monthlyRunTitle: {
+      'zh-CN': '执行',
+      'en-US': 'Run it',
+    },
+    monthlyRunBody: {
+      'zh-CN': '点这里开跑。前置校验不过会直接告诉你缺哪个源、缺文件还是缺 Sheet。',
+      'en-US':
+        'Starts the run. Pre-flight failures name the offending source and whether the file or the sheet is missing.',
+    },
+    monthlyPanelTitle: {
+      'zh-CN': '看运行面板',
+      'en-US': 'Watch the run',
+    },
+    monthlyPanelBody: {
+      'zh-CN': '逐个节点显示进度。遇到需要确认的告警会停下来等你批准——那是预期行为，不是失败。',
+      'en-US':
+        'Progress per task. When a warning needs a decision the run pauses for approval; that is expected, not a failure.',
+    },
+    recordsTitle: {
+      'zh-CN': '四个记录页：按月看明细',
+      'en-US': 'Record pages: details by month',
+    },
+    recordsDescription: {
+      'zh-CN': '授予 / 行权 / 卖出 / 取消，操作方式一致。',
+      'en-US': 'Grants, exercises, sold shares and cancellations all work the same way.',
+    },
+    recordMonthTitle: {
+      'zh-CN': '每月一份快照',
+      'en-US': 'One snapshot per month',
+    },
+    recordMonthBody: {
+      'zh-CN': '和汇总表一样按月份取数。有数据的月份带 ✓；切到空月份会提示「暂无记录」，而不是显示别的月份的数据。',
+      'en-US':
+        'Same month scoping as the summary. Months with data carry a ✓; an empty month says so instead of showing rows from another month.',
+    },
+    recordSourceTitle: {
+      'zh-CN': '数据来自哪个文件',
+      'en-US': 'Which file the rows come from',
+    },
+    recordSourceBody: {
+      'zh-CN': '这里列出当前页读的源文件。没上传过该月的文件，这一页当月就是空的。',
+      'en-US': 'The source files this page reads. No file for that month means an empty page for that month.',
+    },
+    recordViewsTitle: {
+      'zh-CN': '三个视图',
+      'en-US': 'Three views',
+    },
+    recordViewsBody: {
+      'zh-CN': 'Futu / Shareworks 各自一份原始视图，Merge 是两边对齐后的合并结果。',
+      'en-US': 'Futu and Shareworks each have their own raw view; Merge lines the two up.',
+    },
+    recordTableTitle: {
+      'zh-CN': '明细表',
+      'en-US': 'The detail table',
+    },
+    recordTableBody: {
+      'zh-CN': '按姓名、工号、授予编号搜索，也能按标签过滤。',
+      'en-US': 'Search by name, employee number or grant number, and filter by tag.',
+    },
+    recordUpdateTitle: {
+      'zh-CN': '需要更新就点这里',
+      'en-US': 'Update it from here',
+    },
+    recordUpdateBody: {
+      'zh-CN': '手动更新会带上当前选中的月份，产出该月的快照——和月度运行产出的是同一种文件。',
+      'en-US':
+        'A manual update carries the selected month and writes that month snapshot — the same kind of file the monthly run produces.',
+    },
+    docsTitle: {
+      'zh-CN': '使用手册',
+      'en-US': 'Handbook',
+    },
+    docsDescription: {
+      'zh-CN': '文档 + 可播放的引导。',
+      'en-US': 'Documentation plus the walkthroughs.',
+    },
+    docsNavTitle: {
+      'zh-CN': '按主题翻',
+      'en-US': 'Browse by topic',
+    },
+    docsNavBody: {
+      'zh-CN': '左侧是目录，右侧是正文与截图。',
+      'en-US': 'Topics on the left, content and screenshots on the right.',
+    },
+    docsTourTitle: {
+      'zh-CN': '也可以直接跟着做',
+      'en-US': 'Or follow along instead',
+    },
+    docsTourBody: {
+      'zh-CN': '这里是可播放的引导，选了会先跳到对应页面再开始。',
+      'en-US': 'These walkthroughs jump to the page and start there.',
+    },
+    docsContentTitle: {
+      'zh-CN': '正文',
+      'en-US': 'The content',
+    },
+    docsContentBody: {
+      'zh-CN': '想找具体字段或口径，在这里搜。',
+      'en-US': 'Look here for specific fields and definitions.',
+    },
+  },
 };
 
 export type TextNamespace = keyof typeof TEXTS;

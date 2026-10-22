@@ -176,6 +176,15 @@
                     <input type="month" id="monthlyRunMonth" value="2026-06" aria-label="Month">
                 </label>
                 <div class="top-bar__actions">
+                    <button class="nav-item nav-item--topbar nav-item--topbar-icon-only" id="btnStartTour" type="button" title="功能引导" aria-label="功能引导">
+                        <span class="nav-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9"></circle>
+                                <path d="M9.8 9a2.3 2.3 0 1 1 3.8 1.7c-.9.7-1.6 1.1-1.6 2.3"></path>
+                                <path d="M12 16.5h.01"></path>
+                            </svg>
+                        </span>
+                    </button>
                     <button class="nav-item nav-item--topbar nav-item--topbar-icon-only" data-page="docs" type="button" title="使用手册" aria-label="使用手册">
                         <span class="nav-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1148,6 +1157,14 @@
                 </div>
 
                 <section class="page-section" id="page-docs">
+                    <section class="tour-start-panel" id="tourStartPanel" aria-labelledby="tourStartPanelTitle">
+                        <div class="tour-start-panel__head">
+                            <h3 id="tourStartPanelTitle">功能引导</h3>
+                            <p id="tourStartPanelIntro">点开任意一条，系统会带你按步骤过一遍对应页面。随时可以按 Esc 退出。</p>
+                        </div>
+                        <!-- Cards are rendered from TOURS in tours.ts so the list cannot drift from the definitions. -->
+                        <div class="tour-start-panel__list" id="tourStartList"></div>
+                    </section>
                     <div class="doc-layout">
                         <aside class="doc-nav" id="docNav"></aside>
                         <article class="doc-content" id="docContent"></article>

@@ -24,6 +24,8 @@ import { createFivePercentHoldersPage } from './fivePercentHoldersPage.js';
 import { createTexts, TEXTS, type TextKey } from './texts.js';
 
 const texts = createTexts('main');
+/** Walkthrough copy lives in its own namespace; `createTexts` gives it the same typo-checked keys. */
+const tourTexts = createTexts('tour');
 
 /** Page titles keyed by page; the values live in the merged translation table. */
 const pageTitleTranslations = TEXTS.pageTitles as Record<PageKey, Record<AppLanguage, string>>;
@@ -31,6 +33,9 @@ import { createThemeControls } from './theme.js';
 import { confirmAction, notify } from './uiFeedback.js';
 import { createWorkflowPage } from './workflowPage.js';
 import { createDocsPage } from './docsPage.js';
+import type { TourDefinition } from './tour.js';
+import { createTourRunner } from './tourRunner.js';
+import { TOURS, tourById, tourForPage, tourStepsForPage } from './tours.js';
 import {
   resolveDefaultSummaryMonth,
   sortAvailableMonths,
@@ -799,6 +804,7 @@ function setLanguage(language: AppLanguage) {
   persistLanguage(language);
   applyLanguage();
   docsPage.render();
+  renderTourEntryPoints();
   filesPage.applyLanguage?.();
   workflowPage.applyLanguage?.();
   monthlyRunPage.applyLanguage?.();
@@ -2246,6 +2252,68 @@ function initLinkModal() {
   });
 }
 
+/**
+ * Passive walkthroughs: nothing auto-starts. The top-bar "?" plays the tour for the current page and
+ * the handbook page lists all of them. Wiring lives here because starting a tour needs the router.
+ */
+function renderTourEntryPoints() {
+  const button = document.getElementById('btnStartTour');
+  const label = tourTexts('topbarLabel', currentLanguage);
+  if (button) {
+    button.setAttribute('title', label);
+    button.setAttribute('aria-label', label);
+  }
+  const panelTitle = document.getElementById('tourStartPanelTitle');
+  if (panelTitle) panelTitle.textContent = tourTexts('panelTitle', currentLanguage);
+  const panelIntro = document.getElementById('tourStartPanelIntro');
+  if (panelIntro) panelIntro.textContent = tourTexts('panelIntro', currentLanguage);
+
+  // Rendered from TOURS so the handbook list can never drift from the definitions.
+  const list = document.getElementById('tourStartList');
+  if (!list) return;
+  list.innerHTML = TOURS.map(
+    (tour) => `<button class="tour-start-card" type="button" data-tour-start="${escapeHtml(tour.id)}">
+        <strong>${escapeHtml(tourTexts(tour.title, currentLanguage))}</strong>
+        <span>${escapeHtml(tourTexts(tour.description, currentLanguage))}</span>
+      </button>`,
+  ).join('');
+}
+
+function initTours() {
+  const runner = createTourRunner({
+    language: () => currentLanguage,
+    text: (key, language) => tourTexts(key, language),
+    navigate: (page) => navigateToPage(page),
+    currentPage: () => getPageFromLocation(),
+    user: () => el('currentUserAvatar')?.textContent?.trim() || 'anonymous',
+  });
+
+  /**
+   * `scopeToPage` is set by the top-bar button: a page's "?" should walk that page, not drag the user
+   * through the other pages the same script also covers (the record pages share one script).
+   */
+  const start = async (tour: TourDefinition | null, scopeToPage: boolean) => {
+    if (!tour) {
+      notify(tourTexts('unavailable', currentLanguage), { type: 'warning' });
+      return;
+    }
+    const steps = scopeToPage ? tourStepsForPage(tour, getPageFromLocation()) : tour.steps;
+    const shown = await runner.start({ ...tour, steps });
+    // Every target was missing (empty month, version banner instead of the table): say so rather
+    // than leaving the user staring at an unchanged page wondering if the button worked.
+    if (!shown) notify(tourTexts('unavailable', currentLanguage), { type: 'warning' });
+  };
+
+  renderTourEntryPoints();
+  el('btnStartTour').addEventListener('click', () => void start(tourForPage(getPageFromLocation()), true));
+
+  // Delegated: the list is re-rendered when the language changes.
+  document.getElementById('tourStartList')?.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-tour-start]');
+    if (button) void start(tourById(button.dataset.tourStart ?? ''), false);
+  });
+}
+
 async function initializeApp() {
   if (appInitialized) return;
   initSidebarToggle();
@@ -2287,6 +2355,7 @@ async function initializeApp() {
   await initAccountPage();
   await initSettingsPage();
   initLinkModal();
+  initTours();
   applyLanguage();
   el('currentUserAvatar').addEventListener('click', (event) => {
     event.stopPropagation();
