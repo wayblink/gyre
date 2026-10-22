@@ -1262,9 +1262,10 @@ test('record pages are month-scoped: snapshot key, picker, and per-month artifac
   assert.match(serverSource, /month: z\s*\n\s*\.string\(\)\s*\n\s*\.regex\(\/\^\\d\{4\}-\\d\{2\}\$\/\)/);
   assert.match(serviceSource, /monthUnderscore: month\.replace\('-', '_'\)/);
 
-  // Every record API resolves its artifact for the requested month: exercises (futu), shareworks,
-  // the merge view (two artifacts), sold-shares, cancellation — plus the pre-existing plan-summary.
-  assert.equal((serverSource.match(/month: requestedMonth \|\| null/g) ?? []).length, 9);
+  // Every record API resolves its artifact for the requested month — exercises (futu, shareworks,
+  // and the merge view's two artifacts), sold-shares, cancellation, and the grant page's three
+  // views (futu, shareworks, merge with its two artifacts) — plus the pre-existing plan-summary.
+  assert.equal((serverSource.match(/month: requestedMonth \|\| null/g) ?? []).length, 11);
 
   // Months advertise which pages have a snapshot; an empty snapshot does not count.
   for (const flag of ['hasExerciseData', 'hasSoldSharesData', 'hasCancellationData', 'hasGrantData']) {

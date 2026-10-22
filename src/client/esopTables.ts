@@ -67,7 +67,7 @@ export type EsopTablesHost = {
 
 export type EsopTables = {
   renderHoldings: (month: string) => Promise<void>;
-  renderExercises: () => Promise<void>;
+  renderExercises: (options?: { autoSelectView?: boolean }) => Promise<void>;
   renderSoldShares: () => Promise<void>;
   renderCancellationRecords: () => Promise<void>;
   applyGrantView: () => void;
@@ -431,7 +431,98 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     deps.localizeDom();
   }
 
-  async function renderHoldings(month: string) {
+  function grantViewLabel(view: GrantView): string {
+    return view === 'shareworks' ? 'Shareworks 视图' : view === 'merge' ? '合并视图' : 'Futu 视图';
+  }
+
+  function exerciseViewLabel(view: ExerciseView): string {
+    return view === 'shareworks' ? 'Shareworks 视图' : view === 'merge' ? '合并视图' : 'Futu 视图';
+  }
+
+  /**
+   * A month's snapshot can exist in one view only — the Futu export and the Shareworks export are
+   * different files. The month picker marks such a month as having data, so an empty default view
+   * reads as a broken page; switch to a view that has rows and say why.
+   *
+   * Skipped while a search or tag filter is active: there the emptiness is the filter's doing.
+   */
+  async function autoSelectGrantView(month: string, query: string, tagId: string): Promise<boolean> {
+    if (query.trim() || tagId.trim()) return false;
+    const candidates = (['shareworks', 'merge'] as GrantView[]).filter((view) => view !== grantView);
+    for (const view of candidates) {
+      const total = await grantViewTotal(view, month);
+      if (total <= 0) continue;
+      grantView = view;
+      holdings = 1;
+      applyGrantView();
+      deps.notify(`本月当前视图没有数据，已切换到「${grantViewLabel(view)}」（该视图 ${total} 条）`, { type: 'info' });
+      await renderHoldings(month, { autoSelectView: false });
+      return true;
+    }
+    return false;
+  }
+
+  async function autoSelectExerciseView(query: string, tagId: string): Promise<boolean> {
+    if (query.trim() || tagId.trim()) return false;
+    const month = host.getMonth();
+    const candidates = (['shareworks', 'merge'] as ExerciseView[]).filter((view) => view !== exerciseView);
+    for (const view of candidates) {
+      const total = await exerciseViewTotal(view, month);
+      if (total <= 0) continue;
+      exerciseView = view;
+      exercises = 1;
+      applyExerciseView();
+      deps.notify(`本月当前视图没有数据，已切换到「${exerciseViewLabel(view)}」（该视图 ${total} 条）`, {
+        type: 'info',
+      });
+      await renderExerciseRecords({ autoSelectView: false });
+      return true;
+    }
+    return false;
+  }
+
+  async function exerciseViewTotal(view: ExerciseView, month: string): Promise<number> {
+    const monthParam = `month=${encodeURIComponent(month)}&pageSize=1`;
+    const url =
+      view === 'shareworks'
+        ? `/api/exercises/shareworks?${monthParam}`
+        : view === 'merge'
+          ? `/api/exercises/merge?${monthParam}`
+          : `/api/exercises?${monthParam}`;
+    const data = await deps.api<{ total?: number }>(url);
+    return Number(data.total ?? 0);
+  }
+
+  /** When the chosen view is empty but another one has rows, say so instead of looking broken. */
+  async function grantEmptyHint(month: string): Promise<string> {
+    for (const view of (['shareworks', 'merge'] as GrantView[]).filter((item) => item !== grantView)) {
+      const total = await grantViewTotal(view, month);
+      if (total > 0) return `本月「${grantViewLabel(view)}」有 ${total} 条记录，切换上方视图即可查看`;
+    }
+    return '';
+  }
+
+  async function exerciseEmptyHint(month: string): Promise<string> {
+    for (const view of (['shareworks', 'merge'] as ExerciseView[]).filter((item) => item !== exerciseView)) {
+      const total = await exerciseViewTotal(view, month);
+      if (total > 0) return `本月「${exerciseViewLabel(view)}」有 ${total} 条记录，切换上方视图即可查看`;
+    }
+    return '';
+  }
+
+  async function grantViewTotal(view: GrantView, month: string): Promise<number> {
+    const monthParam = `month=${encodeURIComponent(month)}&pageSize=1`;
+    const url =
+      view === 'shareworks'
+        ? `/api/grants/shareworks?${monthParam}`
+        : view === 'merge'
+          ? `/api/grants/merge?${monthParam}`
+          : `/api/holdings?${monthParam}`;
+    const data = await deps.api<{ total?: number }>(url);
+    return Number(data.total ?? 0);
+  }
+
+  async function renderHoldings(month: string, options: { autoSelectView?: boolean } = {}) {
     const query = deps.el<HTMLInputElement>('searchHolder').value.trim();
     const tagId = deps.el<HTMLSelectElement>('filterHoldingsTag').value;
     const grantType = deps.el<HTMLSelectElement>('filterGrantType').value;
@@ -451,7 +542,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     }
     if (grantView === 'merge') {
       const data = await deps.api<PaginatedResult<MergedGrant>>(
-        `/api/grants/merge?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
+        `/api/grants/merge?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&month=${encodeURIComponent(month)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
       );
       deps.setPageSourceFiles('grant-record', data);
       const items = data.items ?? [];
@@ -472,7 +563,11 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     renderHoldingsPagination(data.page, data.totalPages, data.total);
     const tbody = deps.el('holdingsBody');
     if (items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="34" class="table-empty-cell">暂无符合条件的持仓记录</td></tr>';
+      // The month may still have a snapshot on another view; show that instead of an empty page.
+      // Only when the month drove the render: a user who picked an empty view stays there.
+      if (options.autoSelectView !== false && (await autoSelectGrantView(month, query, tagId))) return;
+      const hint = await grantEmptyHint(month);
+      tbody.innerHTML = `<tr><td colspan="34" class="table-empty-cell">暂无符合条件的持仓记录${hint ? `<div class="table-empty-hint">${hint}</div>` : ''}</td></tr>`;
       deps.localizeDom();
       return;
     }
@@ -519,7 +614,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
       .join('');
     deps.localizeDom();
   }
-  async function renderExerciseRecords() {
+  async function renderExerciseRecords(options: { autoSelectView?: boolean } = {}) {
     const query = deps.el<HTMLInputElement>('searchExercises').value.trim();
     const tagId = deps.el<HTMLSelectElement>('filterExerciseTag').value;
     if (exerciseView === 'shareworks') {
@@ -543,7 +638,9 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
 
     const tbody = deps.el('exerciseBody');
     if (items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="14" class="table-empty-cell">暂无符合条件的行权记录</td></tr>';
+      if (options.autoSelectView !== false && (await autoSelectExerciseView(query, tagId))) return;
+      const hint = await exerciseEmptyHint(host.getMonth());
+      tbody.innerHTML = `<tr><td colspan="14" class="table-empty-cell">暂无符合条件的行权记录${hint ? `<div class="table-empty-hint">${hint}</div>` : ''}</td></tr>`;
       deps.localizeDom();
       return;
     }
@@ -815,7 +912,8 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
         grantView = view;
         holdings = 1;
         applyGrantView();
-        void renderHoldings(host.getMonth());
+        // An explicitly chosen view stays put even when this month has nothing on it.
+        void renderHoldings(host.getMonth(), { autoSelectView: false });
       });
     });
     applyGrantView();
@@ -841,7 +939,8 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
         exerciseView = view;
         exercises = 1;
         applyExerciseView();
-        void renderExerciseRecords();
+        // An explicitly chosen view stays put even when this month has nothing on it.
+        void renderExerciseRecords({ autoSelectView: false });
       });
     });
     applyExerciseView();

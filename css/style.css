@@ -10638,3 +10638,11 @@ textarea.form-input {
 .gyre-tour-popover .driver-popover-arrow-side-bottom.driver-popover-arrow {
     border-color: var(--bg-card);
 }
+
+/* Second line inside an empty table cell: points at the view that does have rows. */
+.table-empty-hint {
+    margin-top: var(--space-1);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: 400;
+}

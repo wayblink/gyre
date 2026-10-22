@@ -581,6 +581,10 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
 
   app.get('/api/grants/merge', async (request) => {
     const { page, pageSize } = paginationQuerySchema.parse(request.query ?? {});
+    const requestedMonth = String((request.query as { month?: string }).month ?? '').trim();
+    if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
+      throw badRequest('Invalid month; expected YYYY-MM');
+    }
     const { query = '', tagId = '', tag = '' } = request.query as { query?: string; tagId?: string; tag?: string };
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedLabelId = Number(tagId);
@@ -590,12 +594,16 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       readLatestWorkflowDataFrameArtifact(db, {
         workflowCode: 'esop-grant-record-sync',
         taskId: 'persist_grant_record_futu_file',
+        alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
         fallbackSheetName: 'Futu Grants',
+        month: requestedMonth || null,
       }),
       readLatestWorkflowDataFrameArtifact(db, {
         workflowCode: 'esop-grant-record-sync',
         taskId: 'persist_grant_record_shareworks_file',
+        alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
         fallbackSheetName: 'Shareworks Grants',
+        month: requestedMonth || null,
       }),
       employeeLabelsByNumber(db),
     ]);
