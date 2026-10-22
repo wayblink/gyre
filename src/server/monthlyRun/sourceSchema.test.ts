@@ -23,7 +23,7 @@ test('monthly input sources render in the order the workflow definition declares
       'SERIES B Control Book',
       'Gyre Option Plans Summary',
       'Futu Exercises Summary',
-      'Futu Exercise Export',
+      'Futu Exercise Report',
       '2025 BC Subplan Transfer',
       // Previous Capitalization Summary sits between these two in `order` but stays hidden: the
       // system injects last month's output itself, so there is nothing for the operator to upload.
@@ -98,7 +98,7 @@ test('monthly Futu input sources are labelled for the monthly update flow', () =
   const byKey = new Map(sources.map((source) => [source.sourceKey, source.label]));
 
   assert.equal(byKey.get('base_futu_exercises'), 'Futu Exercises Summary');
-  assert.equal(byKey.get('incremental_futu_exercises'), 'Futu Exercise Export');
+  assert.equal(byKey.get('incremental_futu_exercises'), 'Futu Exercise Report');
 });
 
 test('monthly input sources distinguish required business files from optional inputs', () => {
