@@ -10496,65 +10496,88 @@ textarea.form-input {
 
 /* ============ 27. Product tours (driver.js) ============ */
 
-/* Entry list on the handbook page. Rendered from TOURS in tours.ts. */
-.tour-start-panel {
-    margin-bottom: var(--space-5);
-    padding: var(--space-5);
+/* Tour picker in the top bar. Entries are rendered from TOURS in tours.ts. */
+.top-bar__menu-anchor {
+    position: relative;
+    display: inline-flex;
+}
+
+.tour-menu {
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    right: 0;
+    z-index: var(--z-dropdown);
+    width: 288px;
+    padding: var(--space-2);
     border: 1px solid var(--border-default);
-    border-radius: var(--radius-xl);
-    background: var(--bg-card);
-    box-shadow: var(--shadow-xs);
+    border-radius: var(--radius-lg);
+    background: #ffffff;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.12), var(--shadow-sm);
 }
 
-.tour-start-panel__head h3 {
-    margin: 0 0 var(--space-1);
-    font-size: var(--text-lg);
-    font-weight: var(--font-semibold);
-    color: var(--text-primary);
-}
-
-.tour-start-panel__head p {
-    margin: 0 0 var(--space-4);
+.tour-menu__title {
+    padding: var(--space-1) var(--space-3) var(--space-2);
     color: var(--text-muted);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
 }
 
-.tour-start-panel__list {
+.tour-menu__divider {
+    height: 1px;
+    margin: var(--space-2) var(--space-2);
+    background: var(--border-default);
+}
+
+.tour-menu__item {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: var(--space-3);
-}
-
-.tour-start-card {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border-default);
+    grid-template-columns: 1fr auto;
+    gap: 2px var(--space-2);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
     border-radius: var(--radius-md);
-    background: var(--bg-card);
+    background: transparent;
     text-align: left;
     cursor: pointer;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.tour-start-card:hover,
-.tour-start-card:focus-visible {
-    border-color: var(--primary-400);
-    box-shadow: var(--shadow-sm);
-    transform: translateY(-1px);
+.tour-menu__item:hover,
+.tour-menu__item:focus-visible {
+    background: var(--slate-100);
 }
 
-.tour-start-card strong {
+.tour-menu__label {
+    color: var(--text-primary);
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
-    color: var(--text-primary);
 }
 
-.tour-start-card span {
-    font-size: var(--text-xs);
+.tour-menu__desc {
+    grid-column: 1 / -1;
     color: var(--text-muted);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+}
+
+.tour-menu__badge {
+    /* Row 1, right of the label: auto-placement would drop it under the description. */
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    padding: 0 6px;
+    border-radius: var(--radius-full);
+    background: var(--primary-50);
+    color: var(--primary-700);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    white-space: nowrap;
+}
+
+.tour-menu__item.is-current .tour-menu__label {
+    color: var(--primary-700);
 }
 
 /* driver.js ships its own palette; only override what makes it feel foreign. */

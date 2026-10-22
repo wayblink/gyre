@@ -36,6 +36,8 @@ export type TourStep = {
 
 export type TourDefinition = {
   id: TourId;
+  /** Short name of the sidebar entry this script belongs to; the picker lists them in that order. */
+  menuLabel?: TextKey<'tour'>;
   title: TextKey<'tour'>;
   description: TextKey<'tour'>;
   steps: TourStep[];

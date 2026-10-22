@@ -622,10 +622,6 @@ export const TEXTS = {
       'zh-CN': '功能引导',
       'en-US': 'Guided walkthroughs',
     },
-    panelIntro: {
-      'zh-CN': '点开任意一条，系统会带你按步骤过一遍对应页面。随时可以按 Esc 退出。',
-      'en-US': 'Pick one and the app walks you through that page step by step. Press Esc to leave at any time.',
-    },
     start: {
       'zh-CN': '开始',
       'en-US': 'Start',
@@ -1132,6 +1128,38 @@ export const TEXTS = {
       'zh-CN': '文件中心、工作流、用户管理只对管理员显示，用来传文件、改工作流和管账号。',
       'en-US':
         'Files, workflows and user management appear for admins only: upload files, edit workflows, manage accounts.',
+    },
+    navOverview: {
+      'zh-CN': '总览',
+      'en-US': 'Overview',
+    },
+    navCaptable: {
+      'zh-CN': '股权汇总',
+      'en-US': 'Equity summary',
+    },
+    navMonthly: {
+      'zh-CN': '月度更新',
+      'en-US': 'Monthly update',
+    },
+    navEsop: {
+      'zh-CN': 'ESOP 明细',
+      'en-US': 'ESOP detail',
+    },
+    navEmployees: {
+      'zh-CN': '员工管理',
+      'en-US': 'Employees',
+    },
+    navPlan: {
+      'zh-CN': '计划汇总',
+      'en-US': 'Plan summary',
+    },
+    navHolders: {
+      'zh-CN': '5% 股东',
+      'en-US': '5% holders',
+    },
+    currentPage: {
+      'zh-CN': '当前页',
+      'en-US': 'This page',
     },
   },
 };

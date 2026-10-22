@@ -69,6 +69,7 @@ function recordPageTour(params: {
 export const TOURS: TourDefinition[] = [
   {
     id: 'overview',
+    menuLabel: 'navOverview',
     title: 'overviewTitle',
     description: 'overviewDescription',
     // An overview walks the navigation, not the widgets: one step per module, each pointing at its
@@ -107,6 +108,7 @@ export const TOURS: TourDefinition[] = [
   },
   {
     id: 'captable',
+    menuLabel: 'navCaptable',
     title: 'captableTitle',
     description: 'captableDescription',
     steps: [
@@ -139,6 +141,7 @@ export const TOURS: TourDefinition[] = [
   },
   {
     id: 'monthlyrun',
+    menuLabel: 'navMonthly',
     title: 'monthlyTitle',
     description: 'monthlyDescription',
     steps: [
@@ -233,6 +236,7 @@ export const TOURS: TourDefinition[] = [
   },
   {
     id: 'record-pages',
+    menuLabel: 'navEsop',
     title: 'recordsTitle',
     description: 'recordsDescription',
     steps: [
@@ -266,6 +270,7 @@ export const TOURS: TourDefinition[] = [
   },
   {
     id: 'employee-management',
+    menuLabel: 'navEmployees',
     title: 'employeesTitle',
     description: 'employeesDescription',
     steps: [
@@ -305,6 +310,7 @@ export const TOURS: TourDefinition[] = [
   },
   {
     id: 'plan-summary',
+    menuLabel: 'navPlan',
     title: 'planSummaryTitle',
     description: 'planSummaryDescription',
     steps: [
@@ -341,6 +347,7 @@ export const TOURS: TourDefinition[] = [
   },
   {
     id: 'five-percent-holders',
+    menuLabel: 'navHolders',
     title: 'holdersTitle',
     description: 'holdersDescription',
     steps: [

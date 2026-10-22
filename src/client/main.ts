@@ -35,7 +35,7 @@ import { createWorkflowPage } from './workflowPage.js';
 import { createDocsPage } from './docsPage.js';
 import type { TourDefinition } from './tour.js';
 import { createTourRunner } from './tourRunner.js';
-import { TOURS, tourById, tourForPage, tourStepsForPage } from './tours.js';
+import { TOURS, tourById, tourForPage } from './tours.js';
 import {
   resolveDefaultSummaryMonth,
   sortAvailableMonths,
@@ -804,7 +804,6 @@ function setLanguage(language: AppLanguage) {
   persistLanguage(language);
   applyLanguage();
   docsPage.render();
-  renderTourEntryPoints();
   filesPage.applyLanguage?.();
   workflowPage.applyLanguage?.();
   monthlyRunPage.applyLanguage?.();
@@ -2256,30 +2255,45 @@ function initLinkModal() {
 }
 
 /**
- * Passive walkthroughs: nothing auto-starts. The top-bar "?" plays the tour for the current page and
- * the handbook page lists all of them. Wiring lives here because starting a tour needs the router.
+ * Passive walkthroughs: nothing auto-starts. The top-bar question mark opens a picker whose entries
+ * follow the sidebar, so the reader can jump straight to the module they care about.
  */
-function renderTourEntryPoints() {
+function renderTourPicker() {
   const button = document.getElementById('btnStartTour');
   const label = tourTexts('topbarLabel', currentLanguage);
   if (button) {
     button.setAttribute('title', label);
     button.setAttribute('aria-label', label);
   }
-  const panelTitle = document.getElementById('tourStartPanelTitle');
-  if (panelTitle) panelTitle.textContent = tourTexts('panelTitle', currentLanguage);
-  const panelIntro = document.getElementById('tourStartPanelIntro');
-  if (panelIntro) panelIntro.textContent = tourTexts('panelIntro', currentLanguage);
 
-  // Rendered from TOURS so the handbook list can never drift from the definitions.
-  const list = document.getElementById('tourStartList');
-  if (!list) return;
-  list.innerHTML = TOURS.map(
-    (tour) => `<button class="tour-start-card" type="button" data-tour-start="${escapeHtml(tour.id)}">
-        <strong>${escapeHtml(tourTexts(tour.title, currentLanguage))}</strong>
-        <span>${escapeHtml(tourTexts(tour.description, currentLanguage))}</span>
-      </button>`,
-  ).join('');
+  const menu = document.getElementById('tourMenu');
+  if (!menu) return;
+  const currentTourId = tourForPage(getPageFromLocation())?.id ?? '';
+  const items = TOURS.map((tour, index) => {
+    const area = tour.menuLabel ? tourTexts(tour.menuLabel, currentLanguage) : '';
+    const isCurrent = tour.id === currentTourId;
+    // The overview is not a sidebar module, so the list of modules starts after a divider.
+    const divider = index === 1 ? '<div class="tour-menu__divider"></div>' : '';
+    return `${divider}<button class="tour-menu__item${isCurrent ? ' is-current' : ''}" type="button" role="menuitem" data-tour-start="${escapeHtml(tour.id)}">
+        <span class="tour-menu__label">${escapeHtml(area)}</span>
+        <span class="tour-menu__desc">${escapeHtml(tourTexts(tour.description, currentLanguage))}</span>
+        ${isCurrent ? `<span class="tour-menu__badge">${escapeHtml(tourTexts('currentPage', currentLanguage))}</span>` : ''}
+      </button>`;
+  }).join('');
+  menu.innerHTML = `<div class="tour-menu__title">${escapeHtml(tourTexts('panelTitle', currentLanguage))}</div>${items}`;
+}
+
+function closeTourPicker() {
+  document.getElementById('tourMenu')?.classList.add('hidden');
+  document.getElementById('btnStartTour')?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleTourPicker() {
+  const menu = document.getElementById('tourMenu');
+  if (!menu) return;
+  const opening = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !opening);
+  document.getElementById('btnStartTour')?.setAttribute('aria-expanded', String(opening));
 }
 
 function initTours() {
@@ -2291,29 +2305,41 @@ function initTours() {
     user: () => el('currentUserAvatar')?.textContent?.trim() || 'anonymous',
   });
 
-  /**
-   * `scopeToPage` is set by the top-bar button: a page's "?" should walk that page, not drag the user
-   * through the other pages the same script also covers (the record pages share one script).
-   */
-  const start = async (tour: TourDefinition | null, scopeToPage: boolean) => {
+  const start = async (tour: TourDefinition | null) => {
+    closeTourPicker();
     if (!tour) {
       notify(tourTexts('unavailable', currentLanguage), { type: 'warning' });
       return;
     }
-    const steps = scopeToPage ? tourStepsForPage(tour, getPageFromLocation()) : tour.steps;
-    const shown = await runner.start({ ...tour, steps });
+    const shown = await runner.start(tour);
     // Every target was missing (empty month, version banner instead of the table): say so rather
     // than leaving the user staring at an unchanged page wondering if the button worked.
     if (!shown) notify(tourTexts('unavailable', currentLanguage), { type: 'warning' });
   };
 
-  renderTourEntryPoints();
-  el('btnStartTour').addEventListener('click', () => void start(tourForPage(getPageFromLocation()), true));
+  renderTourPicker();
+  el('btnStartTour').addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleTourPicker();
+  });
 
-  // Delegated: the list is re-rendered when the language changes.
-  document.getElementById('tourStartList')?.addEventListener('click', (event) => {
-    const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-tour-start]');
-    if (button) void start(tourById(button.dataset.tourStart ?? ''), false);
+  // Delegated: the menu is re-rendered when the language changes.
+  document.getElementById('tourMenu')?.addEventListener('click', (event) => {
+    const item = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-tour-start]');
+    if (!item) return;
+    event.stopPropagation();
+    void start(tourById(item.dataset.tourStart ?? ''));
+  });
+
+  document.addEventListener('click', (event) => {
+    const target = event.target as Node | null;
+    if (!target) return;
+    if (document.getElementById('tourMenu')?.contains(target)) return;
+    if (document.getElementById('btnStartTour')?.contains(target)) return;
+    closeTourPicker();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeTourPicker();
   });
 }
 
