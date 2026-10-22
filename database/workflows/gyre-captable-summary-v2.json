@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 41,
+  "version": 42,
   "tasks": [
     {
       "x": 48,
@@ -1227,7 +1227,7 @@
               "label": "Sheet"
             }
           },
-          "description": "2025 BC Subplan 的 transfer / vesting 明细，用于在校验环节补齐 Option Plans Summary 未反映的取消数；可取自 Cap Table 的同名 sheet。",
+          "description": "2025 BC Subplan 的 transfer / vesting 明细，用于在校验环节补齐 Option Plans Summary 未反映的取消数；可取自 Cap Table 的同名 sheet。如果没有会跳过校验，不影响计算流程。",
           "fileTemplate": "!!Gyre Cap Table MM.DD.YY.xlsx（工作表 2025 BC Subplan Transfer）"
         },
         "option_plans_summary": {
