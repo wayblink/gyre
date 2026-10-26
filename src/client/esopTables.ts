@@ -122,6 +122,22 @@ export function formatCurrency(value: number, currency: 'USD' | 'CNY' = 'USD') {
   return `${symbol}${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * The message shown when a month has no rows in the current view and the page picks one that does.
+ *
+ * It names the table on purpose: the notice used to be a global toast, so two record pages announcing
+ * the switch at the same time produced two identical-looking messages with no way to tell which table
+ * each one was about.
+ */
+export function describeViewAutoSwitch(input: {
+  tableLabel: string;
+  fromLabel: string;
+  toLabel: string;
+  rowCount: number;
+}): string {
+  return `本月「${input.tableLabel}」没有「${input.fromLabel}」数据，已显示「${input.toLabel}」（${input.rowCount} 条）。`;
+}
+
 export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): EsopTables {
   const { el } = deps;
   const read = createTexts('main');
@@ -440,6 +456,29 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
   }
 
   /**
+   * The view switch is a persistent state change, so it is announced in place (above the table, with a
+   * one-click way back) rather than through a toast that outlives nothing and explains nothing.
+   */
+  function showViewNotice(
+    elementId: string,
+    message: string,
+    back: { backView: GrantView | ExerciseView; backLabel: string },
+  ): void {
+    const node = deps.el(elementId);
+    node.innerHTML =
+      `<span class="view-auto-switch__text">${deps.escapeHtml(message)}</span>` +
+      `<button type="button" class="view-auto-switch__back" data-view-notice-back="${deps.escapeHtml(back.backView)}">回到 ${deps.escapeHtml(back.backLabel)}</button>`;
+    node.classList.remove('hidden');
+    deps.localizeDom();
+  }
+
+  function hideViewNotice(elementId: string): void {
+    const node = deps.el(elementId);
+    node.innerHTML = '';
+    node.classList.add('hidden');
+  }
+
+  /**
    * A month's snapshot can exist in one view only — the Futu export and the Shareworks export are
    * different files. The month picker marks such a month as having data, so an empty default view
    * reads as a broken page; switch to a view that has rows and say why.
@@ -452,11 +491,21 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     for (const view of candidates) {
       const total = await grantViewTotal(view, month);
       if (total <= 0) continue;
+      const previousView = grantView;
       grantView = view;
       holdings = 1;
       applyGrantView();
-      deps.notify(`本月当前视图没有数据，已切换到「${grantViewLabel(view)}」（该视图 ${total} 条）`, { type: 'info' });
       await renderHoldings(month, { autoSelectView: false });
+      showViewNotice(
+        'grantViewNotice',
+        describeViewAutoSwitch({
+          tableLabel: '授予记录',
+          fromLabel: grantViewLabel(previousView),
+          toLabel: grantViewLabel(view),
+          rowCount: total,
+        }),
+        { backView: previousView, backLabel: grantViewLabel(previousView) },
+      );
       return true;
     }
     return false;
@@ -469,13 +518,21 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     for (const view of candidates) {
       const total = await exerciseViewTotal(view, month);
       if (total <= 0) continue;
+      const previousView = exerciseView;
       exerciseView = view;
       exercises = 1;
       applyExerciseView();
-      deps.notify(`本月当前视图没有数据，已切换到「${exerciseViewLabel(view)}」（该视图 ${total} 条）`, {
-        type: 'info',
-      });
       await renderExerciseRecords({ autoSelectView: false });
+      showViewNotice(
+        'exerciseViewNotice',
+        describeViewAutoSwitch({
+          tableLabel: '行权记录',
+          fromLabel: exerciseViewLabel(previousView),
+          toLabel: exerciseViewLabel(view),
+          rowCount: total,
+        }),
+        { backView: previousView, backLabel: exerciseViewLabel(previousView) },
+      );
       return true;
     }
     return false;
@@ -523,6 +580,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
   }
 
   async function renderHoldings(month: string, options: { autoSelectView?: boolean } = {}) {
+    if (options.autoSelectView !== false) hideViewNotice('grantViewNotice');
     const query = deps.el<HTMLInputElement>('searchHolder').value.trim();
     const tagId = deps.el<HTMLSelectElement>('filterHoldingsTag').value;
     const grantType = deps.el<HTMLSelectElement>('filterGrantType').value;
@@ -615,6 +673,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     deps.localizeDom();
   }
   async function renderExerciseRecords(options: { autoSelectView?: boolean } = {}) {
+    if (options.autoSelectView !== false) hideViewNotice('exerciseViewNotice');
     const query = deps.el<HTMLInputElement>('searchExercises').value.trim();
     const tagId = deps.el<HTMLSelectElement>('filterExerciseTag').value;
     if (exerciseView === 'shareworks') {
@@ -912,11 +971,23 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
         grantView = view;
         holdings = 1;
         applyGrantView();
+        hideViewNotice('grantViewNotice');
         // An explicitly chosen view stays put even when this month has nothing on it.
         void renderHoldings(host.getMonth(), { autoSelectView: false });
       });
     });
     applyGrantView();
+
+    deps.el('grantViewNotice').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement | null)?.closest('[data-view-notice-back]') as HTMLElement | null;
+      if (!button) return;
+      const view = (button.dataset.viewNoticeBack ?? 'futu') as GrantView;
+      grantView = view;
+      holdings = 1;
+      applyGrantView();
+      hideViewNotice('grantViewNotice');
+      void renderHoldings(host.getMonth(), { autoSelectView: false });
+    });
 
     // Exercise record views + search + pagination.
     el('btnSearchExercises').addEventListener('click', searchExercises);
@@ -939,11 +1010,23 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
         exerciseView = view;
         exercises = 1;
         applyExerciseView();
+        hideViewNotice('exerciseViewNotice');
         // An explicitly chosen view stays put even when this month has nothing on it.
         void renderExerciseRecords({ autoSelectView: false });
       });
     });
     applyExerciseView();
+
+    deps.el('exerciseViewNotice').addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement | null)?.closest('[data-view-notice-back]') as HTMLElement | null;
+      if (!button) return;
+      const view = (button.dataset.viewNoticeBack ?? 'futu') as ExerciseView;
+      exerciseView = view;
+      exercises = 1;
+      applyExerciseView();
+      hideViewNotice('exerciseViewNotice');
+      void renderExerciseRecords({ autoSelectView: false });
+    });
 
     // Sold shares + search + pagination.
     el('btnSearchCancellations').addEventListener('click', searchCancellations);

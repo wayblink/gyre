@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 44,
+  "version": 45,
   "tasks": [
     {
       "x": 48,
@@ -234,7 +234,7 @@
               "name": "Warn EQ Control Book Comment Spelling Variants",
               "type": "dataframe.sql.assert",
               "params": {
-                "sql": "select case\n  when (select count(*) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not ([Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.'))) = 0 then '0 行'\n  else concat('影响 ', (select count(*) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not ([Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.'))), ' 行 / ', (select sum([Shares Issued]) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not ([Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.'))), ' 股，Comment 拼写为：', '\n', (select group_concat(distinct [Comment] separator '\n') from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not ([Comment] in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.'))))\nend as comment_variant_hint",
+                "sql": "select case\n  when (select count(*) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')) = 0 then '0 行'\n  else concat('影响 ', (select count(*) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')), ' 行 / ', (select sum([Shares Issued]) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')), ' 股，Comment 拼写为：', '\n', (select group_concat(distinct [Comment] separator '\n') from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')))\nend as comment_variant_hint",
                 "tableBindings": [
                   {
                     "inputSlot": "control_book",
@@ -244,7 +244,7 @@
                 "operator": "=",
                 "expectedValue": "0 行",
                 "failureStrategy": "warning",
-                "failureMessage": "EQ Control Book 的 Comment 列发现 Omnibus 拼写变体（少字母、大小写或标点差异）。\n这些行已按模糊匹配计入 2025 BC Subplan shares transferred to Futu，本次汇总数值不受影响、无需重算。\n建议在源数据（Shareworks 控制账簿导出）中把 Comment 改成规范写法 \"Omnibus Inc. Pl\"，否则以后每个月都会在此停下确认。"
+                "failureMessage": "EQ Control Book 的 Comment 列发现与规范写法不一致的 Omnibus 拼写（例如 Ominibus）。\n这些行已按模糊匹配计入 2025 BC Subplan shares transferred to Futu，本次汇总数值不受影响、无需重算。\n建议在源数据（Shareworks 控制账簿导出）中把 Comment 改成规范写法 \"Omnibus Inc. Pl\"，否则以后每个月都会在此停下确认。\n（空格、标点与大小写差异视为格式差异，不算拼写变体：Omnibus Inc.Pl. 等写法会被直接接受。）"
               },
               "enabled": true
             }
@@ -268,7 +268,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "从合并后的 EQ Control Book 汇总当月指标：EOM / Last Month 余额与 2025 BC Subplan transfer 均按 As of Date 截断到 workflow 月份（同一份完整 Control Book 可回算任意历史月份）；Cullgen 合并股数与 Gyre 2023 China SubPlan 总数为全表口径，用于与 Global Parameter 交叉校验。 Comment 的 BC Subplan 匹配已放宽为模糊匹配（容忍空格/标点/大小写差异与 Omnibus/Ominibus 两种拼写），并对非规范拼写给出 warning 提示而不阻断。",
+      "description": "从合并后的 EQ Control Book 汇总当月指标：EOM / Last Month 余额与 2025 BC Subplan transfer 均按 As of Date 截断到 workflow 月份（同一份完整 Control Book 可回算任意历史月份）；Cullgen 合并股数与 Gyre 2023 China SubPlan 总数为全表口径，用于与 Global Parameter 交叉校验。 Comment 的 BC Subplan 匹配已放宽为模糊匹配（容忍空格/标点/大小写差异与 Omnibus/Ominibus 两种拼写），并对拼写本身不一致（如 Ominibus）的 Comment 给出 warning 提示而不阻断；仅空格、标点、大小写不同的写法（如 Omnibus Inc.Pl.）视为合法输入，不触发复核。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },

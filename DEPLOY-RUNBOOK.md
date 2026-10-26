@@ -518,6 +518,7 @@ done
 - [ ] `GET /api/months` 的标记里含 `hasGrantData` 在内的六个 `has*Data`（6.3）
 - [ ] 八个记录页接口带 `?month=` 都返回 2xx（6.3）
 - [ ] `GET /api/files` 未登录返回 401
+- [ ] 月度工作流版本为 45，`Comment` 为 `Omnibus Inc.Pl.` 的运行不再停在复核（见 8.3）
 - [ ] 「需复核」的运行历史行，「删除」按钮可用，点删除后该行消失、对应 workflow run 变成 `skipped`（见 8.1）
 - [ ] 停在「需复核」时，该行内部有「复核并继续 / 跳过后续」；点一下面板自己走到 23 / 23，全程无需刷新（见 8.2）
 - [ ] 「月度更新」页无版本不匹配提示；输入表格 13 行；文件名模板图标只在需上传的行出现（6.4）
@@ -565,6 +566,29 @@ done
 **因此不需要让用户刷新**：面板不会提示「请刷新」或提供刷新按钮，它自己会追到 `23 / 23`。
 
 **排查线上的同类残留**：`select r.id, r.status, (select count(*) from workflow_run_approvals a where a.run_id = r.id and a.status = 'pending') pending from workflow_runs r where r.status = 'waiting_approval' and pending = 0;` 命中的是旧的「停住但无 pending」坏 run，直接 `POST /api/workflow-runs/:id/retry-unfinished` 就能让它跑完（本轮实测 run 232 由 `waiting_approval` → `completed`，23/23）。
+
+---
+
+## 8.3 月度工作流 v45：`Omnibus Inc.Pl.` 等写法视为合法输入
+
+**现象**：Control Book 的 `Comment` 写成 `Omnibus Inc.Pl.`（`Pl` 前少一个空格）时，月度运行仍停在 `calc_control_book_metrics` 要人复核，提示「发现 Omnibus 拼写变体」。
+
+**根因**：该守卫（`guard_warn_control_book_comment_variants`，定义在 DB 工作流里）原先用**精确字符串白名单** `in ('Omnibus Inc. Pl', 'Omnibus Inc. Pl.')`，所以任何空格/标点差异都被当成拼写错误。
+
+**改法（工作流定义，v44 → v45）**：判定改为「规范化后比较」——`lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.'`，即大小写、空格、点号差异一律视为格式差异，直接接受；只有单词本身不同（例如 `Ominibus`）才触发复核。同时更新了 failureMessage 与任务描述，说明这一口径。
+
+> 注意：工作流引擎的 SQL 只允许只读查询，`replace()` 被列入禁用关键字（会被当成写语句），所以这里用 `like` 而不是字符串替换。
+
+**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version` = 45、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version` = 45、前端 `MONTHLY_WORKFLOW_VERSION` = 45。三者不一致时月度页会报版本不匹配并拒绝执行。
+
+**验收**：
+
+```sql
+-- 应为 45
+select code, version from workflow_definitions where code = 'gyre-captable-summary-v2';
+```
+
+执行一个月度运行，Control Book 里 `Comment` 为 `Omnibus Inc.Pl.` 的行**不应**再让运行停在复核；而 `Ominibus Inc. Pl` 这类真拼写差异仍会停下（`src/server/workflow/monthlyCommentVariant.test.ts` 覆盖了这两个方向）。
 
 ---
 

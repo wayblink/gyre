@@ -9957,6 +9957,42 @@ textarea.form-input {
     display: none;
 }
 
+/* In-place announcement of an automatic view switch (records pages). It replaces the toast that used
+   to announce a persistent state change with a message that vanished after a few seconds. */
+.view-auto-switch {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--info-200, #bae6fd);
+    border-radius: var(--radius-lg);
+    background: var(--info-50, #f0f9ff);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+.view-auto-switch__text {
+    flex: 1 1 320px;
+    color: var(--text-primary);
+}
+
+.view-auto-switch__back {
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--primary-700);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.view-auto-switch__back:hover {
+    text-decoration: underline;
+}
+
 .monthly-run-source-trigger {
     min-width: 220px;
     justify-content: space-between;
