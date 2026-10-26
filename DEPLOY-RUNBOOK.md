@@ -287,7 +287,7 @@ psql "$DATABASE_URL" -f /tmp/publish.sql
 | 引擎 | `runtimeParameters.ts`：`fileRefs.<源>` 的**文件身份**（`provider` / `key` / `id`）只认调用方传的值，`sheet` 等非身份字段仍可从默认值继承，`{}` 明确表示「没有文件」。此前是深合并，父流程传「未配置」也会被子流程默认值里的历史文件补回来                                        |
 | 引擎 | `sqlUtils.ts`：`sql.compute` 在输入 0 行且语句是 `select * from <表>` 时，用来源表的 columns 作为输出列契约；此前 0 行会让结果丢光列，下游 schema 守卫直接 block                                                                                                                  |
 | 种子 | 6 个工作流删掉 `runtimeParamsDefaults.fileRefs.*` 里的历史文件身份（`read-series-b`、`futu-exercises-incremental-merge`、`gyre-therapeutics-cancel-restore-incremental-merge`、`plan-summary-sync`、`gyre-captable-summary-v2`、`eq-control-book-incremental-merge`），只留 sheet |
-| 前端 | `MONTHLY_WORKFLOW_VERSION` 43 → **44**，与月度定义版本锁死                                                                                                                                                                                                                        |
+| 前端 | `MONTHLY_WORKFLOW_VERSION` 43 → **44**，与月度定义版本锁死；运行历史里「需复核」（`waiting_approval`）的行现在可以删除（此前按钮被禁用），只有真正在执行的 `running` / `pending` 仍然锁住（见 8.1）                                                                               |
 | 测试 | 新增 `workflowSeedDefaults.test.ts`（种子默认值不得带可选源的文件身份、不得指向 `input/YYYY-MM/`）；新增 `operators/sqlUtils.test.ts`（空结果保列能力）                                                                                                                           |
 
 **已存在的 `workflow_runs` 不受影响**：它们各自快照了 `tasks_snapshot_json`，并通过 `version_id` 指向旧版本行。
@@ -518,6 +518,7 @@ done
 - [ ] `GET /api/months` 的标记里含 `hasGrantData` 在内的六个 `has*Data`（6.3）
 - [ ] 八个记录页接口带 `?month=` 都返回 2xx（6.3）
 - [ ] `GET /api/files` 未登录返回 401
+- [ ] 「需复核」的运行历史行，「删除」按钮可用，点删除后该行消失、对应 workflow run 变成 `skipped`（见 8.1）
 - [ ] 「月度更新」页无版本不匹配提示；输入表格 13 行；文件名模板图标只在需上传的行出现（6.4）
 - [ ] 四个记录页都有「月份」选择器，无快照月份显示空提示；单侧有数据时自动换视图并提示（6.4）
 - [ ] 顶栏「?」能打开引导下拉，条目按左侧导航分组，「当前页」标记跟随当前路由
@@ -538,7 +539,7 @@ done
 
 真正还在执行的（`running` / `pending`）仍然拒绝，但提示改成了可操作的文案。
 
-**操作**：直接点删除即可，无需先点继续/跳过。删除后该次运行在运行历史里消失，工作流 run 以 `skipped` 收尾。
+**操作**：直接点「删除」，无需先点继续/跳过。本轮之前这个按钮在「需复核」行上是**禁用**的（`canDelete` 把 `waiting_approval` 也算作不可删），所以记录会一直卡着；现在只有 `running` / `pending` 锁住，需复核行可删，确认框会额外提示「删除会直接结束这次运行（未完成的步骤标记为跳过），不会产出结果」。删除后该次运行在运行历史里消失，工作流 run 以 `skipped` 收尾。
 
 **若仍然 409**：说明这条记录确实是 `running`。去工作流运行面板找到对应 run，点取消，等状态变成终态后再删。
 
@@ -553,6 +554,7 @@ done
 - 引擎：`fix(workflow): keep the source columns of an empty select * result`（`sqlUtils.ts`）
 - 种子：`fix(workflows): stop pinning historical files in runtime defaults`（6 个定义 + 版本号）
 - 前端：`fix(monthly): pin the monthly workflow version to v44`
+- 前端：`feat(monthly): let a run parked for review be deleted`（`waiting_approval` 行不再禁用删除）
 - 测试：`test(workflow): guard seeds against pinned files and empty-result columns`
 
 完整的 `git log cb7bb44..HEAD` 为准；更早的提交属于上一轮已上线的代码。

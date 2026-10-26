@@ -13,6 +13,7 @@ import {
   getMonthlyRunSourceSheetControlModel,
   getMonthlyRunVisibleSources,
   getMonthlyRunWarningTaskIds,
+  isMonthlyRunHistoryDeletable,
   isRunPanelStaleForMonth,
   monthlyRunSourceFolders,
   monthlyWorkflowVersionMismatch,
@@ -784,4 +785,17 @@ test('every monthly input has an English purpose, so the English UI never falls 
     (sourceKey) => !sourcePurposeEnglish[sourceKey]?.trim(),
   );
   assert.deepEqual(missing, []);
+});
+
+test('a run parked waiting for review is deletable; only a genuinely executing run is locked', () => {
+  // The server ends a `waiting_approval` run (cancelRun -> skipped) before deleting it, and the
+  // operator asking to delete a "需复核" row means "throw this away" — greying the button out left
+  // those rows stranded, because the only other endings (继续/跳过) advance the workflow.
+  assert.equal(isMonthlyRunHistoryDeletable('waiting_approval'), true);
+  assert.equal(isMonthlyRunHistoryDeletable('completed'), true);
+  assert.equal(isMonthlyRunHistoryDeletable('completed_with_warnings'), true);
+  assert.equal(isMonthlyRunHistoryDeletable('failed'), true);
+  assert.equal(isMonthlyRunHistoryDeletable('skipped'), true);
+  assert.equal(isMonthlyRunHistoryDeletable('running'), false);
+  assert.equal(isMonthlyRunHistoryDeletable('pending'), false);
 });

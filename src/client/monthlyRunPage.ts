@@ -516,6 +516,19 @@ export function getMonthlyRunVisibleSources<T extends Pick<MonthlyRunSourceDefin
  * belongs to a different month than the selected one, so it must be dropped rather than left on
  * screen next to another month's (possibly empty) run history.
  */
+/**
+ * Whether the run-history row offers a delete action.
+ *
+ * `waiting_approval` is deletable on purpose: such a run is parked mid-flight waiting for a human
+ * decision, and the operator's two other endings (继续 / 跳过) both advance the workflow and write
+ * the month's output. Asking to delete one means "throw this away", and the server honours that by
+ * cancelling the run (`cancelRun` → `skipped`) before it removes the row. Only a run that is really
+ * executing must stay locked, because deleting it out from under the executor leaves an orphan.
+ */
+export function isMonthlyRunHistoryDeletable(status: string): boolean {
+  return status !== 'pending' && status !== 'running';
+}
+
 export function isRunPanelStaleForMonth(activeRunMonth: string | null, selectedMonth: string): boolean {
   if (!activeRunMonth) return false;
   return activeRunMonth !== selectedMonth;
@@ -1791,7 +1804,7 @@ export function createMonthlyRunPage({
     }
     body.innerHTML = items
       .map((item) => {
-        const canDelete = !['pending', 'running', 'waiting_approval'].includes(item.status);
+        const canDelete = isMonthlyRunHistoryDeletable(item.status);
         const inputSummary = item.inputFiles.length
           ? `${escapeHtml(item.inputFiles.filter((input) => input.fileId || input.fileName).length.toString())}/${escapeHtml(item.inputFiles.length.toString())} ${escapeHtml(tt('fileCount'))}`
           : '-';
@@ -1852,11 +1865,12 @@ export function createMonthlyRunPage({
         const historyId = Number(button.dataset.historyDelete);
         if (!historyId) return;
         const history = items.find((item) => item.id === historyId);
+        const approvalNotice = history?.status === 'waiting_approval' ? `\n${tt('deleteWaitingApprovalNotice')}` : '';
         const outputNotice = history?.producedFileName
           ? `\n${tt('outputDeleteNotice')} “${history.producedFileName}” ${tt('outputDeleteNoticeSuffix')}`
           : '';
         if (
-          !(await confirmAction(`${tt('deleteHistoryConfirm')}${outputNotice}`, {
+          !(await confirmAction(`${tt('deleteHistoryConfirm')}${approvalNotice}${outputNotice}`, {
             title: tt('deleteHistoryTitle'),
             confirmText: tt('delete'),
             tone: 'danger',

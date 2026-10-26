@@ -458,8 +458,13 @@ export const TEXTS = {
     historyLoadFailed: { 'zh-CN': '加载历史执行记录失败', 'en-US': 'Failed to load historical run' },
     runHistory: { 'zh-CN': '运行历史', 'en-US': 'Run history' },
     cannotDeleteRunning: {
-      'zh-CN': '运行中或待审批的记录不能删除',
-      'en-US': 'Running or approval-pending records cannot be deleted',
+      'zh-CN': '正在执行的记录不能删除，请等它结束',
+      'en-US': 'A run that is still executing cannot be deleted; wait for it to finish',
+    },
+    deleteWaitingApprovalNotice: {
+      'zh-CN': '该记录正在等待复核：删除会直接结束这次运行（未完成的步骤标记为跳过），不会产出结果。',
+      'en-US':
+        'This run is waiting for review: deleting it ends the run immediately (unfinished steps are marked skipped) and produces no output.',
     },
     deleteHistoryTitle: { 'zh-CN': '删除运行历史及输出文件', 'en-US': 'Delete run history and output file' },
     deleteHistoryConfirm: { 'zh-CN': '确定删除这条运行历史吗？', 'en-US': 'Delete this run history?' },
