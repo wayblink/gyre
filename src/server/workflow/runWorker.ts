@@ -82,12 +82,15 @@ export class WorkflowStepWorker {
               startedAt,
             });
             await this.store.requestApproval(runId, task, errorMessage);
-            await this.store.updateRunStatus({
+            // Park conditionally: the operator can approve while this step is still finishing, and an
+            // unconditional write then parked a run that nothing would ever resume — the approval had
+            // already been consumed and no execution was queued. If it was decided, do not pause: the
+            // run simply continues with the decision in hand.
+            const parked = await this.store.parkRunForApproval(
               runId,
-              status: 'waiting_approval',
-              result: workflowRunToExecutionResult(await this.store.getRun(runId)),
-              errorMessage: null,
-            });
+              workflowRunToExecutionResult(await this.store.getRun(runId)),
+            );
+            if (!parked) return { state: 'warning', paused: false };
             await this.store.createRunFinishedEvent(runId, 'waiting_approval', {
               waitingForApprovalTaskIds: [task.id],
             });

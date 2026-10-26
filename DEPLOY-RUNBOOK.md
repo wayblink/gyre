@@ -519,7 +519,7 @@ done
 - [ ] 八个记录页接口带 `?month=` 都返回 2xx（6.3）
 - [ ] `GET /api/files` 未登录返回 401
 - [ ] 「需复核」的运行历史行，「删除」按钮可用，点删除后该行消失、对应 workflow run 变成 `skipped`（见 8.1）
-- [ ] 停在「需复核」时，该行内部有「复核并继续 / 跳过后续」，点一下能继续（见 8.2）
+- [ ] 停在「需复核」时，该行内部有「复核并继续 / 跳过后续」；点一下面板自己走到 23 / 23，全程无需刷新（见 8.2）
 - [ ] 「月度更新」页无版本不匹配提示；输入表格 13 行；文件名模板图标只在需上传的行出现（6.4）
 - [ ] 四个记录页都有「月份」选择器，无快照月份显示空提示；单侧有数据时自动换视图并提示（6.4）
 - [ ] 顶栏「?」能打开引导下拉，条目按左侧导航分组，「当前页」标记跟随当前路由
@@ -546,17 +546,25 @@ done
 
 ---
 
-## 8.2 月度运行面板的复核入口（没看到「继续」按钮 / 点了没反应）
+## 8.2 复核后工作流停住（「复核并继续」点了没反应、刷新页面才看到已完成）
 
-**现象**：某个节点停在「需复核」，但面板上看不到 Continue；或者看得到、点了没动静。
+**现象**：某节点停在「需复核」，点「复核并继续」后界面不动，一直停在 `12 / 23 需复核`；手动刷新页面后，这次运行其实早就 `completed` 了。
 
-**原因一：按钮在面板最底部**。月度工作流 23 个节点，运行面板是一个长列表，「继续 / 跳过」原本固定在列表末尾，要滚到底才看得到。现在**待复核的那一行内部**也会渲染「复核并继续 / 跳过后续」，两个入口等价。
+**根因是两个服务端竞态，不是界面刷新问题**：
 
-**原因二：上一次运行的收尾还没结束**。轮询拿到 `waiting_approval` 时面板立刻渲染出来，但 `triggerMonthlyRun` 还要刷文件、刷历史、刷计划状态，这期间 `isRunning` 仍为 true，旧代码在这段时间里把点击**静默丢掉**，看上去就是「按钮没效果」。现在这段时间按钮是 `disabled`，并显示「正在收尾上一步，请稍候再复核…」，收尾完成后自动变回可点。
+1. **派发丢弃**。`InProcessWorkflowRunDispatcher.enqueue` 在 run 已激活时直接 `return`——而「人批准」几乎总是发生在触发那次执行还没走完的时候（断言节点刚抛 warning 就在等）。批准的 `startAsync` 因此被丢掉：批准记录写进去了，却没有任何执行接手这个 run。
+2. **无条件回写 `waiting_approval`**。worker 抛 warning 后写 `status='waiting_approval'`，`finalizeRun` 也会写一次，都是「先读后写」。人在这中间的几秒里点了批准，于是这些写把已经批准（甚至已经在跑）的 run 又按回 `waiting_approval`，而且此时**没有 pending approval**——谁也唤不醒它。这就是「点了没反应、刷新后已完成」的真身。
 
-**原因三：提交失败被吞**。`POST /api/monthly-runs/:id/approvals` 抛错时旧代码不会复位 `isRunning`，面板就此卡死——之后每次点击都被忽略。现在错误会以红色通知弹出，`finally` 一定复位 `isRunning` 并重绘。
+**修法（服务端）**：
 
-**操作**：等按钮从灰变亮再点；如果仍是灰的且提示一直不消失，看 `/api/monthly-runs/:id/approvals` 的网络响应与 `app` 日志。
+- 派发器不再丢弃：同一 run 在跑时收到的请求进 `requeued`，当前这轮结束后立刻重放（`all` 会吞并 `single`）。
+- 落盘改成条件写：新的 `parkRunForApproval(runId, result?)` 只有**确实还存在 pending approval** 时才把 run 停成 `waiting_approval`（SQL 里 `exists (select 1 ... status = 'pending')`）。worker、`executeRunnableSteps`、`finalizeRun` 三处都改用它；写失败说明人已经批了，就继续往下跑，而不是停住。
+
+**修法（界面）**：复核按钮只看「这次复核提交是否在飞」（`isSubmittingReview`），不再被页面自己的收尾工作挡住；点完立刻 POST，然后面板自己把这次 run 跟到终态（`followRun`）。跟随规则是：**只有「已停住且仍有 pending approval」的 run 才不轮询**（那种状态只能等人），其余非终态都继续读——包括批准后短暂出现的 `waiting_approval`（run 正在被唤醒）和历史遗留的「停住但无 pending」坏状态。回到标签页时（`visibilitychange` / `focus`）还会再读一次，兜住「另一个标签页做了决定」的情况。
+
+**因此不需要让用户刷新**：面板不会提示「请刷新」或提供刷新按钮，它自己会追到 `23 / 23`。
+
+**排查线上的同类残留**：`select r.id, r.status, (select count(*) from workflow_run_approvals a where a.run_id = r.id and a.status = 'pending') pending from workflow_runs r where r.status = 'waiting_approval' and pending = 0;` 命中的是旧的「停住但无 pending」坏 run，直接 `POST /api/workflow-runs/:id/retry-unfinished` 就能让它跑完（本轮实测 run 232 由 `waiting_approval` → `completed`，23/23）。
 
 ---
 

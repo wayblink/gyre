@@ -530,21 +530,36 @@ export function isMonthlyRunHistoryDeletable(status: string): boolean {
 }
 
 /**
- * Which review decisions the run panel must offer, and whether they can be submitted right now.
+ * Which review decisions the run panel must offer, and whether one is already being submitted.
  *
- * The buttons become visible as soon as a poll reports a pending approval — which can happen while
- * the page is still finishing the previous trigger (refreshing product files, history, plan status)
- * with `isRunning` still true. `approveActiveRun` returns early in that state, so a click used to be
- * swallowed with no feedback at all; the panel now renders the buttons disabled and says why.
+ * Deliberately keyed off *its own* submit lock, not the page's `isRunning`: the buttons turn visible
+ * the moment a poll reports `waiting_approval`, which can be while the trigger is still refreshing
+ * files/history/plan status. Approving is a server-side decision — it must never wait on, or be
+ * disabled by, the page's own bookkeeping work.
  */
 export function getMonthlyRunReviewActions(
   run: Pick<WorkflowRunRecord, 'approvals'> | null | undefined,
-  isRunning: boolean,
-): { pendingTaskIds: string[]; isBusy: boolean } {
+  isSubmitting: boolean,
+): { pendingTaskIds: string[]; isSubmitting: boolean } {
   const pendingTaskIds = [
     ...new Set((run?.approvals ?? []).filter((approval) => approval.status === 'pending').map((a) => a.taskId)),
   ];
-  return { pendingTaskIds, isBusy: isRunning };
+  return { pendingTaskIds, isSubmitting };
+}
+
+/**
+ * Whether polling this run can still reveal something.
+ *
+ * A run parked **with a pending approval** is the one case where polling is pointless: nothing moves
+ * until a human decides, so the panel waits for the tab to come back instead of leaving a timer for
+ * hours. Every other non-terminal status is worth polling — including `waiting_approval` with no
+ * pending approval left, which is the transient after a decision (the run is being resumed) and the
+ * old permanent-limbo state; in both cases the panel must keep reading until the run settles.
+ */
+export function isRunExecuting(run: Pick<WorkflowRunRecord, 'status' | 'approvals'>): boolean {
+  if (isWorkflowRunTerminalStatus(run.status)) return false;
+  if (run.status !== 'waiting_approval') return true;
+  return !run.approvals.some((approval) => approval.status === 'pending');
 }
 
 export function isRunPanelStaleForMonth(activeRunMonth: string | null, selectedMonth: string): boolean {
@@ -634,6 +649,7 @@ export function createMonthlyRunPage({
   onPlanStatusChanged,
 }: MonthlyRunPageDeps) {
   const runClient = createWorkflowRunClient(api);
+  const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
   let files: ProductFileRecord[] = [];
   let monthlyWorkflowCode = '';
   /** Set when the DB monthly workflow definition version differs from MONTHLY_WORKFLOW_VERSION. */
@@ -649,6 +665,10 @@ export function createMonthlyRunPage({
   /** Month that activeRun / activeHistoryId belong to, so they can be dropped when it changes. */
   let activeRunMonth: string | null = null;
   let isRunning = false;
+  /** True only while an approval decision is in flight — the single thing the review buttons wait on. */
+  let isSubmittingReview = false;
+  /** Runs whose status the panel is currently following, so one run is never followed twice. */
+  const followingRuns = new Map<number, Promise<void>>();
   let isSavingSources = false;
   let monthlyConstantsCollapsed = false;
   const expandedWarningTaskIds = new Set<string>();
@@ -684,6 +704,16 @@ export function createMonthlyRunPage({
         renderSourceModal();
       }
     });
+    // A run parked for review changes only when a human decides — possibly in another tab. Rather
+    // than polling it for hours, re-read it the moment the operator comes back to this one; they see
+    // the truth without ever being asked to reload.
+    const refreshIfStaleOnReturn = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!activeRun || isWorkflowRunTerminalStatus(activeRun.status)) return;
+      void refreshActiveRun();
+    };
+    document.addEventListener('visibilitychange', refreshIfStaleOnReturn);
+    window.addEventListener('focus', refreshIfStaleOnReturn);
     bindSourceModalEvents();
     await Promise.all([refreshSourceConfig(), refreshFiles(), refreshInstance(), refreshHistory()]);
     renderRunPanel();
@@ -1555,15 +1585,10 @@ export function createMonthlyRunPage({
       activeRun = response.executionResult.run ?? null;
       renderRunPanel(tt('submittedRun'));
       if (activeRun) {
-        await runClient.pollUntilSettled(activeRun.id, {
-          minimumPollCount: 1,
-          light: true,
-          onUpdate: (run) => {
-            if (activeRunMonth !== month) return;
-            activeRun = run;
-            renderRunPanel();
-          },
-        });
+        // Same follower as the review path: tolerant of a failed request, so one hiccup cannot freeze
+        // the panel on "运行中" while the workflow actually finished in the background.
+        const followed = followRun(activeRun.id);
+        if (followed) await followed;
         await finalizeAfterRun(month);
       }
     } catch (error) {
@@ -1571,26 +1596,94 @@ export function createMonthlyRunPage({
       renderRunPanel(failedMessage);
     } finally {
       isRunning = false;
-      await refreshHistory();
-      await onPlanStatusChanged?.();
+      // Repaint first, refresh afterwards: the panel used to paint *after* two more network calls,
+      // so one failing refresh left the last frame on screen forever — the run itself had long
+      // finished, which is why a manual page reload looked "suddenly completed".
       renderRunPanel(failedMessage ?? undefined);
+      void refreshAfterRun();
     }
+  }
+
+  /**
+   * Background refreshes that follow a run change (history table, plan status).
+   *
+   * Best-effort and silent-retrying on purpose: these carry cosmetic data, and the panel has already
+   * been repainted by the time they run. Telling the operator to press a refresh button for our own
+   * bookkeeping would be exactly the wrong interaction — a decision they made must never wait on it.
+   */
+  async function refreshAfterRun() {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await refreshHistory();
+        await onPlanStatusChanged?.();
+        return;
+      } catch {
+        if (attempt >= 2) return;
+        await sleep(800 * (attempt + 1));
+      }
+    }
+  }
+
+  /**
+   * Follow the run the panel is showing until it reaches a terminal status.
+   *
+   * The panel used to move only while a poll loop *it* owned was alive, so a run parked in
+   * `waiting_approval` had nobody watching: a decision taken in another tab, or one request that
+   * died, left an old frame on screen until the operator reloaded the page — the run had finished,
+   * the UI just never said so. This loop is per-run, idempotent, and treats a failed request as
+   * "keep trying" rather than "give up", so the panel converges on its own.
+   */
+  function followRun(runId: number): Promise<void> {
+    const shown = activeRun;
+    // A run parked *with a pending approval* has nothing to poll for: only a human moves it, so the
+    // wait is driven by the focus/visibility refresh below instead of a timer running for hours.
+    if (!shown || shown.id !== runId || !isRunExecuting(shown)) return Promise.resolve();
+    const inFlight = followingRuns.get(runId);
+    if (inFlight) return inFlight;
+    const promise = (async () => {
+      try {
+        for (;;) {
+          await sleep(1000);
+          if (!document.getElementById('monthlyRunPanel')) return; // page gone: nothing to update
+          const current = activeRun;
+          if (!current || current.id !== runId) return; // the panel moved on; stop following this one
+          let fresh: WorkflowRunRecord;
+          try {
+            fresh = await runClient.getRun(runId, { light: true });
+          } catch {
+            continue; // transient: the run is still out there, keep following
+          }
+          // Never adopt a malformed payload (a proxy page, a stubbed/aborted response): it would
+          // render an empty panel and then crash the next read.
+          if (!fresh || !Array.isArray(fresh.steps) || !Array.isArray(fresh.approvals)) continue;
+          if (!activeRun || activeRun.id !== runId) return;
+          activeRun = fresh;
+          renderRunPanel();
+          if (!isRunExecuting(fresh)) {
+            await refreshAfterRun();
+            return;
+          }
+        }
+      } finally {
+        followingRuns.delete(runId);
+      }
+    })();
+    followingRuns.set(runId, promise);
+    return promise;
   }
 
   async function approveActiveRun(decision: 'approved' | 'skipped') {
     if (!activeRun || !activeHistoryId) return;
-    const waitingTaskIds = getMonthlyRunReviewActions(activeRun, isRunning).pendingTaskIds;
-    if (!waitingTaskIds.length) return;
-    if (isRunning) {
-      // Reachable through the keyboard/AT path, or a stale handler. Say so instead of doing nothing:
-      // the previous versions returned silently, which read as "the button is broken".
-      notify(tt('reviewBusyHint'), { type: 'warning' });
-      return;
-    }
+    const waitingTaskIds = getMonthlyRunReviewActions(activeRun, isSubmittingReview).pendingTaskIds;
+    // Only the in-flight submit blocks a second click — never the page's own background work: an
+    // approval is a human decision the server can take at any time while the approval is pending.
+    if (!waitingTaskIds.length || isSubmittingReview) return;
 
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
+    isSubmittingReview = true;
     isRunning = true;
-    renderRunPanel(decision === 'skipped' ? 'Skipping downstream flow...' : 'Continuing workflow...');
+    renderRunPanel(decision === 'skipped' ? tt('skippingDownstream') : tt('continuingWorkflow'));
+    let followed: Promise<void> | null = null;
     try {
       const result = await api<{ run?: WorkflowRunRecord }>(`/api/monthly-runs/${activeHistoryId}/approvals`, {
         method: 'POST',
@@ -1598,30 +1691,33 @@ export function createMonthlyRunPage({
       });
       activeRun = result.run ?? activeRun;
       expandedWarningTaskIds.clear();
-      await runClient.pollUntilSettled(activeRun.id, {
-        minimumPollCount: 2,
-        light: true,
-        onUpdate: (run) => {
-          if (activeRunMonth !== month) return;
-          activeRun = run;
-          renderRunPanel();
-        },
-      });
-      await finalizeAfterRun(month);
-      await refreshHistory();
-      await onPlanStatusChanged?.();
+      // The decision is accepted: the server has already started the next steps, so drop the review
+      // buttons now and follow the run to its end.
+      isSubmittingReview = false;
+      renderRunPanel();
+      followed = followRun(activeRun.id);
     } catch (error) {
-      // Leaving `isRunning` true here used to wedge the panel: every later click was ignored.
       notify(error instanceof Error ? error.message : tt('reviewFailed'), { type: 'error' });
     } finally {
+      isSubmittingReview = false;
       isRunning = false;
       renderRunPanel();
     }
+    if (followed) {
+      await followed;
+      await finalizeAfterRun(month);
+      await refreshAfterRun();
+    }
   }
 
+  /** Re-read the run the panel is showing; a failed read leaves the current frame alone (followRun retries). */
   async function refreshActiveRun() {
     if (!activeRun) return;
-    activeRun = await runClient.getRun(activeRun.id, { light: true });
+    try {
+      activeRun = await runClient.getRun(activeRun.id, { light: true });
+    } catch {
+      return;
+    }
     renderRunPanel();
   }
 
@@ -1753,7 +1849,7 @@ export function createMonthlyRunPage({
     const total = run.steps.length;
     const ratio = total ? Math.min(1, reached / total) : 0;
     const pendingApprovals = run.approvals.filter((approval) => approval.status === 'pending');
-    const review = getMonthlyRunReviewActions(run, isRunning);
+    const review = getMonthlyRunReviewActions(run, isSubmittingReview);
     const statusCode = run.status === 'completed_with_warnings' ? 'warning' : run.status;
     const shouldShowSummary =
       isMonthlyRunAttentionMessage(overrideMessage) ||
@@ -1804,12 +1900,12 @@ export function createMonthlyRunPage({
               isAwaitingReview
                 ? `<div class="monthly-run-task__review">
                     <button type="button" class="btn btn-primary btn-sm" data-review-decision="approved"${
-                      review.isBusy ? ' disabled' : ''
+                      review.isSubmitting ? ' disabled' : ''
                     }>${escapeHtml(tt('reviewAndContinue'))}</button>
                     <button type="button" class="btn btn-secondary btn-sm" data-review-decision="skipped"${
-                      review.isBusy ? ' disabled' : ''
+                      review.isSubmitting ? ' disabled' : ''
                     }>${escapeHtml(tt('skipDownstream'))}</button>
-                    ${review.isBusy ? `<span class="monthly-run-task__review-hint">${escapeHtml(tt('reviewBusyHint'))}</span>` : ''}
+                    ${review.isSubmitting ? `<span class="monthly-run-task__review-hint">${escapeHtml(tt('reviewSubmitting'))}</span>` : ''}
                   </div>`
                 : ''
             }
@@ -1849,7 +1945,8 @@ export function createMonthlyRunPage({
         event.preventDefault();
         event.stopPropagation();
         if (node.disabled) {
-          notify(tt('reviewBusyHint'), { type: 'warning' });
+          // Only reachable through the keyboard/AT path while the same decision is already in flight.
+          notify(tt('reviewSubmitting'), { type: 'warning' });
           return;
         }
         void approveActiveRun(node.dataset.reviewDecision === 'skipped' ? 'skipped' : 'approved');
@@ -1858,12 +1955,15 @@ export function createMonthlyRunPage({
 
     continueButton.textContent = tt('reviewAndContinue');
     skipButton.textContent = tt('skipDownstream');
-    continueButton.disabled = review.isBusy;
-    skipButton.disabled = review.isBusy;
+    continueButton.disabled = review.isSubmitting;
+    skipButton.disabled = review.isSubmitting;
     continueButton.classList.toggle('hidden', review.pendingTaskIds.length === 0);
     skipButton.classList.toggle('hidden', review.pendingTaskIds.length === 0);
     actions.classList.toggle('hidden', review.pendingTaskIds.length === 0);
-    busyHint.textContent = review.pendingTaskIds.length > 0 && review.isBusy ? tt('reviewBusyHint') : '';
+    busyHint.textContent = review.isSubmitting ? tt('reviewSubmitting') : '';
+    // Keep the panel honest even when no poll loop of our own is alive (parked run, other tab, a
+    // request that died): one watch per run, stopped as soon as the run reaches a terminal status.
+    void followRun(run.id);
   }
 
   async function refreshHistory(month = el<HTMLInputElement>('monthlyRunMonth').value) {

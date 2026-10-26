@@ -357,6 +357,31 @@ class FakeWorkflowRunStore implements WorkflowRunRepository {
     }
   }
 
+  /** Times `parkRunForApproval` was asked; the scheduler re-checks rather than trusting its read. */
+  parkRunForApprovalCalls = 0;
+  /** Set N to simulate a human deciding N times between the scheduler's read and its park write. */
+  decisionsDuringPark = 0;
+
+  async parkRunForApproval(_runId: number, _result?: unknown): Promise<boolean> {
+    this.parkRunForApprovalCalls += 1;
+    if (this.decisionsDuringPark > 0) {
+      this.decisionsDuringPark -= 1;
+      for (const approval of this.run.approvals) {
+        if (approval.status !== 'pending') continue;
+        approval.status = 'approved';
+        approval.decision = 'approved';
+        approval.decidedAt = new Date().toISOString();
+        if (!this.run.approvedWarningTaskIds.includes(approval.taskId)) {
+          this.run.approvedWarningTaskIds.push(approval.taskId);
+        }
+      }
+      return false;
+    }
+    if (!this.run.approvals.some((approval) => approval.status === 'pending')) return false;
+    this.run.status = 'waiting_approval';
+    return true;
+  }
+
   async updateRunStatus(params: WorkflowRunStatusUpdateInput): Promise<void> {
     this.run.status = params.status;
     this.run.errorMessage = params.errorMessage ?? null;
@@ -1051,4 +1076,29 @@ test('workflow run store pins a workflow definition version when creating a run'
   assert.match(insert.sql, /version_id/);
   assert.equal(insert.params[1], 7);
   assert.equal(run.versionId, 7);
+});
+
+test('an approval decided while the run is finalizing cannot leave it parked with nothing pending', async () => {
+  // The real-world limbo: `finalizeRun` reads the run (approval still pending), the operator approves
+  // in between, and the parking write then lands on an already-decided run. The result was a run in
+  // `waiting_approval` with no pending approval and no execution queued — the panel's "复核并继续"
+  // became a no-op forever. Parking must be conditional on the approval still being pending.
+  const source = sourceTask();
+  const check = assertTask();
+  const store = new FakeWorkflowRunStore(
+    [source, check],
+    [{ task: source, status: 'completed', result: dataframeResult() }],
+  );
+  store.decisionsDuringPark = 1;
+
+  let finalized = 0;
+  const scheduler = new WorkflowRunScheduler(store, runtime, { onRunFinalized: () => void (finalized += 1) });
+
+  await scheduler.execute(store.run.id, { kind: 'all' });
+
+  assert.ok(store.parkRunForApprovalCalls >= 1, 'the scheduler must re-check the approval before parking');
+  assert.notEqual(store.run.status, 'waiting_approval', 'an already-decided run must not be parked');
+  assert.equal(store.run.status, 'completed_with_warnings');
+  assert.equal(store.run.steps.find((step) => step.taskId === 'assert')?.status, 'warning');
+  assert.equal(finalized, 1, 'the run is finished, so the monthly history gets its final status');
 });

@@ -69,5 +69,13 @@ export interface WorkflowRunRepository {
   requestApproval(runId: number, task: WorkflowTask, message: string): Promise<void>;
   approveWarning(runId: number, taskId: string, decision?: 'approved' | 'skipped'): Promise<void>;
   updateRunStatus(params: WorkflowRunStatusUpdateInput): Promise<void>;
+  /**
+   * Park the run in `waiting_approval`, but only while an approval is still pending.
+   *
+   * Returns false when every approval was decided between the caller's read and this write — the
+   * caller must then recompute instead of parking, or the run would sit with no pending approval and
+   * no execution queued, i.e. permanently stuck.
+   */
+  parkRunForApproval(runId: number, result?: unknown): Promise<boolean>;
   createRunFinishedEvent(runId: number, status: WorkflowRunStatus, payload?: Record<string, unknown>): Promise<void>;
 }

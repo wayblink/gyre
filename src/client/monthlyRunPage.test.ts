@@ -15,6 +15,7 @@ import {
   getMonthlyRunWarningTaskIds,
   getMonthlyRunReviewActions,
   isMonthlyRunHistoryDeletable,
+  isRunExecuting,
   isRunPanelStaleForMonth,
   monthlyRunSourceFolders,
   monthlyWorkflowVersionMismatch,
@@ -815,13 +816,13 @@ test('review decisions list each pending task once and stay locked while the pag
 
   assert.deepEqual(getMonthlyRunReviewActions(run, false), {
     pendingTaskIds: ['calc_control_book_metrics'],
-    isBusy: false,
+    isSubmitting: false,
   });
   assert.deepEqual(getMonthlyRunReviewActions(run, true), {
     pendingTaskIds: ['calc_control_book_metrics'],
-    isBusy: true,
+    isSubmitting: true,
   });
-  assert.deepEqual(getMonthlyRunReviewActions(null, false), { pendingTaskIds: [], isBusy: false });
+  assert.deepEqual(getMonthlyRunReviewActions(null, false), { pendingTaskIds: [], isSubmitting: false });
 });
 
 test('the review decision sits on the waiting task row, not only at the bottom of a long task list', () => {
@@ -832,9 +833,96 @@ test('the review decision sits on the waiting task row, not only at the bottom o
   assert.match(source, /data-review-decision="approved"/);
   assert.match(source, /data-review-decision="skipped"/);
 
-  // A busy page disables the buttons and says why, instead of swallowing the click.
-  assert.match(source, /continueButton\.disabled = review\.isBusy/);
-  assert.match(source, /skipButton\.disabled = review\.isBusy/);
-  assert.match(texts, /reviewBusyHint/);
+  // Only an in-flight submit disables the buttons, and it says so instead of swallowing the click.
+  assert.match(source, /continueButton\.disabled = review\.isSubmitting/);
+  assert.match(source, /skipButton\.disabled = review\.isSubmitting/);
+  assert.match(texts, /reviewSubmitting/);
   assert.match(texts, /reviewAndContinue/);
+});
+
+test('a human approval is never gated by the page’s own background work', () => {
+  // The buttons turn visible the moment a poll reports `waiting_approval`, which can happen while
+  // `triggerMonthlyRun` is still refreshing files/history/plan status. Gating the decision on that
+  // `isRunning` flag made the click a no-op ("复核 = 人工通过，为什么点不动"), so the only thing the
+  // buttons may wait on is the approval POST itself.
+  const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /let isSubmittingReview = false;/);
+  assert.match(source, /continueButton\.disabled = review\.isSubmitting;/);
+  assert.match(source, /skipButton\.disabled = review\.isSubmitting;/);
+  // approveActiveRun must not consult the run-polling flag when deciding whether to send.
+  const approve = source.match(/async function approveActiveRun\([\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+  assert.doesNotMatch(approve, /if \(isRunning\)/);
+  assert.match(approve, /getMonthlyRunReviewActions\(activeRun, isSubmittingReview\)/);
+});
+
+test('a failed background refresh cannot strand the panel in its disabled state', () => {
+  // `finally { isRunning = false; await refreshHistory(); ... renderRunPanel(); }` painted the DOM
+  // only after two more network calls: one 401/500/网络抖动 and the last rendered state (buttons
+  // disabled, "正在收尾上一步") stayed on screen forever, because polling had already stopped.
+  const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+
+  const finallyBlock = source
+    .match(/async function triggerMonthlyRun\([\s\S]*?\n {2}\}\n/)![0]
+    .match(/\} finally \{[\s\S]*?\n {4}\}/)![0];
+  const renderIndex = finallyBlock.indexOf('renderRunPanel(');
+  const awaitIndex = finallyBlock.indexOf('await ');
+  assert.ok(renderIndex > -1, 'the finally block must repaint the panel');
+  assert.ok(awaitIndex === -1 || renderIndex < awaitIndex, 'repaint before any await');
+
+  // Background refreshes are best-effort: a rejection is reported, never swallowed into a stale DOM.
+  const refresh = source.match(/async function refreshAfterRun\([\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+  assert.match(refresh, /try \{/);
+  assert.match(refresh, /refreshHistory\(\)/);
+  assert.match(refresh, /catch/);
+  assert.match(source, /await refreshAfterRun\(/);
+
+  // And the same for the approval path: the panel is repainted as soon as the decision is accepted.
+  const approve = source.match(/async function approveActiveRun\([\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+  const approveRender = approve.indexOf('isSubmittingReview = false;');
+  assert.ok(approveRender > -1, 'the approval path must clear the submit lock explicitly');
+  assert.match(approve, /await refreshAfterRun\(/);
+});
+
+test('the panel keeps following a live run instead of freezing until a reload', () => {
+  // Without a follower the panel only moved when *it* started the run or owned a poll loop. A run
+  // parked in `waiting_approval` has neither, so a decision taken in another tab (or a poll that died
+  // on one bad request) left an old frame on screen and the operator had to reload to see the truth.
+  const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+  const texts = readFileSync(new URL('./texts.ts', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+
+  const follow = source.match(/function followRun\([\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+  assert.match(follow, /isRunExecuting\(fresh\)/);
+  assert.match(follow, /followingRuns\.get\(runId\)/, 'one follower per run, not one per render');
+  // A transient request failure must not end the follow: keep trying instead of giving up.
+  assert.match(follow, /catch \{\s*\n\s*continue;/);
+  assert.match(source, /void followRun\(run\.id\);/, 'opening the panel starts following it');
+
+  // A run parked **with a pending approval** has nothing to poll for (only a human moves it), so the
+  // panel waits for the tab to come back instead of leaving a timer running for hours.
+  const runWith = (status: string, approvals: Array<{ status: string }>) =>
+    ({ status, approvals }) as unknown as Parameters<typeof isRunExecuting>[0];
+  assert.equal(isRunExecuting(runWith('waiting_approval', [{ status: 'pending' }])), false);
+  // But once the decision is made the run is being resumed, and a transient `waiting_approval` frame
+  // must not stop the panel — that is how it used to freeze at "12 / 23 需复核" until a reload.
+  assert.equal(isRunExecuting(runWith('waiting_approval', [{ status: 'approved' }])), true);
+  assert.equal(isRunExecuting(runWith('waiting_approval', [])), true);
+  assert.equal(isRunExecuting(runWith('running', [])), true);
+  assert.equal(isRunExecuting(runWith('completed', [])), false);
+  assert.equal(isRunExecuting(runWith('completed_with_warnings', [])), false);
+  assert.equal(isRunExecuting(runWith('failed', [])), false);
+  assert.match(source, /addEventListener\('visibilitychange'/);
+  assert.match(source, /window\.addEventListener\('focus'/);
+
+  // The operator must never be told to refresh a state the page can follow itself.
+  assert.doesNotMatch(texts, /刷新运行状态失败/);
+  assert.doesNotMatch(texts, /请刷新|点击刷新|use Refresh/i);
+  assert.doesNotMatch(html, /btnMonthlyRunRefreshRun/);
+
+  // Background refreshes retry silently instead of surfacing a "please retry" prompt.
+  const refresh = source.match(/async function refreshAfterRun\(\)[\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+  assert.match(refresh, /catch \{/);
+  assert.match(refresh, /attempt/);
+  assert.doesNotMatch(refresh, /notify\(/);
 });

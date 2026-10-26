@@ -756,6 +756,23 @@ export class WorkflowRunStore implements WorkflowRunRepository {
     );
   }
 
+  async parkRunForApproval(runId: number, result?: unknown): Promise<boolean> {
+    const parked = await this.db.queryOne<{ id: number }>(
+      `update workflow_runs
+          set status = 'waiting_approval',
+              error_message = null,
+              result_json = coalesce($2::jsonb, result_json)
+        where id = $1
+          and exists (
+            select 1 from workflow_run_approvals
+             where run_id = $1 and status = 'pending'
+          )
+        returning id`,
+      [runId, result === undefined ? null : JSON.stringify(result)],
+    );
+    return Boolean(parked);
+  }
+
   async createRunFinishedEvent(
     runId: number,
     status: WorkflowRunStatus,

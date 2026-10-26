@@ -138,8 +138,10 @@ export class WorkflowRunScheduler {
       ({ executed, taskResults } = hydrateRunOutputs(run, taskMap));
       stepStates = getStepStates(run);
       if (run.approvals.some((approval) => approval.status === 'pending')) {
-        await this.store.updateRunStatus({ runId, status: 'waiting_approval', errorMessage: null });
-        return;
+        // Conditional: the approval may have been decided between that read and this write. If it
+        // was, keep executing instead of parking a run nobody could ever resume.
+        if (await this.store.parkRunForApproval(runId)) return;
+        continue;
       }
 
       const currentState = stepStates[task.id] ?? 'pending';
@@ -260,27 +262,37 @@ export class WorkflowRunScheduler {
   }
 
   private async finalizeRun(runId: number, mode: WorkflowRunMode): Promise<void> {
-    const latestRun = await this.store.getRun(runId);
-    const status = mode.kind === 'single' ? getRunStatusFromSteps(latestRun) : this.getTerminalRunStatus(latestRun);
-    const shouldFinish = mode.kind !== 'single' && status !== 'running' && status !== 'waiting_approval';
-    const result = workflowRunToExecutionResult(latestRun);
-    await this.store.updateRunStatus({
-      runId,
-      status,
-      result,
-      errorMessage: result.errorMessage,
-      finish: shouldFinish,
-    });
-    if (shouldFinish || status === 'waiting_approval') {
-      await this.store.createRunFinishedEvent(runId, status, {
-        failedTaskId: result.failedTaskId,
-        waitingForApprovalTaskIds: result.waitingForApprovalTaskIds,
-        warningTaskIds: result.warningTaskIds,
-        errorMessage: result.errorMessage,
-      });
-    }
-    if (shouldFinish) {
-      await this.notifyRunFinalized(runId);
+    // Parking is re-checked against the database rather than trusted from the read above: a human can
+    // approve while the run is being finalised, and parking then strands it (no pending approval, no
+    // queued execution). Recomputing picks up the decided state instead.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const latestRun = await this.store.getRun(runId);
+      const status = mode.kind === 'single' ? getRunStatusFromSteps(latestRun) : this.getTerminalRunStatus(latestRun);
+      const result = workflowRunToExecutionResult(latestRun);
+      if (status === 'waiting_approval' && !(await this.store.parkRunForApproval(runId))) continue;
+
+      const shouldFinish = mode.kind !== 'single' && status !== 'running' && status !== 'waiting_approval';
+      if (status !== 'waiting_approval') {
+        await this.store.updateRunStatus({
+          runId,
+          status,
+          result,
+          errorMessage: result.errorMessage,
+          finish: shouldFinish,
+        });
+      }
+      if (shouldFinish || status === 'waiting_approval') {
+        await this.store.createRunFinishedEvent(runId, status, {
+          failedTaskId: result.failedTaskId,
+          waitingForApprovalTaskIds: result.waitingForApprovalTaskIds,
+          warningTaskIds: result.warningTaskIds,
+          errorMessage: result.errorMessage,
+        });
+      }
+      if (shouldFinish) {
+        await this.notifyRunFinalized(runId);
+      }
+      return;
     }
   }
 
