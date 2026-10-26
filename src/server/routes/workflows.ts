@@ -440,7 +440,7 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
     const runId = parseIdParam((request.params as { id: string }).id, 'workflow run id');
     const body = workflowRunRetryBodySchema.parse(request.body ?? {});
     await workflowRunExecutor.retryUnfinishedAsync(runId, body.tasks ? normalizeWorkflowTasks(body.tasks) : undefined);
-    return workflowRunToExecutionResult(await workflowRunStore.getRun(runId));
+    return workflowRunToExecutionResult(await workflowRunStore.getRun(runId, { light: true }));
   });
 
   app.post('/api/workflow-runs/:id/steps/:taskId/execute', async (request) => {
@@ -452,7 +452,7 @@ export function registerWorkflowRoutes(app: FastifyInstance, ctx: RouteContext) 
       taskId,
       body.tasks ? normalizeWorkflowTasks(body.tasks) : undefined,
     );
-    return workflowRunToExecutionResult(await workflowRunStore.getRun(runId));
+    return workflowRunToExecutionResult(await workflowRunStore.getRun(runId, { light: true }));
   });
 
   app.delete('/api/workflows/:id', async (request, reply) => {

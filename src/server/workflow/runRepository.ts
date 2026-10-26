@@ -49,7 +49,6 @@ export type WorkflowRunStepClaim = {
 export type WorkflowRunStatusUpdateInput = {
   runId: number;
   status: WorkflowRunStatus;
-  result?: unknown;
   errorMessage?: string | null;
   finish?: boolean;
 };
@@ -76,6 +75,6 @@ export interface WorkflowRunRepository {
    * caller must then recompute instead of parking, or the run would sit with no pending approval and
    * no execution queued, i.e. permanently stuck.
    */
-  parkRunForApproval(runId: number, result?: unknown): Promise<boolean>;
+  parkRunForApproval(runId: number): Promise<boolean>;
   createRunFinishedEvent(runId: number, status: WorkflowRunStatus, payload?: Record<string, unknown>): Promise<void>;
 }

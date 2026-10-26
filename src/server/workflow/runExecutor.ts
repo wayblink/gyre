@@ -46,9 +46,16 @@ export class WorkflowRunExecutor {
 
   async cancelRun(runId: number): Promise<WorkflowRunRecord> {
     await this.scheduler.cancelRun(runId);
-    return this.store.getRun(runId);
+    return this.store.getRun(runId, { light: true });
   }
 
+  /**
+   * Apply a human decision and hand the run back to the client.
+   *
+   * The record returned is the *light* projection: the caller only needs statuses/labels, and the full
+   * one carried every step's result — 16 MB on a monthly run, which the browser then had to download
+   * and parse while the review button sat disabled.
+   */
   async continueAfterApproval(
     runId: number,
     taskIds: string[],
@@ -63,6 +70,6 @@ export class WorkflowRunExecutor {
     } else {
       await this.scheduler.skipDownstream(runId, taskIds);
     }
-    return this.store.getRun(runId);
+    return this.store.getRun(runId, { light: true });
   }
 }

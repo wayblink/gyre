@@ -8,7 +8,7 @@ import type {
 import { evaluateTaskInputGuards, executeWorkflowTaskOutputStrict } from './engine.js';
 import type { WorkflowOperatorRuntime } from './operators/types.js';
 import type { WorkflowRunRepository, WorkflowRunStepClaim } from './runRepository.js';
-import { isApprovedWarning, isAssertOperatorCode, workflowRunToExecutionResult } from './runResult.js';
+import { isApprovedWarning, isAssertOperatorCode } from './runResult.js';
 
 const WORKFLOW_STEP_HEARTBEAT_MS = 5_000;
 
@@ -86,10 +86,7 @@ export class WorkflowStepWorker {
             // unconditional write then parked a run that nothing would ever resume — the approval had
             // already been consumed and no execution was queued. If it was decided, do not pause: the
             // run simply continues with the decision in hand.
-            const parked = await this.store.parkRunForApproval(
-              runId,
-              workflowRunToExecutionResult(await this.store.getRun(runId)),
-            );
+            const parked = await this.store.parkRunForApproval(runId);
             if (!parked) return { state: 'warning', paused: false };
             await this.store.createRunFinishedEvent(runId, 'waiting_approval', {
               waitingForApprovalTaskIds: [task.id],
@@ -178,12 +175,9 @@ export class WorkflowStepWorker {
         startedAt,
       });
       await this.store.requestApproval(runId, task, warningGuard.assertion.failureMessage);
-      await this.store.updateRunStatus({
-        runId,
-        status: 'waiting_approval',
-        result: workflowRunToExecutionResult(await this.store.getRun(runId)),
-        errorMessage: null,
-      });
+      // Conditional park (see executeClaimedStepInner): a decision taken meanwhile means this run keeps
+      // executing instead of parking forever with nothing pending.
+      if (!(await this.store.parkRunForApproval(runId))) return 'passed';
       await this.store.createRunFinishedEvent(runId, 'waiting_approval', { waitingForApprovalTaskIds: [task.id] });
       return 'paused';
     }

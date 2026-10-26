@@ -1048,7 +1048,7 @@ test('workflow run store pins a workflow definition version when creating a run'
     async queryOne(sql: string, params: unknown[]) {
       captured.push({ sql, params });
       if (/insert into workflow_runs/i.test(sql)) return runRow;
-      if (/select \* from workflow_runs/i.test(sql)) return runRow;
+      if (/from workflow_runs/i.test(sql)) return runRow;
       throw new Error(`Unexpected queryOne: ${sql}`);
     },
     async query(sql: string) {

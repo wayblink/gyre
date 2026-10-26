@@ -14,7 +14,7 @@ import {
   hydrateRunOutputs,
   isApprovedWarning,
   isReusableStepOutput,
-  workflowRunToExecutionResult,
+  summarizeRunOutcome,
 } from './runResult.js';
 import { WorkflowStepWorker } from './runWorker.js';
 
@@ -90,9 +90,7 @@ export class WorkflowRunScheduler {
         errorMessage: `${task.name} skipped after checkpoint decision`,
       });
     }
-    const latestRun = await this.store.getRun(runId);
-    const result = workflowRunToExecutionResult(latestRun);
-    await this.store.updateRunStatus({ runId, status: 'skipped', result, finish: true });
+    await this.store.updateRunStatus({ runId, status: 'skipped', finish: true });
     await this.store.createRunFinishedEvent(runId, 'skipped', { skippedAfter: rootTaskIds });
     await this.notifyRunFinalized(runId);
   }
@@ -116,9 +114,7 @@ export class WorkflowRunScheduler {
         errorMessage: `${task.name} cancelled by user`,
       });
     }
-    const latestRun = await this.store.getRun(runId);
-    const result = workflowRunToExecutionResult(latestRun);
-    await this.store.updateRunStatus({ runId, status: 'skipped', result, errorMessage: null, finish: true });
+    await this.store.updateRunStatus({ runId, status: 'skipped', errorMessage: null, finish: true });
     await this.store.createRunFinishedEvent(runId, 'skipped', { cancelled: true });
     await this.notifyRunFinalized(runId);
   }
@@ -268,7 +264,7 @@ export class WorkflowRunScheduler {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const latestRun = await this.store.getRun(runId);
       const status = mode.kind === 'single' ? getRunStatusFromSteps(latestRun) : this.getTerminalRunStatus(latestRun);
-      const result = workflowRunToExecutionResult(latestRun);
+      const outcome = summarizeRunOutcome(latestRun);
       if (status === 'waiting_approval' && !(await this.store.parkRunForApproval(runId))) continue;
 
       const shouldFinish = mode.kind !== 'single' && status !== 'running' && status !== 'waiting_approval';
@@ -276,17 +272,16 @@ export class WorkflowRunScheduler {
         await this.store.updateRunStatus({
           runId,
           status,
-          result,
-          errorMessage: result.errorMessage,
+          errorMessage: outcome.errorMessage,
           finish: shouldFinish,
         });
       }
       if (shouldFinish || status === 'waiting_approval') {
         await this.store.createRunFinishedEvent(runId, status, {
-          failedTaskId: result.failedTaskId,
-          waitingForApprovalTaskIds: result.waitingForApprovalTaskIds,
-          warningTaskIds: result.warningTaskIds,
-          errorMessage: result.errorMessage,
+          failedTaskId: outcome.failedTaskId,
+          waitingForApprovalTaskIds: outcome.waitingForApprovalTaskIds,
+          warningTaskIds: outcome.warningTaskIds,
+          errorMessage: outcome.errorMessage,
         });
       }
       if (shouldFinish) {

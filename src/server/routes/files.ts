@@ -9,7 +9,8 @@ import {
   normalizeProductFolder,
   productFileCollisionKey,
 } from '../fileIdentity.js';
-import { extractSheetRangeAsDataFrame, previewWorkbookSheet, summarizeWorkbook } from '../excel.js';
+import { extractSheetRangeAsDataFrame, previewWorkbookSheet, summarizeWorkbookAsync } from '../excel.js';
+import { workbookSummaryFor } from '../workbookSummaryCache.js';
 import { parseJson } from '../utils/json.js';
 import { rewriteProductFileKey } from '../workflow/productFileKeyRewrite.js';
 import {
@@ -154,8 +155,13 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
   app.get('/api/files/:id', async (request) => {
     const { id } = request.params as { id: string };
     const file = await getProductFileOrThrow(db, Number(id));
-    const buffer = await fileStorage.read(String(file.file_path));
-    const summary = summarizeWorkbook(buffer);
+    // Cached by content checksum, and parsed on a worker thread: the monthly page asks for a dozen
+    // workbooks per render, and a synchronous parse would block the event loop (i.e. every other
+    // request, including an operator's approval click) for as long as it runs.
+    const summary = await workbookSummaryFor(
+      { fileId: Number(id), stamp: String(file.checksum ?? file.file_path) },
+      async () => summarizeWorkbookAsync(await fileStorage.read(String(file.file_path))),
+    );
     return {
       file: toProductFile(file),
       sheets: summary.sheets,

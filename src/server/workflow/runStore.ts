@@ -323,9 +323,17 @@ export class WorkflowRunStore implements WorkflowRunRepository {
   }
 
   async getRun(runId: number, opts?: { light?: boolean }): Promise<WorkflowRunRecord> {
-    const runRow = await this.db.queryOne<Record<string, unknown>>('select * from workflow_runs where id = $1', [
-      runId,
-    ]);
+    // Columns are listed rather than `select *` on purpose: `result_json` is a legacy write-only copy of
+    // the execution result and can be 18 MB per monthly run. Selecting `*` dragged those megabytes into
+    // every read — 480 ms for a single row — although nothing ever consumed them.
+    const runRow = await this.db.queryOne<Record<string, unknown>>(
+      `select id, workflow_id, version_id, workflow_code, workflow_name, status,
+              tasks_snapshot_json, runtime_parameters_json, approved_warning_task_ids_json,
+              error_message, started_at, finished_at, duration_ms
+         from workflow_runs
+        where id = $1`,
+      [runId],
+    );
     if (!runRow) {
       const error = new Error('Workflow run not found') as Error & { statusCode?: number };
       error.statusCode = 404;
@@ -735,40 +743,34 @@ export class WorkflowRunStore implements WorkflowRunRepository {
   }
 
   async updateRunStatus(params: WorkflowRunStatusUpdateInput): Promise<void> {
+    // `result_json` is deliberately not written any more: it only ever held a copy of what the steps and
+    // artifacts already store, at 10-19 MB per monthly run (3.5 GB in production). Nothing reads it back,
+    // so persisting it bought nothing and made every later `select *` on the row expensive.
     await this.db.execute(
       `update workflow_runs
        set status = $2,
-           result_json = coalesce($3::jsonb, result_json),
-           error_message = $4,
-           finished_at = case when $5 then current_timestamp else finished_at end,
+           error_message = $3,
+           finished_at = case when $4 then current_timestamp else finished_at end,
            duration_ms = case
-             when $5 then greatest(0, floor(extract(epoch from (current_timestamp - started_at)) * 1000)::integer)
+             when $4 then greatest(0, floor(extract(epoch from (current_timestamp - started_at)) * 1000)::integer)
              else duration_ms
            end
        where id = $1`,
-      [
-        params.runId,
-        params.status,
-        params.result === undefined ? null : JSON.stringify(params.result),
-        params.errorMessage ?? null,
-        Boolean(params.finish),
-      ],
+      [params.runId, params.status, params.errorMessage ?? null, Boolean(params.finish)],
     );
   }
 
-  async parkRunForApproval(runId: number, result?: unknown): Promise<boolean> {
+  async parkRunForApproval(runId: number): Promise<boolean> {
     const parked = await this.db.queryOne<{ id: number }>(
       `update workflow_runs
-          set status = 'waiting_approval',
-              error_message = null,
-              result_json = coalesce($2::jsonb, result_json)
+          set status = 'waiting_approval', error_message = null
         where id = $1
           and exists (
             select 1 from workflow_run_approvals
              where run_id = $1 and status = 'pending'
           )
         returning id`,
-      [runId, result === undefined ? null : JSON.stringify(result)],
+      [runId],
     );
     return Boolean(parked);
   }

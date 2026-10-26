@@ -400,7 +400,7 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
     workflowRunExecutor.startAsync(workflowRun.id);
     return reply.code(201).send({
       history: attachedHistory,
-      executionResult: workflowRunToExecutionResult(await workflowRunStore.getRun(workflowRun.id)),
+      executionResult: workflowRunToExecutionResult(await workflowRunStore.getRun(workflowRun.id, { light: true })),
     });
   });
 

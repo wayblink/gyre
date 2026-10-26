@@ -205,3 +205,52 @@ test('persistArtifact ignores nested artifacts unless the invoke cascades them',
   });
   assert.deepEqual(taskIds, ['invoke']);
 });
+
+test('run reads and status writes never touch the legacy result_json copy', async () => {
+  // `workflow_runs.result_json` used to hold a full copy of the execution result — 10-19 MB per monthly
+  // run (3.5 GB in production) — and `select *` dragged it into every read: 480 ms for a single row,
+  // plus a 16 MB response for every approval. Nothing reads it back, so the cost was pure loss.
+  const captured: string[] = [];
+  const runRow = {
+    id: 1,
+    workflow_id: 1,
+    version_id: null,
+    workflow_code: 'test',
+    workflow_name: 'Test',
+    status: 'running',
+    tasks_snapshot_json: [],
+    runtime_parameters_json: {},
+    approved_warning_task_ids_json: [],
+    error_message: null,
+    started_at: new Date(0).toISOString(),
+    finished_at: null,
+    duration_ms: null,
+  };
+  const db = {
+    async queryOne(sql: string) {
+      captured.push(sql);
+      return runRow;
+    },
+    async query() {
+      return [];
+    },
+    async execute(sql: string) {
+      captured.push(sql);
+    },
+  };
+  const store = new WorkflowRunStore(db as never);
+
+  await store.getRun(1);
+  await store.getRun(1, { light: true });
+  await store.updateRunStatus({ runId: 1, status: 'running', errorMessage: null });
+
+  const runReadSql = captured.filter((sql) => /from workflow_runs\s+where id = \$1/i.test(sql));
+  assert.equal(runReadSql.length, 2);
+  for (const sql of runReadSql) {
+    assert.doesNotMatch(sql, /select \*/i, 'no `select *`: it would pull the multi-megabyte blob');
+    assert.doesNotMatch(sql, /result_json/i);
+  }
+  const statusWriteSql = captured.filter((sql) => /update workflow_runs/i.test(sql));
+  assert.equal(statusWriteSql.length, 1);
+  assert.doesNotMatch(statusWriteSql[0], /result_json/i);
+});

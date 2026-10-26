@@ -429,9 +429,24 @@ export function summarizeValidatedWorkbook(buffer: Buffer, fileName: string): Wo
   return assertValidWorkbookSummary(summarizeWorkbook(buffer));
 }
 
+/**
+ * Summarise a workbook on a worker thread.
+ *
+ * `summarizeWorkbook` is synchronous and pure CPU (SheetJS), so running it on the request thread blocks
+ * every other request for as long as the parse takes — a 3.8 MB cap table blocks the event loop for
+ * ~300 ms while an operator is clicking "复核并继续" in another tab. The worker keeps the loop free.
+ */
+export async function summarizeWorkbookAsync(buffer: Buffer): Promise<WorkbookSummary> {
+  return assertValidWorkbookSummary(await runSummaryWorker(buffer));
+}
+
 export async function summarizeValidatedWorkbookAsync(buffer: Buffer, fileName: string): Promise<WorkbookSummary> {
   validateWorkbookUploadContainer(buffer, fileName);
-  const summary = await new Promise<WorkbookSummary>((resolve, reject) => {
+  return assertValidWorkbookSummary(await runSummaryWorker(buffer));
+}
+
+async function runSummaryWorker(buffer: Buffer): Promise<WorkbookSummary> {
+  return new Promise<WorkbookSummary>((resolve, reject) => {
     const worker = new Worker(WORKBOOK_SUMMARY_WORKER_SOURCE, {
       eval: true,
       workerData: buffer,
@@ -460,8 +475,6 @@ export async function summarizeValidatedWorkbookAsync(buffer: Buffer, fileName: 
       if (code !== 0) finish(() => reject(new Error(`Workbook parser exited with code ${code}`)));
     });
   });
-
-  return assertValidWorkbookSummary(summary);
 }
 
 export function previewWorkbookSheet(buffer: Buffer, sheetName: string, limit = 50, offset = 0): WorkbookSheetPreview {

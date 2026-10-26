@@ -76,6 +76,30 @@ export function getStepStates(run: WorkflowRunRecord): Record<string, WorkflowEx
   return Object.fromEntries(run.steps.map((step) => [step.taskId, step.status]));
 }
 
+/**
+ * The handful of facts a finished run reports, without materialising its dataframes.
+ *
+ * `workflowRunToExecutionResult` embeds every step's result; building it just to read four fields cost
+ * seconds and tens of megabytes on a monthly run, so run-status writes and events use this instead.
+ */
+export function summarizeRunOutcome(run: WorkflowRunRecord): {
+  failedTaskId: string | null;
+  blockedTaskIds: string[];
+  warningTaskIds: string[];
+  waitingForApprovalTaskIds: string[];
+  errorMessage: string | null;
+} {
+  return {
+    failedTaskId: run.steps.find((step) => step.status === 'failed')?.taskId ?? null,
+    blockedTaskIds: run.steps.filter((step) => step.status === 'blocked').map((step) => step.taskId),
+    warningTaskIds: run.steps.filter((step) => step.status === 'warning').map((step) => step.taskId),
+    waitingForApprovalTaskIds: run.approvals
+      .filter((approval) => approval.status === 'pending')
+      .map((approval) => approval.taskId),
+    errorMessage: run.errorMessage,
+  };
+}
+
 export function workflowRunToExecutionResult(run: WorkflowRunRecord): WorkflowExecutionResult {
   const taskStates: Record<string, WorkflowExecutionTaskState> = {};
   const taskResults: Record<string, WorkflowTaskPreviewResult | null> = {};
