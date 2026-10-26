@@ -9926,11 +9926,35 @@ textarea.form-input {
     background: #f8fafc;
 }
 
+.monthly-run-task__review {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+}
+
+.monthly-run-task__review-hint {
+    align-self: center;
+    color: var(--warning-700);
+    font-size: var(--text-xs);
+}
+
 .monthly-run-actions {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: var(--space-2);
     margin-top: var(--space-4);
+}
+
+.monthly-run-actions__hint {
+    margin-right: auto;
+    color: var(--warning-700);
+    font-size: var(--text-xs);
+}
+
+.monthly-run-actions__hint:empty {
+    display: none;
 }
 
 .monthly-run-source-trigger {
@@ -10275,7 +10299,13 @@ textarea.form-input {
     }
 
     .monthly-run-actions {
+        flex-wrap: wrap;
         justify-content: stretch;
+    }
+
+    .monthly-run-actions__hint {
+        width: 100%;
+        margin-right: 0;
     }
 
     .monthly-run-actions .btn {

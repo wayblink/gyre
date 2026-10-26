@@ -13,6 +13,7 @@ import {
   getMonthlyRunSourceSheetControlModel,
   getMonthlyRunVisibleSources,
   getMonthlyRunWarningTaskIds,
+  getMonthlyRunReviewActions,
   isMonthlyRunHistoryDeletable,
   isRunPanelStaleForMonth,
   monthlyRunSourceFolders,
@@ -798,4 +799,42 @@ test('a run parked waiting for review is deletable; only a genuinely executing r
   assert.equal(isMonthlyRunHistoryDeletable('skipped'), true);
   assert.equal(isMonthlyRunHistoryDeletable('running'), false);
   assert.equal(isMonthlyRunHistoryDeletable('pending'), false);
+});
+
+test('review decisions list each pending task once and stay locked while the page is still finishing', () => {
+  // The buttons turn visible the moment a poll reports `waiting_approval`, but `isRunning` stays
+  // true until the trigger path finished refreshing files/history. A click in that window used to be
+  // dropped by `approveActiveRun` with no feedback at all — the panel now renders them disabled.
+  const run = {
+    approvals: [
+      { taskId: 'calc_control_book_metrics', status: 'pending' },
+      { taskId: 'calc_control_book_metrics', status: 'pending' },
+      { taskId: 'calc_option_metrics', status: 'approved' },
+    ],
+  } as unknown as Parameters<typeof getMonthlyRunReviewActions>[0];
+
+  assert.deepEqual(getMonthlyRunReviewActions(run, false), {
+    pendingTaskIds: ['calc_control_book_metrics'],
+    isBusy: false,
+  });
+  assert.deepEqual(getMonthlyRunReviewActions(run, true), {
+    pendingTaskIds: ['calc_control_book_metrics'],
+    isBusy: true,
+  });
+  assert.deepEqual(getMonthlyRunReviewActions(null, false), { pendingTaskIds: [], isBusy: false });
+});
+
+test('the review decision sits on the waiting task row, not only at the bottom of a long task list', () => {
+  const source = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+  const texts = readFileSync(new URL('./texts.ts', import.meta.url), 'utf8');
+
+  // A "需复核" row must offer the decision itself: with 20+ nodes the footer buttons are off-screen.
+  assert.match(source, /data-review-decision="approved"/);
+  assert.match(source, /data-review-decision="skipped"/);
+
+  // A busy page disables the buttons and says why, instead of swallowing the click.
+  assert.match(source, /continueButton\.disabled = review\.isBusy/);
+  assert.match(source, /skipButton\.disabled = review\.isBusy/);
+  assert.match(texts, /reviewBusyHint/);
+  assert.match(texts, /reviewAndContinue/);
 });

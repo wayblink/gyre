@@ -421,21 +421,32 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
   app.delete('/api/monthly-runs/:id', async (request, reply) => {
     const historyId = parseIdParam((request.params as { id: string }).id, 'monthly run id');
     try {
-      // A history parked in `waiting_approval` is paused mid-execution waiting for a human decision,
+      // A run parked in `waiting_approval` is paused mid-execution waiting for a human decision,
       // and the only ways to end it from the run panel are 继续/跳过 — both advance the workflow and
       // write its output. An operator asking to delete such a row means "throw this away", so end the
       // run here instead. `cancelRun` finalises it as `skipped`, which the delete guard accepts, so
       // nothing is left orphaned. Runs that are genuinely executing are still refused below.
-      const parked = await db.queryOne<{ workflow_run_id: number | null }>(
-        `select workflow_run_id from monthly_run_history
-          where id = $1 and status = 'waiting_approval'`,
+      //
+      // The run is the source of truth for the status: `applyMonthlyRunPostProcessing` deliberately
+      // leaves a parked run's history row at `running`, so matching on the history status missed the
+      // parked case entirely and the delete came back 409.
+      const parked = await db.queryOne<{ run_status: string | null; workflow_run_id: number | null }>(
+        `select h.workflow_run_id, run.status as run_status
+           from monthly_run_history h
+           left join workflow_runs run on run.id = h.workflow_run_id
+          where h.id = $1`,
         [historyId],
       );
       const parkedRunId =
         parked?.workflow_run_id === null || parked?.workflow_run_id === undefined
           ? null
           : Number(parked.workflow_run_id);
-      if (parkedRunId && Number.isInteger(parkedRunId) && parkedRunId > 0) {
+      if (
+        parkedRunId &&
+        Number.isInteger(parkedRunId) &&
+        parkedRunId > 0 &&
+        parked?.run_status === 'waiting_approval'
+      ) {
         await workflowRunExecutor.cancelRun(parkedRunId);
       }
       const operation = await db.transaction((tx) => deleteMonthlyRunHistory(tx, historyId));

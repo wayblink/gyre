@@ -454,12 +454,12 @@ test('deleteMonthlyRunHistory rejects a running record before deleting anything'
   await assert.rejects(() => deleteMonthlyRunHistory(db, 8), /仍在执行中，不能删除/);
 });
 
-test('deleteMonthlyRunHistory allows a record parked in waiting_approval', async () => {
-  // The DELETE route cancels such a run first, which finalises it as `skipped`; what reaches the
-  // store is therefore a terminal row. Pinning this here documents that the store no longer treats
-  // `waiting_approval` as "still running" — the only remaining blockers are pending/running.
+test('deleteMonthlyRunHistory allows a record parked in waiting_approval once the route ended the run', async () => {
+  // The DELETE route cancels such a run first, which finalises it as `skipped`; the store judges by
+  // the run status, which is then terminal. A parked run that reaches the store un-ended is refused
+  // (see the next test) so a delete cannot orphan a run only a human decision can finish.
   const db = new FakeMonthlyDb();
-  db.history = { ...db.history, id: 9, status: 'waiting_approval', produced_file_id: null };
+  db.history = { ...db.history, id: 9, status: 'waiting_approval', produced_file_id: null, run_status: 'skipped' };
   db.queryOne = async <T>(sql: string): Promise<T | undefined> =>
     /for update of h/i.test(sql) ? (db.history as unknown as T) : undefined;
 
@@ -467,4 +467,73 @@ test('deleteMonthlyRunHistory allows a record parked in waiting_approval', async
 
   assert.ok(result);
   assert.deepEqual(db.deletedHistoryIds, [9]);
+});
+
+test('deleteMonthlyRunHistory judges deletability by the linked run, not the stale history status', async () => {
+  // `applyMonthlyRunPostProcessing` deliberately leaves the history row at `running` while the run
+  // is parked in `waiting_approval`, and the DELETE route ends that run (cancelRun → skipped) before
+  // deleting. The store must therefore trust `workflow_runs.status`: keying off the stale history
+  // status refused the delete with 409 even though the run had already been finalised.
+  const deleted: number[] = [];
+  const db = {
+    async query() {
+      return [];
+    },
+    async queryOne<T>(sql: string): Promise<T | undefined> {
+      if (/for update of h/i.test(sql)) {
+        return {
+          id: 9,
+          month_id: 11,
+          month_key: '2026-06',
+          workflow_run_id: 209,
+          status: 'running',
+          run_status: 'skipped',
+          produced_file_id: null,
+          produced_file_path: null,
+          produced_file_name: null,
+        } as T;
+      }
+      return undefined;
+    },
+    async execute(sql: string, params: unknown[]): Promise<void> {
+      if (/delete from monthly_run_history/i.test(sql)) deleted.push(Number(params[0]));
+    },
+  };
+
+  const result = await deleteMonthlyRunHistory(db, 9);
+
+  assert.ok(result);
+  assert.deepEqual(deleted, [9]);
+});
+
+test('deleteMonthlyRunHistory refuses a row whose run is still parked for review', async () => {
+  // The route cancels a parked run first, so reaching the store with a waiting run means the caller
+  // skipped that step. Say so instead of reporting "still executing" — the operator needs to know a
+  // human decision (or an explicit cancel) is what ends it.
+  const db = {
+    async query() {
+      return [];
+    },
+    async queryOne<T>(sql: string): Promise<T | undefined> {
+      if (/for update of h/i.test(sql)) {
+        return {
+          id: 10,
+          month_id: 11,
+          month_key: '2026-06',
+          workflow_run_id: 210,
+          status: 'running',
+          run_status: 'waiting_approval',
+          produced_file_id: null,
+          produced_file_path: null,
+          produced_file_name: null,
+        } as T;
+      }
+      return undefined;
+    },
+    async execute(): Promise<void> {
+      assert.fail('a run parked for review must not be deleted behind the panel');
+    },
+  };
+
+  await assert.rejects(() => deleteMonthlyRunHistory(db, 10), /仍在等待复核/);
 });

@@ -529,6 +529,24 @@ export function isMonthlyRunHistoryDeletable(status: string): boolean {
   return status !== 'pending' && status !== 'running';
 }
 
+/**
+ * Which review decisions the run panel must offer, and whether they can be submitted right now.
+ *
+ * The buttons become visible as soon as a poll reports a pending approval — which can happen while
+ * the page is still finishing the previous trigger (refreshing product files, history, plan status)
+ * with `isRunning` still true. `approveActiveRun` returns early in that state, so a click used to be
+ * swallowed with no feedback at all; the panel now renders the buttons disabled and says why.
+ */
+export function getMonthlyRunReviewActions(
+  run: Pick<WorkflowRunRecord, 'approvals'> | null | undefined,
+  isRunning: boolean,
+): { pendingTaskIds: string[]; isBusy: boolean } {
+  const pendingTaskIds = [
+    ...new Set((run?.approvals ?? []).filter((approval) => approval.status === 'pending').map((a) => a.taskId)),
+  ];
+  return { pendingTaskIds, isBusy: isRunning };
+}
+
 export function isRunPanelStaleForMonth(activeRunMonth: string | null, selectedMonth: string): boolean {
   if (!activeRunMonth) return false;
   return activeRunMonth !== selectedMonth;
@@ -1560,35 +1578,45 @@ export function createMonthlyRunPage({
   }
 
   async function approveActiveRun(decision: 'approved' | 'skipped') {
-    if (!activeRun || !activeHistoryId || isRunning) return;
-    const waitingTaskIds = activeRun.approvals
-      .filter((approval) => approval.status === 'pending')
-      .map((approval) => approval.taskId);
+    if (!activeRun || !activeHistoryId) return;
+    const waitingTaskIds = getMonthlyRunReviewActions(activeRun, isRunning).pendingTaskIds;
     if (!waitingTaskIds.length) return;
+    if (isRunning) {
+      // Reachable through the keyboard/AT path, or a stale handler. Say so instead of doing nothing:
+      // the previous versions returned silently, which read as "the button is broken".
+      notify(tt('reviewBusyHint'), { type: 'warning' });
+      return;
+    }
 
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
     isRunning = true;
     renderRunPanel(decision === 'skipped' ? 'Skipping downstream flow...' : 'Continuing workflow...');
-    const result = await api<{ run?: WorkflowRunRecord }>(`/api/monthly-runs/${activeHistoryId}/approvals`, {
-      method: 'POST',
-      body: JSON.stringify({ taskIds: waitingTaskIds, decision }),
-    });
-    activeRun = result.run ?? activeRun;
-    expandedWarningTaskIds.clear();
-    await runClient.pollUntilSettled(activeRun.id, {
-      minimumPollCount: 2,
-      light: true,
-      onUpdate: (run) => {
-        if (activeRunMonth !== month) return;
-        activeRun = run;
-        renderRunPanel();
-      },
-    });
-    isRunning = false;
-    await finalizeAfterRun(month);
-    await refreshHistory();
-    await onPlanStatusChanged?.();
-    renderRunPanel();
+    try {
+      const result = await api<{ run?: WorkflowRunRecord }>(`/api/monthly-runs/${activeHistoryId}/approvals`, {
+        method: 'POST',
+        body: JSON.stringify({ taskIds: waitingTaskIds, decision }),
+      });
+      activeRun = result.run ?? activeRun;
+      expandedWarningTaskIds.clear();
+      await runClient.pollUntilSettled(activeRun.id, {
+        minimumPollCount: 2,
+        light: true,
+        onUpdate: (run) => {
+          if (activeRunMonth !== month) return;
+          activeRun = run;
+          renderRunPanel();
+        },
+      });
+      await finalizeAfterRun(month);
+      await refreshHistory();
+      await onPlanStatusChanged?.();
+    } catch (error) {
+      // Leaving `isRunning` true here used to wedge the panel: every later click was ignored.
+      notify(error instanceof Error ? error.message : tt('reviewFailed'), { type: 'error' });
+    } finally {
+      isRunning = false;
+      renderRunPanel();
+    }
   }
 
   async function refreshActiveRun() {
@@ -1682,9 +1710,12 @@ export function createMonthlyRunPage({
     const progressBar = el('monthlyRunProgressBar');
     const progressText = el('monthlyRunProgressText');
     const actions = el('monthlyRunActions');
+    const busyHint = el('monthlyRunReviewBusy');
     const continueButton = el<HTMLButtonElement>('btnMonthlyRunContinue');
     const skipButton = el<HTMLButtonElement>('btnMonthlyRunSkip');
     const run = activeRun;
+    // Cleared here so the empty/loading branches cannot leave a stale "still finishing" note behind.
+    busyHint.textContent = '';
 
     panel.classList.remove('hidden');
     if (!run) {
@@ -1722,6 +1753,7 @@ export function createMonthlyRunPage({
     const total = run.steps.length;
     const ratio = total ? Math.min(1, reached / total) : 0;
     const pendingApprovals = run.approvals.filter((approval) => approval.status === 'pending');
+    const review = getMonthlyRunReviewActions(run, isRunning);
     const statusCode = run.status === 'completed_with_warnings' ? 'warning' : run.status;
     const shouldShowSummary =
       isMonthlyRunAttentionMessage(overrideMessage) ||
@@ -1751,9 +1783,11 @@ export function createMonthlyRunPage({
             : '';
         const isWarningExpandable = Boolean(warningMessage);
         const isExpanded = isWarningExpandable && expandedWarningTaskIds.has(step.taskId);
+        const isAwaitingReview = review.pendingTaskIds.includes(step.taskId);
         return `
         <div
           class="monthly-run-task monthly-run-task--${step.status} ${isWarningExpandable ? 'monthly-run-task--expandable' : ''} ${isExpanded ? 'is-expanded' : ''}"
+          ${isWarningExpandable ? `data-warning-row-task-id="${escapeHtml(step.taskId)}"` : ''}
         >
           <span class="monthly-run-task__index">${step.status === 'completed' ? '✓' : step.status === 'running' ? '…' : String(index + 1).padStart(2, '0')}</span>
           <div class="monthly-run-task__main">
@@ -1764,6 +1798,19 @@ export function createMonthlyRunPage({
                 ? `<button type="button" class="monthly-run-task__warning-toggle" data-warning-task-id="${escapeHtml(step.taskId)}">
                     ${escapeHtml(isExpanded ? tt('hideWarningDetails') : tt('showWarningDetails'))}
                   </button>`
+                : ''
+            }
+            ${
+              isAwaitingReview
+                ? `<div class="monthly-run-task__review">
+                    <button type="button" class="btn btn-primary btn-sm" data-review-decision="approved"${
+                      review.isBusy ? ' disabled' : ''
+                    }>${escapeHtml(tt('reviewAndContinue'))}</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-review-decision="skipped"${
+                      review.isBusy ? ' disabled' : ''
+                    }>${escapeHtml(tt('skipDownstream'))}</button>
+                    ${review.isBusy ? `<span class="monthly-run-task__review-hint">${escapeHtml(tt('reviewBusyHint'))}</span>` : ''}
+                  </div>`
                 : ''
             }
           </div>
@@ -1785,9 +1832,38 @@ export function createMonthlyRunPage({
       });
     });
 
-    continueButton.classList.toggle('hidden', pendingApprovals.length === 0);
-    skipButton.classList.toggle('hidden', pendingApprovals.length === 0);
-    actions.classList.toggle('hidden', pendingApprovals.length === 0);
+    // The row looks clickable (`cursor: pointer`), so let it expand the warning too — buttons inside
+    // it keep their own behaviour. Clicks targeting a button are ignored here to avoid a double toggle.
+    taskList.querySelectorAll<HTMLElement>('[data-warning-row-task-id]').forEach((row) => {
+      row.addEventListener('click', (event) => {
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest('button')) return;
+        const taskId = row.dataset.warningRowTaskId;
+        if (!taskId) return;
+        toggleWarningTask(taskId);
+      });
+    });
+
+    taskList.querySelectorAll<HTMLButtonElement>('button[data-review-decision]').forEach((node) => {
+      node.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (node.disabled) {
+          notify(tt('reviewBusyHint'), { type: 'warning' });
+          return;
+        }
+        void approveActiveRun(node.dataset.reviewDecision === 'skipped' ? 'skipped' : 'approved');
+      });
+    });
+
+    continueButton.textContent = tt('reviewAndContinue');
+    skipButton.textContent = tt('skipDownstream');
+    continueButton.disabled = review.isBusy;
+    skipButton.disabled = review.isBusy;
+    continueButton.classList.toggle('hidden', review.pendingTaskIds.length === 0);
+    skipButton.classList.toggle('hidden', review.pendingTaskIds.length === 0);
+    actions.classList.toggle('hidden', review.pendingTaskIds.length === 0);
+    busyHint.textContent = review.pendingTaskIds.length > 0 && review.isBusy ? tt('reviewBusyHint') : '';
   }
 
   async function refreshHistory(month = el<HTMLInputElement>('monthlyRunMonth').value) {

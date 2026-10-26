@@ -222,23 +222,31 @@ export async function deleteMonthlyRunHistory(
   const history = await db.queryOne<Record<string, unknown>>(
     `select h.*,
             produced.file_path as produced_file_path,
-            produced.original_name as produced_file_name
+            produced.original_name as produced_file_name,
+            run.status as run_status
        from monthly_run_history h
        left join product_files produced on produced.id = h.produced_file_id
+       left join workflow_runs run on run.id = h.workflow_run_id
       where h.id = $1
       for update of h`,
     [historyId],
   );
   if (!history) return null;
 
-  const status = String(history.status ?? '');
-  // `waiting_approval` is deliberately absent: that run is paused mid-execution waiting for a human
-  // decision, and the DELETE route ends it before getting here (see the route). What remains here is
-  // a run that is actually executing, which must not be deleted out from under the executor.
+  // The run is the source of truth, not the mirrored history status: `applyMonthlyRunPostProcessing`
+  // deliberately leaves a parked run's history row at `running`, so keying off it refused the delete
+  // even after the route had already ended the run.
+  const status = String(history.run_status ?? history.status ?? '');
   if (status === 'pending' || status === 'running') {
     throw new MonthlyRunHistoryDeleteConflictError(
       '本次月度运行仍在执行中，不能删除；请等待它完成，或在工作流运行面板里取消后再删',
     );
+  }
+  // `waiting_approval` is not "executing", but deleting it behind the panel's back would orphan a
+  // run that only a human decision can end. The DELETE route cancels such a run first (see the
+  // route), so a row that still arrives here in that state skipped that step.
+  if (status === 'waiting_approval') {
+    throw new MonthlyRunHistoryDeleteConflictError('该次月度运行仍在等待复核；请先在运行面板结束它，或直接删除以取消');
   }
 
   const monthId = Number(history.month_id);

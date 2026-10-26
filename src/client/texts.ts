@@ -445,6 +445,13 @@ export const TEXTS = {
       'en-US': 'Node status will appear here after execution.',
     },
     reviewRequired: { 'zh-CN': '需人工复核', 'en-US': 'review required' },
+    reviewAndContinue: { 'zh-CN': '复核并继续', 'en-US': 'Review and continue' },
+    skipDownstream: { 'zh-CN': '跳过后续', 'en-US': 'Skip downstream' },
+    reviewBusyHint: {
+      'zh-CN': '正在收尾上一步，请稍候再复核…',
+      'en-US': 'Still finishing the previous step — please wait before reviewing…',
+    },
+    reviewFailed: { 'zh-CN': '复核提交失败', 'en-US': 'Could not submit the review decision' },
     showWarningDetails: { 'zh-CN': '查看告警详情', 'en-US': 'View warning details' },
     hideWarningDetails: { 'zh-CN': '收起告警详情', 'en-US': 'Hide warning details' },
     noHistory: { 'zh-CN': '暂无执行历史', 'en-US': 'No execution history' },
