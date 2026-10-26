@@ -115,6 +115,22 @@ function replaceSqlConstants(sql: string, constants: unknown): string {
   });
 }
 
+/**
+ * Columns an empty `select *` result would have had.
+ *
+ * A row-set is the only thing alasql hands back, so a query that matches no rows returns `[]` with
+ * no column information at all. For `select * from <table>` the answer is exactly the bound table's
+ * columns — and losing them is not cosmetic: `sheet.optional-range.extract` declares an empty
+ * column contract (`emptyColumns`) so downstream SQL keeps working when an optional input is not
+ * supplied, and collapsing that contract to zero columns made the next schema guard (and any SQL
+ * naming those columns) fail on a perfectly valid "this input was not provided" month.
+ */
+function emptyResultColumns(compiledSql: string, tableColumns: Map<string, string[]>): string[] {
+  const selectStar = compiledSql.match(/^\s*select\s+\*\s+from\s+([A-Za-z_][A-Za-z0-9_]*)/i);
+  if (!selectStar) return [];
+  return tableColumns.get(selectStar[1].toLowerCase()) ?? [];
+}
+
 export async function executeSqlDataFrameQuery(
   task: WorkflowTask,
   runtime: WorkflowOperatorRuntime,
@@ -129,6 +145,7 @@ export async function executeSqlDataFrameQuery(
 
   let compiledSql = replaceSqlConstants(sql, task.params.constants);
   const tableNames = new Set<string>();
+  const tableColumns = new Map<string, string[]>();
   let firstInputDataFrame: WorkflowDataFrame | null = null;
   const database = createIsolatedSqlDatabase();
 
@@ -144,6 +161,7 @@ export async function executeSqlDataFrameQuery(
       throw new Error(`Duplicate SQL table binding: ${binding.tableName}`);
     }
     tableNames.add(safeTableName);
+    tableColumns.set(safeTableName.toLowerCase(), [...(dataframe.columns ?? [])]);
     bindDataFrameTable(database, safeTableName, dataframe);
     compiledSql = compiledSql.replaceAll(`{${binding.tableName}}`, safeTableName);
   }
@@ -168,6 +186,7 @@ export async function executeSqlDataFrameQuery(
     dataFrame: runtime.rowsToDataFrame(result as Array<Record<string, unknown>>, {
       sheetName: task.name || 'SQL Result',
       a1Range: '',
+      ...(result.length ? {} : { columns: emptyResultColumns(compiledSql, tableColumns) }),
     }),
     firstInputDataFrame,
   };

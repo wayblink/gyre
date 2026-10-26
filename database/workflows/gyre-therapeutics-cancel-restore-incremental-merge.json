@@ -3,7 +3,7 @@
   "name": "Gyre Therapeutics Cancel & Restore Incremental Merge",
   "description": "将取消与恢复报表基表与本月增量按创建编号幂等合并，不在合并阶段按日期过滤，输出完整历史基表供下游按业务月份计算。",
   "status": "active",
-  "version": 2,
+  "version": 3,
   "tasks": [
     {
       "x": 48,
@@ -239,16 +239,10 @@
     "month": "2026-09",
     "fileRefs": {
       "base_cancel_restore_report": {
-        "id": 206,
-        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
-        "sheet": "取消与恢复明细",
-        "provider": "product-files"
+        "sheet": "取消与恢复明细"
       },
       "incremental_cancel_restore_report": {
-        "id": 206,
-        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
-        "sheet": "取消与恢复明细",
-        "provider": "product-files"
+        "sheet": "取消与恢复明细"
       }
     },
     "monthUnderscore": "2026_09"

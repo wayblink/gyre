@@ -50,14 +50,44 @@ export function normalizeWorkflowRuntimeParametersSchema(value: unknown): Workfl
   return schema;
 }
 
+/**
+ * A file reference is atomic in its file identity: `provider` / `key` / `id` say *which file*.
+ * Everything else (`sheet`, and any future metadata) is a setting that may come from a default.
+ */
+const FILE_REFERENCE_IDENTITY_KEYS = ['provider', 'id', 'key'] as const;
+
+/**
+ * Merge one `fileRefs.<sourceKey>` entry.
+ *
+ * The file identity comes from the caller **only**. Deep-merging it would let a definition default
+ * put a file back into a source the caller deliberately left empty: Monthly Update passes
+ * `{ sheet }` for an optional source the operator did not configure, and the definition default
+ * (`{ provider, key, id, sheet }` pointing at last quarter's export) used to be merged underneath
+ * it — so "not supplied" quietly became "read this historical workbook", failing the run with
+ * `Product file not found` for an input the page showed as optional. `{}` therefore means "no file"
+ * and must stay empty.
+ *
+ * Non-identity fields still merge, so a caller that supplies only a file can inherit the sheet.
+ */
+function mergeFileReference(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+  const inherited = Object.fromEntries(
+    Object.entries(base).filter(([key]) => !(FILE_REFERENCE_IDENTITY_KEYS as readonly string[]).includes(key)),
+  );
+  return { ...cloneJson(inherited), ...cloneJson(override) };
+}
+
 function mergeRuntimeParameters(
   base: WorkflowRuntimeParameters,
   override: WorkflowRuntimeParameters,
+  path = '',
 ): WorkflowRuntimeParameters {
   const merged: WorkflowRuntimeParameters = cloneJson(base);
   for (const [key, value] of Object.entries(override)) {
     if (isRecord(value) && isRecord(merged[key])) {
-      merged[key] = mergeRuntimeParameters(merged[key] as WorkflowRuntimeParameters, value);
+      merged[key] =
+        path === 'fileRefs'
+          ? mergeFileReference(merged[key] as Record<string, unknown>, value)
+          : mergeRuntimeParameters(merged[key] as WorkflowRuntimeParameters, value, path ? `${path}.${key}` : key);
       continue;
     }
     merged[key] = cloneJson(value);

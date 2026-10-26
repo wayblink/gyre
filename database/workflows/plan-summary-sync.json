@@ -3,7 +3,7 @@
   "name": "Plan Summary Sync",
   "description": "读取 Gyre Option Plans Summary SL，并消费取消与恢复报表增量合并后的完整基表；仅在 Plan Summary 指标计算时按变更月份累计 GYRE 2025 BC Subplan 的 Cancelled，保留 Outstanding 不为 0 的计划。",
   "status": "active",
-  "version": 5,
+  "version": 6,
   "tasks": [
     {
       "x": 420,
@@ -239,16 +239,10 @@
         "sheet": "!Option Plans Summary (Post-Gyr"
       },
       "base_cancel_restore_report": {
-        "id": 206,
-        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
-        "sheet": "取消与恢复明细",
-        "provider": "product-files"
+        "sheet": "取消与恢复明细"
       },
       "incremental_cancel_restore_report": {
-        "id": 206,
-        "key": "input/cancel_restore/Gyre Therapeutics取消与恢复报表.xlsx",
-        "sheet": "取消与恢复明细",
-        "provider": "product-files"
+        "sheet": "取消与恢复明细"
       }
     },
     "monthUnderscore": "2026_09"

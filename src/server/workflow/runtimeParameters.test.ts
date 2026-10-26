@@ -7,7 +7,11 @@ import {
   resolveWorkflowRuntimeConfiguration,
 } from './runtimeParameters.js';
 import { deriveWorkflowRuntimeConfigFromTasks } from './runtimeParameterRequirements.js';
-import type { WorkflowTask, WorkflowRuntimeParametersSchema } from '../../shared/types.js';
+import type { WorkflowTask, WorkflowRuntimeParameters, WorkflowRuntimeParametersSchema } from '../../shared/types.js';
+
+/** `fileRefs` is a loosely typed bag, so read one source's reference through a cast. */
+const controlBookRef = (resolved: { runtimeParameters: WorkflowRuntimeParameters }) =>
+  (resolved.runtimeParameters.fileRefs as Record<string, unknown>).control_book;
 
 const baseTask = (overrides: Partial<WorkflowTask>): WorkflowTask => ({
   id: 'task',
@@ -266,6 +270,64 @@ test('resolveWorkflowRuntimeConfiguration merges defaults under caller overrides
   // default fileRef applies because caller did not override it
   assert.deepEqual(resolved.tasks[0].params.fileRef, { provider: 'product-files', id: 7 });
   assert.equal(resolved.runtimeParameters.month, '2026-06');
+});
+
+test('resolveWorkflowRuntimeConfiguration keeps a caller-supplied fileRef from inheriting the default file identity', () => {
+  // Regression: the monthly run passes `{ sheet }` for an optional source the operator left empty.
+  // Deep-merging the definition default back in made that "not supplied" source read a historical
+  // file (read-series-b default -> input/series-b/Control_Books_Detail_Data_16.09.2026_19.31.xlsx),
+  // so the run failed with "Product file not found" for an input the page showed as optional.
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [extractTask()],
+    runtimeParamsSchema: monthlySchema,
+    runtimeParamsDefaults: {
+      fileRefs: {
+        control_book: {
+          provider: 'product-files',
+          id: 195,
+          key: 'input/series-b/Control_Books_Detail_Data_16.09.2026_19.31.xlsx',
+          sheet: '43105',
+        },
+      },
+    },
+    runtimeParameters: { fileRefs: { control_book: { sheet: '43105' } } },
+  });
+
+  assert.deepEqual(controlBookRef(resolved), { sheet: '43105' });
+});
+
+test('resolveWorkflowRuntimeConfiguration treats an empty caller fileRef as "no file"', () => {
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [extractTask()],
+    runtimeParamsSchema: monthlySchema,
+    runtimeParamsDefaults: {
+      fileRefs: { control_book: { provider: 'product-files', key: 'input/2026-05/control-book.xlsx' } },
+    },
+    runtimeParameters: { fileRefs: { control_book: {} } },
+  });
+
+  assert.deepEqual(controlBookRef(resolved), {});
+});
+
+test('resolveWorkflowRuntimeConfiguration fills a missing sheet from the default without borrowing its file', () => {
+  const resolved = resolveWorkflowRuntimeConfiguration({
+    tasks: [extractTask()],
+    runtimeParamsSchema: monthlySchema,
+    runtimeParamsDefaults: {
+      fileRefs: {
+        control_book: { provider: 'product-files', id: 195, key: 'input/series-b/old.xlsx', sheet: '43105' },
+      },
+    },
+    runtimeParameters: {
+      fileRefs: { control_book: { provider: 'product-files', key: 'input/2026-01/series-b.xlsx' } },
+    },
+  });
+
+  assert.deepEqual(controlBookRef(resolved), {
+    provider: 'product-files',
+    key: 'input/2026-01/series-b.xlsx',
+    sheet: '43105',
+  });
 });
 
 test('resolveWorkflowRuntimeConfiguration supports preview runtime defaults for edited tasks', () => {

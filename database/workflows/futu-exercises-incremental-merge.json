@@ -3,7 +3,7 @@
   "name": "Futu Exercises Incremental Merge",
   "description": "Futu 行权记录 base + 富途明细增量按行权订单编号幂等合并：base 是上月完整 to-date（含留空的历史订单号列），增量是富途平台导出的行权明细；按业务月截断后幂等合并，产出当月完整 base 供下游求和，并落盘固定路径供下月链式。",
   "status": "active",
-  "version": 4,
+  "version": 5,
   "tasks": [
     {
       "x": 48,
@@ -337,14 +337,10 @@
     "month": "2026-08",
     "fileRefs": {
       "base_futu_exercises": {
-        "key": "futu_exercises/Futu_Exercises_Base_2026_09.xlsx",
-        "sheet": "Futu BCI Exercises",
-        "provider": "product-files"
+        "sheet": "Futu BCI Exercises"
       },
       "incremental_futu_exercises": {
-        "key": "input/2026-08/Gyre Therapeutics员工行权记录.xlsx",
-        "sheet": "行权明细数据",
-        "provider": "product-files"
+        "sheet": "行权明细数据"
       }
     },
     "monthUnderscore": "2026_08"
