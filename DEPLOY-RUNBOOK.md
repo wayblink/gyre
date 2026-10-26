@@ -518,7 +518,7 @@ done
 - [ ] `GET /api/months` 的标记里含 `hasGrantData` 在内的六个 `has*Data`（6.3）
 - [ ] 八个记录页接口带 `?month=` 都返回 2xx（6.3）
 - [ ] `GET /api/files` 未登录返回 401
-- [ ] 月度工作流版本为 45，`Comment` 为 `Omnibus Inc.Pl.` 的运行不再停在复核（见 8.3）
+- [ ] 月度工作流版本为 46；`Comment` 为 `Omnibus Inc.Pl.` 的运行不再停在复核；输入源显示「Futu Exercise Record」（见 8.3）
 - [ ] 「需复核」的运行历史行，「删除」按钮可用，点删除后该行消失、对应 workflow run 变成 `skipped`（见 8.1）
 - [ ] 停在「需复核」时，该行内部有「复核并继续 / 跳过后续」；点一下面板自己走到 23 / 23，全程无需刷新（见 8.2）
 - [ ] 「月度更新」页无版本不匹配提示；输入表格 13 行；文件名模板图标只在需上传的行出现（6.4）
@@ -579,7 +579,7 @@ done
 
 > 注意：工作流引擎的 SQL 只允许只读查询，`replace()` 被列入禁用关键字（会被当成写语句），所以这里用 `like` 而不是字符串替换。
 
-**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version` = 45、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version` = 45、前端 `MONTHLY_WORKFLOW_VERSION` = 45。三者不一致时月度页会报版本不匹配并拒绝执行。
+**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version`、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION`。三者不一致时月度页会报版本不匹配并拒绝执行。当前为 **v46**（v45 收紧了 Comment 判定，v46 只把输入源标签 `Futu Exercise Report` 改名为 `Futu Exercise Record`；标签也走 schema，所以照样要 bump）。
 
 **验收**：
 
