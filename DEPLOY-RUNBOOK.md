@@ -819,6 +819,7 @@ update product_files
 | 同月重复运行会累积快照文件 | 页面按 `finished_at` 取最新，功能无影响；Files 里会看到多份带版本号的文件                                            |
 | 空行残留                   | Shareworks 两个视图的快照里可能带 1-2 行全空行（源表中间的空行），页面按工号/授予编号过滤，展示不受影响              |
 | 2026-08 授予记录           | 该月 Shareworks 导出缺 `Middle Name` 列，已由 `dataframe.ensure.columns` 兜住；Futu 侧没有分月导出，故 Futu 视图为空 |
+| 记录页同步失败会连坐整次月度 | 四个记录页 `workflow.invoke`（grant/exercise/sold-shares/cancellation）出错时该 run 直接 `failed`，主交付物也不出。这是**有意为之**（用户 2026-10-27 定调「同进同退」），不要改成静默放行；处理路径是修根因（如 #1825 的补列） |
 
 ### 11.5 本轮修复的三类线上故障（发布后应消失）
 
