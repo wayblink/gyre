@@ -123,6 +123,25 @@ export function formatCurrency(value: number, currency: 'USD' | 'CNY' = 'USD') {
 }
 
 /**
+ * What the 激励类型 / Grant Type filter should offer for the data on screen.
+ *
+ * The control used to be hardcoded to a single `Option` value and disabled on every view but Futu,
+ * which read as "it just doesn't work". The values differ per view (Futu `激励类型`, Shareworks
+ * `Grant Type` like `Options (NQ)`, the merged view a normalised field), so they come from the rows:
+ * no values means nothing to filter and the control is hidden rather than rendered dead.
+ */
+export function grantTypeFilterModel(
+  types: string[] | undefined | null,
+  current: string,
+): { options: string[]; selected: string; visible: boolean } {
+  const options = [...new Set((types ?? []).map((type) => String(type ?? '').trim()).filter(Boolean))].sort(
+    (left, right) => left.localeCompare(right),
+  );
+  const selected = options.includes(current) ? current : '';
+  return { options, selected, visible: options.length > 1 };
+}
+
+/**
  * The message shown when a month has no rows in the current view and the page picks one that does.
  *
  * It names the table on purpose: the notice used to be a global toast, so two record pages announcing
@@ -310,7 +329,6 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     });
     deps.el('grantViewTitle').textContent = viewCopy[grantView].title;
     deps.el('grantViewSubtitle').textContent = viewCopy[grantView].subtitle;
-    deps.el<HTMLSelectElement>('filterGrantType').disabled = grantView !== 'futu';
     deps.el<HTMLSelectElement>('filterHoldingsTag').disabled = false;
     deps.localizeDom();
   }
@@ -479,6 +497,24 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
   }
 
   /**
+   * Rebuild the type filter from the rows of the active view, and hide it when there is nothing to
+   * choose between (one type, or none) instead of leaving a dead select on screen.
+   */
+  function syncGrantTypeOptions(types: string[] | undefined | null): void {
+    const select = deps.el<HTMLSelectElement>('filterGrantType');
+    const model = grantTypeFilterModel(types, select.value);
+    select.innerHTML =
+      `<option value="">${deps.escapeHtml(deps.getLanguage() === 'en-US' ? 'All Types' : '全部类型')}</option>` +
+      model.options
+        .map((type) => `<option value="${deps.escapeHtml(type)}">${deps.escapeHtml(type)}</option>`)
+        .join('');
+    select.value = model.selected;
+    select.disabled = false;
+    select.classList.toggle('hidden', !model.visible);
+    deps.el('filterGrantTypeLabel').classList.toggle('hidden', !model.visible);
+  }
+
+  /**
    * A month's snapshot can exist in one view only — the Futu export and the Shareworks export are
    * different files. The month picker marks such a month as having data, so an empty default view
    * reads as a broken page; switch to a view that has rows and say why.
@@ -587,9 +623,10 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     renderSortIndicators('#page-grant-record', grantSort);
     if (grantView === 'shareworks') {
       const data = await deps.api<PaginatedResult<ShareworksGrant>>(
-        `/api/grants/shareworks?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&month=${encodeURIComponent(month)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
+        `/api/grants/shareworks?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&grantType=${encodeURIComponent(grantType)}&month=${encodeURIComponent(month)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
       );
       deps.setPageSourceFiles('grant-record', data);
+      syncGrantTypeOptions((data as { grantTypes?: string[] }).grantTypes);
       const items = data.items ?? [];
       holdings = data.page;
       holdingsTotal = data.total;
@@ -600,9 +637,10 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
     }
     if (grantView === 'merge') {
       const data = await deps.api<PaginatedResult<MergedGrant>>(
-        `/api/grants/merge?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&month=${encodeURIComponent(month)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
+        `/api/grants/merge?query=${encodeURIComponent(query)}&tagId=${encodeURIComponent(tagId)}&grantType=${encodeURIComponent(grantType)}&month=${encodeURIComponent(month)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
       );
       deps.setPageSourceFiles('grant-record', data);
+      syncGrantTypeOptions((data as { grantTypes?: string[] }).grantTypes);
       const items = data.items ?? [];
       holdings = data.page;
       holdingsTotal = data.total;
@@ -615,6 +653,7 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
       `/api/holdings?month=${month}&query=${encodeURIComponent(query)}&grantType=${encodeURIComponent(grantType)}&tagId=${encodeURIComponent(tagId)}&page=${holdings}&pageSize=${holdingsPageSize}${sortQuery(grantSort)}`,
     );
     deps.setPageSourceFiles('grant-record', data);
+    syncGrantTypeOptions((data as { grantTypes?: string[] }).grantTypes);
     const items = data.holdings ?? [];
     holdings = data.page;
     holdingsTotal = data.total;

@@ -11,6 +11,7 @@ import {
 } from '../esopPages.js';
 import { loadTransferPlanWorkbook, seedTransferPlanData } from '../seed.js';
 import { expandByLinkedGroup } from '../employeeLinkExpansion.js';
+import { distinctGrantTypes } from '../utils/grantTypes.js';
 import { assembleShareworksName } from '../employees.js';
 import { config } from '../config.js';
 import fs from 'node:fs';
@@ -449,21 +450,22 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     const labelsByEmployee = await employeeLabelsByNumber(db);
     const canonicalByNumber = await employeeCanonicalByNumber(db);
     const linkGroup = await employeeLinkGroupByNumber(db);
+    const futuTypeFiltered = (artifact?.rows ?? [])
+      .map((row, index) => {
+        const employeeNumber = textValue(row['工号']) ?? '';
+        return {
+          ...futuGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
+          linkedIdentities: linkGroup.get(employeeNumber) ?? [],
+        };
+      })
+      .filter((row) => {
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        return true;
+      });
+    const grantTypes = distinctGrantTypes(futuTypeFiltered.map((row) => row.incentiveType));
     const rows = expandByLinkedGroup(
-      (artifact?.rows ?? [])
-        .map((row, index) => {
-          const employeeNumber = textValue(row['工号']) ?? '';
-          return {
-            ...futuGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
-            linkedIdentities: linkGroup.get(employeeNumber) ?? [],
-          };
-        })
-        .filter((row) => {
-          if (grantType && row.incentiveType !== grantType) return false;
-          if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
-          if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
-          return true;
-        }),
+      grantType ? futuTypeFiltered.filter((row) => row.incentiveType === grantType) : futuTypeFiltered,
       normalizedQuery,
       canonicalByNumber,
       (row) =>
@@ -495,6 +497,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       page: paginated.page,
       pageSize: paginated.pageSize,
       totalPages: paginated.totalPages,
+      grantTypes,
     };
   });
 
@@ -504,11 +507,17 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
       throw badRequest('Invalid month; expected YYYY-MM');
     }
-    const { query = '', tagId = '', tag = '' } = request.query as { query?: string; tagId?: string; tag?: string };
+    const {
+      query = '',
+      tagId = '',
+      tag = '',
+      grantType = '',
+    } = request.query as { query?: string; tagId?: string; tag?: string; grantType?: string };
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedLabelId = Number(tagId);
     const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
     const normalizedTag = tag.trim();
+    const normalizedGrantType = grantType.trim();
     const artifact = await readLatestWorkflowDataFrameArtifact(db, {
       workflowCode: 'esop-grant-record-sync',
       taskId: 'persist_grant_record_shareworks_file',
@@ -521,21 +530,26 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     const labelsByEmployee = await employeeLabelsByNumber(db);
     const canonicalByNumber = await employeeCanonicalByNumber(db);
     const linkGroup = await employeeLinkGroupByNumber(db);
+    const shareworksTypeFiltered = (artifact?.rows ?? [])
+      .map((row, index) => {
+        const employeeNumber = textValue(row['Employee Number']) ?? '';
+        return {
+          ...shareworksGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
+          linkedIdentities: linkGroup.get(employeeNumber) ?? [],
+        };
+      })
+      .filter((row) => Boolean(row.employeeGrantNumber))
+      .filter((row) => {
+        if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
+        if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
+        return true;
+      });
+    // Options come from the tag-filtered set, so picking a type never empties the dropdown itself.
+    const grantTypes = distinctGrantTypes(shareworksTypeFiltered.map((row) => row.grantType));
     const rows = expandByLinkedGroup(
-      (artifact?.rows ?? [])
-        .map((row, index) => {
-          const employeeNumber = textValue(row['Employee Number']) ?? '';
-          return {
-            ...shareworksGrantFromWorkflowRow(row, index, labelsByEmployee.get(employeeNumber) ?? []),
-            linkedIdentities: linkGroup.get(employeeNumber) ?? [],
-          };
-        })
-        .filter((row) => Boolean(row.employeeGrantNumber))
-        .filter((row) => {
-          if (labelIdFilter && !row.labelIds.includes(labelIdFilter)) return false;
-          if (!labelIdFilter && normalizedTag && !row.tags.includes(normalizedTag)) return false;
-          return true;
-        }),
+      normalizedGrantType
+        ? shareworksTypeFiltered.filter((row) => row.grantType === normalizedGrantType)
+        : shareworksTypeFiltered,
       normalizedQuery,
       canonicalByNumber,
       (row) =>
@@ -576,6 +590,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       page: paginated.page,
       pageSize: paginated.pageSize,
       totalPages: paginated.totalPages,
+      grantTypes,
     };
   });
 
@@ -585,11 +600,17 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
       throw badRequest('Invalid month; expected YYYY-MM');
     }
-    const { query = '', tagId = '', tag = '' } = request.query as { query?: string; tagId?: string; tag?: string };
+    const {
+      query = '',
+      tagId = '',
+      tag = '',
+      grantType = '',
+    } = request.query as { query?: string; tagId?: string; tag?: string; grantType?: string };
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedLabelId = Number(tagId);
     const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
     const normalizedTag = tag.trim();
+    const normalizedGrantType = grantType.trim();
     const [futuArtifact, shareworksArtifact, labelsByEmployee] = await Promise.all([
       readLatestWorkflowDataFrameArtifact(db, {
         workflowCode: 'esop-grant-record-sync',
@@ -630,17 +651,19 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       });
     const canonicalByNumber = await employeeCanonicalByNumber(db);
     const linkGroup = await employeeLinkGroupByNumber(db);
+    const mergedRows = [
+      ...futuRows.map((row) => ({
+        ...mergeFutuGrant(row),
+        linkedIdentities: linkGroup.get(row.employeeNumber) ?? [],
+      })),
+      ...shareworksRows.map((row) => ({
+        ...mergeShareworksGrant(row),
+        linkedIdentities: linkGroup.get(row.employeeNumber ?? '') ?? [],
+      })),
+    ];
+    const grantTypes = distinctGrantTypes(mergedRows.map((row) => row.incentiveType));
     const items = expandByLinkedGroup(
-      [
-        ...futuRows.map((row) => ({
-          ...mergeFutuGrant(row),
-          linkedIdentities: linkGroup.get(row.employeeNumber) ?? [],
-        })),
-        ...shareworksRows.map((row) => ({
-          ...mergeShareworksGrant(row),
-          linkedIdentities: linkGroup.get(row.employeeNumber ?? '') ?? [],
-        })),
-      ],
+      normalizedGrantType ? mergedRows.filter((row) => row.incentiveType === normalizedGrantType) : mergedRows,
       normalizedQuery,
       canonicalByNumber,
       (row) =>
@@ -681,6 +704,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       page,
       pageSize,
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      grantTypes,
     };
   });
 

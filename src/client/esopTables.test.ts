@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { describeViewAutoSwitch } from './esopTables.js';
+import { describeViewAutoSwitch, grantTypeFilterModel } from './esopTables.js';
 
 test('the auto-switch notice names the table, the view it left and the view it moved to', () => {
   // It used to be a global toast: two record pages switching at the same time produced two identical
@@ -40,4 +40,41 @@ test('the switch is announced in place, with a way back, instead of through a to
   assert.match(source, /data-view-notice-back=/);
   assert.match(source, /hideViewNotice\('grantViewNotice'\)/);
   assert.match(source, /hideViewNotice\('exerciseViewNotice'\)/);
+});
+
+test('the type filter is driven by the rows of the active view, not by a hardcoded list', () => {
+  // Each grant view carries its type under a different column and vocabulary (Futu `激励类型` → `Option`,
+  // Shareworks `Grant Type` → `Options (NQ)`), so a single hardcoded option plus `disabled` on two of
+  // three views read as "the filter is broken".
+  assert.deepEqual(grantTypeFilterModel(['Options (NQ)'], ''), {
+    options: ['Options (NQ)'],
+    selected: '',
+    visible: false, // nothing to choose between
+  });
+  assert.deepEqual(grantTypeFilterModel(['Options (NQ)', 'Option'], 'Option'), {
+    options: ['Option', 'Options (NQ)'],
+    selected: 'Option',
+    visible: true,
+  });
+  // A selection that does not exist in the new view must not filter it into an empty table.
+  assert.equal(grantTypeFilterModel(['Option'], 'Options (NQ)').selected, '');
+  assert.deepEqual(grantTypeFilterModel(undefined, ''), { options: [], selected: '', visible: false });
+});
+
+test('every grant view sends the type filter and never disables the control', () => {
+  const source = readFileSync(new URL('./esopTables.ts', import.meta.url), 'utf8');
+  const lines = source.split('\n');
+
+  assert.doesNotMatch(source, /filterGrantType'\)\.disabled = grantView !== 'futu'/);
+  for (const endpoint of ['/api/holdings?', '/api/grants/shareworks?', '/api/grants/merge?']) {
+    // The list request is the one that carries the filter (a facet probe uses the bare endpoint).
+    const matching = lines.filter((line) => line.includes(endpoint) && line.includes('grantType='));
+    assert.equal(matching.length, 1, `${endpoint} list request must carry the type filter`);
+    assert.match(
+      matching[0] ?? '',
+      /grantType=\$\{encodeURIComponent\(grantType\)\}/,
+      `${endpoint} must accept the type filter`,
+    );
+  }
+  assert.match(source, /syncGrantTypeOptions\(\(data as \{ grantTypes\?: string\[\] \}\)\.grantTypes\)/);
 });
