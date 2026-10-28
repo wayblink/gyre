@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 49,
+  "version": 50,
   "tasks": [
     {
       "x": 48,
@@ -252,7 +252,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null and wf_month_key([As of Date]) <= {constants.workflowMonth} order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) < {constants.workflowMonth} order by __workflow_row_number desc limit 1) as last_month_eq_balance_os,\n  (select wf_month_key([As of Date]) from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null and wf_month_key([As of Date]) <= {constants.workflowMonth} order by __workflow_row_number desc limit 1) as last_control_book_month,\n  sum(case when ([Comment] like 'Omnibus Inc%Pl%' or [Comment] like 'Ominibus Inc%Pl%') and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  max(case when [Trans. Type] = 'Agr. & Pl. of Merger' then [Shares Issued] else null end) as cullgen_common_stock,\n  max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology' then [Shares Issued] else null end) as gyre_2023_china_subplan_total\nfrom {control_book}",
+        "sql": "\nselect\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null and wf_month_key([As of Date]) <= {constants.workflowMonth} order by __workflow_row_number desc limit 1) as eom_eq_balance_os,\n  (select [Issued & Outstanding] from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) < {constants.workflowMonth} order by __workflow_row_number desc limit 1) as last_month_eq_balance_os,\n  (select wf_month_key([As of Date]) from {control_book} where [Issued & Outstanding] is not null and wf_month_key([As of Date]) is not null and wf_month_key([As of Date]) <= {constants.workflowMonth} order by __workflow_row_number desc limit 1) as last_control_book_month,\n  sum(case when ([Comment] like 'Omnibus Inc%Pl%' or [Comment] like 'Ominibus Inc%Pl%') and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) then [Shares Issued] else 0 end) as bc_subplan_transfer_control_book,\n  coalesce(max(case when [Trans. Type] = 'Agr. & Pl. of Merger'\n    and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) then [Shares Issued] else null end), 0) as cullgen_common_stock,\n  coalesce(max(case when [Comment] = 'Equity Inc.Sub-Pl. Futu Network Technology'\n    and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) then [Shares Issued] else null end), 0) as gyre_2023_china_subplan_total\nfrom {control_book}",
         "constants": {
           "workflowMonth": {
             "$type": "string",
@@ -268,7 +268,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "从合并后的 EQ Control Book 汇总当月指标：EOM / Last Month 余额与 2025 BC Subplan transfer 均按 As of Date 截断到 workflow 月份（同一份完整 Control Book 可回算任意历史月份）；Cullgen 合并股数与 Gyre 2023 China SubPlan 总数为全表口径，用于与 Global Parameter 交叉校验。 Comment 的 BC Subplan 匹配已放宽为模糊匹配（容忍空格/标点/大小写差异与 Omnibus/Ominibus 两种拼写），并对拼写本身不一致（如 Ominibus）的 Comment 给出 warning 提示而不阻断；仅空格、标点、大小写不同的写法（如 Omnibus Inc.Pl.）视为合法输入，不触发复核。",
+      "description": "从合并后的 EQ Control Book 汇总当月指标：EOM / Last Month 余额、2025 BC Subplan transfer、Cullgen common stock 与 Gyre 2023 China SubPlan 总数全部按 As of Date 截断到 workflow 月份（同一份完整 Control Book 可回算任意历史月份）。Cullgen common stock 取 Trans. Type = Agr. & Pl. of Merger 的 Shares Issued，合并发生前该月为 0（合并行 2026-05 才出现）；Gyre 2023 China SubPlan 总数同理取 Equity Inc.Sub-Pl. Futu Network Technology 行，该行出现前为 0。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -487,7 +487,7 @@
               "name": "Assert Cullgen Common Stock",
               "type": "dataframe.sql.assert",
               "params": {
-                "sql": "select case\n  when coalesce(cullgen_common_stock, 0) = 0 and coalesce({constants.cullgenCommonStock}, 0) = 0 then 0\n  when coalesce(cullgen_common_stock, 0) = 0 then 1\n  when coalesce({constants.cullgenCommonStock}, 0) = 0 then 1\n  when cullgen_common_stock = {constants.cullgenCommonStock} then 1\n  else 0\nend as actual\nfrom {control_metrics}",
+                "sql": "select case when cullgen_common_stock = {constants.cullgenCommonStock} then 1 else 0 end as actual from {control_metrics}",
                 "operator": "=",
                 "constants": {
                   "cullgenCommonStock": {
@@ -503,34 +503,8 @@
                     "tableName": "control_metrics"
                   }
                 ],
-                "failureMessage": "Cullgen common stock 无法对账：EQ Control Book 与月度固定参数 cullgen_common_stock 都没有值，或两者都有值但不一致（已阻断）。请核对 Control Book 的 Agr. & Pl. of Merger 行，或到月度页面修正该固定参数。",
+                "failureMessage": "Cullgen common stock 与月度固定参数 cullgen_common_stock 不一致（对账失败，已阻断）。Control Book 按 As of Date 截断后该列 = {cullgen}，固定参数 = {param}；合并发生前（2026-05 之前）该值应为 0。请核对 Control Book 的 Agr. & Pl. of Merger 行，或到月度页面修正该固定参数。",
                 "failureStrategy": "block"
-              },
-              "enabled": true
-            },
-            {
-              "id": "guard_warn_cullgen_baseline_unset",
-              "name": "Warn Cullgen Common Stock Baseline Unset",
-              "type": "dataframe.sql.assert",
-              "params": {
-                "sql": "select case\n  when coalesce(cullgen_common_stock, 0) = 0 and coalesce({constants.cullgenCommonStock}, 0) > 0\n    then concat('EQ Control Book 里没有 Agr. & Pl. of Merger 行（Cullgen common stock 算不出来），本次按月度固定参数 cullgen_common_stock = ', cast({constants.cullgenCommonStock} as string), ' 股继续')\n  when coalesce({constants.cullgenCommonStock}, 0) = 0 and coalesce(cullgen_common_stock, 0) > 0\n    then concat('月度固定参数 cullgen_common_stock 为 0（未设置），本次按 EQ Control Book 的 Cullgen common stock = ', cast(cullgen_common_stock as string), ' 股继续')\n  else '两个来源都有值'\nend as baseline_hint\nfrom {control_metrics}",
-                "constants": {
-                  "cullgenCommonStock": {
-                    "$type": "number",
-                    "$label": "Cullgen Common Stock",
-                    "$fromRuntime": "fixedValues.cullgenCommonStock"
-                  }
-                },
-                "operator": "=",
-                "expectedValue": "两个来源都有值",
-                "tableBindings": [
-                  {
-                    "inputSlot": "control_metrics",
-                    "tableName": "control_metrics"
-                  }
-                ],
-                "failureMessage": "Cullgen common stock 只找到了一个来源：本次已按拿到的那个值继续，汇总数值不受影响。请确认 Control Book 是否缺 Agr. & Pl. of Merger 行、以及月度页面的 cullgen_common_stock 是否已填，否则以后每月都会在这里停下来确认。",
-                "failureStrategy": "warning"
               },
               "enabled": true
             },
@@ -539,7 +513,7 @@
               "name": "Assert Gyre 2023 China SubPlan Total",
               "type": "dataframe.sql.assert",
               "params": {
-                "sql": "select case\n  when coalesce(gyre_2023_china_subplan_total, 0) = 0 and coalesce({constants.gyre2023ChinaSubplanTotal}, 0) = 0 then 0\n  when coalesce(gyre_2023_china_subplan_total, 0) = 0 then 1\n  when coalesce({constants.gyre2023ChinaSubplanTotal}, 0) = 0 then 1\n  when gyre_2023_china_subplan_total = {constants.gyre2023ChinaSubplanTotal} then 1\n  else 0\nend as actual\nfrom {control_metrics}",
+                "sql": "select case when gyre_2023_china_subplan_total = {constants.gyre2023ChinaSubplanTotal} then 1 else 0 end as actual from {control_metrics}",
                 "operator": "=",
                 "constants": {
                   "gyre2023ChinaSubplanTotal": {
@@ -555,34 +529,8 @@
                     "tableName": "control_metrics"
                   }
                 ],
-                "failureMessage": "Gyre 2023 China SubPlan total 无法对账：EQ Control Book 与月度固定参数 gyre_2023_china_subplan_total 都没有值，或两者都有值但不一致（已阻断）。请核对 Control Book 的 Equity Inc.Sub-Pl. Futu Network Technology 行，或到月度页面修正该固定参数。",
+                "failureMessage": "Gyre 2023 China SubPlan total 与月度固定参数 gyre_2023_china_subplan_total 不一致（对账失败，已阻断）。请核对 Control Book 的 Equity Inc.Sub-Pl. Futu Network Technology 行，或到月度页面修正该固定参数。",
                 "failureStrategy": "block"
-              },
-              "enabled": true
-            },
-            {
-              "id": "guard_warn_gyre_subplan_baseline_unset",
-              "name": "Warn Gyre 2023 China SubPlan Baseline Unset",
-              "type": "dataframe.sql.assert",
-              "params": {
-                "sql": "select case\n  when coalesce(gyre_2023_china_subplan_total, 0) = 0 and coalesce({constants.gyre2023ChinaSubplanTotal}, 0) > 0\n    then concat('EQ Control Book 里没有 Equity Inc.Sub-Pl. Futu Network Technology 行（Gyre 2023 China SubPlan total 算不出来），本次按月度固定参数 gyre_2023_china_subplan_total = ', cast({constants.gyre2023ChinaSubplanTotal} as string), ' 股继续')\n  when coalesce({constants.gyre2023ChinaSubplanTotal}, 0) = 0 and coalesce(gyre_2023_china_subplan_total, 0) > 0\n    then concat('月度固定参数 gyre_2023_china_subplan_total 为 0（未设置），本次按 EQ Control Book 的 Gyre 2023 China SubPlan total = ', cast(gyre_2023_china_subplan_total as string), ' 股继续')\n  else '两个来源都有值'\nend as baseline_hint\nfrom {control_metrics}",
-                "constants": {
-                  "gyre2023ChinaSubplanTotal": {
-                    "$type": "number",
-                    "$label": "Gyre 2023 China SubPlan Total",
-                    "$fromRuntime": "fixedValues.gyre2023ChinaSubplanTotal"
-                  }
-                },
-                "operator": "=",
-                "expectedValue": "两个来源都有值",
-                "tableBindings": [
-                  {
-                    "inputSlot": "control_metrics",
-                    "tableName": "control_metrics"
-                  }
-                ],
-                "failureMessage": "Gyre 2023 China SubPlan total 只找到了一个来源：本次已按拿到的那个值继续，汇总数值不受影响。请确认 Control Book 是否缺 Equity Inc.Sub-Pl. Futu Network Technology 行、以及月度页面的 gyre_2023_china_subplan_total 是否已填，否则以后每月都会在这里停下来确认。",
-                "failureStrategy": "warning"
               },
               "enabled": true
             }
@@ -595,7 +543,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  case when max(c.cullgen_common_stock) is null or max(c.cullgen_common_stock) = 0\n       then {constants.cullgenCommonStock} else max(c.cullgen_common_stock) end as cullgen_common_stock,\n  case when max(c.gyre_2023_china_subplan_total) is null or max(c.gyre_2023_china_subplan_total) = 0\n       then {constants.gyre2023ChinaSubplanTotal} else max(c.gyre_2023_china_subplan_total) end as gyre_2023_china_subplan_total,\n  max(c.bc_subplan_transfer_control_book) as bc_subplan_transfer_selected,\n  'control_book' as bc_subplan_transfer_selection_source,\n  {constants.warrantsConvertiblePreferred} as warrants_for_convertible_preferred_stock,\n  max(s.series_b_preferred_stock) as series_b_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  round(max(c.eom_eq_balance_os) + max(o.total_options_outstanding) + {constants.warrantsConvertiblePreferred} + max(s.series_b_preferred_stock) - max(c.bc_subplan_transfer_control_book) + max(o.total_options_available) + {constants.optionsOutstandingCullgen} + {constants.optionsAvailableCullgen}, 0) as total_fully_diluted\nfrom {control_metrics} c, {option_metrics} o, {series_b_metrics} s",
+        "sql": "\nselect\n  max(c.eom_eq_balance_os) as eom_eq_balance_os,\n  max(c.cullgen_common_stock) as cullgen_common_stock,\n  max(c.gyre_2023_china_subplan_total) as gyre_2023_china_subplan_total,\n  max(c.bc_subplan_transfer_control_book) as bc_subplan_transfer_selected,\n  'control_book' as bc_subplan_transfer_selection_source,\n  {constants.warrantsConvertiblePreferred} as warrants_for_convertible_preferred_stock,\n  max(s.series_b_preferred_stock) as series_b_preferred_stock,\n  {constants.optionsOutstandingCullgen} as options_outstanding_cullgen,\n  {constants.optionsAvailableCullgen} as options_available_cullgen,\n  round(max(c.eom_eq_balance_os) + max(o.total_options_outstanding) + {constants.warrantsConvertiblePreferred} + max(s.series_b_preferred_stock) - max(c.bc_subplan_transfer_control_book) + max(o.total_options_available) + {constants.optionsOutstandingCullgen} + {constants.optionsAvailableCullgen}, 0) as total_fully_diluted\nfrom {control_metrics} c, {option_metrics} o, {series_b_metrics} s",
         "constants": {
           "optionsAvailableCullgen": {
             "$type": "number",
@@ -614,16 +562,6 @@
             "$label": "Warrants for Convertible Preferred Stock",
             "$default": 540666,
             "$fromRuntime": "fixedValues.warrantsConvertiblePreferred"
-          },
-          "cullgenCommonStock": {
-            "$type": "number",
-            "$label": "Cullgen Common Stock",
-            "$fromRuntime": "fixedValues.cullgenCommonStock"
-          },
-          "gyre2023ChinaSubplanTotal": {
-            "$type": "number",
-            "$label": "Gyre 2023 China SubPlan Total",
-            "$fromRuntime": "fixedValues.gyre2023ChinaSubplanTotal"
           }
         },
         "tableBindings": [
@@ -849,63 +787,6 @@
                 ],
                 "failureMessage": "Cullgen option business inputs do not match global parameters",
                 "failureStrategy": "block"
-              },
-              "enabled": true
-            },
-            {
-              "id": "guard_warn_warrants_baseline_unset",
-              "name": "Warn Warrants Baseline Unset",
-              "type": "dataframe.sql.assert",
-              "params": {
-                "sql": "select case\n  when coalesce({constants.warrantsConvertiblePreferred}, 0) = 0\n    then '月度固定参数 warrants_convertible_preferred 为 0（未设置）：本次 Total Fully Diluted 不含认股权证股数，请到月度页面补上'\n  else '已设置'\nend as baseline_hint\nfrom {business_inputs}",
-                "constants": {
-                  "warrantsConvertiblePreferred": {
-                    "$type": "number",
-                    "$label": "Warrants for Convertible Preferred Stock",
-                    "$fromRuntime": "fixedValues.warrantsConvertiblePreferred"
-                  }
-                },
-                "operator": "=",
-                "expectedValue": "已设置",
-                "tableBindings": [
-                  {
-                    "inputSlot": "business_inputs",
-                    "tableName": "business_inputs"
-                  }
-                ],
-                "failureMessage": "月度固定参数 warrants_convertible_preferred 为 0（未设置），本次 Total Fully Diluted 不含认股权证股数；请到月度页面补上正确值。",
-                "failureStrategy": "warning"
-              },
-              "enabled": true
-            },
-            {
-              "id": "guard_warn_cullgen_options_baseline_unset",
-              "name": "Warn Cullgen Options Baseline Unset",
-              "type": "dataframe.sql.assert",
-              "params": {
-                "sql": "select case\n  when coalesce({constants.cullgenOutstanding}, 0) = 0 and coalesce({constants.cullgenAvailable}, 0) = 0\n    then '月度固定参数 options_outstanding_cullgen / options_available_cullgen 都是 0（未设置）：本次 Total Fully Diluted 不含 Cullgen 期权，请到月度页面补上'\n  else '已设置'\nend as baseline_hint\nfrom {business_inputs}",
-                "constants": {
-                  "cullgenOutstanding": {
-                    "$type": "number",
-                    "$label": "Options Outstanding - Cullgen",
-                    "$fromRuntime": "fixedValues.optionsOutstandingCullgen"
-                  },
-                  "cullgenAvailable": {
-                    "$type": "number",
-                    "$label": "Options Available - Cullgen",
-                    "$fromRuntime": "fixedValues.optionsAvailableCullgen"
-                  }
-                },
-                "operator": "=",
-                "expectedValue": "已设置",
-                "tableBindings": [
-                  {
-                    "inputSlot": "business_inputs",
-                    "tableName": "business_inputs"
-                  }
-                ],
-                "failureMessage": "月度固定参数 options_outstanding_cullgen / options_available_cullgen 都是 0（未设置），本次 Total Fully Diluted 不含 Cullgen 期权；请到月度页面补上正确值。",
-                "failureStrategy": "warning"
               },
               "enabled": true
             }

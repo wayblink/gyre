@@ -226,7 +226,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 49;
+export const MONTHLY_WORKFLOW_VERSION = 50;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was
@@ -279,9 +279,9 @@ export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
     label: { 'zh-CN': 'Cullgen Common Stock', 'en-US': 'Cullgen Common Stock' },
     description: {
       'zh-CN':
-        'Cullgen 已发行普通股总数的对账基准值，与 EQ Control Book 的 Agr. & Pl. of Merger 行互相校验：两边都有值但不一致时阻断；只有一边有值时按有值的一方继续并给出 warning；两边都没有值时阻断。',
+        'Cullgen 已发行普通股总数的对账基准值，与 EQ Control Book 的 Agr. & Pl. of Merger 行（同样按 As of Date 截断）比对，不一致则阻断。合并发生前（2026-05 之前）该值为 0，这是合法值。',
       'en-US':
-        'Reconciliation baseline for total Cullgen common stock outstanding, cross-checked against the EQ Control Book Agr. & Pl. of Merger row: a disagreement between two present values blocks, a value present on only one side is used with a warning, and both missing blocks.',
+        'Reconciliation baseline for total Cullgen common stock outstanding, compared against the EQ Control Book Agr. & Pl. of Merger row (also truncated at As of Date); a disagreement blocks. Before the merger (2026-05) this value is 0, which is a legitimate value.',
     },
   },
   {
@@ -289,26 +289,25 @@ export const MONTHLY_FIXED_VALUE_DEFS: ReadonlyArray<{
     label: { 'zh-CN': 'Gyre 2023 China SubPlan Total', 'en-US': 'Gyre 2023 China SubPlan Total' },
     description: {
       'zh-CN':
-        'Gyre 2023 中国子计划期权总数的对账基准值，与 EQ Control Book 的 Equity Inc.Sub-Pl. Futu Network Technology 行互相校验：两边都有值但不一致时阻断；只有一边有值时按有值的一方继续并给出 warning；两边都没有值时阻断。',
+        'Gyre 2023 中国子计划期权总数的对账基准值，与 EQ Control Book 的 Equity Inc.Sub-Pl. Futu Network Technology 行（同样按 As of Date 截断）比对，不一致则阻断。该行出现前（2024-07 之前）该值为 0，这是合法值。',
       'en-US':
-        'Reconciliation baseline for the Gyre 2023 China sub-plan option total, cross-checked against the EQ Control Book Equity Inc.Sub-Pl. Futu Network Technology row: a disagreement between two present values blocks, a value present on only one side is used with a warning, and both missing blocks.',
+        'Reconciliation baseline for the Gyre 2023 China sub-plan option total, compared against the EQ Control Book Equity Inc.Sub-Pl. Futu Network Technology row (also truncated at As of Date); a disagreement blocks. Before that row exists (2024-07) the value is 0, which is legitimate.',
     },
   },
 ];
 
 /**
- * Parses a monthly constant input, returning null when it is not a usable baseline.
+ * Parses a monthly constant input, returning null only when there is no number at all.
  *
- * Blank and non-numeric values were already rejected; 0 is rejected too. These five constants are the
- * baselines the monthly workflow reconciles against, and it reads 0 as "unset" — in 2026-10 a saved 0
- * made every run of that month stop on "Cullgen common stock does not match Global Parameter
- * cullgen_common_stock". Saving 0 is what created that state, so the page refuses it up front.
+ * 0 is a legitimate value, not a gap: Cullgen common stock is 0 for every month before the merger
+ * (the `Agr. & Pl. of Merger` row only appears at 2026-05), and the same is true of the SubPlan total
+ * before 2024-07. Blank, negative and non-numeric input is still rejected.
  */
 export function parseMonthlyConstantValue(raw: string): number | null {
   const text = raw.replace(/[, ]/g, '').trim();
   if (!text) return null;
   const parsed = Number(text);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function normalizeCandidateText(value: unknown): string {

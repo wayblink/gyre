@@ -400,8 +400,8 @@ export const TEXTS = {
     monthlyConstantName: { 'zh-CN': '常量', 'en-US': 'Constant' },
     monthlyConstantValue: { 'zh-CN': '数值', 'en-US': 'Value' },
     monthlyConstantInvalid: {
-      'zh-CN': '请填写大于 0 的数值（0 表示未设置，会让月度运行在该项对账处停下）',
-      'en-US': 'Enter a value greater than 0 (0 means unset and stops the monthly run at that reconciliation)',
+      'zh-CN': '请填写不小于 0 的数值（0 是合法值，例如合并发生前的 Cullgen Common Stock）',
+      'en-US': 'Enter a number of 0 or more (0 is a legitimate value, e.g. Cullgen Common Stock before the merger)',
     },
     monthlyConstantActions: { 'zh-CN': '操作', 'en-US': 'Actions' },
     editMonthlyConstant: { 'zh-CN': '编辑', 'en-US': 'Edit' },

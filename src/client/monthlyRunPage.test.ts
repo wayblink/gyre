@@ -689,15 +689,15 @@ test('monthly constants are rendered on the main Monthly Update page and saved r
   );
 });
 
-test('a monthly constant must be a positive number, so 0 can never be saved as a baseline', () => {
-  // 0 is what broke the 2026-10 monthly run: the workflow reads 0 as "baseline not set" and the whole
-  // month stalls on the cullgen reconciliation. Reject it before it reaches the instance row.
+test('a monthly constant accepts 0, because 0 is a real value for some months', () => {
+  // Cullgen common stock is 0 for every month before the 2026-05 merger; refusing 0 here forced operators
+  // to invent a number the business does not have.
+  assert.equal(parseMonthlyConstantValue('0'), 0);
+  assert.equal(parseMonthlyConstantValue('0.0'), 0);
   assert.equal(parseMonthlyConstantValue('14,450,527'), 14_450_527);
   assert.equal(parseMonthlyConstantValue(' 14450527 '), 14_450_527);
   assert.equal(parseMonthlyConstantValue(''), null);
   assert.equal(parseMonthlyConstantValue('   '), null);
-  assert.equal(parseMonthlyConstantValue('0'), null);
-  assert.equal(parseMonthlyConstantValue('0.0'), null);
   assert.equal(parseMonthlyConstantValue('-1'), null);
   assert.equal(parseMonthlyConstantValue('abc'), null);
 });

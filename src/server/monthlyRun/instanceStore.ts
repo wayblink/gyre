@@ -44,14 +44,19 @@ function toNumber(value: unknown, fallback: number): number {
 }
 
 /**
- * Monthly constants are reconciliation baselines, and the monthly workflow reads 0 as "not set yet"
- * (it downgrades an unset baseline to a warning). So an inherited 0 must not travel into the next
- * month — that would carry a month that never had a baseline forward forever. Anything that is not a
- * positive number inherits the default instead.
+ * A monthly constant of 0 is a legitimate value, so it is inherited like any other number. Only a
+ * missing or nonsensical one (null, blank, NaN, negative) falls back to the default — those mean the
+ * column never got a value, not that the business value is zero.
+ *
+ * This matters for Cullgen common stock: it is 0 for every month before the 2026-05 merger, and a
+ * month that inherited the 14,450,527 default there would be blocked by the reconciliation guard.
  */
-function positiveNumberOrFallback(value: unknown, fallback: number): number {
+function nonNegativeNumberOrFallback(value: unknown, fallback: number): number {
+  // `Number(null)` is 0, so the empty values have to be filtered out before the numeric check — otherwise a
+  // month whose column was never written would inherit "0" instead of the default.
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return fallback;
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function fileKeyFromBinding(binding: MonthlyRunSourceBinding | null | undefined): string {
@@ -259,21 +264,24 @@ async function inheritMonthlyFixedValues(
     [monthKey],
   );
   return {
-    optionsOutstandingCullgen: positiveNumberOrFallback(
+    optionsOutstandingCullgen: nonNegativeNumberOrFallback(
       prior?.options_outstanding_cullgen,
       DEFAULT_OPTIONS_OUTSTANDING_CULLGEN,
     ),
-    optionsAvailableCullgen: positiveNumberOrFallback(
+    optionsAvailableCullgen: nonNegativeNumberOrFallback(
       prior?.options_available_cullgen,
       DEFAULT_OPTIONS_AVAILABLE_CULLGEN,
     ),
-    warrantsConvertiblePreferred: positiveNumberOrFallback(
+    warrantsConvertiblePreferred: nonNegativeNumberOrFallback(
       prior?.warrants_convertible_preferred,
       DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
     ),
-    seriesBPreferredStock: positiveNumberOrFallback(prior?.series_b_preferred_stock, DEFAULT_SERIES_B_PREFERRED_STOCK),
-    cullgenCommonStock: positiveNumberOrFallback(prior?.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK),
-    gyre2023ChinaSubplanTotal: positiveNumberOrFallback(
+    seriesBPreferredStock: nonNegativeNumberOrFallback(
+      prior?.series_b_preferred_stock,
+      DEFAULT_SERIES_B_PREFERRED_STOCK,
+    ),
+    cullgenCommonStock: nonNegativeNumberOrFallback(prior?.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK),
+    gyre2023ChinaSubplanTotal: nonNegativeNumberOrFallback(
       prior?.gyre_2023_china_subplan_total,
       DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL,
     ),
@@ -315,23 +323,22 @@ export async function ensureMonthlyRunInstance(db: MonthlyRunDb, monthKey: strin
 }
 
 /**
- * Rejects a monthly constant of 0 (or a negative / non-finite number) coming from the page or the API.
+ * Rejects a monthly constant that is not a non-negative number.
  *
- * These five values are the baselines the monthly workflow reconciles against. A stored 0 is not a
- * business value — it is a baseline nobody filled in — and it made the 2026-10 run stop on
- * "Cullgen common stock does not match Global Parameter cullgen_common_stock". Legacy rows that already
- * hold 0 stay untouched here (so a month is never bricked): they remain readable on the page, the
- * workflow downgrades them to a warning, and inheritance skips them.
+ * 0 is accepted: Cullgen common stock is genuinely 0 before the 2026-05 merger, and the same holds for
+ * the SubPlan total before 2024-07 — the workflow derives those from the Control Book with the same
+ * As-of cut-off, so a 0 constant reconciles against a 0 derived value. Only a negative or non-finite
+ * value is refused (it can only come from a broken client).
  */
 function assertWritableMonthlyFixedValues(values: Record<string, number> | undefined): void {
   if (!values) return;
   for (const [key, column] of Object.entries(MONTHLY_RUNTIME_FIXED_VALUE_KEYS)) {
     if (!Object.prototype.hasOwnProperty.call(values, key)) continue;
     const value = values[key];
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) continue;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) continue;
     // 400 rather than a generic 500: this is a rejected input, and the monthly page shows the message verbatim.
     const error = new Error(
-      `Monthly constant ${column} must be greater than 0; a stored 0 leaves the baseline unset and stops the monthly run.`,
+      `Monthly constant ${column} must be zero or a positive number; negative values are not valid share counts.`,
     ) as Error & { statusCode?: number };
     error.statusCode = 400;
     throw error;

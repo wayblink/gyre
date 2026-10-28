@@ -579,7 +579,7 @@ done
 
 > 注意：工作流引擎的 SQL 只允许只读查询，`replace()` 被列入禁用关键字（会被当成写语句），所以这里用 `like` 而不是字符串替换。
 
-**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version`、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION`。三者不一致时月度页会报版本不匹配并拒绝执行。当前为 **v49**（v45 收紧了 Comment 判定，v46 只把输入源标签 `Futu Exercise Report` 改名为 `Futu Exercise Record`，v47 见 8.4，v48 见 8.5，v49 见 8.6）。
+**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version`、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION`。三者不一致时月度页会报版本不匹配并拒绝执行。当前为 **v50**（v45 收紧了 Comment 判定，v46 只把输入源标签 `Futu Exercise Report` 改名为 `Futu Exercise Record`，v47 见 8.4，v48 见 8.5，v49 见 8.6，v50 见 8.7）。
 
 **验收**：
 
@@ -711,6 +711,36 @@ select code, version from workflow_definitions where code = 'gyre-captable-summa
 运行页同时会停在复核，提示「已排除 3 行 / 142,277 股（行权日期晚于 2026-01，涉及月份：2026-03, 2026-04, 2026-05）」——这是预期行为，确认即可。`src/server/workflow/futuExerciseMonthCutoff.test.ts` 用运营给的这组数把两个方向都钉住了。
 
 > 历史月份（2026-03/04/05）的已发布汇总仍是旧数，重跑会覆盖它们；是否批量重算由需求方决定。
+
+---
+
+## 8.7 月度工作流 v50：Cullgen common stock 在合并前就是 0（撤回「0 = 未设置」）
+
+**现象**：运营把某个月的 `Cullgen Common Stock` 明确设成 0，页面弹出「请填写大于 0 的数值（0 表示未设置…）」，不允许保存。
+
+**根因（两处叠加）**：
+
+1. 8.4/8.5 里把「0」当成「没填」处理（三条守卫 + 页面校验 + 继承回落），这个前提是错的 —— 业务上 0 是合法值。
+2. 真正的问题在 Control Book 侧：`cullgen_common_stock` 取的是 `max(Shares Issued where Trans. Type = 'Agr. & Pl. of Merger')` 的**全表口径**，而这一行是 **2026-05** 才出现的（EOM 从 2026-04 的 97,028,322 跳到 2026-05 的 111,488,849，差额正好 14,450,527）。所以回算 2026-05 之前的任何月份时，全表 max 仍然给出 14,450,527，运营填的 0 就被判成「不一致」而阻断。`gyre_2023_china_subplan_total` 同理（那一行是 2024-07）。
+
+**改法（v49 → v50）**：
+
+| 位置 | 变更 |
+| --- | --- |
+| `calc_control_book_metrics` | `cullgen_common_stock` / `gyre_2023_china_subplan_total` 加上 `wf_month_key([As of Date]) <= {constants.workflowMonth}` 截断并用 `coalesce(..., 0)`：合并前 = 0，合并当月及以后 = 14,450,527；SubPlan 行出现前 = 0 |
+| `calc_business_inputs` | 去掉 8.5 加的「Control Book 算不出就回退常量」——有了截断后回退会把合并股数送给合并前的月份；直接用派生值 |
+| `calc_business_inputs` 守卫 | 恢复严格比对（相等才通过），删除 `guard_warn_cullgen_baseline_unset` / `guard_warn_gyre_subplan_baseline_unset` 两条「0 = 未设置」warning |
+| `build_capitalization_summary` | 删除 `guard_warn_warrants_baseline_unset` / `guard_warn_cullgen_options_baseline_unset`（同一错误前提） |
+| 页面 / API | `parseMonthlyConstantValue` 与 `assertWritableMonthlyFixedValues` 接受 0（只拒绝空、负数、非数字）；继承时 0 照原样继承，只有 null / 负数才回落默认值 |
+
+**必须同步的三处**：DB `workflow_definitions.version`、`database/workflows/gyre-captable-summary-v2.json`、前端 `MONTHLY_WORKFLOW_VERSION` —— 现在都是 **50**。
+
+**验收**（2026-01，Cullgen 常量设为 0）：
+
+- 保存 0 成功（PUT 200，页面提示「月度常量已保存」），运行不再卡在 `Calc Business Inputs`；
+- 产物 `Capitalization Summary`：`Cullgen common stock` = **0**、`Common Shares OS` = **91,252,350**（96,963,611 − 0 − 5,019,150 − 692,111）、`Total Fully Diluted` 仍为 119,043,433。
+
+> 注意：合并月（2026-05）及以后，常量必须填 14,450,527；填 0 会被守卫正确阻断。`src/server/workflow/monthlyControlBookBaseline.test.ts` 覆盖了这两个方向。
 
 ---
 

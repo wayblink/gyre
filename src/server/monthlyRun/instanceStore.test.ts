@@ -219,13 +219,79 @@ test('upserting a monthly source binding resolves logical path and writes the ge
 });
 
 /**
- * 0 saved into a monthly constant is the 2026-10 outage: the monthly workflow treats 0 as "unset" for its
- * reconciliation baselines, so a stored 0 makes every run of that month stop on
- * "Cullgen common stock does not match Global Parameter cullgen_common_stock". The page must not be able to
- * write it, and a month must not inherit it. Legacy rows already holding 0 stay readable (the page shows the
- * real value so an admin can see and fix it) and the workflow degrades them to a warning.
+ * 0 is a legitimate monthly constant: Cullgen common stock is 0 for every month before the 2026-05 merger,
+ * and the SubPlan total is 0 before 2024-07. The workflow derives those values from the Control Book with
+ * the same As-of cut-off, so a 0 constant reconciles against a 0 derived value. Only a negative value —
+ * which no real share count can be — is refused, and an inherited 0 must survive as 0 rather than quietly
+ * reverting to the default (that would hand a pre-merger month the merger shares).
  */
-test('saving a monthly constant of 0 is rejected instead of stored', async () => {
+test('saving a monthly constant of 0 is accepted and stored as 0', async () => {
+  const executeCalls: Array<{ text: string; params?: unknown[] }> = [];
+  const db: MonthlyRunDb = {
+    async query() {
+      return [];
+    },
+    async queryOne<T>(text: string): Promise<T | undefined> {
+      const sql = text.replace(/\s+/g, ' ').trim();
+      if (sql.includes('where i.month_key = $1')) return monthlyRunRow() as T;
+      return undefined;
+    },
+    async execute(text: string, params?: unknown[]) {
+      executeCalls.push({ text, params });
+    },
+  };
+
+  await upsertMonthlyRunInstance(db, '2026-06', { fixedValues: { cullgenCommonStock: 0 } });
+
+  const update = executeCalls.find((call) => call.text.includes('update monthly_run_instances'));
+  assert.ok(update, 'expected the instance update');
+  // (month_key, operator, options_outstanding, options_available, warrants, series_b, cullgen, subplan)
+  assert.equal(update?.params?.[6], 0);
+});
+
+test('saving one monthly constant leaves the other five columns untouched', async () => {
+  // A partial save (the page sends one key per row) must not reset the rest: zeroing the Cullgen option
+  // constants here would silently drop 4.1M shares out of Total Fully Diluted on the next run.
+  const executeCalls: Array<{ text: string; params?: unknown[] }> = [];
+  const db: MonthlyRunDb = {
+    async query() {
+      return [];
+    },
+    async queryOne<T>(text: string): Promise<T | undefined> {
+      const sql = text.replace(/\s+/g, ' ').trim();
+      if (sql.includes('where i.month_key = $1')) {
+        return monthlyRunRow({
+          options_outstanding_cullgen: 4_156_815,
+          options_available_cullgen: 10_994,
+          warrants_convertible_preferred: 540_666,
+          series_b_preferred_stock: 18_486_180,
+          cullgen_common_stock: 14_450_527,
+          gyre_2023_china_subplan_total: 7_815_396,
+        }) as T;
+      }
+      return undefined;
+    },
+    async execute(text: string, params?: unknown[]) {
+      executeCalls.push({ text, params });
+    },
+  };
+
+  await upsertMonthlyRunInstance(db, '2026-06', { fixedValues: { cullgenCommonStock: 0 } });
+
+  const update = executeCalls.find((call) => call.text.includes('update monthly_run_instances'));
+  assert.ok(update, 'expected the instance update');
+  const params = update?.params ?? [];
+  // 0 month_key, 1 operator, 2 options_outstanding, 3 options_available, 4 warrants, 5 series_b,
+  // 6 cullgen_common_stock, 7 gyre_2023_china_subplan_total
+  assert.equal(params[2], 4_156_815);
+  assert.equal(params[3], 10_994);
+  assert.equal(params[4], 540_666);
+  assert.equal(params[5], 18_486_180);
+  assert.equal(params[6], 0, 'the edited constant is the one that changes');
+  assert.equal(params[7], 7_815_396);
+});
+
+test('saving a negative monthly constant is rejected', async () => {
   const db: MonthlyRunDb = {
     async query() {
       return [];
@@ -239,19 +305,24 @@ test('saving a monthly constant of 0 is rejected instead of stored', async () =>
   };
 
   await assert.rejects(
-    () => upsertMonthlyRunInstance(db, '2026-06', { fixedValues: { cullgenCommonStock: 0 } }),
-    /cullgen_common_stock.*greater than 0/i,
+    () => upsertMonthlyRunInstance(db, '2026-06', { fixedValues: { cullgenCommonStock: -1 } }),
+    /cullgen_common_stock.*zero or a positive number/i,
   );
 });
 
-test('a month inherits the default baseline when the prior month stored 0', async () => {
-  const unsetBaseline = await inheritFromPriorMonth(monthlyRunRow({ month_key: '2026-06', cullgen_common_stock: 0 }));
-  assert.equal(unsetBaseline.cullgenCommonStock, 14_450_527);
+test('a month inherits a 0 baseline as 0, and only a missing value falls back to the default', async () => {
+  // 2026-01..04 legitimately carry 0 Cullgen common stock; inheriting the default would block those months.
+  const zero = await inheritFromPriorMonth(monthlyRunRow({ month_key: '2026-06', cullgen_common_stock: 0 }));
+  assert.equal(zero.cullgenCommonStock, 0);
 
-  const setBaseline = await inheritFromPriorMonth(
-    monthlyRunRow({ month_key: '2026-06', cullgen_common_stock: 12_345_678 }),
-  );
-  assert.equal(setBaseline.cullgenCommonStock, 12_345_678);
+  const set = await inheritFromPriorMonth(monthlyRunRow({ month_key: '2026-06', cullgen_common_stock: 12_345_678 }));
+  assert.equal(set.cullgenCommonStock, 12_345_678);
+
+  const missing = await inheritFromPriorMonth(monthlyRunRow({ month_key: '2026-06', cullgen_common_stock: null }));
+  assert.equal(missing.cullgenCommonStock, 14_450_527);
+
+  const negative = await inheritFromPriorMonth(monthlyRunRow({ month_key: '2026-06', cullgen_common_stock: -5 }));
+  assert.equal(negative.cullgenCommonStock, 14_450_527);
 });
 
 /**
