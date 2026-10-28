@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { ZodError } from 'zod';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
@@ -88,7 +89,10 @@ export function buildApp(ctx: RouteContext): FastifyInstance {
   registerLinkDetailRoutes(app, ctx);
 
   app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
-    const statusCode = error.statusCode ?? 500;
+    // A rejected request body is a client error. Without this an invalid value reaches the browser as a
+    // 500 "server fault" carrying a raw zod issue dump, which reads like a crash in the logs.
+    const isClientInputError = error instanceof ZodError;
+    const statusCode = error.statusCode ?? (isClientInputError ? 400 : 500);
     app.log.error(error);
     reply.code(statusCode).send({ error: error.message });
   });

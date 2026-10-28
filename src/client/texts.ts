@@ -262,7 +262,10 @@ export const TEXTS = {
       'en-US': 'Delete Global Parameter “{label}”? This cannot be undone.',
     },
     deleteGlobalParameter: { 'zh-CN': '删除 Global Parameter', 'en-US': 'Delete Global Parameter' },
-    holdersDraftInvalid: { 'zh-CN': '请输入有效的 5% Holders 数字', 'en-US': 'Enter a valid 5% Holders number' },
+    holdersDraftInvalid: {
+      'zh-CN': '请输入大于 0 的有效数字（0 等于没填，会让 5% Holders 的持股比例算成 0%）',
+      'en-US': 'Enter a valid number greater than 0 (0 means unset and would report a 0% holding)',
+    },
     holdersDraftCount: {
       'zh-CN': '5% Holders 需要编辑四个全局参数',
       'en-US': 'All four 5% Holders global parameters must be edited',
@@ -396,6 +399,10 @@ export const TEXTS = {
     },
     monthlyConstantName: { 'zh-CN': '常量', 'en-US': 'Constant' },
     monthlyConstantValue: { 'zh-CN': '数值', 'en-US': 'Value' },
+    monthlyConstantInvalid: {
+      'zh-CN': '请填写大于 0 的数值（0 表示未设置，会让月度运行在该项对账处停下）',
+      'en-US': 'Enter a value greater than 0 (0 means unset and stops the monthly run at that reconciliation)',
+    },
     monthlyConstantActions: { 'zh-CN': '操作', 'en-US': 'Actions' },
     editMonthlyConstant: { 'zh-CN': '编辑', 'en-US': 'Edit' },
     saveMonthlyConstant: { 'zh-CN': '保存', 'en-US': 'Save' },

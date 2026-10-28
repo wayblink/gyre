@@ -19,6 +19,7 @@ import {
   isRunPanelStaleForMonth,
   monthlyRunSourceFolders,
   monthlyWorkflowVersionMismatch,
+  parseMonthlyConstantValue,
   resolveMonthlyRunPreviewFileId,
   retainAvailableSourceBindings,
   sourceFileNameBody,
@@ -650,8 +651,9 @@ test('monthly constants are rendered on the main Monthly Update page and saved r
     assert.ok(def.description['en-US'].length > 0, `${def.key} missing en-US description`);
   }
 
-  // Each row saves only its own parsed value; blank/non-numeric values are rejected.
-  assert.match(block, /Number\.isFinite\(parsed\)/);
+  // Each row saves only its own parsed value; blank, non-numeric and 0 are rejected.
+  assert.match(block, /parseMonthlyConstantValue\(input\.value\)/);
+  assert.match(block, /monthlyConstantInvalid/);
   assert.match(block, /saveInstance\(\{ fixedValues: \{ \[key\]: parsed \} \}\)/);
 
   // Inputs and actions use the same table treatment as the source configuration.
@@ -685,6 +687,19 @@ test('monthly constants are rendered on the main Monthly Update page and saved r
     MONTHLY_FIXED_VALUE_DEFS.some((definition) => definition.key === 'seriesBPreferredStock'),
     false,
   );
+});
+
+test('a monthly constant must be a positive number, so 0 can never be saved as a baseline', () => {
+  // 0 is what broke the 2026-10 monthly run: the workflow reads 0 as "baseline not set" and the whole
+  // month stalls on the cullgen reconciliation. Reject it before it reaches the instance row.
+  assert.equal(parseMonthlyConstantValue('14,450,527'), 14_450_527);
+  assert.equal(parseMonthlyConstantValue(' 14450527 '), 14_450_527);
+  assert.equal(parseMonthlyConstantValue(''), null);
+  assert.equal(parseMonthlyConstantValue('   '), null);
+  assert.equal(parseMonthlyConstantValue('0'), null);
+  assert.equal(parseMonthlyConstantValue('0.0'), null);
+  assert.equal(parseMonthlyConstantValue('-1'), null);
+  assert.equal(parseMonthlyConstantValue('abc'), null);
 });
 
 test('monthly page pins the monthly workflow definition version and rejects a mismatch', () => {

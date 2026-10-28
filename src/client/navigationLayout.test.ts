@@ -1074,6 +1074,22 @@ test('5% Holders edit mode exposes localized Confirm & Run and Cancel actions', 
   assert.match(mainSource, /fivePercentHoldersPage\.isEditMode\(\)/);
 });
 
+test('the 5% Holders page refuses a 0 baseline instead of publishing a 0% holding', () => {
+  const holdersPageSource = readFileSync(new URL('./fivePercentHoldersPage.ts', import.meta.url), 'utf8');
+  const drafts = holdersPageSource.match(/function readDrafts\(\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
+  // The throw has to happen inside saveAndRun's try: an unhandled rejection means the click does nothing
+  // visible and the admin never learns why the value was refused.
+  const saveAndRun = holdersPageSource.match(/async function saveAndRun\(\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
+  const tryIndex = saveAndRun.indexOf('try {');
+  assert.ok(tryIndex > 0, 'saveAndRun must guard its work with try/catch');
+  assert.ok(saveAndRun.indexOf('readDrafts()') > tryIndex, 'readDrafts must run inside the try block');
+  assert.match(drafts, /value <= 0/, 'a 0 or negative holder baseline must be rejected on save');
+  assert.match(drafts, /t\('holdersDraftInvalid'\)/);
+
+  const textsSource = readFileSync(new URL('./texts.ts', import.meta.url), 'utf8');
+  assert.match(textsSource, /holdersDraftInvalid:[\s\S]{0,200}大于 0/);
+});
+
 test('Global Parameter editing uses the application modal instead of a browser prompt', () => {
   const fixedValueSection = pageSection('fixed-value', 'docs');
   const serverSource = readFileSync(new URL('../server/routes/parameters.ts', import.meta.url), 'utf8');

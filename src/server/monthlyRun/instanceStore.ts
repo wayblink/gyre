@@ -15,10 +15,10 @@ import {
 import { productFileRef } from '../workflow/fileSources.js';
 import { toIsoTimestamp } from '../utils/timestamp.js';
 
-// Cullgen options fixed-value fallbacks for the two instance columns. The real values flow from
-// Global Parameters via loadMonthlyRunRuntimeFixedValues at trigger time; these defaults only seed
-// a new instance row. Kept local so instanceStore has no dependency on a code-side workflow
-// definition (workflow definitions are DB-owned; see CLAUDE.md).
+// Default monthly constants. They seed a new instance row and are inherited month to month; the run
+// itself reads the per-month columns (`monthlyRunInstanceToRuntimeParameters`), never the
+// `global_parameters` rows that share these names. Kept local so instanceStore has no dependency on a
+// code-side workflow definition (workflow definitions are DB-owned; see CLAUDE.md).
 const DEFAULT_OPTIONS_OUTSTANDING_CULLGEN = 4_156_815;
 const DEFAULT_OPTIONS_AVAILABLE_CULLGEN = 10_994;
 const DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED = 540_666;
@@ -41,6 +41,17 @@ function toNullableNumber(value: unknown): number | null {
 function toNumber(value: unknown, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Monthly constants are reconciliation baselines, and the monthly workflow reads 0 as "not set yet"
+ * (it downgrades an unset baseline to a warning). So an inherited 0 must not travel into the next
+ * month — that would carry a month that never had a baseline forward forever. Anything that is not a
+ * positive number inherits the default instead.
+ */
+function positiveNumberOrFallback(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function fileKeyFromBinding(binding: MonthlyRunSourceBinding | null | undefined): string {
@@ -248,24 +259,24 @@ async function inheritMonthlyFixedValues(
     [monthKey],
   );
   return {
-    optionsOutstandingCullgen: prior
-      ? toNumber(prior.options_outstanding_cullgen, DEFAULT_OPTIONS_OUTSTANDING_CULLGEN)
-      : DEFAULT_OPTIONS_OUTSTANDING_CULLGEN,
-    optionsAvailableCullgen: prior
-      ? toNumber(prior.options_available_cullgen, DEFAULT_OPTIONS_AVAILABLE_CULLGEN)
-      : DEFAULT_OPTIONS_AVAILABLE_CULLGEN,
-    warrantsConvertiblePreferred: prior
-      ? toNumber(prior.warrants_convertible_preferred, DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED)
-      : DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
-    seriesBPreferredStock: prior
-      ? toNumber(prior.series_b_preferred_stock, DEFAULT_SERIES_B_PREFERRED_STOCK)
-      : DEFAULT_SERIES_B_PREFERRED_STOCK,
-    cullgenCommonStock: prior
-      ? toNumber(prior.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK)
-      : DEFAULT_CULLGEN_COMMON_STOCK,
-    gyre2023ChinaSubplanTotal: prior
-      ? toNumber(prior.gyre_2023_china_subplan_total, DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL)
-      : DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL,
+    optionsOutstandingCullgen: positiveNumberOrFallback(
+      prior?.options_outstanding_cullgen,
+      DEFAULT_OPTIONS_OUTSTANDING_CULLGEN,
+    ),
+    optionsAvailableCullgen: positiveNumberOrFallback(
+      prior?.options_available_cullgen,
+      DEFAULT_OPTIONS_AVAILABLE_CULLGEN,
+    ),
+    warrantsConvertiblePreferred: positiveNumberOrFallback(
+      prior?.warrants_convertible_preferred,
+      DEFAULT_WARRANTS_CONVERTIBLE_PREFERRED,
+    ),
+    seriesBPreferredStock: positiveNumberOrFallback(prior?.series_b_preferred_stock, DEFAULT_SERIES_B_PREFERRED_STOCK),
+    cullgenCommonStock: positiveNumberOrFallback(prior?.cullgen_common_stock, DEFAULT_CULLGEN_COMMON_STOCK),
+    gyre2023ChinaSubplanTotal: positiveNumberOrFallback(
+      prior?.gyre_2023_china_subplan_total,
+      DEFAULT_GYRE_2023_CHINA_SUBPLAN_TOTAL,
+    ),
   };
 }
 
@@ -303,6 +314,30 @@ export async function ensureMonthlyRunInstance(db: MonthlyRunDb, monthKey: strin
   return created;
 }
 
+/**
+ * Rejects a monthly constant of 0 (or a negative / non-finite number) coming from the page or the API.
+ *
+ * These five values are the baselines the monthly workflow reconciles against. A stored 0 is not a
+ * business value — it is a baseline nobody filled in — and it made the 2026-10 run stop on
+ * "Cullgen common stock does not match Global Parameter cullgen_common_stock". Legacy rows that already
+ * hold 0 stay untouched here (so a month is never bricked): they remain readable on the page, the
+ * workflow downgrades them to a warning, and inheritance skips them.
+ */
+function assertWritableMonthlyFixedValues(values: Record<string, number> | undefined): void {
+  if (!values) return;
+  for (const [key, column] of Object.entries(MONTHLY_RUNTIME_FIXED_VALUE_KEYS)) {
+    if (!Object.prototype.hasOwnProperty.call(values, key)) continue;
+    const value = values[key];
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) continue;
+    // 400 rather than a generic 500: this is a rejected input, and the monthly page shows the message verbatim.
+    const error = new Error(
+      `Monthly constant ${column} must be greater than 0; a stored 0 leaves the baseline unset and stops the monthly run.`,
+    ) as Error & { statusCode?: number };
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 export async function upsertMonthlyRunInstance(
   db: MonthlyRunDb,
   monthKey: string,
@@ -312,6 +347,8 @@ export async function upsertMonthlyRunInstance(
     fixedValues?: Record<string, number>;
   },
 ): Promise<MonthlyRunInstanceRecord> {
+  // Validate before ensureMonthlyRunInstance: a rejected 0 must not create the month row as a side effect.
+  assertWritableMonthlyFixedValues(params.fixedValues);
   const existing = await ensureMonthlyRunInstance(db, monthKey);
 
   const nextFixedValues = {
@@ -437,28 +474,6 @@ const MONTHLY_RUNTIME_FIXED_VALUE_KEYS = {
   cullgenCommonStock: 'cullgen_common_stock',
   gyre2023ChinaSubplanTotal: 'gyre_2023_china_subplan_total',
 } as const;
-
-export async function loadMonthlyRunRuntimeFixedValues(db: MonthlyRunDb): Promise<Record<string, number>> {
-  const rows = await db.query<Record<string, unknown>>(
-    `select distinct on (key) *
-      from global_parameters
-     where key = any($1::text[])
-      order by key, updated_at desc, id desc`,
-    [Object.values(MONTHLY_RUNTIME_FIXED_VALUE_KEYS)],
-  );
-  const byKey = new Map(rows.map((row) => [String(row.key), Number(row.value)]));
-  const missingKeys = Object.values(MONTHLY_RUNTIME_FIXED_VALUE_KEYS).filter((key) => !Number.isFinite(byKey.get(key)));
-  if (missingKeys.length) {
-    throw new Error(`Missing monthly runtime fixed values: ${missingKeys.join(', ')}`);
-  }
-  return {
-    optionsOutstandingCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsOutstandingCullgen)),
-    optionsAvailableCullgen: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.optionsAvailableCullgen)),
-    warrantsConvertiblePreferred: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.warrantsConvertiblePreferred)),
-    cullgenCommonStock: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.cullgenCommonStock)),
-    gyre2023ChinaSubplanTotal: Number(byKey.get(MONTHLY_RUNTIME_FIXED_VALUE_KEYS.gyre2023ChinaSubplanTotal)),
-  };
-}
 
 export async function updateMonthlyRunInstanceExecutionState(
   db: MonthlyRunDb,

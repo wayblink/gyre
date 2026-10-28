@@ -24,8 +24,13 @@ export const fivePercentHolderGlobalParameterOrder = [
   FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses,
 ] as const;
 
+/**
+ * 5% Holders baselines are share counts. 0 is how that field looks when nobody filled it in, and the run
+ * would publish "Common Stock 0 / 0% of class" instead of asking for the number — so only a positive value
+ * is accepted here. (`/api/fixed-values` only ever writes the four 5% Holder keys.)
+ */
 const fixedValuePatchSchema = z.object({
-  value: z.number(),
+  value: z.number().finite().positive('5% Holders 固定值必须大于 0'),
 });
 
 const globalParameterKeySchema = z
@@ -72,6 +77,27 @@ const fixedValuePageKeyOrder = [
   'options_outstanding_cullgen',
   'options_available_cullgen',
 ] as const;
+
+/**
+ * The five monthly Cap Table constants. They are stored per month on `monthly_run_instances` and edited
+ * from the Monthly Update page; the `global_parameters` rows that share their names are read by nothing
+ * (see `monthlyRunInstanceToRuntimeParameters`). Keep them out of the Global Parameter page so an admin
+ * cannot "fix" a monthly run by editing a row the run never reads.
+ */
+export const monthlyFixedValueGlobalParameterKeys = fixedValuePageKeyOrder;
+
+/**
+ * Retired parameters kept in the table for history only. `series_b_preferred_stock` stopped being a
+ * fixed value when the Read SERIES B child workflow took over (`Shares Issued` 合计 × 5), so nothing
+ * reads it any more — editing it used to look like it changed the monthly summary.
+ */
+export const retiredGlobalParameterKeys = ['series_b_preferred_stock'] as const;
+
+/** Everything the Global Parameter page must not offer to edit: dead rows, not configuration. */
+export const unmanagedGlobalParameterKeys = [
+  ...monthlyFixedValueGlobalParameterKeys,
+  ...retiredGlobalParameterKeys,
+] as readonly string[];
 
 export const fivePercentHolderGlobalParameterKeys = Object.values(FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS);
 const fivePercentHolderGlobalParameterKeySet = new Set<string>(fivePercentHolderGlobalParameterKeys);
@@ -121,16 +147,27 @@ export function applyFivePercentHolderGlobalParameters(
   });
 }
 
+/**
+ * A 5% holder baseline must be a positive share count: 0 (or a negative) is a value nobody filled in, and
+ * the 5% Holders run would happily publish "Common Stock 0 / 0% of class" instead of asking for the number.
+ */
+export function isUsableFivePercentHolderValue(value: unknown): boolean {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0;
+}
+
 export function hasCompleteFivePercentHolderGlobalParameters(
   fixedValues: Map<string, Record<string, unknown>>,
 ): boolean {
-  return fivePercentHolderGlobalParameterOrder.every((key) => Number.isFinite(Number(fixedValues.get(key)?.value)));
+  return fivePercentHolderGlobalParameterOrder.every((key) =>
+    isUsableFivePercentHolderValue(fixedValues.get(key)?.value),
+  );
 }
 
 export function emptyFivePercentHolderRows(fixedValues: Map<string, Record<string, unknown>>) {
   const valueFor = (key: string): number | null => {
     const value = Number(fixedValues.get(key)?.value);
-    return Number.isFinite(value) ? value : null;
+    return isUsableFivePercentHolderValue(value) ? value : null;
   };
   return [
     {
@@ -216,8 +253,9 @@ export function registerParameterRoutes(app: FastifyInstance, ctx: RouteContext)
       `select distinct on (key) *
          from global_parameters
         where key <> all($1::text[])
+          and key <> all($2::text[])
         order by key, updated_at desc, id desc`,
-      [fivePercentHolderGlobalParameterKeys],
+      [fivePercentHolderGlobalParameterKeys, [...unmanagedGlobalParameterKeys]],
     );
     const order: Record<string, number> = Object.fromEntries(fixedValuePageKeyOrder.map((key, index) => [key, index]));
     const items = rows
@@ -234,6 +272,14 @@ export function registerParameterRoutes(app: FastifyInstance, ctx: RouteContext)
     const body = globalParameterCreateSchema.parse(request.body ?? {});
     if (fivePercentHolderGlobalParameterKeySet.has(body.key)) {
       return reply.code(400).send({ error: '5% Holder parameters must be maintained from the 5% Holders page' });
+    }
+    if (unmanagedGlobalParameterKeys.includes(body.key)) {
+      const retired = (retiredGlobalParameterKeys as readonly string[]).includes(body.key);
+      return reply.code(400).send({
+        error: retired
+          ? 'This parameter is retired: Series B Preferred Stock is computed by the Read SERIES B workflow (Shares Issued × 5), so a fixed value here would not be read'
+          : 'Monthly Cap Table constants are maintained per month on the Monthly Update page; this table is not read by the monthly workflow',
+      });
     }
     try {
       const row = await db.queryOne<Record<string, unknown>>(
@@ -266,6 +312,7 @@ export function registerParameterRoutes(app: FastifyInstance, ctx: RouteContext)
         where id = $4
           and editable = true
           and key <> all($5::text[])
+          and key <> all($6::text[])
           returning *`,
       [
         body.label ?? null,
@@ -273,6 +320,7 @@ export function registerParameterRoutes(app: FastifyInstance, ctx: RouteContext)
         updatedByFromRequest(request as typeof request & RequestWithAuth),
         id,
         fivePercentHolderGlobalParameterKeys,
+        [...unmanagedGlobalParameterKeys],
       ],
     );
     if (!row) throw notFound('Global Parameter not found or not editable');
@@ -287,8 +335,9 @@ export function registerParameterRoutes(app: FastifyInstance, ctx: RouteContext)
         where id = $1
           and editable = true
           and key <> all($2::text[])
+          and key <> all($3::text[])
         returning id`,
-      [id, fivePercentHolderGlobalParameterKeys],
+      [id, fivePercentHolderGlobalParameterKeys, [...unmanagedGlobalParameterKeys]],
     );
     if (!row) throw notFound('Global Parameter not found');
     return reply.code(204).send();

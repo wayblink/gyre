@@ -193,7 +193,9 @@ export function createFivePercentHoldersPage(deps: FivePercentHoldersPageDeps): 
         const id = rawId ? Number(rawId) : null;
         const key = String(input.dataset.fivePercentFixedValueKey ?? '');
         const value = Number(input.value.replace(/,/g, '').trim());
-        if ((id !== null && (!Number.isInteger(id) || id <= 0)) || !key || !Number.isFinite(value)) {
+        // A 0 (or negative) holder baseline would publish "Common Stock 0 / 0% of class" without a warning,
+        // so this page refuses it the same way the server does — the number has to be filled in.
+        if ((id !== null && (!Number.isInteger(id) || id <= 0)) || !key || !Number.isFinite(value) || value <= 0) {
           throw new Error(t('holdersDraftInvalid'));
         }
         return { id, key, value };
@@ -221,10 +223,13 @@ export function createFivePercentHoldersPage(deps: FivePercentHoldersPageDeps): 
   }
 
   async function saveAndRun() {
-    const drafts = readDrafts();
+    // readDrafts throws when a value is not a positive number. It has to run inside the try, otherwise the
+    // click handler ends in an unhandled rejection and the admin sees nothing happen at all.
+    let drafts: Array<{ id: number | null; key: string; value: number }>;
     saving = true;
     setUpdateButtonState();
     try {
+      drafts = readDrafts();
       const updatedBy = deps.currentUserName();
       for (const draft of drafts) {
         const payload = {

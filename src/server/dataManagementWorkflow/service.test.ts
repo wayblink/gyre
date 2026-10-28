@@ -236,3 +236,47 @@ test('5% Holders workflow passes all global fixed values as runtime parameters',
     fileRefs: { capitalization_summary: { provider: 'product-files', key: 'output/captable/summary.xlsx' } },
   });
 });
+
+test('5% Holders workflow refuses a stored 0 baseline instead of publishing zeros', async () => {
+  const workflow = {
+    id: 55,
+    code: 'five-percent-holders-sync',
+    name: '5% Holders Sync',
+    tasks_json: '[]',
+    runtime_params_schema_json: '{}',
+    runtime_params_defaults_json: '{}',
+  };
+  await assert.rejects(
+    () =>
+      startDataManagementWorkflow(
+        {
+          async queryOne() {
+            return workflow;
+          },
+          async query<T extends Record<string, unknown> = Record<string, unknown>>(): Promise<T[]> {
+            // GNI common stock was saved as 0 — a baseline nobody filled in. Feeding it to the workflow
+            // publishes "Common Stock 0 / 0% of class" for a >5% holder without any warning.
+            return [
+              { key: 'fivePercentHoldersGniCommonStock', value: 0 },
+              { key: 'fivePercentHoldersGniTotalCses', value: 2 },
+              { key: 'fivePercentHoldersSongjiangMaCommonStock', value: 3 },
+              { key: 'fivePercentHoldersSongjiangMaTotalCses', value: 4 },
+            ] as unknown as T[];
+          },
+        },
+        {
+          async createRun() {
+            throw new Error('should not create run');
+          },
+        },
+        {
+          startAsync() {
+            throw new Error('should not start run');
+          },
+        },
+        'five-percent-holders',
+        { capitalization_summary: { fileId: 4 } },
+      ),
+    /Missing 5% Holders fixed values: fivePercentHoldersGniCommonStock/,
+  );
+});

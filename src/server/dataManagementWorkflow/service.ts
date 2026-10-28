@@ -33,11 +33,15 @@ async function loadFivePercentHolderRuntimeOverrides(db: WorkflowBootstrapDb) {
     if (String(row.updated_by ?? '') === 'system') continue;
     const key = String(row.key);
     const value = Number(row.value);
-    if (keys.includes(key as (typeof keys)[number]) && Number.isFinite(value)) fixedValues[key] = value;
+    // 0 is not a holder number, it is a baseline nobody filled in. Passing it through publishes
+    // "Common Stock 0 / 0% of class" for a >5% holder with no warning, so treat it as missing.
+    if (keys.includes(key as (typeof keys)[number]) && Number.isFinite(value) && value > 0) fixedValues[key] = value;
   }
   const missingKeys = keys.filter((key) => !Number.isFinite(fixedValues[key]));
   if (missingKeys.length > 0) {
-    throw new Error(`Missing 5% Holders fixed values: ${missingKeys.join(', ')}`);
+    throw new Error(
+      `Missing 5% Holders fixed values: ${missingKeys.join(', ')} (each must be a positive number; 0 counts as unset)`,
+    );
   }
   return { fixedValues };
 }

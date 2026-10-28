@@ -579,7 +579,7 @@ done
 
 > 注意：工作流引擎的 SQL 只允许只读查询，`replace()` 被列入禁用关键字（会被当成写语句），所以这里用 `like` 而不是字符串替换。
 
-**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version`、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION`。三者不一致时月度页会报版本不匹配并拒绝执行。当前为 **v46**（v45 收紧了 Comment 判定，v46 只把输入源标签 `Futu Exercise Report` 改名为 `Futu Exercise Record`；标签也走 schema，所以照样要 bump）。
+**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version`、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION`。三者不一致时月度页会报版本不匹配并拒绝执行。当前为 **v48**（v45 收紧了 Comment 判定，v46 只把输入源标签 `Futu Exercise Report` 改名为 `Futu Exercise Record`，v47 见 8.4，v48 见 8.5）。
 
 **验收**：
 
@@ -589,6 +589,80 @@ select code, version from workflow_definitions where code = 'gyre-captable-summa
 ```
 
 执行一个月度运行，Control Book 里 `Comment` 为 `Omnibus Inc.Pl.` 的行**不应**再让运行停在复核；而 `Ominibus Inc. Pl` 这类真拼写差异仍会停下（`src/server/workflow/monthlyCommentVariant.test.ts` 覆盖了这两个方向）。
+
+---
+
+## 8.4 月度工作流 v47：月度常量为 0 时不再阻断（`Cullgen common stock does not match …`）
+
+**现象**：月度页面「月度常量」里 `Cullgen Common Stock` 显示 0 时，运行走到第 12 步 `Calc Business Inputs` 直接 `Failed`，错误为
+`Cullgen common stock does not match Global Parameter cullgen_common_stock (actual=0, expected=1)`。
+
+**根因**：`calc_business_inputs` 的输入守卫 `guard_1` 拿「EQ Control Book 算出的 Cullgen common stock」与「月度常量 `fixedValues.cullgenCommonStock`」做等值断言，等值不成立就 block。这个报错里的 `actual=0 / expected=1` 是断言结果而不是股数，所以看不出是哪一边为 0。两种来源都会触发：
+
+- 月度实例 `monthly_run_instances.cullgen_common_stock` 被存成了 0（页面此前允许保存 0，且 `inheritMonthlyFixedValues` 会把 0 原样继承给下个月，越传越远）；
+- 月度常量本身没问题、Control Book 里没有 `Agr. & Pl. of Merger` 行（这种情况仍然应该阻断）。
+
+**改法（工作流定义 v46 → v47 + 代码）**：
+
+- 工作流（DB 定义）：`guard_1` / `guard_2` 的 SQL 改为「Control Book 算不出值 → block；常量是 0（未设置）→ 放行；两边都有值且不等 → block」；并各加一条 `failureStrategy: warning` 的守卫 `guard_warn_cullgen_baseline_unset` / `guard_warn_gyre_subplan_baseline_unset`，提示「常量未设置，本次按 Control Book 的值继续」。warning 需要运行页确认后继续，与 Omnibus 拼写提示的处理一致。
+- 代码：页面 `parseMonthlyConstantValue` 拒绝 0（月度常量都是股本/期权数，0 不是合法基准值）；`upsertMonthlyRunInstance` 服务端同样拒绝（HTTP 400，提示里写明是哪个列）；`inheritMonthlyFixedValues` 遇到 0 回落到默认值，不再把一个空的基准值传染给以后的月份。已经存成 0 的老行不动（页面照常显示，运行按 warning 放行），管理员看到提示后自行改正。
+
+**必须同步的三处**：DB `workflow_definitions.version`、`database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION` —— 现在都是 **47**。
+
+**验收**：
+
+```sql
+-- 应为 47
+select code, version from workflow_definitions where code = 'gyre-captable-summary-v2';
+```
+
+```bash
+# 该月常量为 0 时仍应能出结果（停在复核 → 批准 → completed，汇总里 Cullgen common stock = 14450527）
+curl -s -X POST "$BASE/api/monthly-runs" -H 'content-type: application/json' \
+  -d '{"month":"2026-05","expectedWorkflowVersion":47}'
+```
+
+- `src/server/workflow/monthlyBaselineUnset.test.ts`：常量 0 → 阻断守卫通过、warning 守卫触发；常量非 0 且不一致 → 阻断；Control Book 缺值 → 阻断；并校验守卫通过引擎的 `normalizeInputGuards`（缺 `type` 的守卫会被静默丢掉，正是这一轮踩过的坑）。
+- `src/client/monthlyRunPage.test.ts` / `src/server/monthlyRun/instanceStore.test.ts`：0 不能保存、0 不再被继承。
+
+> 注意：守卫 JSON 必须有 `type: "dataframe.sql.assert"`。手写守卫漏掉 `type` 时，引擎在 `normalizeInputGuards` 里会把它丢掉，种子里看着有、运行时却完全不触发。
+
+---
+
+## 8.5 月度工作流 v48 + 参数校验：把「常量为 0」这一类问题一次清干净
+
+**背景**：8.4 修的是「月度常量为 0 时被阻断」。顺着这条线把全部工作流守卫和参数入口审了一遍，又找到三类问题：会误阻断历史月份、会静默算错、以及一处「看起来能改、实际没人读」的死配置。
+
+**工作流（v47 → v48）**：
+
+| 位置 | 问题 | 改法 |
+| --- | --- | --- |
+| `calc_business_inputs` 的 `guard_1` / `guard_2` | 只有「常量 0 → warning」这一半 | 改成三方规则：两边都有值且不一致 → block；只有一边有值 → 用有值的一方 + warning；两边都没有 → block。`calc_business_inputs` 的 SQL 同时补上回退（Control Book 算不出 Cullgen / SubPlan 时用常量），否则守卫放行了、汇总里的这一列还是空 |
+| `build_capitalization_summary` 的 `guard_warn_warrants_baseline_unset` / `guard_warn_cullgen_options_baseline_unset`（新增） | 认股权证、Cullgen 期权这两个常量被直接写进 Total Fully Diluted，为 0 时**静默少算**（认股权证 540,666 股） | 常量为 0（两个 Cullgen 期权常量都为 0）时给 warning，本次照常算但把「漏了一项」摆到运行页 |
+| `build_capitalization_summary` 的 `guard_2`（Control Book transfer） | `bc_subplan_transfer_control_book > 0` 会**误阻断历史月份**：Control Book 里 Omnibus 行最早 2025-12，回算 2025-11 及更早时该值合法为 0 | 改成 `>= 0`：0 放行，只有空值（null）阻断 |
+| `persist_capitalization_summary` 的 `guard_2`（Options Outstanding- Gyre） | 同上，`> 0` 会把「本月确实没有 Gyre 期权」当成数据错误 | 改成 `>= 0`：0 放行，负数（说明期权总数小于被扣减的 transfer）和空值仍阻断 |
+
+**代码（不需要改工作流版本）**：
+
+- 5% Holders 的四个全局参数：`src/client/fivePercentHoldersPage.ts` 的 `readDrafts`、`src/server/routes/parameters.ts` 的 `fixedValuePatchSchema` 都改成「必须大于 0」；`readDrafts()` 的调用也挪进了 `saveAndRun` 的 `try` 里——此前它在 `try` 外面抛错会变成未处理的 promise rejection，点「确认并运行」什么都不会发生、也看不到任何提示；`hasCompleteFivePercentHolderGlobalParameters` 与 `emptyFivePercentHolderRows` 把 0 视为**未配置**（页面上显示为空而不是 0 股）；`src/server/dataManagementWorkflow/service.ts` 的 `loadFivePercentHolderRuntimeOverrides` 把 0 当缺失直接拒绝启动。此前 0 会一路写进产出（Common Stock 0 / 持股比例 0%），既不阻断也不警告。
+- Global Parameter 页面不再列出、也不再允许新建/修改/删除那 5 个月度常量与已退休的 `series_b_preferred_stock`（`unmanagedGlobalParameterKeys`，GET/POST/PATCH/DELETE 四处都排除了；两者的拒绝文案不同，后者会说明 Series B 现在由 Read SERIES B 子流程按 Shares Issued × 5 计算）。月份常量真正的位置是月度实例列，由月度页面维护；`global_parameters` 里同名的行**运行时没有任何代码读取**，此前却能被编辑，最容易让人以为「改了这里就能修好月度运行」。同时删掉了误导性的死函数 `loadMonthlyRunRuntimeFixedValues`（注释还写着「trigger time 从 Global Parameters 读」）。改完这一页会显示「暂无 Global Parameter 配置」——这是正常的：它现在只剩「新增自定义参数」的能力。
+- 全局错误处理：`src/server/app.ts` 把 `ZodError` 映射成 **400**（此前请求体校验失败会以 500「服务器错误」返回，并带一坨 issue dump）。
+
+**必须同步的三处**：DB `workflow_definitions.version`、`database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION` —— 现在都是 **48**。
+
+**验收**：
+
+```bash
+# 1) 常量为 0：跑过去会停在复核，批准后 completed，且汇总里的 Cullgen common stock 取 Control Book 的 14,450,527
+# 2) 认股权证常量为 0：在 build_capitalization_summary 停下，提示「本次 Total Fully Diluted 不含认股权证股数」
+# 3) Global Parameter 列表里不再出现 cullgen_common_stock 等 5 个 key
+curl -s "$BASE/api/global-parameters" | python3 -m json.tool | grep -c cullgen_common_stock   # 期望 0
+```
+
+- `src/server/workflow/monthlyBaselineUnset.test.ts`：三方规则、回退、认股权证/Cullgen 期权 warning、`>= 0` 的两处修复，以及一条结构性检查——任何 `{constants.X}` 占位符必须在用到它的那个 SQL 的 `constants` 里声明。（v48 第一版就因为 `calc_business_inputs` 的 SQL 引用了没声明的常量，单测全绿却在真实运行时报 `SQL constant placeholder is not configured`；这条检查就是为它加的。）
+- `src/server/routes/parameters.test.ts`（新增）、`src/server/dataManagementWorkflow/service.test.ts`、`src/client/navigationLayout.test.ts`：0 不再被当作有效参数。
+
+> 还有一处遗留：`GET /api/fixed-values` 现在没有调用方（5% 页面只用到它的 POST/PATCH），本轮没删，看到它列着那 5 个月度常量属于历史残留。
 
 ---
 

@@ -5,8 +5,8 @@ import type { MonthlyRunInstanceRecord } from '../../shared/types.js';
 import type { MonthlyRunDb } from './store.js';
 import {
   deleteMonthlyRunPlan,
+  ensureMonthlyRunInstance,
   getLatestMonthlyRunOutput,
-  loadMonthlyRunRuntimeFixedValues,
   monthlyRunInstanceToRuntimeParameters,
   upsertMonthlyRunInstance,
   updateMonthlyRunInstanceExecutionState,
@@ -186,39 +186,6 @@ test('latest monthly output selects the newest successful execution with an exis
   assert.match(normalizedSql, /limit 1$/);
 });
 
-test('monthly runtime fixed values are loaded from latest global parameters', async () => {
-  const calls: Array<{ text: string; params?: unknown[] }> = [];
-  const db: MonthlyRunDb = {
-    async query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]) {
-      calls.push({ text, params });
-      return [
-        { key: 'options_outstanding_cullgen', value: 123 },
-        { key: 'options_available_cullgen', value: 456 },
-        { key: 'warrants_convertible_preferred', value: 789 },
-        { key: 'cullgen_common_stock', value: 111 },
-        { key: 'gyre_2023_china_subplan_total', value: 222 },
-      ] as unknown as T[];
-    },
-    async queryOne() {
-      return undefined;
-    },
-    async execute() {},
-  };
-
-  const fixedValues = await loadMonthlyRunRuntimeFixedValues(db);
-
-  assert.deepEqual(fixedValues, {
-    optionsOutstandingCullgen: 123,
-    optionsAvailableCullgen: 456,
-    warrantsConvertiblePreferred: 789,
-    cullgenCommonStock: 111,
-    gyre2023ChinaSubplanTotal: 222,
-  });
-  const normalizedSql = calls[0]?.text.replace(/\s+/g, ' ').trim() ?? '';
-  assert.match(normalizedSql, /from global_parameters/);
-  assert.match(normalizedSql, /order by key, updated_at desc, id desc/);
-});
-
 test('upserting a monthly source binding resolves logical path and writes the generic sources child table', async () => {
   const executeCalls: Array<{ text: string; params?: unknown[] }> = [];
   const db: MonthlyRunDb = {
@@ -250,6 +217,88 @@ test('upserting a monthly source binding resolves logical path and writes the ge
   // instance id 2, source key, file id resolved by logical path (82), no sheet override
   assert.deepEqual(childInsert?.params, [2, 'base_control_book', 82, null]);
 });
+
+/**
+ * 0 saved into a monthly constant is the 2026-10 outage: the monthly workflow treats 0 as "unset" for its
+ * reconciliation baselines, so a stored 0 makes every run of that month stop on
+ * "Cullgen common stock does not match Global Parameter cullgen_common_stock". The page must not be able to
+ * write it, and a month must not inherit it. Legacy rows already holding 0 stay readable (the page shows the
+ * real value so an admin can see and fix it) and the workflow degrades them to a warning.
+ */
+test('saving a monthly constant of 0 is rejected instead of stored', async () => {
+  const db: MonthlyRunDb = {
+    async query() {
+      return [];
+    },
+    async queryOne<T>(text: string): Promise<T | undefined> {
+      const sql = text.replace(/\s+/g, ' ').trim();
+      if (sql.includes('where i.month_key = $1')) return monthlyRunRow() as T;
+      return undefined;
+    },
+    async execute() {},
+  };
+
+  await assert.rejects(
+    () => upsertMonthlyRunInstance(db, '2026-06', { fixedValues: { cullgenCommonStock: 0 } }),
+    /cullgen_common_stock.*greater than 0/i,
+  );
+});
+
+test('a month inherits the default baseline when the prior month stored 0', async () => {
+  const unsetBaseline = await inheritFromPriorMonth(monthlyRunRow({ month_key: '2026-06', cullgen_common_stock: 0 }));
+  assert.equal(unsetBaseline.cullgenCommonStock, 14_450_527);
+
+  const setBaseline = await inheritFromPriorMonth(
+    monthlyRunRow({ month_key: '2026-06', cullgen_common_stock: 12_345_678 }),
+  );
+  assert.equal(setBaseline.cullgenCommonStock, 12_345_678);
+});
+
+/**
+ * Creates 2026-07 with no instance of its own and returns the fixed values it inherited. The insert's
+ * parameter order is the column order of `monthly_run_instances`, so the captured values are read back by
+ * that position rather than by re-implementing the inheritance rule here.
+ */
+async function inheritFromPriorMonth(
+  priorRow: Record<string, unknown>,
+): Promise<MonthlyRunInstanceRecord['fixedValues']> {
+  let insertParams: unknown[] = [];
+  const db: MonthlyRunDb = {
+    async query() {
+      return [];
+    },
+    async queryOne<T>(text: string): Promise<T | undefined> {
+      const sql = text.replace(/\s+/g, ' ').trim();
+      if (sql.includes('from monthly_run_instances') && sql.includes('where month_key < $1')) return priorRow as T;
+      if (sql.includes('where i.month_key = $1')) {
+        // The instance is created by the insert below; mirror it back so ensureMonthlyRunInstance's
+        // read-after-write succeeds and the captured parameters are the value under test.
+        if (!insertParams.length) return undefined as unknown as T;
+        return monthlyRunRow({
+          month_key: '2026-07',
+          options_outstanding_cullgen: insertParams[3],
+          options_available_cullgen: insertParams[4],
+          warrants_convertible_preferred: insertParams[5],
+          series_b_preferred_stock: insertParams[6],
+          cullgen_common_stock: insertParams[7],
+          gyre_2023_china_subplan_total: insertParams[8],
+        }) as T;
+      }
+      if (sql.includes('from months')) return { id: 3, month_key: '2026-07' } as T;
+      return undefined;
+    },
+    async execute(text: string, params?: unknown[]) {
+      if (text.includes('insert into monthly_run_instances')) insertParams = params ?? [];
+    },
+  };
+
+  const instance = await ensureMonthlyRunInstance(db, '2026-07');
+  assert.ok(insertParams.length > 0, 'expected the instance insert to run');
+  // (month_id, month_key, workflow_code, options_outstanding, options_available, warrants, series_b,
+  //  cullgen_common_stock, gyre_2023_china_subplan_total)
+  assert.equal(insertParams[1], '2026-07');
+  return instance.fixedValues;
+}
 
 function completedHistoryRow(historyId: number, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
