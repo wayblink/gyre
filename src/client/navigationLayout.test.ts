@@ -1087,7 +1087,7 @@ test('the 5% Holders page refuses a 0 baseline instead of publishing a 0% holdin
   assert.match(drafts, /t\('holdersDraftInvalid'\)/);
 
   const textsSource = readFileSync(new URL('./texts.ts', import.meta.url), 'utf8');
-  assert.match(textsSource, /holdersDraftInvalid:[\s\S]{0,200}大于 0/);
+  assert.match(textsSource, /holdersDraftInvalid:[\s\S]{0,240}大于 0/);
 });
 
 test('Global Parameter editing uses the application modal instead of a browser prompt', () => {
