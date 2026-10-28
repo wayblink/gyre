@@ -106,14 +106,18 @@ test('monthly input sources distinguish required business files from optional in
   const byKey = new Map(sources.map((source) => [source.sourceKey, source]));
 
   // Business files the operator must always bring: without them the month cannot be computed.
-  for (const sourceKey of ['incremental_control_book', 'option_plans_summary']) {
+  for (const sourceKey of ['option_plans_summary']) {
     assert.equal(byKey.get(sourceKey)?.required, true, `${sourceKey} should be required`);
   }
 
-  // The two incremental merges are optional: months before the Futu exercise report and the
-  // cancel/restore report existed have no file to supply, and the merge sub-workflows fall back to
-  // their base alone (an unbound optional source resolves to a declared-but-empty dataframe).
-  for (const sourceKey of ['incremental_futu_exercises', 'incremental_cancel_restore_report']) {
+  // The incremental merges are optional: a given month may simply have no new detail export. The merge
+  // sub-workflows then fall back to their base alone (an unbound optional source resolves to a
+  // declared-but-empty dataframe), so a missing file must not block the run.
+  for (const sourceKey of [
+    'incremental_control_book',
+    'incremental_futu_exercises',
+    'incremental_cancel_restore_report',
+  ]) {
     assert.equal(byKey.get(sourceKey)?.required, false, `${sourceKey} should be optional`);
     assert.equal(byKey.get(sourceKey)?.hidden, false, `${sourceKey} should stay visible`);
   }

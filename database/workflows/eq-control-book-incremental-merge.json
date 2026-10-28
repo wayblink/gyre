@@ -3,7 +3,7 @@
   "name": "EQ Control Book Incremental Merge",
   "description": "将上一次完整 EQ Control Book base 与本次增量按自然键幂等合并，仅输出新的 EQ Control Book base Sheet。",
   "status": "active",
-  "version": 6,
+  "version": 7,
   "tasks": [
     {
       "x": 48,
@@ -58,11 +58,12 @@
           "$default": "27591",
           "$fromRuntime": "fileRefs.incremental_control_book.sheet"
         },
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "Security ID, Security, As of Date, Process Date, Trans. Type, Trans. No., Broker No., Shares Issued, Shares Retired, Issued & Outstanding, Comment, Net Shares issued in Period"
       },
       "dependsOn": [],
-      "description": "读取本月下载的增量表；默认对应 Control_Books_Detail_Data_*.xlsx 的 27591 Sheet。",
-      "operatorCode": "sheet.range.extract",
+      "description": "本月 Control Book 明细导出（sheet 27591）的抽取。该源是可选的：本月没有新的明细导出时输出仅含 12 个标准列的空表，合并结果等于基表，运行照常继续，不会因为缺文件而阻断。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {
