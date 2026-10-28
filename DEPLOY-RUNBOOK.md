@@ -579,7 +579,7 @@ done
 
 > 注意：工作流引擎的 SQL 只允许只读查询，`replace()` 被列入禁用关键字（会被当成写语句），所以这里用 `like` 而不是字符串替换。
 
-**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version`、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION`。三者不一致时月度页会报版本不匹配并拒绝执行。当前为 **v48**（v45 收紧了 Comment 判定，v46 只把输入源标签 `Futu Exercise Report` 改名为 `Futu Exercise Record`，v47 见 8.4，v48 见 8.5）。
+**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version`、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION`。三者不一致时月度页会报版本不匹配并拒绝执行。当前为 **v49**（v45 收紧了 Comment 判定，v46 只把输入源标签 `Futu Exercise Report` 改名为 `Futu Exercise Record`，v47 见 8.4，v48 见 8.5，v49 见 8.6）。
 
 **验收**：
 
@@ -663,6 +663,54 @@ curl -s "$BASE/api/global-parameters" | python3 -m json.tool | grep -c cullgen_c
 - `src/server/routes/parameters.test.ts`（新增）、`src/server/dataManagementWorkflow/service.test.ts`、`src/client/navigationLayout.test.ts`：0 不再被当作有效参数。
 
 > 还有一处遗留：`GET /api/fixed-values` 现在没有调用方（5% 页面只用到它的 POST/PATCH），本轮没删，看到它列着那 5 个月度常量属于历史残留。
+
+---
+
+## 8.6 月度工作流 v49：Futu 行权数量按「运行月份」截断
+
+**现象**：运营反馈 2026-01 的 `BCI Shares Held by Futu` 不对。业务口径是按**截止 2025 年 12 月底**的行权加总：
+`7,815,396 − 2,796,246 = 5,019,150`；系统给出的是 `7,815,396 − 2,938,523 = 4,876,873`。
+
+**根因**：`calc_futu_metrics` 对合并后的 Futu 行权表直接 `sum([Exercised Qty])`，**没有任何按 `Exercise Date` 的截断**；而同一份工作流里 Control Book 的每个指标（EOM、上月余额、BC Subplan 转移量）都带 `wf_month_key([As Of Date]) <= 运行月份`。底表是「到当日」的累计合并结果，所以拿一份含到 2026-05 的底表回算 1 月，等于把 2026-03(23,114) / 04(501) / 05(118,662) 的行权提前算进了扣减项，合计多扣 142,277 股。
+
+> 注意：底表**文件名不能当 as-of 用**。`Futu_Exercises_Base_2026_01.xlsx` 里同样有 2026-03/04/05 的行权行、合计同样是 2,938,523，因为它是「上传的到当日导出 + 增量」合并出来的，命名只表示产出月份。换文件解决不了，只能按 `Exercise Date` 截断。
+
+**改法（v48 → v49）**：
+
+| 位置 | 变更 |
+| --- | --- |
+| `calc_futu_metrics` 的 SQL | 求和加 `wf_month_key([Exercise Date]) is null or <= {constants.workflowMonth}`（日期为空按计入，与 BC Subplan 那条口径一致，避免格式问题悄悄丢行）；同时输出 `futu_exercised_after_month_qty` / `futu_latest_exercise_month` 供排查 |
+| `calc_futu_metrics` 的 `futu` 输入 | 新增 warning 守卫 `guard_warn_futu_exercises_after_month`：底表里存在晚于运行月份的行权行时，提示「已排除 N 行 / M 股（行权日期晚于 X，涉及月份：…）」 |
+
+为什么它以前一直没被守卫发现：`Total Fully Diluted` 不含 BCI，而 `Assert Summary Total Calculation` 只校验「各行相加 = 合计」，BCI 与 `Common Shares OS` 同时偏移照样成立——属于静默算错。
+
+**受影响的月份**（本地按最新底表重算的对照，误差 = 多算的行权/股数）：
+
+| 月份 | 系统给出的已行权 | 按 ≤ 该月应有 | BCI 少算 |
+| --- | --- | --- | --- |
+| 2026-01 | 2,938,523 | 2,796,246 | 142,277 |
+| 2026-03 | 3,034,475 | 2,819,360 | 215,115 |
+| 2026-04 | 3,034,475 | 2,819,861 | 214,614 |
+| 2026-05 | 3,034,475 | 2,938,523 | 95,952 |
+| 2026-06 / 2026-08 | 3,034,475 / 3,116,984 | 同 | 0 |
+
+**必须同步的三处**：DB `workflow_definitions.version`、`database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION` —— 现在都是 **49**。
+
+**验收**（发布后）：
+
+```sql
+-- 应为 49
+select code, version from workflow_definitions where code = 'gyre-captable-summary-v2';
+```
+
+重跑 2026-01 后，产物 `Capitalization Summary` 里应为：
+
+- `BCI Shares Held by Futu` = **5,019,150**
+- `Common Shares OS` = **76,801,823**（= 96,963,611 − 14,450,527 − 5,019,150 − 692,111）
+
+运行页同时会停在复核，提示「已排除 3 行 / 142,277 股（行权日期晚于 2026-01，涉及月份：2026-03, 2026-04, 2026-05）」——这是预期行为，确认即可。`src/server/workflow/futuExerciseMonthCutoff.test.ts` 用运营给的这组数把两个方向都钉住了。
+
+> 历史月份（2026-03/04/05）的已发布汇总仍是旧数，重跑会覆盖它们；是否批量重算由需求方决定。
 
 ---
 

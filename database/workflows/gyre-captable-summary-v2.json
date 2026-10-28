@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 48,
+  "version": 49,
   "tasks": [
     {
       "x": 48,
@@ -319,6 +319,32 @@
                 "failureStrategy": "block"
               },
               "enabled": true
+            },
+            {
+              "id": "guard_warn_futu_exercises_after_month",
+              "name": "Warn Futu Exercises Dated After The Run Month",
+              "type": "dataframe.sql.assert",
+              "params": {
+                "sql": "select case\n  when (select count(*) from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}) = 0 then '0 行'\n  else concat('已排除 ',\n    (select count(*) from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}), ' 行 / ',\n    (select sum([Exercised Qty]) from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}), ' 股（行权日期晚于 ', {constants.workflowMonth}, '，涉及月份：',\n    (select group_concat(distinct m separator ', ') from (select wf_month_key([Exercise Date]) as m from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}) t), '）')\nend as futu_future_rows_hint\nfrom {futu}\nlimit 1",
+                "constants": {
+                  "workflowMonth": {
+                    "$type": "string",
+                    "$label": "Workflow Month",
+                    "$fromRuntime": "month"
+                  }
+                },
+                "operator": "=",
+                "expectedValue": "0 行",
+                "tableBindings": [
+                  {
+                    "inputSlot": "futu",
+                    "tableName": "futu"
+                  }
+                ],
+                "failureMessage": "Futu 行权表里有行权日期晚于运行月份的记录（见下文实际值），本次已按 Exercise Date 截断、不计入 BCI Shares Held by Futu 的扣减。\n这通常是绑定的底表本身就是「到当日」的合并结果，属正常现象，确认后继续即可。\n（BCI = China Subplan total − 截至运行月份的已行权数量；若这些晚于本月的行权本应计入，请检查运行月份是否选错。）",
+                "failureStrategy": "warning"
+              },
+              "enabled": true
             }
           ]
         },
@@ -329,7 +355,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  sum(f.[Exercised Qty]) as futu_exercised_qty,\n  max(c.gyre_2023_china_subplan_total) - sum(f.[Exercised Qty]) as bci_shares_held_by_futu\nfrom (\n  select * from {futu}\n  where trim(concat('', coalesce([Employee No.], ''))) <> ''\n    and trim(concat('', coalesce([Employee No.], ''))) <> '员工编号'\n) f, {control_metrics} c\n",
+        "sql": "select\n  sum(case when wf_month_key(f.[Exercise Date]) is null or wf_month_key(f.[Exercise Date]) <= {constants.workflowMonth} then f.[Exercised Qty] else 0 end) as futu_exercised_qty,\n  max(c.gyre_2023_china_subplan_total) - sum(case when wf_month_key(f.[Exercise Date]) is null or wf_month_key(f.[Exercise Date]) <= {constants.workflowMonth} then f.[Exercised Qty] else 0 end) as bci_shares_held_by_futu,\n  sum(case when wf_month_key(f.[Exercise Date]) is not null and wf_month_key(f.[Exercise Date]) > {constants.workflowMonth} then f.[Exercised Qty] else 0 end) as futu_exercised_after_month_qty,\n  max(case when wf_month_key(f.[Exercise Date]) is not null and wf_month_key(f.[Exercise Date]) > {constants.workflowMonth} then wf_month_key(f.[Exercise Date]) else null end) as futu_latest_exercise_month\nfrom (\n  select * from {futu}\n  where trim(concat('', coalesce([Employee No.], ''))) <> ''\n    and trim(concat('', coalesce([Employee No.], ''))) <> '员工编号'\n) f, {control_metrics} c",
         "tableBindings": [
           {
             "inputSlot": "futu",
@@ -339,10 +365,17 @@
             "inputSlot": "control_metrics",
             "tableName": "control_metrics"
           }
-        ]
+        ],
+        "constants": {
+          "workflowMonth": {
+            "$type": "string",
+            "$label": "Workflow Month",
+            "$fromRuntime": "month"
+          }
+        }
       },
       "dependsOn": [],
-      "description": "计算 Futu 已行权总数以及 BCI Shares Held by Futu。",
+      "description": "计算 Futu 已行权总数以及 BCI Shares Held by Futu。行权数量按 Exercise Date 截断到运行月份（与 Control Book 的 As of Date 口径一致，因此同一份合并底表可回算任意历史月份）；日期为空的行按计入处理，晚于运行月份的行不计入并在运行页给出 warning。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },

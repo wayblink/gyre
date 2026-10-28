@@ -202,6 +202,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
     BCI Shares Held by Futu = GYRE 2023 China Subplan 总量 - Futu Exercised Qty
 
 这里的 Exercised Qty 是成功行权数量，不是下单数量、扣除/卖出数量或成交数量。
+行权数量按 Exercise Date 截断到运行月份（含当月），与 Control Book 的 As of Date 口径一致：底表是「到当日」的累计合并结果时，回算历史月份也不会把以后的月行权算进来。日期为空的行按计入处理；晚于运行月份的行不计入，并在运行页给出 warning 说明排除了多少行、多少股、涉及哪些月份。
 
 ### 2.3 Option Plans 与 BC Subplan 调整
 
@@ -632,7 +633,7 @@ Shares reconciliation is:
 
 ### Futu exercise position
 
-Rows with an empty employee number or the header 员工编号 are excluded. The workflow uses successful exercise quantity, not order quantity, deduction/selling quantity, or dealt quantity:
+Rows with an empty employee number or the header 员工编号 are excluded. The workflow uses successful exercise quantity, not order quantity, deduction/selling quantity, or dealt quantity, and only rows whose Exercise Date is at or before the run month (the same cut-off the Control Book applies to As of Date) — so a base file that is cumulative to a later month still re-computes a historical month correctly. Rows without a date are counted; rows dated after the run month are excluded and listed in a run-page warning:
 
     Futu Exercised Qty = sum(Exercised Qty)
     BCI Shares Held by Futu = China Subplan total - Futu Exercised Qty
