@@ -184,7 +184,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 - **期末余额**：取月份小于等于运行月份、Issued & Outstanding 非空的最后一行。
 - **上月余额**：取月份严格小于运行月份的最后一行 Issued & Outstanding。
 - **输入月份校验**：最后一行月份必须等于运行月份；否则阻断。
-- **BC Subplan 转移量**：Comment 模糊匹配 Omnibus Inc%Pl% / Ominibus Inc%Pl%（容忍空格、标点、大小写差异与两种拼写）的 Shares Issued，在运行月份以前求和；命中但拼写非规范的行会给出 warning 提示而不阻断。
+- **BC Subplan 转移量**：Comment 模糊匹配 Omnibus Inc%Pl% / Ominibus Inc%Pl%（容忍空格、标点、大小写差异与两种拼写）的 Shares Issued，按 As of Date 截断到运行月份求和，并按「经济指纹」（As of Date + Process Date + Shares Issued + Issued & Outstanding）去重——同一笔转账在 base 与增量两种导出格式里各出现一次时只算一笔，真正的两笔同股数转账期末余额不同、仍各自计入。命中但拼写非规范的行、以及被合并计算的重复行都会给出 warning 提示而不阻断。
 - **Cullgen common stock**：As of Date 不晚于运行月份的 Agr. & Pl. of Merger 行的 Shares Issued 最大值；该月还没有这一行时为 **0**（合并行在 2026-05 才出现）。
 - **GYRE 2023 China Subplan 总量**：As of Date 不晚于运行月份的 Equity Inc.Sub-Pl. Futu Network Technology 行的 Shares Issued 最大值；该行出现前（2024-07 之前）为 0。
 - **与月度常量的对账**：上面两项与月度常量 cullgen_common_stock、gyre_2023_china_subplan_total 严格比对，不一致即阻断。0 是合法值而不是「未设置」，所以合并发生前的月份把常量填 0 就能通过。
@@ -621,7 +621,7 @@ From EQ Control Book, the workflow reads Issued & Outstanding, Shares Issued, As
 - EOM Equity Balance OS is the last non-empty Issued & Outstanding at or before the workflow month.
 - Last Month Equity Balance OS is the last non-empty value strictly before the workflow month.
 - The last Control Book month must equal the workflow month.
-- BC Subplan Transfer is the sum of Shares Issued where Comment fuzzy-matches Omnibus Inc%Pl% / Ominibus Inc%Pl% (tolerating spacing, punctuation, case and both spellings), up to the workflow month; rows that match but are spelled non-canonically raise a warning instead of blocking the run.
+- BC Subplan Transfer sums Shares Issued where Comment fuzzy-matches Omnibus Inc%Pl% / Ominibus Inc%Pl% (tolerating spacing, punctuation, case and both spellings), truncated at the workflow month, de-duplicated by the economic fingerprint (As of Date + Process Date + Shares Issued + Issued & Outstanding): one transfer exported in both the base and the increment format counts once, while two genuinely different transfers of the same size land on different balances and both count. Non-canonical spellings and collapsed duplicate rows raise a warning; neither blocks.
 - Cullgen common stock is the maximum Shares Issued where Trans. Type is Agr. & Pl. of Merger and As of Date is at or before the run month; a month before that row exists (2026-05) is **0**.
 - The GYRE 2023 China Subplan total is the maximum Shares Issued where Comment is Equity Inc.Sub-Pl. Futu Network Technology and As of Date is at or before the run month; it is 0 before that row exists (2024-07).
 - Both are compared strictly against the monthly constants cullgen_common_stock and gyre_2023_china_subplan_total; a mismatch blocks. 0 is a legitimate value, not "unset", so a pre-merger month passes with the constant set to 0.

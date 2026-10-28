@@ -231,6 +231,36 @@ async function evaluateGuard(
   return { passed: isOneCell && passed, message: String(actual ?? '') };
 }
 
+// --- structural: a SQL placeholder the task/guard did not declare fails at run time, not at test time ----
+
+test('every {constants.X} placeholder is declared in the constants of the SQL that uses it', () => {
+  // `run` dies with "SQL constant placeholder is not configured" the moment a SQL body references a constant
+  // it never declared — that has happened twice now (a task fallback, and a guard added without constants),
+  // each time with every other test green. Walk the whole seed so the next edit cannot repeat it.
+  const seed = JSON.parse(readFileSync(seedPath, 'utf8')) as {
+    tasks: Array<{
+      id: string;
+      params?: { sql?: string; constants?: Record<string, unknown> };
+      inputs?: Record<string, { guards?: Array<{ params: { sql?: string; constants?: Record<string, unknown> } }> }>;
+    }>;
+  };
+  const undeclared: string[] = [];
+  const check = (where: string, sql: unknown, declared: Record<string, unknown> | undefined) => {
+    for (const name of new Set(String(sql ?? '').match(/\{constants\.([A-Za-z_][A-Za-z0-9_]*)\}/g) ?? [])) {
+      const constant = name.slice('{constants.'.length, -1);
+      if (!declared || !(constant in declared)) undeclared.push(`${where}: ${constant}`);
+    }
+  };
+  for (const task of seed.tasks) {
+    check(task.id, task.params?.sql, task.params?.constants);
+    for (const [slot, input] of Object.entries(task.inputs ?? {})) {
+      for (const guard of input.guards ?? [])
+        check(`${task.id}.${slot} guard`, guard.params.sql, guard.params.constants);
+    }
+  }
+  assert.deepEqual(undeclared, []);
+});
+
 // --- the Control Book metric must follow the run month -------------------------------------------
 
 test('a month before the merger derives Cullgen common stock = 0, not the whole-table max', async () => {

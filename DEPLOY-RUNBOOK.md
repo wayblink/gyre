@@ -579,7 +579,7 @@ done
 
 > 注意：工作流引擎的 SQL 只允许只读查询，`replace()` 被列入禁用关键字（会被当成写语句），所以这里用 `like` 而不是字符串替换。
 
-**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version`、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION`。三者不一致时月度页会报版本不匹配并拒绝执行。当前为 **v50**（v45 收紧了 Comment 判定，v46 只把输入源标签 `Futu Exercise Report` 改名为 `Futu Exercise Record`，v47 见 8.4，v48 见 8.5，v49 见 8.6，v50 见 8.7）。
+**必须同步的三处（否则月度页会 409）**：DB `workflow_definitions.version`、种子 `database/workflows/gyre-captable-summary-v2.json` 的 `version`、前端 `MONTHLY_WORKFLOW_VERSION`。三者不一致时月度页会报版本不匹配并拒绝执行。当前为 **v51**（v45 收紧了 Comment 判定，v46 只把输入源标签 `Futu Exercise Report` 改名为 `Futu Exercise Record`，v47 见 8.4，v48 见 8.5，v49 见 8.6，v50 见 8.7，v51 见 8.8）。
 
 **验收**：
 
@@ -741,6 +741,47 @@ select code, version from workflow_definitions where code = 'gyre-captable-summa
 - 产物 `Capitalization Summary`：`Cullgen common stock` = **0**、`Common Shares OS` = **91,252,350**（96,963,611 − 0 − 5,019,150 − 692,111）、`Total Fully Diluted` 仍为 119,043,433。
 
 > 注意：合并月（2026-05）及以后，常量必须填 14,450,527；填 0 会被守卫正确阻断。`src/server/workflow/monthlyControlBookBaseline.test.ts` 覆盖了这两个方向。
+
+---
+
+## 8.8 月度工作流 v51：BC Subplan transfer 去重（同一笔转账被 base 与增量各记一次）
+
+**现象**：运营反馈 2026-01 的 `2025 BC Subplan shares transferred to Futu` 是 692,111，正确应为 630,454。
+
+**根因**：`Comment` 匹配 Omnibus 的行被**加了两遍**。2026-01 那笔 61,657 股在合并后的 Control Book 里有两行，来源是两种导出格式：
+
+| 来源 | Security | Trans. Type | Trans. No. | Broker No. | Shares Issued | Issued & Outstanding | Comment |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| base（Equiniti 明细） | GYRE | BOOK ENTRY ISSUANCE | 空 | 0000010072 | 61,657 | 96,963,611 | Omnibus Inc. Pl. |
+| 当月增量（CB Details） | GYRE THERAPEUTICS INC (NEW) | O.I. | `-` | `-` | 61,657 | 96,963,611 | Omnibus Inc.Pl. |
+
+`eq-control-book-incremental-merge` 的合并键要求 `Trans. Type` / `Trans. No.` / `Broker No.` / `Shares Retired` 全部相等，这四个字段在两种格式里都不同，join 匹配不上，于是增量那行被**追加**而不是更新 → 同一笔转账两行 → 求和 692,111（= 630,454 + 61,657）。
+
+月份过滤没有问题：`2026-01 ≤ 2026-01` 本来就该计入，630,454 这个正确值里就包含这一笔（568,797 + 61,657）。时间线也吻合：2026-10-20 之前的运行一直是 630,454 / 660,844 / 695,165，从 10-20 那批开始才多出 61,657。
+
+**改法（v50 → v51）**：
+
+- `calc_control_book_metrics` 的 BC Subplan transfer 求和改为对**经济指纹**去重后再求和：按 `As of Date + Process Date + Shares Issued + Issued & Outstanding` 分组——同一笔转账不可能留下两条相同期末余额的记录；真正两笔同股数转账期末余额不同，仍各自计入。
+- 新增 warning 守卫 `guard_warn_bc_subplan_transfer_duplicates`：发现重复组时列出「月份 / 股数」，说明已按一笔计入、建议清理源数据，确认后继续（不阻断）。重复行只与运行月份的取值范围有关（未来的重复不会提前报警）。
+
+**重跑结果**（本地已执行，四个月都已覆盖）：
+
+| 月份 | 旧值 | 新值 |
+| --- | --- | --- |
+| 2026-01 | 692,111 | **630,454** |
+| 2026-03 | 722,501 | **660,844** |
+| 2026-04 | 756,822 | **695,165** |
+| 2026-05 | 756,822 | **695,165** |
+| 2026-06 起 | 695,165 等 | 不变（这些 base 没有重复行） |
+
+**必须同步的三处**：DB `workflow_definitions.version`、`database/workflows/gyre-captable-summary-v2.json`、前端 `MONTHLY_WORKFLOW_VERSION` —— 现在都是 **51**。
+
+**验收**（2026-01）：
+
+- 运行会停在 `Calc Control Book Metrics` 复核，提示「发现 1 组重复的 BC Subplan transfer，已按一笔计入：2026-01 / 61657 股」；
+- 产物 `2025 BC Subplan shares transferred to Futu` = **630,454**，`Common Shares OS` = 91,314,007（96,963,611 − 0 − 5,019,150 − 630,454）。
+
+> 后续若要治本：`eq-control-book-incremental-merge` 的合并键应忽略两种格式的呈现差异（`Trans. No.` 空 / `-`、`Broker No.`、`Trans. Type` 的别名），或把经济指纹纳入匹配。那会影响所有字段的合并判定，风险较大，建议单独立项。
 
 ---
 
