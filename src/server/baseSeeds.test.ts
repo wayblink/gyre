@@ -106,7 +106,7 @@ test('bases registered under a rewritten folder are relocated on init', seeded, 
   // the correct one in place would make the relocation a no-op (target collision) rather than a move.
   await db.execute("delete from product_files where logical_path like 'input/cancel_restore/%'");
   await db.execute(
-    "delete from product_files where logical_path = 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx'",
+    "delete from product_files where logical_path = 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx'",
   );
   try {
     // Simulate a database written before the `declaredOutputFolder` fix: the base exists, but under
@@ -117,10 +117,10 @@ test('bases registered under a rewritten folder are relocated on init', seeded, 
         'database',
         'base-seeds',
         'cancel_restore',
-        'Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+        'Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx',
       ),
     );
-    const stored = await fileStorage.save('product', 'Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx', buffer, {
+    const stored = await fileStorage.save('product', 'Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx', buffer, {
       prefix: 'input/cancel_restore',
     });
     await db.execute(
@@ -128,10 +128,10 @@ test('bases registered under a rewritten folder are relocated on init', seeded, 
          file_size_bytes, mime_type, checksum, storage_backend, workbook_sheet_count, workbook_row_count, uploaded_by)
        values ($1,$2,'xlsx',$3,$4,$5,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',$6,'local',1,758,'Workflow')`,
       [
-        'Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+        'Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx',
         stored.storedName,
         stored.filePath,
-        'input/cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+        'input/cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx',
         buffer.length,
         createHash('sha256').update(buffer).digest('hex'),
       ],
@@ -147,14 +147,14 @@ test('bases registered under a rewritten folder are relocated on init', seeded, 
     const moved = await relocateMisplacedBaseFiles(db);
     assert.deepEqual(moved, [
       {
-        from: 'input/cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
-        to: 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx',
+        from: 'input/cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx',
+        to: 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx',
       },
     ]);
 
     // The row moved, and the bytes behind the new path still extract to the recorded contract.
     const row = await db.queryOne<{ file_path: string; logical_path: string }>(
-      "select file_path, logical_path from product_files where logical_path = 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx'",
+      "select file_path, logical_path from product_files where logical_path = 'cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx'",
     );
     assert.ok(row, 'base must be registered at the declared folder');
     const frame = extractSheetRangeAsDataFrame(await fileStorage.read(row.file_path), '取消与恢复明细', {
@@ -162,7 +162,8 @@ test('bases registered under a rewritten folder are relocated on init', seeded, 
       headerRow: 1,
       dropTrailingEmptyRows: true,
     });
-    assert.equal(frame.rows.length, 758);
+    // 125 rows: the chain-head seed is the 2025-12 snapshot, not the old 2026-06 one.
+    assert.equal(frame.rows.length, 125);
 
     // The manual upload is untouched, and a second run is a no-op.
     const manual = await db.queryOne<{ logical_path: string }>(

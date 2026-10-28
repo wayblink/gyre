@@ -124,22 +124,38 @@ const monthlyRunTriggerBodySchema = z.object({
  * stops the definition's hardcoded default from being used, because those defaults are written once
  * when the workflow is authored and go stale the moment a new month starts.
  */
-async function injectPreviousMonthBase(
+/**
+ * Point an inherited base at the newest snapshot **strictly older** than the month being run.
+ *
+ * The bases chain month to month: a run's output `<prefix><yyyy_MM>.xlsx` is the next month's input, so
+ * month M must read M-1's file — and, because a month nobody ran produces no file, the newest snapshot
+ * before M rather than M-1 exactly. Asking for M-1 by name would drop the whole history the moment one
+ * month was skipped, and a base that already contains the month being run (the old behaviour on some
+ * instances) bakes any bad row in permanently: re-running can never fix it.
+ *
+ * An explicit binding still wins — the operator may deliberately swap in a fresh Cap Table export.
+ */
+async function injectLatestEarlierBase(
   db: RouteContext['db'],
   runtimeParameters: WorkflowRuntimeParameters,
   monthKey: string,
   sourceKey: string,
-  basePath: string,
+  folder: string,
+  fileName: string,
   sheet: string,
 ): Promise<void> {
   const fileRefs = runtimeParameters.fileRefs;
   if (!fileRefs || typeof fileRefs !== 'object' || Array.isArray(fileRefs)) return;
-  // An explicit binding always wins: the operator picked that file on purpose.
   const existing = (fileRefs as Record<string, unknown>)[sourceKey];
   if (isRecord(existing) && String(existing.key ?? '').trim()) return;
+  const prefix = `${folder}/${fileName}_`;
+  const stem = `${prefix}${monthKey.slice(0, 4)}_${monthKey.slice(5, 7)}.xlsx`;
   const previousBase = await db.queryOne<{ logical_path: string }>(
-    'select logical_path from product_files where logical_path = $1 order by id desc limit 1',
-    [basePath],
+    `select logical_path from product_files
+      where logical_path like $1 and logical_path < $2
+      order by logical_path desc
+      limit 1`,
+    [`${prefix}%.xlsx`, stem],
   );
   if (!previousBase?.logical_path) return;
   (fileRefs as Record<string, unknown>)[sourceKey] = {
@@ -296,25 +312,36 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
     // 视图的 base 取上一条该月的快照。无则置空——合并结果即本月增量，链条自然从有数据的那一月开始。
     await injectMonthlyRecordBases(db, prevFileRefs, monthlyRunInstance.monthKey);
 
-    // The cancel/restore base is maintained internally: when last month's merged
-    // workbook exists, feed it into this run automatically instead of requiring a
-    // user-visible source binding.
-    const previousMonthUnderscore = previousMonthKey(monthlyRunInstance.monthKey).replace('-', '_');
-    await injectPreviousMonthBase(
+    // Every inherited base chains month over month: this month reads the newest snapshot before it, and
+    // its own run writes the snapshot the next month will read. Each of these was previously either exact
+    // "previous month" (which loses the history when a month is skipped) or, for the Control Book, not
+    // injected at all — so a month could silently use its own output as its base.
+    await injectLatestEarlierBase(
       db,
       resolvedRuntimeParameters,
       monthlyRunInstance.monthKey,
       'base_cancel_restore_report',
-      `cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_${previousMonthUnderscore}.xlsx`,
+      'cancel_restore',
+      'Gyre_Therapeutics_Cancel_Restore_Base',
       '取消与恢复明细',
     );
-    await injectPreviousMonthBase(
+    await injectLatestEarlierBase(
       db,
       resolvedRuntimeParameters,
       monthlyRunInstance.monthKey,
       'base_futu_exercises',
-      `futu_exercises/Futu_Exercises_Base_${previousMonthUnderscore}.xlsx`,
+      'futu_exercises',
+      'Futu_Exercises_Base',
       'Futu BCI Exercises',
+    );
+    await injectLatestEarlierBase(
+      db,
+      resolvedRuntimeParameters,
+      monthlyRunInstance.monthKey,
+      'base_control_book',
+      'control_book',
+      'EQ_Control_Book_Base',
+      'EQ Control Book',
     );
 
     const monthKey = String(resolvedRuntimeParameters.month);

@@ -1,14 +1,14 @@
 {
   "generatedBy": "scripts/export-base-seeds.ts",
-  "description": "冷启动 base 种子：optionalCategory=inherit 的月度本源在空库中没有可继承的上月产出，由这些文件提供首个 base。初始化时按 logicalPath 注册进 product_files（已存在则跳过）。",
+  "description": "冷启动 base 种子：optionalCategory=inherit 的月度本源在空库中没有可继承的上月产出，由这些文件提供首个 base（链首）。链首是 2025-12 的累计快照；此后每个月度运行的产出（<...>_Base_<YYYY_MM>.xlsx）就是下一个月的 base，逐月叠加。初始化时按 logicalPath 注册进 product_files（已存在则跳过）。",
   "exclude": {
     "previous_capitalization_summary": "运行期由上月 Capitalization Summary 输出自动注入，无需种子（见 injectPreviousMonthBase）。"
   },
   "seeds": [
     {
       "sourceKey": "base_control_book",
-      "logicalPath": "control_book/EQ_Control_Book_Base_2026_06.xlsx",
-      "fileName": "EQ_Control_Book_Base_2026_06.xlsx",
+      "logicalPath": "control_book/EQ_Control_Book_Base_2025_12.xlsx",
+      "fileName": "EQ_Control_Book_Base_2025_12.xlsx",
       "sheetName": "EQ Control Book",
       "contract": {
         "range": "A9:L",
@@ -28,16 +28,16 @@
         "Comment",
         "Net Shares issued in Period"
       ],
-      "rowCount": 120,
-      "bytes": 65027,
-      "sha256": "b78d3daf9bd2eeaa2e6f1d141d63a7583aabb65f66cef2916ac562d10bef56d4",
-      "baseMonth": "2026-06",
-      "note": "2026-06 的 EQ Control Book 合并 base。"
+      "rowCount": 110,
+      "bytes": 59520,
+      "sha256": "580156159c110a3599e3c6ff945b1952f764ecd08039e28880a2d8d4cff410e0",
+      "baseMonth": "2025-12",
+      "note": "冷启动的链首：截至 2025-12 的完整 EQ Control Book（末行 Issued & Outstanding = 96,901,954）。2026-01 及以后的月份从这份开始逐月叠加。"
     },
     {
       "sourceKey": "base_futu_exercises",
-      "logicalPath": "futu_exercises/Futu_Exercises_Base_2026_06.xlsx",
-      "fileName": "Futu_Exercises_Base_2026_06.xlsx",
+      "logicalPath": "futu_exercises/Futu_Exercises_Base_2025_12.xlsx",
+      "fileName": "Futu_Exercises_Base_2025_12.xlsx",
       "sheetName": "Futu BCI Exercises",
       "contract": {
         "range": "A1:N",
@@ -59,16 +59,16 @@
         "Deduction/Selling Qty.",
         "Dealt Qty."
       ],
-      "rowCount": 1025,
-      "bytes": 519770,
-      "sha256": "7d653e2e0ee4f2ef72b32c4faf480b699a58881d0f9563040ba4849a75da8555",
-      "baseMonth": "2026-06",
-      "note": "2026-06 的 Futu BCI Exercises 合并 base（14 列，Exercise Order No. 由合并流程回填）。"
+      "rowCount": 391,
+      "bytes": 195965,
+      "sha256": "a8a8565c77fa8061b2769c362adfe2a0d49164eeb04613ff407b4dc4ece2cc18",
+      "baseMonth": "2025-12",
+      "note": "冷启动的链首：截至 2025-12 的 Futu 行权累计（成功行权合计 2,796,246 股）。"
     },
     {
       "sourceKey": "base_cancel_restore_report",
-      "logicalPath": "cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx",
-      "fileName": "Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx",
+      "logicalPath": "cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx",
+      "fileName": "Gyre_Therapeutics_Cancel_Restore_Base_2025_12.xlsx",
       "sheetName": "取消与恢复明细",
       "contract": {
         "range": "A1:W",
@@ -99,11 +99,11 @@
         "归属规则",
         "操作人"
       ],
-      "rowCount": 758,
-      "bytes": 756036,
-      "sha256": "d9975401de9519a1010537148f196501e749c69600a254271b5aaa4467187a8a",
-      "baseMonth": "2026-06",
-      "note": "2026-06 的取消与恢复合并 base。此前该 base 一直被写进 input/cancel_restore/（输出目录被重写成 input/ 子目录），继承链找不到它；已修正为声明式输出目录。"
+      "rowCount": 125,
+      "bytes": 136685,
+      "sha256": "d5b370d36f2e1172feddc9abe87827d22139df40fefebeb7088673ec29a030ea",
+      "baseMonth": "2025-12",
+      "note": "冷启动的链首：截至 2025-12 的取消与恢复明细累计。"
     },
     {
       "sourceKey": "cancellation_record_base",
