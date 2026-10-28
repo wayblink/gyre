@@ -14,6 +14,7 @@ const BLOCKED_SQL_PATTERN =
 
 function createIsolatedSqlDatabase(): AlaSqlDatabase {
   alasql.fn.wf_month_key = workflowMonthKey;
+  alasql.fn.wf_date_key = workflowDateKey;
   alasql.fn.wf_eom_label = workflowEomLabel;
   return new alasql.Database() as AlaSqlDatabase;
 }
@@ -47,6 +48,21 @@ function dateFromWorkflowValue(value: unknown): Date | null {
   const normalized = text.replace(/\//g, '-');
   const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Calendar day (`YYYY-MM-DD`) of a date cell, whatever its representation.
+ *
+ * Excel keeps dates either as serial numbers (46042) or as text ("2026-01-20") depending on who wrote the
+ * cell, and the two are the same day. Comparing the raw columns therefore fails to see them as equal — that
+ * is how the same Control Book transfer got appended once per run instead of merging, and how the BC Subplan
+ * transfer was summed twice. Use this in merge keys and de-duplication fingerprints, `wf_month_key` when the
+ * month alone is the business unit.
+ */
+export function workflowDateKey(value: unknown): string | null {
+  const date = dateFromWorkflowValue(value);
+  if (!date) return null;
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
 }
 
 export function workflowMonthKey(value: unknown): string | null {

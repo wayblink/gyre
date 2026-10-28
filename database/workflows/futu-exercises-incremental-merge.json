@@ -3,7 +3,7 @@
   "name": "Futu Exercises Incremental Merge",
   "description": "Futu 行权记录 base + 富途明细增量按行权订单编号幂等合并：base 是上月完整 to-date（含留空的历史订单号列），增量是富途平台导出的行权明细；按业务月截断后幂等合并，产出当月完整 base 供下游求和，并落盘固定路径供下月链式。",
   "status": "active",
-  "version": 5,
+  "version": 6,
   "tasks": [
     {
       "x": 48,
@@ -143,7 +143,7 @@
         }
       },
       "params": {
-        "sql": "\nselect [Exercise Order No.], [Name], [Employee No.], [Futubull ID], [User ID], [Grant No.],\n  [Grant Date], [Grant Price(USD)], [Exercise Date], [Ordered Qty], [Exercised Qty],\n  [Exercise Cost(USD)], [Deduction/Selling Qty.], [Dealt Qty.]\nfrom {base} b\nwhere trim(cast(coalesce(b.[Exercise Order No.], '') as string)) <> ''\n   or not exists (\n     select 1 from {projected_increment} i\n      where upper(trim(cast(coalesce(i.[Grant No.], '') as string))) = upper(trim(cast(coalesce(b.[Grant No.], '') as string)))\n        and trim(cast(coalesce(i.[Exercise Date], '') as string)) = trim(cast(coalesce(b.[Exercise Date], '') as string))\n   )\n",
+        "sql": "\nselect [Exercise Order No.], [Name], [Employee No.], [Futubull ID], [User ID], [Grant No.],\n  [Grant Date], [Grant Price(USD)], [Exercise Date], [Ordered Qty], [Exercised Qty],\n  [Exercise Cost(USD)], [Deduction/Selling Qty.], [Dealt Qty.]\nfrom {base} b\nwhere trim(cast(coalesce(b.[Exercise Order No.], '') as string)) <> ''\n   or not exists (\n     select 1 from {projected_increment} i\n      where upper(trim(cast(coalesce(i.[Grant No.], '') as string))) = upper(trim(cast(coalesce(b.[Grant No.], '') as string)))\n        and coalesce(wf_date_key(i.[Exercise Date]), '') = coalesce(wf_date_key(b.[Exercise Date]), '')\n   )\n",
         "tableBindings": [
           {
             "inputSlot": "base",

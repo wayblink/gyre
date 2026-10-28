@@ -231,6 +231,32 @@ test('the typo spelling counts too, so August reaches 1,223,842', async () => {
   assert.equal((await controlBookMetrics(august, '2026-08')).bc_subplan_transfer_control_book, 1_223_842);
 });
 
+test('the same transfer stored as an Excel serial in one row and a text date in the other still counts once', async () => {
+  // Production's January base holds exactly this pair: the base row keeps its dates as serial numbers
+  // (46042 / 46049) while the merged-in increment row carries text ("2026-01-20" / "2026-01-27"). Comparing
+  // raw column values sees two different dates, so the fingerprint has to normalise them.
+  const serialRow = row({
+    asOf: '2026-01-20',
+    processDate: '2026-01-27',
+    shares: JAN,
+    balance: 96_963_611,
+    comment: 'Omnibus Inc.Pl.',
+  });
+  const textRow = {
+    ...serialRow,
+    Security: 'GYRE THERAPEUTICS INC (NEW)',
+    'As of Date': '2026-01-20',
+    'Process Date': '2026-01-27',
+  };
+  const rows = [
+    row({ asOf: '2025-12-03', shares: TRANSFER, balance: 96_901_954, comment: 'Omnibus Inc. Pl.' }),
+    serialRow,
+    textRow,
+  ];
+  assert.equal((await controlBookMetrics(rows, '2026-01')).bc_subplan_transfer_control_book, TRANSFER + JAN);
+  assert.equal((await duplicateHint(rows, '2026-01')).passed, false, 'the mixed-type duplicate is still reported');
+});
+
 test('the collapsed duplicate is reported on the run page instead of disappearing silently', async () => {
   const january = await duplicateHint(controlBook(), '2026-01');
   assert.equal(january.passed, false, 'the duplicate must be visible');
