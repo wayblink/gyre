@@ -39,6 +39,26 @@ export function normalizeWorkflowRuntimeParametersSchema(value: unknown): Workfl
           : undefined,
       description: typeof rawField.description === 'string' ? rawField.description : undefined,
       enum: Array.isArray(rawField.enum) ? rawField.enum.map((item) => String(item)).filter(Boolean) : undefined,
+      // Business-page rendering metadata. Dropping it here used to reshape the monthly input list on every
+      // editor save (order, default sheet, hidden flags) and the next run failed with
+      // "Missing source sheet name" — the file was bound but no longer knew which sheet to read.
+      order: typeof rawField.order === 'number' && Number.isFinite(rawField.order) ? rawField.order : undefined,
+      sourceGroup:
+        rawField.sourceGroup === 'shareworks' || rawField.sourceGroup === 'futu' ? rawField.sourceGroup : undefined,
+      taskId: typeof rawField.taskId === 'string' && rawField.taskId.trim() ? rawField.taskId.trim() : undefined,
+      defaultSheetName:
+        typeof rawField.defaultSheetName === 'string'
+          ? rawField.defaultSheetName
+          : rawField.defaultSheetName === null
+            ? null
+            : undefined,
+      allowSheetNameOverride:
+        typeof rawField.allowSheetNameOverride === 'boolean' ? rawField.allowSheetNameOverride : undefined,
+      hidden: typeof rawField.hidden === 'boolean' ? rawField.hidden : undefined,
+      fileTemplate:
+        typeof rawField.fileTemplate === 'string' && rawField.fileTemplate.trim()
+          ? rawField.fileTemplate.trim()
+          : undefined,
       properties:
         fieldType === 'object' && isRecord(rawField.properties)
           ? normalizeWorkflowRuntimeParametersSchema(rawField.properties)

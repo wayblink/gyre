@@ -790,3 +790,42 @@ test('deriveWorkflowRuntimeConfigFromTasks keeps constants that only an input gu
     .fixedValues;
   assert.deepEqual(Object.keys(fixedValues?.properties ?? {}), ['cullgenCommonStock']);
 });
+
+test('normalizeWorkflowRuntimeParametersSchema keeps the business-page metadata of a source', () => {
+  // The monthly page derives its input list from this schema, and the extraction reads defaultSheetName.
+  // Stripping that metadata on save reshaped the list and then failed the run with
+  // "Missing source sheet name" — the binding still existed, but no longer knew its sheet.
+  const schema = normalizeWorkflowRuntimeParametersSchema({
+    fileRefs: {
+      type: 'object',
+      label: 'File References',
+      properties: {
+        incremental_cancel_restore_report: {
+          type: 'object',
+          label: 'Cancel & Restore Record',
+          order: 10,
+          hidden: false,
+          allowSheetNameOverride: true,
+          defaultSheetName: '取消与恢复明细',
+          taskId: 'invoke_plan_summary_sync',
+          sourceGroup: 'shareworks',
+          required: false,
+          optionalCategory: 'inherit',
+          fileTemplate: 'Gyre Therapeutics取消与恢复报表.xlsx',
+          properties: { sheet: { type: 'string', label: 'Increment sheet' } },
+        },
+      },
+    },
+  });
+  const field = schema.fileRefs.properties?.incremental_cancel_restore_report;
+  assert.ok(field);
+  assert.equal(field.order, 10);
+  assert.equal(field.hidden, false);
+  assert.equal(field.allowSheetNameOverride, true);
+  assert.equal(field.defaultSheetName, '取消与恢复明细');
+  assert.equal(field.taskId, 'invoke_plan_summary_sync');
+  assert.equal(field.sourceGroup, 'shareworks');
+  assert.equal(field.optionalCategory, 'inherit');
+  assert.equal(field.fileTemplate, 'Gyre Therapeutics取消与恢复报表.xlsx');
+  assert.equal(field.required, false);
+});
