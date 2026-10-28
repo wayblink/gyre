@@ -736,3 +736,57 @@ test('filterWorkflowRuntimeParametersBySchema keeps monthUnderscore only when th
     { fileRefs: {} },
   );
 });
+
+test('deriveWorkflowRuntimeConfigFromTasks keeps constants that only an input guard references', () => {
+  // Saving a workflow in the editor re-derives its runtime schema from the tasks. Guards are part of that
+  // surface: the monthly workflow asserts its constants inside input guards, so scanning only `params`
+  // stripped `fixedValues.cullgenCommonStock` and the next run died with
+  // "Unknown runtime parameter: fixedValues.cullgenCommonStock".
+  const tasks = [
+    {
+      id: 'calc_business_inputs',
+      name: 'Calc Business Inputs',
+      operatorCode: 'sql.compute',
+      operatorVersion: '1.0.0',
+      description: '',
+      x: 0,
+      y: 0,
+      params: {
+        sql: 'select 1 as value',
+        tableBindings: [{ inputSlot: 'control_metrics', tableName: 'control_metrics' }],
+      },
+      inputs: {
+        control_metrics: {
+          from: 'calc_control_book_metrics',
+          slot: 'dataframe',
+          guards: [
+            {
+              id: 'guard_1',
+              type: 'dataframe.sql.assert',
+              name: 'Assert Cullgen Common Stock',
+              enabled: true,
+              params: {
+                sql: 'select case when cullgen_common_stock = {constants.cullgenCommonStock} then 1 else 0 end as actual from {control_metrics}',
+                constants: {
+                  cullgenCommonStock: {
+                    $type: 'number',
+                    $label: 'Cullgen Common Stock',
+                    $fromRuntime: 'fixedValues.cullgenCommonStock',
+                  },
+                },
+                expectedValue: 1,
+                failureStrategy: 'block',
+              },
+            },
+          ],
+        },
+      },
+      dependsOn: [],
+    },
+  ] as unknown as Parameters<typeof deriveWorkflowRuntimeConfigFromTasks>[0]['tasks'];
+
+  const config = deriveWorkflowRuntimeConfigFromTasks({ tasks });
+  const fixedValues = (config.runtimeParamsSchema as { fixedValues?: { properties?: Record<string, unknown> } })
+    .fixedValues;
+  assert.deepEqual(Object.keys(fixedValues?.properties ?? {}), ['cullgenCommonStock']);
+});

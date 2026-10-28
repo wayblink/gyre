@@ -159,7 +159,17 @@ export function deriveWorkflowRuntimeConfigFromTasks(params: {
   const runtimeParamsDefaults: WorkflowRuntimeParameters = {};
 
   for (const task of params.tasks) {
-    for (const reference of collectTaskRuntimeReferences(task.params ?? {})) {
+    // Guards are part of the task's runtime surface: an input guard's `constants` reference runtime values
+    // just like `params` do. Scanning only `params` dropped guard-only constants from the schema, so saving
+    // such a workflow in the editor stripped them and the next run failed with
+    // "Unknown runtime parameter: fixedValues.<key>".
+    const guardParams = Object.values(task.inputs ?? {}).flatMap((input) =>
+      (input?.guards ?? []).map((guard) => guard.params ?? {}),
+    );
+    for (const reference of [
+      ...collectTaskRuntimeReferences(task.params ?? {}),
+      ...guardParams.flatMap((params) => collectTaskRuntimeReferences(params)),
+    ]) {
       const segments = reference.runtimePath
         .split('.')
         .map((segment) => segment.trim())

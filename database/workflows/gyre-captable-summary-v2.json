@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 54,
+  "version": 55,
   "tasks": [
     {
       "x": 48,
@@ -623,7 +623,7 @@
         }
       },
       "params": {
-        "sql": "select case when last_control_book_month = {constants.workflowMonth} then 1 else 0 end as actual from {control_metrics}",
+        "sql": "select case\n  when last_control_book_month is null then 0\n  when cast(substr(last_control_book_month, 1, 4) as number) * 12 + cast(substr(last_control_book_month, 6, 2) as number) >= cast(substr({constants.workflowMonth}, 1, 4) as number) * 12 + cast(substr({constants.workflowMonth}, 6, 2) as number) - 1 then 1\n  else 0\nend as actual\nfrom {control_metrics}",
         "operator": "=",
         "constants": {
           "workflowMonth": {
@@ -640,11 +640,11 @@
           }
         ],
         "blockExecution": true,
-        "failureMessage": "EQ Control Book input file error: no Issued & Outstanding row found in the workflow month (rows after the workflow month are ignored)",
+        "failureMessage": "EQ Control Book 输入文件错月：忽略运行月份之后的行后，最后一条 Issued & Outstanding 所属月份比运行月份早了一个月以上（允许「本月无交易、沿用上月余额」，即最后一个月是运行月份或它的上一个月）。请检查绑定的是不是当月的 Control Book。",
         "failureStrategy": "block"
       },
       "dependsOn": [],
-      "description": "阻断错月输入：忽略 workflow 月份之后的数据后，EQ Control Book 最后一条有效 Issued & Outstanding 的 As of Date 必须属于 workflow 月份（即该月必须有数据）。",
+      "description": "阻断错月输入：忽略 workflow 月份之后的数据后，EQ Control Book 最后一条有效 Issued & Outstanding 的 As of Date 必须属于 workflow 月份或其上一个月。允许「本月没有 Control Book 更新」的情形——没有交易时账簿不会新增行，余额沿用上月，这是正常状态而不是输入错误；比上一个月更早才说明绑错了文件。",
       "operatorCode": "dataframe.sql.assert",
       "operatorVersion": "1.0.0"
     },
