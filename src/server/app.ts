@@ -20,6 +20,8 @@ import { registerParameterRoutes } from './routes/parameters.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerWorkflowRoutes } from './routes/workflows.js';
 import { registerLinkDetailRoutes } from './routes/linkDetails.js';
+import { registerAuditRoute } from './routes/audit.js';
+import { registerAuditHook } from './audit.js';
 
 /** Every SPA entry path that must serve index.html instead of a 404. */
 const SPA_PAGES = [
@@ -43,6 +45,7 @@ const SPA_PAGES = [
   'employees',
   'account',
   'settings',
+  'audit-logs',
 ] as const;
 
 /**
@@ -87,6 +90,10 @@ export function buildApp(ctx: RouteContext): FastifyInstance {
   registerSettingsRoutes(app, ctx);
   registerWorkflowRoutes(app, ctx);
   registerLinkDetailRoutes(app, ctx);
+  registerAuditRoute(app, ctx);
+  // One hook records every mutating request and every authentication event; see src/server/audit.ts
+  // for why this is not spread across the routes.
+  registerAuditHook(app, { db: ctx.db, logger: app.log });
 
   app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
     // A rejected request body is a client error. Without this an invalid value reaches the browser as a

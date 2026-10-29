@@ -8,6 +8,9 @@ export function requiresAdminRole(method: string, rawUrl: string): boolean {
     return true;
   }
 
+  // The audit trail is who-did-what across the whole system; only admins read it.
+  if (pathname === '/api/audit-logs' || pathname.startsWith('/api/audit-logs/')) return true;
+
   if (pathname.startsWith('/api/workflow-runs/')) {
     if (normalizedMethod !== 'POST') return false;
     return /\/(?:cancel|retry-unfinished)$/.test(pathname) || /\/steps\/[^/]+\/execute$/.test(pathname);

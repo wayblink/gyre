@@ -785,6 +785,22 @@ select code, version from workflow_definitions where code = 'gyre-captable-summa
 
 ---
 
+## 8.9 审计日志（`audit_logs`）：谁在什么时候改了什么
+
+新增功能，不涉及工作流定义，也不需要发布种子。
+
+- **采集**：`src/server/audit.ts` 的 `registerAuditHook`（`app.ts` 里注册一次 `onResponse`）。记录所有 `/api/**` 的**写请求**（POST/PUT/PATCH/DELETE）与登录/退出/登录失败；**GET 不记录**。
+- **写入失败不影响请求**：`writeAuditLog` 的错误只进服务器日志（`Audit log write failed`），不会让用户操作失败。
+- **脱敏**：`password/token/secret/cookie/authorization/apikey` 等键统一写 `***`；multipart 只记 `{ multipart: true, contentLength }`；超过 4KB 的 body 截断。
+- **表**：`audit_logs` 增加 `actor_role / method / path / status_code / duration_ms / ip / user_agent / summary / payload_json` 九列，并建 `created_at desc`、`(actor, created_at desc)` 两个索引；`before_json / after_json` 保留但暂不写（以后按实体补精细 diff）。
+- **页面**：`/audit-logs`，导航在「仅管理员」分组（文件中心 / 工作流 / 审计日志 / 用户管理）。`GET /api/audit-logs`（筛选 + 分页，pageSize 上限 200）与 `GET /api/audit-logs/export`（CSV，最多 2 万行）都是 admin-only（`authorization.ts`）。
+- **保留**：默认不清理（审计需可追溯）。若需控制体量，按 `created_at` 手工归档：
+  `delete from audit_logs where created_at < now() - interval '2 years';`
+
+**验收**：随便改一个月度常量，刷新 `/audit-logs` 应看到一行 `PUT /api/monthly-runs/instance`（actor、状态码、耗时、脱敏后的 body）；登录失败应记一行 `auth.login`，`summary = auth.login_failed`，payload 里的 password 为 `***`。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 本轮（`cb7bb44..HEAD`）：

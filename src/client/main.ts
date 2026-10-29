@@ -19,6 +19,7 @@ import { createMonthlyRunPage } from './monthlyRunPage.js';
 import { createWorkflowUpdateModal, type WorkflowUpdatePageKey } from './workflowUpdateModal.js';
 import { createUserManagementPage } from './userManagementPage.js';
 import { createFixedValuePage } from './fixedValuePage.js';
+import { createAuditPage } from './auditPage.js';
 import { createAccountPage } from './accountPage.js';
 import { createFivePercentHoldersPage } from './fivePercentHoldersPage.js';
 import { createTexts, TEXTS, type TextKey } from './texts.js';
@@ -85,6 +86,7 @@ const pageTitles: Record<string, string> = {
   'plan-summary': '计划汇总',
   'five-percent-holders': '5% 股东',
   'fixed-value': '全局参数',
+  'audit-logs': '审计日志',
   'data-management': '数据管理',
   files: '文件中心',
   workflow: '工作流',
@@ -301,6 +303,15 @@ const fixedValuePage = createFixedValuePage({
   getLanguage: () => currentLanguage,
   isAdmin: isAdminUser,
   localizeDom: localizeAppDom,
+});
+
+const auditPage = createAuditPage({
+  el,
+  api,
+  escapeHtml,
+  notify,
+  getLanguage: () => currentLanguage,
+  formatDateTime,
 });
 
 const userManagementPage = createUserManagementPage({
@@ -1163,6 +1174,10 @@ async function activatePage(page: PageKey) {
     // page), and without this branch it only rendered after a mutation.
     if (page === 'fixed-value') {
       await fixedValuePage.render();
+    }
+
+    if (page === 'audit-logs') {
+      await auditPage.render();
     }
 
     if (page === 'grant-record') {
@@ -2211,6 +2226,17 @@ async function initSettingsPage() {
   el('btnAddFixedValue').addEventListener('click', () => fixedValuePage.openCreateModal());
   el('btnSubmitFixedValue').addEventListener('click', () => void fixedValuePage.submitCreate());
   el('btnSubmitFixedValueEdit').addEventListener('click', () => void fixedValuePage.submitEdit());
+
+  el('btnAuditSearch').addEventListener('click', () => void auditPage.applyFilters());
+  el('btnAuditReset').addEventListener('click', () => void auditPage.resetFilters());
+  el('btnAuditExport').addEventListener('click', () => auditPage.exportCsv());
+  el('auditPrevPage').addEventListener('click', () => void auditPage.goToPage(auditPage.currentPage() - 1));
+  el('auditNextPage').addEventListener('click', () => void auditPage.goToPage(auditPage.currentPage() + 1));
+  el('auditLogsBody').addEventListener('click', (event) => {
+    const row = (event.target as HTMLElement).closest<HTMLElement>('[data-audit-row]');
+    const id = Number(row?.dataset.auditRow);
+    if (Number.isInteger(id) && id > 0) auditPage.toggleDetail(id);
+  });
   themeControls.renderCards();
   syncLanguageButtons();
 }

@@ -156,6 +156,12 @@
                         </span>
                         <span class="nav-text">Workflow</span>
                     </div>
+                    <div class="nav-item" data-page="audit-logs">
+                        <span class="nav-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 12h6"/><path d="M9 16h6"/><path d="M9 8h2"/></svg>
+                        </span>
+                        <span class="nav-text">Audit Log</span>
+                    </div>
                     <div class="nav-item" data-page="user-management">
                         <span class="nav-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -1067,6 +1073,75 @@
                                 </tr></thead>
                                 <tbody id="fivePercentHoldersBody"></tbody>
                             </table>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="page-section" id="page-audit-logs">
+                    <div class="product-page-hero">
+                        <div>
+                            <div class="product-page-hero__eyebrow">系统审计</div>
+                            <h2>Audit Log</h2>
+                            <p>每次写入操作与登录事件都会留痕：谁、在什么时候、对什么对象、结果如何。只读页面，不可编辑。</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">审计日志</h3>
+                            <span class="card-subtitle" id="auditPageInfo">-</span>
+                            <div class="card-header-actions">
+                                <button class="btn btn-secondary btn-sm" type="button" id="btnAuditReset">重置</button>
+                                <button class="btn btn-secondary btn-sm" type="button" id="btnAuditExport">导出 CSV</button>
+                                <button class="btn btn-primary btn-sm" type="button" id="btnAuditSearch">查询</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="audit-filters">
+                                <label class="form-group">
+                                    <span>用户</span>
+                                    <input type="text" id="auditActorFilter" class="form-input" placeholder="用户名包含…" autocomplete="off">
+                                </label>
+                                <label class="form-group">
+                                    <span>操作</span>
+                                    <input type="text" id="auditActionFilter" class="form-input" placeholder="例如 monthly-runs" autocomplete="off">
+                                </label>
+                                <label class="form-group">
+                                    <span>对象类型</span>
+                                    <input type="text" id="auditEntityFilter" class="form-input" placeholder="例如 files" autocomplete="off">
+                                </label>
+                                <label class="form-group">
+                                    <span>结果</span>
+                                    <select id="auditStatusFilter" class="form-input">
+                                        <option value="">全部</option>
+                                        <option value="ok">成功</option>
+                                        <option value="failed">失败 / 被拒绝</option>
+                                    </select>
+                                </label>
+                                <label class="form-group">
+                                    <span>从</span>
+                                    <input type="date" id="auditFromFilter" class="form-input">
+                                </label>
+                                <label class="form-group">
+                                    <span>到</span>
+                                    <input type="date" id="auditToFilter" class="form-input">
+                                </label>
+                            </div>
+                            <table class="data-table">
+                                <thead><tr>
+                                    <th>时间</th>
+                                    <th>用户</th>
+                                    <th>操作</th>
+                                    <th>对象</th>
+                                    <th>结果</th>
+                                    <th class="col-number">耗时</th>
+                                    <th>IP</th>
+                                </tr></thead>
+                                <tbody id="auditLogsBody"></tbody>
+                            </table>
+                            <div class="table-pagination">
+                                <button class="btn btn-secondary btn-sm" type="button" id="auditPrevPage">上一页</button>
+                                <button class="btn btn-secondary btn-sm" type="button" id="auditNextPage">下一页</button>
+                            </div>
                         </div>
                     </div>
                 </section>

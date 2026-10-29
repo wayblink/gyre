@@ -443,6 +443,30 @@ export type FixedValueRecord = {
   updatedAt: string;
 };
 
+/**
+ * One audit row: a mutating request or an authentication event, as written by the server hook.
+ *
+ * `action` is `METHOD <route pattern>` (or `auth.login`), so ids never fragment the trail into one
+ * bucket per record; `payload` is the redacted request body/query.
+ */
+export type AuditLogRecord = {
+  id: number;
+  actor: string;
+  actorRole: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  method: string | null;
+  path: string | null;
+  statusCode: number | null;
+  durationMs: number | null;
+  ip: string | null;
+  userAgent: string | null;
+  summary: string | null;
+  payload: unknown;
+  createdAt: string;
+};
+
 export type FivePercentHolder = {
   id: number;
   rowType: 'holder' | 'total';

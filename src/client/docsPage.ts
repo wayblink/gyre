@@ -302,6 +302,16 @@ Futu 工号 trim 后转大写，姓名 trim，来源标记 futu。Shareworks 排
 
 GNI Group Ltd. 和 Songjiang Ma 的 Common Stock、Total CSEs 来自全局参数；工作流负责按当前 summary 分母计算比例并输出 Five_Percent_Holders.xlsx。分母缺失或重复时阻断。
 
+## 六·五、审计日志
+
+每一次**写入操作**（POST / PUT / PATCH / DELETE）和每一次**登录 / 退出 / 登录失败**都会持久化到数据库，记录：时间、用户（含角色）、操作（方法 + 路由）、对象类型与 id、结果状态码、耗时、来源 IP、User-Agent，以及脱敏后的请求体与查询参数。
+
+采集由服务端一个统一钩子完成，不依赖每个接口自己记得打点——接口有六十多个而且还在增加，漏一处审计就断了。**读取（GET）不记录**：一次页面刷新会产生十几个 GET，会把真正值得追溯的改动淹掉。
+
+密码、令牌、Cookie 等字段在入库前统一替换为 "***"；上传文件只记文件名与大小，不存内容；超过 4KB 的请求体截断。审计写失败不会影响用户的操作（只进服务器日志），但也绝不会静默丢弃。
+
+页面在「仅管理员」分组下的 **审计日志**，可以按用户、操作、对象类型、结果、日期区间筛选，分页查看，点任意一行展开脱敏后的请求体，并可把当前筛选结果导出 CSV。页面是只读的——能改的日志不叫审计。
+
 ## 七、结果如何回到业务页面
 
 - **CapTable**：读取 Capitalization_Table_Summary_View.xlsx 的 Shares OS Reconciliation 和 Capitalization Summary 两个 Sheet。

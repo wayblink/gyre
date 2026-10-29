@@ -336,6 +336,20 @@ export const TEXTS = {
       'zh-CN': '输入目标员工的工号 / Emp. No.',
       'en-US': 'Enter target employee no. / Emp. No.',
     },
+    auditEmpty: { 'zh-CN': '没有符合条件的操作记录', 'en-US': 'No matching audit entries' },
+    auditActionLogin: { 'zh-CN': '登录', 'en-US': 'Signed in' },
+    auditActionLoginFailed: { 'zh-CN': '登录失败', 'en-US': 'Sign-in failed' },
+    auditActionLogout: { 'zh-CN': '退出登录', 'en-US': 'Signed out' },
+    auditResultOk: { 'zh-CN': '成功', 'en-US': 'Succeeded' },
+    auditResultRedirect: { 'zh-CN': '跳转', 'en-US': 'Redirected' },
+    auditResultDenied: { 'zh-CN': '无权限', 'en-US': 'Denied' },
+    auditResultRejected: { 'zh-CN': '被拒绝', 'en-US': 'Rejected' },
+    auditResultError: { 'zh-CN': '服务器错误', 'en-US': 'Server error' },
+    auditResultUnknown: { 'zh-CN': '未知', 'en-US': 'Unknown' },
+    auditExportStarted: {
+      'zh-CN': '已开始导出当前筛选条件下的审计日志',
+      'en-US': 'Exporting the audit log for the current filters',
+    },
   },
   /** Page titles, keyed by page (main.ts renders the sidebar, heroes and document title from these). */
   pageTitles: {
