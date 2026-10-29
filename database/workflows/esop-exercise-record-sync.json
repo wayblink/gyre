@@ -3,7 +3,7 @@
   "name": "ESOP / Exercise to Date Sync",
   "description": "读取 Futu 员工行权记录源工作簿的行权汇总数据，并替换 Exercise Record 展示数据。",
   "status": "active",
-  "version": 12,
+  "version": 13,
   "tasks": [
     {
       "x": 48,
@@ -19,12 +19,17 @@
           "$fromRuntime": "fileRefs.futu_exercises"
         },
         "headerRow": 1,
-        "sheetName": "行权汇总数据",
+        "sheetName": {
+          "$type": "string",
+          "$label": "Sheet",
+          "$default": "行权汇总数据",
+          "$fromRuntime": "fileRefs.futu_exercises.sheet"
+        },
         "dropTrailingEmptyRows": true,
         "emptyColumns": "姓名, 工号, 牛牛号, 用户ID, 授予编号, 授予日期, 授予价(USD), 行权日期, 行权下单数量, 行权成功数量, 行权成本(USD), 扣除/卖出数量, 成交数量"
       },
       "dependsOn": [],
-      "description": "从 Futu 员工行权记录源工作簿提取行权汇总数据（行权汇总数据 Sheet）。 该输入为可选：未提供时输出空 dataframe，月度运行不会因此中断（记录页该月显示为空）。 未提供文件时按 emptyColumns 输出空表，供下游合并使用。",
+      "description": "从 Futu 员工行权记录源工作簿提取行权表：『行权汇总数据』（中文 13 列）或 Cap Table 工作簿的『Futu BCI Exercises to Date』（英文 13 列），sheet 由上游传入。该输入为可选：未提供时输出空 dataframe，月度运行不会因此中断（记录页该月显示为空）。未提供文件时按 emptyColumns 输出空表，供下游合并使用。",
       "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
@@ -36,11 +41,26 @@
       "inputs": {
         "input1": {
           "from": "extract_exercises",
-          "slot": "dataframe"
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_futu_exercise_source_shape",
+              "name": "Assert Futu Exercise Source Column Shape",
+              "type": "dataframe.shape.assert",
+              "params": {
+                "rowOperator": "any",
+                "columnOperator": "=",
+                "expectedColumns": 13,
+                "failureMessage": "Futu 行权源的列数应为 13：『行权汇总数据』或『Futu BCI Exercises to Date』；行权明细数据是 59 列",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
         }
       },
       "params": {
-        "sql": "select\n  nullif(trim(cast(coalesce([姓名], '') as string)), '') as [Name],\n  nullif(trim(cast(coalesce([工号], '') as string)), '') as [Employee No.],\n  nullif(trim(cast(coalesce([牛牛号], '') as string)), '') as [Futubull ID],\n  nullif(trim(cast(coalesce([用户ID], '') as string)), '') as [User ID],\n  nullif(trim(cast(coalesce([授予编号], '') as string)), '') as [Grant No.],\n  nullif(trim(cast(coalesce([授予日期], '') as string)), '') as [Grant Date],\n  nullif(trim(cast(coalesce([授予价(USD)], '') as string)), '') as [Grant Price(USD)],\n  nullif(trim(cast(coalesce([行权日期], '') as string)), '') as [Exercise Date],\n  case when cast(coalesce([行权下单数量], 0) as string) in ('--','','null') then 0 else cast([行权下单数量] as number) end as [Ordered Qty],\n  case when cast(coalesce([行权成功数量], 0) as string) in ('--','','null') then 0 else cast([行权成功数量] as number) end as [Exercised Qty],\n  case when cast(coalesce([行权成本(USD)], 0) as string) in ('--','','null') then 0 else cast([行权成本(USD)] as number) end as [Exercise Cost(USD)],\n  case when cast(coalesce([扣除/卖出数量], 0) as string) in ('--','','null') then 0 else cast([扣除/卖出数量] as number) end as [Deduction/Selling Qty.],\n  case when cast(coalesce([成交数量], 0) as string) in ('--','','null') then 0 else cast([成交数量] as number) end as [Dealt Qty.]\nfrom {exercises}\nwhere trim(concat('', coalesce([工号], ''))) <> ''\n  and trim(cast(coalesce([工号], '') as string)) <> '工号'",
+        "sql": "select\n  nullif(trim(cast(coalesce([姓名], [Name], '') as string)), '') as [Name],\n  nullif(trim(cast(coalesce([工号], [Employee No.], '') as string)), '') as [Employee No.],\n  nullif(trim(cast(coalesce([牛牛号], [Futubull ID], '') as string)), '') as [Futubull ID],\n  nullif(trim(cast(coalesce([用户ID], [User ID], '') as string)), '') as [User ID],\n  nullif(trim(cast(coalesce([授予编号], [Grant No.], '') as string)), '') as [Grant No.],\n  nullif(trim(cast(coalesce([授予日期], [Grant Date], '') as string)), '') as [Grant Date],\n  nullif(trim(cast(coalesce([授予价(USD)], [Grant Price(USD)], '') as string)), '') as [Grant Price(USD)],\n  nullif(trim(cast(coalesce([行权日期], [Exercise Date], '') as string)), '') as [Exercise Date],\n  case when cast(coalesce([行权下单数量], [Ordered Qty], 0) as string) in ('--','','null') then 0 else cast(coalesce([行权下单数量], [Ordered Qty]) as number) end as [Ordered Qty],\n  case when cast(coalesce([行权成功数量], [Exercised Qty], 0) as string) in ('--','','null') then 0 else cast(coalesce([行权成功数量], [Exercised Qty]) as number) end as [Exercised Qty],\n  case when cast(coalesce([行权成本(USD)], [Exercise Cost(USD)], 0) as string) in ('--','','null') then 0 else cast(coalesce([行权成本(USD)], [Exercise Cost(USD)]) as number) end as [Exercise Cost(USD)],\n  case when cast(coalesce([扣除/卖出数量], [Deduction/Selling Qty.], 0) as string) in ('--','','null') then 0 else cast(coalesce([扣除/卖出数量], [Deduction/Selling Qty.]) as number) end as [Deduction/Selling Qty.],\n  case when cast(coalesce([成交数量], [Dealt Qty.], 0) as string) in ('--','','null') then 0 else cast(coalesce([成交数量], [Dealt Qty.]) as number) end as [Dealt Qty.]\nfrom {exercises}\nwhere coalesce(trim(cast(coalesce([工号], [Employee No.], '') as string)), '') <> ''\n  and coalesce(trim(cast(coalesce([工号], [Employee No.], '') as string)), '') <> '工号'\n  and coalesce(trim(cast(coalesce([工号], [Employee No.], '') as string)), '') <> 'Employee No.'\n  and coalesce(trim(cast(coalesce([姓名], [Name], '') as string)), '') not in ('合计', 'in Total')\n",
         "tableBindings": [
           {
             "inputSlot": "input1",
@@ -49,7 +69,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "将 Futu 行权汇总数据的中文字段映射为 Exercise Record 的 13 列标准契约，并过滤空工号行。",
+      "description": "把行权源（中文『行权汇总数据』或英文『Futu BCI Exercises to Date』，用 coalesce(中文列, 英文列) 同时吃下）映射为 Exercise Record 的 13 列标准契约，并丢弃合计/in Total 行与空工号行。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -289,7 +309,16 @@
       "properties": {
         "futu_exercises": {
           "type": "object",
-          "label": "Futu employee exercise source workbook"
+          "label": "Futu employee exercise source workbook",
+          "description": "富途「员工行权记录」工作簿（『行权汇总数据』），也可以是 Cap Table 工作簿（『Futu BCI Exercises to Date』）。",
+          "allowSheetNameOverride": true,
+          "defaultSheetName": "行权汇总数据",
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Sheet"
+            }
+          }
         },
         "shareworks_exercises": {
           "type": "object",

@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 55,
+  "version": 56,
   "tasks": [
     {
       "x": 48,
@@ -92,9 +92,9 @@
             },
             "incremental_futu_exercises": {
               "$type": "object",
-              "$label": "Futu Exercise Monthly Update workbook",
+              "$label": "Futu Exercise Record workbook",
               "$default": {
-                "sheet": "行权明细数据"
+                "sheet": "行权汇总数据"
               },
               "$fromRuntime": "fileRefs.incremental_futu_exercises"
             }
@@ -103,7 +103,7 @@
         "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "调用 Futu Exercises Incremental Merge 子工作流：上月 base + 本月富途行权明细按行权订单编号幂等合并出当月完整 to-date（14 列），供 calc_futu_metrics 求和；子工作流同时落盘固定路径 workbook 作为下月 base。",
+      "description": "调用 Futu Exercises Incremental Merge 子工作流：上月 base + 本月富途「员工行权记录」的『行权汇总数据』sheet，按 员工号+授予编号+行权日期 幂等合并出当月完整 to-date（14 列），供 calc_futu_metrics 求和；子工作流同时落盘固定路径 workbook 作为下月 base。",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -1379,7 +1379,7 @@
           "order": 6,
           "hidden": false,
           "allowSheetNameOverride": true,
-          "defaultSheetName": "行权明细数据",
+          "defaultSheetName": "行权汇总数据",
           "taskId": "invoke_futu_exercises_merge",
           "required": false,
           "properties": {
@@ -1388,7 +1388,7 @@
               "label": "Increment sheet"
             }
           },
-          "description": "富途「员工行权记录」导出，同一份文件含两个 sheet：明细与基表按行权订单编号增量合并，汇总用于「行权记录」页的 Futu 视图。",
+          "description": "富途「员工行权记录」导出。取其中的『行权汇总数据』sheet（一人一天一行，末行为合计）作为行权增量：它与基表按 员工号+授予编号+行权日期 幂等合并，同时用于「行权记录」页的 Futu 视图。不要选『行权明细数据』——那是界面导出，列契约和分页窗口会随导出状态变化。",
           "fileTemplate": "Gyre Therapeutics员工行权记录.xlsx"
         },
         "previous_capitalization_summary": {
@@ -1630,7 +1630,7 @@
         "sheet": "取消与恢复明细"
       },
       "incremental_futu_exercises": {
-        "sheet": "行权明细数据"
+        "sheet": "行权汇总数据"
       },
       "previous_capitalization_summary": {
         "sheet": "Capitalization Summary"

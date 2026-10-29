@@ -171,9 +171,8 @@ function futuRow(overrides: Row = {}): Row {
 }
 
 test('a text-dated Futu increment supersedes the serial-dated base row instead of duplicating it', async () => {
-  // The retain rule only drops base rows that carry no Exercise Order No. (rows with one are canonical and
-  // are joined later); those order-less rows are matched by Grant No. + Exercise Date, and that comparison
-  // has to survive one side storing a serial and the other a text date.
+  // The retain rule drops any base row whose 员工号 + 授予编号 + 行权日期 the summary increment re-states, and
+  // that comparison has to survive one side storing a serial and the other a text date.
   const orderLessBase = futuRow({ 'Exercise Order No.': null, 'Exercise Date': serial('2025-12-15') });
   const retained = await runFutuTask('retain_base_futu_exercises', {
     base: frame([orderLessBase], FUTU_COLUMNS),
@@ -189,14 +188,15 @@ test('a text-dated Futu increment supersedes the serial-dated base row instead o
   assert.equal(merged[0]?.['Exercised Qty'], 100);
 });
 
-test('a base row that already carries an Exercise Order No. is kept even when the increment re-states it', async () => {
-  // Rows with an order number are joined by that number in merge_futu_exercises, so retaining them is safe
-  // and losing them would drop history.
+test('a base row that the summary re-states is replaced even when it carries an Exercise Order No.', async () => {
+  // The summary sheet has one row per employee + grant + exercise date, so the grain — not the order number —
+  // is what decides whether a base row is restated. Keeping the order-numbered base copy would count the same
+  // exercise twice (once as a detail line, once as the summary aggregate).
   const retained = await runFutuTask('retain_base_futu_exercises', {
     base: frame([futuRow()], FUTU_COLUMNS),
     increment: frame([futuRow({ 'Exercise Date': '2025-12-15' })], FUTU_COLUMNS),
   });
-  assert.equal(retained.length, 1);
+  assert.equal(retained.length, 0);
 });
 
 test('a Futu base row for a different day is kept', async () => {

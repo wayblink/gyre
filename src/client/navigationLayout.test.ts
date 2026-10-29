@@ -529,7 +529,8 @@ test('Exercise Record exposes Futu / Shareworks / Merge source tabs like Grant R
   assert.match(exerciseSeed, /"extract_shareworks_exec"/);
   assert.match(exerciseSeed, /"persist_exercise_record_shareworks_file"/);
   assert.match(exerciseSeed, /"Executive Awards OS Only"/);
-  assert.match(exerciseSeed, /"sheetName": "行权汇总数据"/);
+  assert.match(exerciseSeed, /"\$default": "行权汇总数据"/);
+  assert.match(exerciseSeed, /"\$fromRuntime": "fileRefs\.futu_exercises\.sheet"/);
   assert.match(exerciseSeed, /"id": "project_futu_exercise_summary"/);
   assert.match(exerciseSeed, /\[行权成功数量\]/);
   assert.match(exerciseSeed, /as \[Exercised Qty\]/);
