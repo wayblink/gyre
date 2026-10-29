@@ -180,7 +180,7 @@ select count(*) as monthly_instances from monthly_run_instances;
 | ---------------------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `gyre-captable-summary-v2`         | **56**   | 55         | 行权增量的默认 sheet 改『行权汇总数据』（含页面 source meta 的 `defaultSheetName` 与描述）；前端版本锁同步 56                                                                      |
 | `futu-exercises-incremental-merge` | **9**    | 6          | 增量改吃 13 列汇总表（中文『行权汇总数据』/英文 `Futu BCI Exercises to Date`）；合并键换成 员工号+授予编号+行权日期；base 补 `Exercise Order No.` 空列；retain 后补列，空结果不再丢列 |
-| `esop-exercise-record-sync`        | **13**   | 12         | 行权源 sheet 改为跟随运行时选择（不再写死『行权汇总数据』）；投影同样兼容两种表头，丢弃 `合计`/`in Total` 行                                                                       |
+| `esop-exercise-record-sync`        | **14**   | 12         | 行权源 sheet 改为跟随运行时选择（不再写死『行权汇总数据』）；投影兼容两种表头、丢弃 `合计`/`in Total` 行；**合并后按运行月份截断**（页面是「截至当月」，此前会端出未来月份的行）       |
 
 其余定义不需动：`eq-control-book-incremental-merge` 7、`plan-summary-sync` 6、`read-series-b` 2、`gyre-therapeutics-cancel-restore-incremental-merge` 3、`esop-cancellation/sold-shares/grant` 7/8/12、`employee-import`/`esop-transfer-to-futu-sync`/`five-percent-holders-sync`/`option-plans-summary-values`/`gyre-therapeutics-cancel-restore-report-read` 均为 1；若云端缺失会被启动 seed 自动补上。
 
@@ -208,7 +208,7 @@ done
 
 # 期望：每个都输出
 #   validated <code> v<N> from database/workflows/<code>.json (workflow_id=..., version_id=...)
-# 其中 gyre-captable-summary-v2 必须是 v56、futu-exercises-incremental-merge v9、esop-exercise-record-sync v13
+# 其中 gyre-captable-summary-v2 必须是 v56、futu-exercises-incremental-merge v9、esop-exercise-record-sync v14
 
 # 2) 确认无误后正式发布
 for code in $CODES; do
@@ -276,7 +276,7 @@ psql "$DATABASE_URL" -f /tmp/publish.sql
 | 范围 | 变更 |
 | ---- | ---- |
 | 子工作流 `futu-exercises-incremental-merge` v6 → **v9** | 增量改可选抽取『行权汇总数据』（`A1:M`、13 列契约）；投影改成 `coalesce(中文列, 英文列)`，同时吃下『行权汇总数据』与 Cap Table 工作簿的 `Futu BCI Exercises to Date`；守卫由「必须含 13 个中文列」改成「必须是 13 列」+「每行必须有员工号」；合并键由 `行权订单编号` 换成 **员工号+授予编号+行权日期**；base 侧补 `Exercise Order No.` 空列；retain 丢弃无员工号的页脚行（`in Total`）；retain 之后补 14 列契约，空结果不再丢列 |
-| 子工作流 `esop-exercise-record-sync` v12 → **v13** | 行权源 sheet 改为 `$fromRuntime: fileRefs.futu_exercises.sheet`（原来写死『行权汇总数据』，选 Cap Table 那份会 `Sheet not found`）；投影同样兼容两种表头 |
+| 子工作流 `esop-exercise-record-sync` v12 → **v14** | 行权源 sheet 改为 `$fromRuntime: fileRefs.futu_exercises.sheet`（原来写死『行权汇总数据』，选 Cap Table 那份会 `Sheet not found`）；投影兼容两种表头；合并后新增 `filter_exercise_records_to_month`，按运行月份截断（见 8.11） |
 | 月度 `gyre-captable-summary-v2` v55 → **v56** | 行权增量默认 sheet 改『行权汇总数据』，页面 source meta 的 `defaultSheetName` 与描述同步；子流程调用的默认值同步 |
 | 前端 | `MONTHLY_WORKFLOW_VERSION` 55 → **56**，与月度定义版本锁死 |
 | 测试 | 新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts`（13 个用例：合计行不落库、按粒度替换、幂等、历史不丢、serial/文本日期等价、英文表头、列数守卫、13 列 base、空结果补列、记录页 sheet 跟随）；改写 `controlBookMergeDateTypes.test.ts` 里那条「带订单号的行即使被重述也保留」的旧断言 |
@@ -390,7 +390,7 @@ select code, version, status
  )
  order by code;
 -- 期望：gyre-captable-summary-v2 = 56、futu-exercises-incremental-merge = 9、
---      esop-exercise-record-sync = 13
+--      esop-exercise-record-sync = 14
 
 -- ①b 4.6 的数据迁移必须已执行
 select source_key, sheet_name, count(*)
@@ -522,7 +522,7 @@ for code in $CODES; do
 done
 ```
 
-> `--force` 是本节唯一许可的强制发布场景（云端 56/9/13 高于旧镜像种子的 55/6/12）。回退后前端常量是旧镜像里的 55，两侧对上。
+> `--force` 是本节唯一许可的强制发布场景（云端 56/9/14 高于旧镜像种子的 55/6/12）。回退后前端常量是旧镜像里的 55，两侧对上。
 >
 > 4.6 的 sheet 迁移**不需要回滚**：旧代码读的是『行权明细数据』，回滚后要把它改回 `行权明细数据` 才能与旧链路一致——
 > 只有在真的要整体回退镜像时才做：`update monthly_run_instance_sources set sheet_name='行权明细数据' where source_key='incremental_futu_exercises';`
@@ -532,7 +532,7 @@ done
 ## 8. 完成标准（全部打勾才算完成）
 
 - [ ] 第 3 节预检 ① 返回 0；② ③ 若为 1 已报告并得到许可
-- [ ] **三个定义已发布**，版本与 4.1 节一致（月度 = **56**、`futu-exercises-incremental-merge` **9**、`esop-exercise-record-sync` **13**）
+- [ ] **三个定义已发布**，版本与 4.1 节一致（月度 = **56**、`futu-exercises-incremental-merge` **9**、`esop-exercise-record-sync` **14**）
 - [ ] **4.6 的 sheet 迁移已执行**：`monthly_run_instance_sources` 里 `incremental_futu_exercises` 全是 `行权汇总数据`（6.2 ①b）
 - [ ] `workflow_operators` 里有 `dataframe.keyed.merge`、`dataframe.ensure.columns`、`dataframe.persist.excel`（6.2 ②）
 - [ ] 月度输入源 **20** 个（6.2 ③）
@@ -865,11 +865,49 @@ retain 之后同样补回 14 列（空结果不再丢列）；`esop-exercise-rec
 
 ---
 
+## 8.11 行权记录页：快照按「运行月份」截断（`esop-exercise-record-sync` v14）
+
+**现象**：行权记录页选 2026 年 6 月，表格里却有 2026-08 的行，而且看不到 2024-2025 的历史——看起来像"当月汇总 sheet 照搬"。
+
+**根因**：页面读的是每月落盘的 `exercise_record/Futu_Exercises_Base_<yyyy_MM>.xlsx`，由 `esop-exercise-record-sync`
+用「上一份快照 + 本月输入」按 员工号+授予编号+行权日期 合并——合并本身是对的。问题有两处：
+
+1. 合并算子没有日期过滤，而富途的『行权汇总数据』是**滚动窗口**导出（2026-06 那份覆盖 2026-03~08），
+   于是"6 月快照"里躺着 8 月的行。文档与代码注释写的是「截至当月的累计」，口径与实现不一致。
+2. 这条 base 链最早的一份快照是 2026-03（当月没有 base，只有自己的 4 行），2024-08~2025-12 从来没进过链。
+
+**改法**：合并之后新增 `filter_exercise_records_to_month`（`sql.compute`，`wf_month_key([Exercise Date]) <= {month}`，
+空日期照旧计入，与 `calc_futu_metrics` 同口径），落盘读它的输出。历史缺口靠数据补：把某个月的输入指向
+Cap Table 的 to-date sheet（全量历史），截断后就是"截至当月的全量"。
+
+**本地重跑全部月份后的结果**（行权记录页 total 与累计已行权）：
+
+| 月份 | 记录页行数 | 累计已行权 | 页面覆盖的月份 |
+| --- | --- | --- | --- |
+| 2026-01 | 0 | 0 | 没有行权输入文件，子流程被跳过（历史缺口，见下） |
+| 2026-03 | 4 | 23,114 | 只有 2026-03（链首，无 base） |
+| 2026-04 | 396 | 2,819,861 | 2024-08 ~ 2026-04（输入是 Cap Table 04.30 的 to-date sheet） |
+| 2026-05 | 423 | 2,938,523 | 2024-08 ~ 2026-05 |
+| 2026-06 | 452 | 3,034,475 | 2024-08 ~ 2026-06 |
+| 2026-08 | 479 | 3,116,984 | 2024-08 ~ 2026-08 |
+
+每个月的累计已行权与月度汇总里的 `BCI Shares Held by Futu` 完全对得上
+（2026-01 5,019,150 / 03 4,996,036 / 04 4,995,535 / 05 4,876,873 / 06 4,780,921 / 08 4,698,412）。
+
+**线上要做的**：发布 v14 之后，把有行权输入的那个最早的月份重跑一次，再按月份顺序把之后的月份各重跑一次
+（base 链逐月接上）。只想让某个月"看起来完整"时，把该月输入改成 Cap Table 的 to-date sheet 即可。
+
+> 已知缺口：2026-01 / 2026-02 没有 Futu 行权输入文件，记录页为空；要让它们也有"截至当月的全量"，
+> 需要给这两个月绑一个全量输入（例如 Cap Table 04.30 的 to-date sheet），属于数据操作，需先取得许可。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 本轮（`main`，上一轮部署之后到 HEAD）一次性提交了这些内容：
 
 - `feat(workflows): read the Futu exercise summary instead of the detail export`（月度 **v56**、`futu-exercises-incremental-merge` **v9**、`esop-exercise-record-sync` **v13**、前端 `MONTHLY_WORKFLOW_VERSION` → 56、新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts` 并改写 `controlBookMergeDateTypes.test.ts` 的一条旧断言、本文件的 4.1/4.5/4.6/6.2/6.3/7/8/8.10）
+- `fix(workflows): cut the Futu exercise snapshot at the run month`（`esop-exercise-record-sync` **v14**：合并后按运行月份截断，见 8.11）
 
 完整的 `git log <上一轮部署的 commit>..HEAD` 为准；更早的提交属于上一轮已上线的代码。
 

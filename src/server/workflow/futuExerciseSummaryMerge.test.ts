@@ -474,3 +474,38 @@ test('the record page sync takes the chosen sheet and reads both header flavours
   assert.equal(chinese.length, 1);
   assert.equal(chinese[0]?.['Exercised Qty'], 3770);
 });
+
+/**
+ * The record page shows "cumulative as of the selected month", so a snapshot must never carry rows dated after
+ * its own month. Futu's 行权汇总数据 export is a rolling window (the 2026-06 file covers 2026-03..08), and the
+ * merge has no date filter of its own, so the 2026-06 page was serving August exercises while 2024-2025 was
+ * missing. The snapshot is cut at the run month after the merge, exactly like `calc_futu_metrics` does.
+ */
+test('the record snapshot is cut at the run month (no future rows, undated rows kept)', async () => {
+  const filter = recordTask('filter_exercise_records_to_month');
+  assert.equal(
+    String((recordTask('persist_exercise_record_file').inputs?.input1 as { from?: string } | undefined)?.from),
+    'filter_exercise_records_to_month',
+    'the persisted snapshot must be the filtered frame',
+  );
+
+  const rows = await runTaskFrom(
+    filter,
+    {
+      records: frame(
+        [
+          englishRow({ 'Exercise Date': '2026-08-28', 'Exercised Qty': 4500 }),
+          englishRow({ 'Exercise Date': '2026-05-29', 'Exercised Qty': 3770 }),
+          englishRow({ 'Exercise Date': '', 'Exercised Qty': 7 }),
+        ],
+        ENGLISH_COLUMNS,
+      ),
+    },
+    '2026-06',
+  );
+  assert.deepEqual(
+    rows.map((row) => row['Exercised Qty']),
+    [3770, 7],
+    'the August row is after the run month; the undated row still counts',
+  );
+});

@@ -1,9 +1,9 @@
 {
   "code": "esop-exercise-record-sync",
   "name": "ESOP / Exercise to Date Sync",
-  "description": "读取 Futu 员工行权记录源工作簿的行权汇总数据，并替换 Exercise Record 展示数据。",
+  "description": "读取 Futu 员工行权记录源工作簿的行权汇总数据（中文『行权汇总数据』或 Cap Table 的英文 `Futu BCI Exercises to Date`），按「截至当月」合并进 Exercise Record 展示数据。",
   "status": "active",
-  "version": 13,
+  "version": 14,
   "tasks": [
     {
       "x": 48,
@@ -145,13 +145,45 @@
       }
     },
     {
+      "id": "filter_exercise_records_to_month",
+      "name": "Cut The Snapshot At The Run Month",
+      "operatorCode": "sql.compute",
+      "operatorVersion": "1.0.0",
+      "description": "把合并结果截断到运行月份（含）：行权记录页展示的是「截至当月的累计行权」，而富途导出的汇总 sheet 是滚动窗口（2026-06 那份就覆盖 2026-03~08），合并算子自己不带日期过滤，于是 6 月的页面会端出 8 月的行。日期为空的行照旧计入（与 calc_futu_metrics 的口径一致）。",
+      "dependsOn": [],
+      "inputs": {
+        "records": {
+          "from": "merge_exercise_futu_records",
+          "slot": "dataframe"
+        }
+      },
+      "x": 520,
+      "y": -40,
+      "params": {
+        "sql": "select * from {records}\nwhere wf_month_key([Exercise Date]) is null\n   or wf_month_key([Exercise Date]) <= {constants.workflowMonth}\n",
+        "tableBindings": [
+          {
+            "inputSlot": "records",
+            "tableName": "records"
+          }
+        ],
+        "constants": {
+          "workflowMonth": {
+            "$type": "string",
+            "$label": "Workflow Month",
+            "$fromRuntime": "month"
+          }
+        }
+      }
+    },
+    {
       "x": 520,
       "y": 48,
       "id": "persist_exercise_record_file",
       "name": "Persist Futu BCI Exercises to Date File",
       "inputs": {
         "input1": {
-          "from": "merge_exercise_futu_records",
+          "from": "filter_exercise_records_to_month",
           "slot": "dataframe"
         }
       },
@@ -168,7 +200,7 @@
         "overwrite": true
       },
       "dependsOn": [],
-      "description": "写出截至当月的累计快照（base + 本月增量幂等合并），放在独立目录、文件名带月份后缀，既给页面按月读取，也作为下一月合并的 base。",
+      "description": "写出截至当月的累计快照（base + 本月增量幂等合并、再按运行月份截断），放在独立目录、文件名带月份后缀，既给页面按月读取，也作为下一月合并的 base。",
       "operatorCode": "dataframe.persist.excel",
       "operatorVersion": "1.0.0"
     },
