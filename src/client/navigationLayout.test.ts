@@ -319,9 +319,7 @@ test('file uploads use a shared visible progress dialog', () => {
     /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/,
   );
   assert.match(monthlyRunPageSource, /renderUploadedFileCell\(file\)/);
-  // One handler opens the file from either element that carries its id: the file name and the folder
-  // line beneath it (added so the path itself is clickable).
-  assert.match(monthlyRunPageSource, /querySelectorAll<HTMLButtonElement>\('\[data-source-file-preview\]'\)/);
+  assert.match(monthlyRunPageSource, /\.source-file-link\[data-source-file-preview\]/);
   assert.match(monthlyRunPageSource, /\.source-file-copy\[data-source-file-copy\]/);
   assert.doesNotMatch(monthlyRunPageSource, /data-business-source-preview/);
   assert.match(monthlyRunPageSource, /openProductFile\(fileId\)/);

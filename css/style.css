@@ -10827,20 +10827,3 @@ textarea.form-input {
   border-radius: var(--radius-md);
 }
 
-/* Folder line under a monthly input file: clickable, because it leads to the same file in the tree. */
-.source-file-path {
-  display: block;
-  margin-top: 2px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  text-align: left;
-  cursor: pointer;
-  text-decoration: underline dotted;
-}
-
-.source-file-path:hover {
-  color: var(--primary-600);
-}

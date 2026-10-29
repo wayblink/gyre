@@ -139,10 +139,11 @@ test('a file reveal opens the tree and marks the row', () => {
   assert.match(source, /await openProductFile\(targetId\);\s*\n\s*revealProductFile\(targetId\);/);
 });
 
-test('the monthly input list links both the file name and its folder to the file', () => {
+test('the monthly input list opens the file from its name, and the file centre takes it from there', () => {
+  // The monthly cell is unchanged: one clickable name per file. What changed is what happens after the
+  // jump — the Files page positions and marks the row (see the reveal test above).
   const monthly = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
-  assert.match(monthly, /class="source-file-path"/);
+  assert.match(monthly, /class="source-file-link"/);
   assert.match(monthly, /data-source-file-preview="\$\{file\.id\}"/);
-  // One handler covers every element carrying the file id, not just the name button.
-  assert.match(monthly, /querySelectorAll<HTMLButtonElement>\('\[data-source-file-preview\]'\)/);
+  assert.doesNotMatch(monthly, /source-file-path/, 'the input list must not grow a second file link');
 });
