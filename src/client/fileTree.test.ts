@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { ProductFileRecord } from '../shared/types.js';
+import { readFileSync } from 'node:fs';
+
 import {
   buildProductFilesTree,
   collectProductFileFolders,
   compareProductFile,
   countTreeFiles,
+  fileAncestorDirectories,
   normalizeClientFolder,
   productFileFolder,
   productFileLogicalTreePath,
@@ -114,4 +117,32 @@ test('typed folder paths are normalized the same way the server normalizes them'
   assert.throws(() => normalizeClientFolder('.'), /Invalid folder path/);
   assert.throws(() => normalizeClientFolder('input//2026-05'), /Invalid folder path/);
   assert.throws(() => normalizeClientFolder(`input/a${String.fromCharCode(9)}b`), /Invalid folder path/);
+});
+
+test('a file path expands exactly its own folders, root first', () => {
+  // The Monthly Update input list jumps here; these are the paths that have to be un-collapsed for the
+  // row to exist in the tree at all.
+  assert.deepEqual(fileAncestorDirectories('input/2026-06/Control_Books_Detail_Data.xlsx'), ['input', 'input/2026-06']);
+  assert.deepEqual(fileAncestorDirectories('control_book/EQ_Control_Book_Base_2026_01.xlsx'), ['control_book']);
+  assert.deepEqual(fileAncestorDirectories('loose.xlsx'), []);
+  assert.deepEqual(fileAncestorDirectories('a\\b\\c.xlsx'), ['a', 'a/b']);
+});
+
+test('a file reveal opens the tree and marks the row', () => {
+  const source = readFileSync(new URL('./filesPage.ts', import.meta.url), 'utf8');
+  const reveal = source.match(/function revealProductFile\(fileId: number\)[\s\S]*?\n {2}\}/)?.[0] ?? '';
+  assert.match(reveal, /fileAncestorDirectories\(/, 'the ancestors are expanded through the shared helper');
+  assert.match(reveal, /scrollIntoView\(\{ block: 'center' \}\)/, 'the row is scrolled to the middle of the list');
+  assert.match(reveal, /classList\.add\('is-revealed'\)/, 'the row flashes so the eye lands on it');
+  assert.match(reveal, /filesSearchQuery = ''/, 'a search filter that hides the target is dropped');
+  // Called whenever a file id was explicitly requested, i.e. when arriving from another page.
+  assert.match(source, /await openProductFile\(targetId\);\s*\n\s*revealProductFile\(targetId\);/);
+});
+
+test('the monthly input list links both the file name and its folder to the file', () => {
+  const monthly = readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8');
+  assert.match(monthly, /class="source-file-path"/);
+  assert.match(monthly, /data-source-file-preview="\$\{file\.id\}"/);
+  // One handler covers every element carrying the file id, not just the name button.
+  assert.match(monthly, /querySelectorAll<HTMLButtonElement>\('\[data-source-file-preview\]'\)/);
 });

@@ -11,6 +11,7 @@ import {
   compareProductFile,
   compareTreeNode,
   countTreeFiles,
+  fileAncestorDirectories,
   productFileTreePath,
   type FileTreeNode,
 } from './fileTree.js';
@@ -190,7 +191,43 @@ export function createFilesPage({
     updateFileActionState();
     if (targetId) {
       await openProductFile(targetId);
+      revealProductFile(targetId);
     }
+  }
+
+  /**
+   * Bring a file into view in the left navigation.
+   *
+   * Jumping here from the Monthly Update input list is only useful if the tree actually shows the
+   * document: its folder may be collapsed, the search box may filter it out, and the list scrolls. So
+   * expand the ancestors, drop the search when it hides the target, scroll the row to the middle and
+   * flash it once — the selected styling alone is easy to miss in a long tree.
+   */
+  function revealProductFile(fileId: number) {
+    const container = el('productFilesList');
+    const file = productFiles.find((item) => item.id === fileId);
+    if (!file) return;
+
+    let expandedAny = false;
+    for (const directoryPath of fileAncestorDirectories(productFileTreePath(file))) {
+      if (collapsedTreeDirectoryPaths.delete(directoryPath)) expandedAny = true;
+    }
+
+    let row = container.querySelector<HTMLElement>(`[data-file-id="${fileId}"]`);
+    if (!row && filesSearchQuery) {
+      // The search box is hiding the target; the jump wins over the previous filter.
+      filesSearchQuery = '';
+      const searchInput = document.getElementById('filesBrowserSearch') as HTMLInputElement | null;
+      if (searchInput) searchInput.value = '';
+      expandedAny = true;
+    }
+    if (expandedAny) renderProductFilesList();
+
+    row = container.querySelector<HTMLElement>(`[data-file-id="${fileId}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: 'center' });
+    row.classList.add('is-revealed');
+    window.setTimeout(() => row.classList.remove('is-revealed'), 1800);
   }
 
   async function createProductFile() {

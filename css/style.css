@@ -10800,3 +10800,47 @@ textarea.form-input {
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
+
+/* ---- File navigation reveal ----------------------------------------------
+   Jumping to a document from the Monthly Update input list has to be visible:
+   the tree expands the folder, the row scrolls to the middle and flashes once.
+   The steady `is-active` styling is too quiet to find in a long tree. */
+@keyframes file-reveal-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary-500) 55%, transparent);
+    background: color-mix(in srgb, var(--primary-500) 22%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary-500) 0%, transparent);
+    background: color-mix(in srgb, var(--primary-500) 12%, transparent);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
+.workbook-tree__file.is-revealed,
+.workbook-item.is-revealed {
+  animation: file-reveal-pulse 1.6s ease-out 1;
+  outline: 2px solid var(--primary-500);
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
+}
+
+/* Folder line under a monthly input file: clickable, because it leads to the same file in the tree. */
+.source-file-path {
+  display: block;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.source-file-path:hover {
+  color: var(--primary-600);
+}

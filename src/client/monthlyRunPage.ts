@@ -877,7 +877,8 @@ export function createMonthlyRunPage({
       });
     });
 
-    document.querySelectorAll<HTMLButtonElement>('.source-file-link[data-source-file-preview]').forEach((button) => {
+    // Every element that carries the file id opens it: the file name and the folder line under it.
+    document.querySelectorAll<HTMLButtonElement>('[data-source-file-preview]').forEach((button) => {
       button.addEventListener('click', () => {
         const fileId = Number(button.dataset.sourceFilePreview);
         if (!fileId) return;
@@ -1009,6 +1010,13 @@ export function createMonthlyRunPage({
     const escapedDisplayName = escapeHtml(displayName);
     const copyLabel = tt('copy');
     const previewLabel = tt('previewExcel');
+    // The folder is shown as its own clickable line: "which folder is this file in" is the question
+    // operators ask right before going to look for it in the Files tree.
+    const folderPath = (file.logicalPath || file.displayPath || '')
+      .replace(/\\/g, '/')
+      .split('/')
+      .slice(0, -1)
+      .join('/');
     return `<div class="source-file-actions">
       <button
         type="button"
@@ -1031,7 +1039,17 @@ export function createMonthlyRunPage({
           <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
         </svg>
       </button>
-    </div>`;
+    </div>${
+      folderPath
+        ? `<button
+            type="button"
+            class="source-file-path"
+            data-source-file-preview="${file.id}"
+            title="${escapeHtml(`${previewLabel} ${folderPath}`)}"
+            aria-label="${escapeHtml(`${previewLabel} ${folderPath}`)}"
+          >${escapeHtml(folderPath)}</button>`
+        : ''
+    }`;
   }
 
   function renderBusinessSourceSheetControl(

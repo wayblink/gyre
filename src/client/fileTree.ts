@@ -18,6 +18,27 @@ export function productFileLogicalTreePath(file: ProductFileRecord): string {
   return (file.logicalPath || file.displayPath || file.storedName || file.originalName).replace(/\\/g, '/');
 }
 
+/**
+ * Directory paths from the root down to the file's folder, e.g. `input/2026-06` → ['input', 'input/2026-06'].
+ *
+ * Jumping to a file (from the Monthly Update input list) has to open exactly these folders, otherwise the
+ * row exists in the tree but is not rendered.
+ */
+export function fileAncestorDirectories(filePath: string): string[] {
+  const segments = filePath
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const directories: string[] = [];
+  let current = '';
+  for (const segment of segments.slice(0, -1)) {
+    current = current ? `${current}/${segment}` : segment;
+    directories.push(current);
+  }
+  return directories;
+}
+
 export function createFileTreeNode(name: string, path: string): FileTreeNode {
   return {
     name,
