@@ -332,6 +332,15 @@ commit;
 ```bash
 cd <项目根目录>
 
+# 0) 取最新代码。GitHub 已关闭 git-over-HTTPS 的密码认证，服务器上的 origin 必须是 SSH
+#    （password authentication is not supported for Git operations 就是这个原因）
+git remote -v                      # 期望：origin  git@github.com:wayblink/gyre.git
+# 若仍是 https://github.com/...：
+#   git remote set-url origin git@github.com:wayblink/gyre.git
+ssh -T git@github.com              # 期望：Hi wayblink! You've successfully authenticated...
+git status --short                 # 有本地改动先在服务器上弄干净，别带进部署
+git pull --ff-only
+
 # 反代网只需建一次；已存在会报错，忽略即可
 docker network create web 2>/dev/null || true
 
@@ -388,15 +397,24 @@ docker compose -f docker-compose.prod.yml logs --tail=200 app | grep -iE 'error|
 ### 6.2 数据库状态
 
 ```sql
--- ① 4.1 表里三个定义的版本必须与目标一致
+-- ① 4.1 表里定义的版本必须与目标一致（本轮新增 employee-import = 2）
 select code, version, status
   from workflow_definitions
  where code in (
-   'gyre-captable-summary-v2', 'futu-exercises-incremental-merge', 'esop-exercise-record-sync'
+   'gyre-captable-summary-v2', 'futu-exercises-incremental-merge', 'esop-exercise-record-sync', 'employee-import'
  )
  order by code;
 -- 期望：gyre-captable-summary-v2 = 56、futu-exercises-incremental-merge = 9、
---      esop-exercise-record-sync = 14
+--      esop-exercise-record-sync = 14、employee-import = 2
+
+-- ①a 员工归集 v2 的两个源必须已声明 sheet（否则弹窗没有 Sheet 下拉框）
+select jsonb_pretty(jsonb_build_object(
+  'futu_grants', runtime_params_schema_json#>'{"fileRefs","properties","futu_grants"}',
+  'shareworks_grants', runtime_params_schema_json#>'{"fileRefs","properties","shareworks_grants"}'
+))
+  from workflow_definitions where code = 'employee-import';
+-- 期望：两项都带 allowSheetNameOverride=true、defaultSheetName（授予记录 / Personnel Summary (Options OS D），
+--      且 properties.sheet 存在（没有它就收不了页面选的 sheet）
 
 -- ①b 4.6 的数据迁移必须已执行
 select source_key, sheet_name, count(*)
