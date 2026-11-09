@@ -280,3 +280,68 @@ test('5% Holders workflow refuses a stored 0 baseline instead of publishing zero
     /Missing 5% Holders fixed values: fivePercentHoldersGniCommonStock/,
   );
 });
+
+test('a 5% Holders run carries the month of the capitalisation summary it was given', async () => {
+  const calls: WorkflowRunCreateInput[] = [];
+  const workflow = {
+    id: 55,
+    code: 'five-percent-holders-sync',
+    name: '5% Holders Sync',
+    tasks_json: '[]',
+    runtime_params_schema_json: JSON.stringify({
+      month: { type: 'string', label: 'Workflow Month' },
+      fileRefs: {
+        type: 'object',
+        label: 'File References',
+        properties: { capitalization_summary: { type: 'object', label: 'Capitalization Summary' } },
+      },
+      fixedValues: {
+        type: 'object',
+        label: 'fixedValues',
+        properties: {
+          fivePercentHoldersGniCommonStock: { type: 'number', label: 'GNI common stock' },
+          fivePercentHoldersGniTotalCses: { type: 'number', label: 'GNI total CSEs' },
+          fivePercentHoldersSongjiangMaCommonStock: { type: 'number', label: 'Songjiang Ma common stock' },
+          fivePercentHoldersSongjiangMaTotalCses: { type: 'number', label: 'Songjiang Ma total CSEs' },
+        },
+      },
+    }),
+    runtime_params_defaults_json: '{"month":"2026-05"}',
+  };
+  await startDataManagementWorkflow(
+    {
+      async queryOne(_sql, params) {
+        if (_sql.includes('logical_path')) return { logical_path: 'output/captable/2026-08-Capitalization_Table_Summary_View.v1.xlsx' };
+        assert.deepEqual(params, ['five-percent-holders-sync']);
+        return workflow;
+      },
+      async query<T extends Record<string, unknown> = Record<string, unknown>>(): Promise<T[]> {
+        return [
+          { key: 'fivePercentHoldersGniCommonStock', value: 11 },
+          { key: 'fivePercentHoldersGniTotalCses', value: 12 },
+          { key: 'fivePercentHoldersSongjiangMaCommonStock', value: 13 },
+          { key: 'fivePercentHoldersSongjiangMaTotalCses', value: 14 },
+        ] as unknown as T[];
+      },
+    },
+    {
+      async createRun(input) {
+        calls.push(input);
+        return { id: 92 } as never;
+      },
+    },
+    { startAsync() {} },
+    'five-percent-holders',
+    { capitalization_summary: { fileId: 4 } },
+    // The declared month default is a stale hard-coded 2026-05; the caller knows which month the
+    // workbook it just bound belongs to, so its value has to win.
+    { month: '2026-08' },
+  );
+  assert.equal(calls[0]?.runtimeParameters.month, '2026-08');
+  assert.deepEqual((calls[0]?.runtimeParameters as { fixedValues?: unknown }).fixedValues, {
+    fivePercentHoldersGniCommonStock: 11,
+    fivePercentHoldersGniTotalCses: 12,
+    fivePercentHoldersSongjiangMaCommonStock: 13,
+    fivePercentHoldersSongjiangMaTotalCses: 14,
+  });
+});

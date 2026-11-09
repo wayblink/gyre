@@ -1,9 +1,9 @@
 {
   "code": "five-percent-holders-sync",
   "name": "5% Holders Sync",
-  "description": "读取 Capitalization Summary 分母，并结合 Global Parameter 中维护的 5% holder 数字生成 5% Holders 结果文件。",
+  "description": "读取月度 Capitalization Table Summary View 的 Capitalization Summary sheet，把 Asset Class Summary: EOM 作为 Common Stock OS（% of Class 的分母）、Total Fully Diluted Shares Outstanding 作为 Fully Diluted（% Fully Diluted 的分母），两位 >5% 股东的普通股与 Total CSEs 取 Global Parameters，输出 5% Holders 表并落盘 Excel。",
   "status": "active",
-  "version": 1,
+  "version": 2,
   "tasks": [
     {
       "x": 48,
@@ -39,20 +39,20 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  sum(case when lower(trim([Description])) = 'common shares os' then 1 else 0 end)\n  + sum(case when lower(trim([Description])) = 'cullgen common stock' then 1 else 0 end)\n  + sum(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then 1 else 0 end) as actual\nfrom {capitalization}",
+        "sql": "\nselect\n  sum(case when lower(trim([Description])) = 'asset class summary: eom' then 1 else 0 end)\n  + sum(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then 1 else 0 end) as actual\nfrom {capitalization}",
         "operator": ">=",
-        "expectedValue": 3,
+        "expectedValue": 2,
         "tableBindings": [
           {
             "inputSlot": "capitalization",
             "tableName": "capitalization"
           }
         ],
-        "failureMessage": "5% Holders denominators missing: Capitalization Summary must include Common Shares OS, Cullgen common stock, and Total Fully Diluted Shares Outstand.",
+        "failureMessage": "5% Holders denominators missing: Capitalization Summary must include Asset Class Summary: EOM and Total Fully Diluted Shares Outstand.",
         "failureStrategy": "block"
       },
       "dependsOn": [],
-      "description": "确认 Capitalization Summary 中存在 Common Shares OS、Cullgen common stock 和 Total Fully Diluted Shares Outstand 三个分母来源。",
+      "description": "确认 Capitalization Summary 中存在 Asset Class Summary: EOM（Common Stock OS 分母）与 Total Fully Diluted Shares Outstand 两个分母来源。",
       "operatorCode": "dataframe.sql.assert",
       "operatorVersion": "1.0.0"
     },
@@ -68,7 +68,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  row_type as [Row Type],\n  name as [Name],\n  common_stock as [Common Stock],\n  total_cses as [Total CSEs],\n  case when common_stock_os is null or common_stock_os = 0 then null else common_stock / common_stock_os end as [% of Class],\n  case when fully_diluted is null or fully_diluted = 0 then null else total_cses / fully_diluted end as [% Fully Diluted],\n  '' as [SC13 Filing],\n  note as [Note],\n  as_of_date as [As Of Date],\n  fully_diluted as [Fully Diluted],\n  common_stock_os as [Common Stock OS]\nfrom (\n  select\n    'holder' as row_type,\n    'GNI Group Ltd.' as name,\n    {constants.gniCommonStock} as common_stock,\n    {constants.gniTotalCses} as total_cses,\n    common_stock_os,\n    fully_diluted,\n    as_of_date,\n    'Global Parameter maintained manually' as note\n  from (\n    select\n      sum(case when lower(trim([Description])) in ('common shares os', 'cullgen common stock') then [Common Shares Equivalent] else 0 end) as common_stock_os,\n      max(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then [Common Shares Equivalent] else null end) as fully_diluted,\n      wf_eom_label({constants.workflowMonth}) as as_of_date\n    from {capitalization}\n  )\n  union all\n  select\n    'holder' as row_type,\n    'Songjiang Ma' as name,\n    {constants.songjiangMaCommonStock} as common_stock,\n    {constants.songjiangMaTotalCses} as total_cses,\n    common_stock_os,\n    fully_diluted,\n    as_of_date,\n    'Global Parameter maintained manually' as note\n  from (\n    select\n      sum(case when lower(trim([Description])) in ('common shares os', 'cullgen common stock') then [Common Shares Equivalent] else 0 end) as common_stock_os,\n      max(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then [Common Shares Equivalent] else null end) as fully_diluted,\n      wf_eom_label({constants.workflowMonth}) as as_of_date\n    from {capitalization}\n  )\n  union all\n  select\n    'total' as row_type,\n    'Total >5%' as name,\n    {constants.gniCommonStock} + {constants.songjiangMaCommonStock} as common_stock,\n    {constants.gniTotalCses} + {constants.songjiangMaTotalCses} as total_cses,\n    common_stock_os,\n    fully_diluted,\n    as_of_date,\n    'Calculated from fixed values' as note\n  from (\n    select\n      sum(case when lower(trim([Description])) in ('common shares os', 'cullgen common stock') then [Common Shares Equivalent] else 0 end) as common_stock_os,\n      max(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then [Common Shares Equivalent] else null end) as fully_diluted,\n      wf_eom_label({constants.workflowMonth}) as as_of_date\n    from {capitalization}\n  )\n)",
+        "sql": "\nselect\n  row_type as [Row Type],\n  name as [Name],\n  common_stock as [Common Stock],\n  total_cses as [Total CSEs],\n  case when common_stock_os is null or common_stock_os = 0 then null else common_stock / common_stock_os end as [% of Class],\n  case when fully_diluted is null or fully_diluted = 0 then null else total_cses / fully_diluted end as [% Fully Diluted],\n  '' as [SC13 Filing],\n  note as [Note],\n  as_of_date as [As Of Date],\n  fully_diluted as [Fully Diluted],\n  common_stock_os as [Common Stock OS]\nfrom (\n  select\n    'holder' as row_type,\n    'GNI Group Ltd.' as name,\n    {constants.gniCommonStock} as common_stock,\n    {constants.gniTotalCses} as total_cses,\n    common_stock_os,\n    fully_diluted,\n    as_of_date,\n    'Global Parameter maintained manually' as note\n  from (\n    select\n      max(case when lower(trim([Description])) = 'asset class summary: eom' then [Common Shares Equivalent] else null end) as common_stock_os,\n      max(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then [Common Shares Equivalent] else null end) as fully_diluted,\n      wf_eom_label({constants.workflowMonth}) as as_of_date\n    from {capitalization}\n  )\n  union all\n  select\n    'holder' as row_type,\n    'Songjiang Ma' as name,\n    {constants.songjiangMaCommonStock} as common_stock,\n    {constants.songjiangMaTotalCses} as total_cses,\n    common_stock_os,\n    fully_diluted,\n    as_of_date,\n    'Global Parameter maintained manually' as note\n  from (\n    select\n      max(case when lower(trim([Description])) = 'asset class summary: eom' then [Common Shares Equivalent] else null end) as common_stock_os,\n      max(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then [Common Shares Equivalent] else null end) as fully_diluted,\n      wf_eom_label({constants.workflowMonth}) as as_of_date\n    from {capitalization}\n  )\n  union all\n  select\n    'total' as row_type,\n    'Total >5%' as name,\n    {constants.gniCommonStock} + {constants.songjiangMaCommonStock} as common_stock,\n    {constants.gniTotalCses} + {constants.songjiangMaTotalCses} as total_cses,\n    common_stock_os,\n    fully_diluted,\n    as_of_date,\n    'Calculated from fixed values' as note\n  from (\n    select\n      max(case when lower(trim([Description])) = 'asset class summary: eom' then [Common Shares Equivalent] else null end) as common_stock_os,\n      max(case when lower(trim([Description])) like 'total fully diluted shares outstand%' then [Common Shares Equivalent] else null end) as fully_diluted,\n      wf_eom_label({constants.workflowMonth}) as as_of_date\n    from {capitalization}\n  )\n)",
         "constants": {
           "gniTotalCses": {
             "$type": "number",
@@ -104,7 +104,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "用 Global Parameter 的四个手工数生成两行 holder 和 Total >5%，并用 Summary 分母计算百分比。",
+      "description": "按 Asset Class Summary: EOM 与 Total Fully Diluted Shares Outstanding 两个分母计算份额，股东数字取 Global Parameters。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },

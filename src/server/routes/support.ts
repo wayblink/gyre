@@ -65,6 +65,8 @@ export type LatestWorkflowDataFrameArtifact = {
   fileName: string;
   filePath: string;
   sheetName: string;
+  /** The run's `month` runtime parameter (YYYY-MM), when the workflow is month-scoped. */
+  month: string | null;
   columns: string[];
   rows: Array<Record<string, unknown>>;
   buffer: Buffer;
@@ -639,6 +641,13 @@ export async function readLatestWorkflowDataFrameArtifact(
     workflowCode: string;
     taskId: string;
     fallbackSheetName: string;
+    /**
+     * Read this sheet instead of the one the artifact recorded. A workflow that persists a
+     * multi-sheet workbook (the monthly Capitalization Table Summary View holds both
+     * `Shares OS Reconciliation` and `Capitalization Summary`) records only the first one, while a
+     * page may need a different sheet of the same file.
+     */
+    sheetName?: string | null;
     month?: string | null;
     /**
      * Other runs that may produce this artifact. A monthly run invokes the record-page syncs, and the
@@ -650,6 +659,7 @@ export async function readLatestWorkflowDataFrameArtifact(
 ): Promise<LatestWorkflowDataFrameArtifact | null> {
   const artifact = await db.queryOne<Record<string, unknown>>(
     `select artifact.metadata_json,
+            run.runtime_parameters_json->>'month' as run_month,
             file.id as file_id,
             file.original_name,
             file.stored_name,
@@ -671,7 +681,7 @@ export async function readLatestWorkflowDataFrameArtifact(
   );
   if (!artifact) return null;
   const metadata = parseJson<Record<string, unknown>>(artifact.metadata_json, {});
-  const sheetName = workflowArtifactSheetName(metadata, params.fallbackSheetName);
+  const sheetName = params.sheetName?.trim() || workflowArtifactSheetName(metadata, params.fallbackSheetName);
   const buffer = await fileStorage.read(String(artifact.file_path));
   const preview = previewWorkbookSheet(buffer, sheetName, 5000);
   return {
@@ -679,6 +689,7 @@ export async function readLatestWorkflowDataFrameArtifact(
     fileName: productFileDisplayName(artifact),
     filePath: productFileDisplayPath(artifact),
     sheetName,
+    month: String(artifact.run_month ?? '').trim() || null,
     columns: preview.columns,
     rows: preview.rows,
     buffer,

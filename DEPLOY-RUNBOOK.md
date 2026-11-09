@@ -174,11 +174,12 @@ select count(*) as monthly_instances from monthly_run_instances;
 
 ### 4.1 要发布哪些
 
-**本轮（2026-11-09，员工归集 sheet 可选）只补发 1 个定义**：
+**本轮（2026-11-09：员工归集 sheet 可选、5% 股东分母改 EOM）补发 2 个定义**：
 
-| code              | 目标版本 | 上一轮基线 | 改了什么                                                                                                                                                             |
-| ----------------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `employee-import` | **2**    | 1          | 两个输入源的 sheet 改为跟随更新弹窗的选择（`allowSheetNameOverride` + `defaultSheetName` + `properties.sheet`），extract 任务读 `fileRefs.<source>.sheet`；Shareworks 默认 sheet 从旧母表的 `Options OS Detail` 改成 `Personnel Summary (Options OS D`（见 8.12） |
+| code                        | 目标版本 | 上一轮基线 | 改了什么                                                                                                                                                             |
+| --------------------------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `employee-import`           | **2**    | 1          | 两个输入源的 sheet 改为跟随更新弹窗的选择（`allowSheetNameOverride` + `defaultSheetName` + `properties.sheet`），extract 任务读 `fileRefs.<source>.sheet`；Shareworks 默认 sheet 从旧母表的 `Options OS Detail` 改成 `Personnel Summary (Options OS D`（见 8.12） |
+| `five-percent-holders-sync` | **2**    | 1          | `Common Stock OS` 改取 Capitalization Summary 的 `Asset Class Summary: EOM` 行（原来是 `Common Shares OS + Cullgen common stock` 两行相加），守卫与描述同步（见 8.13） |
 
 上一轮（月度 v56 + 行权汇总表）发布的那批定义如下，云端已发布过就不用再发：
 
@@ -203,8 +204,8 @@ select count(*) as monthly_instances from monthly_run_instances;
 ```bash
 cd <项目根目录>
 
-# 本轮发布清单（1 个）
-CODES='employee-import'
+# 本轮发布清单（2 个）
+CODES='employee-import five-percent-holders-sync'
 
 # 1) 先全部 dry-run：同一事务但 rollback，只验证能读、能连、版本没倒退
 for code in $CODES; do
@@ -214,6 +215,8 @@ done
 
 # 期望：输出
 #   validated employee-import v2 from database/workflows/employee-import.json (workflow_id=..., version_id=...)
+#   validated five-percent-holders-sync v2 from database/workflows/five-percent-holders-sync.json (...)
+# 注意：容器里的种子要随镜像一起更新，所以这两个定义必须在新镜像起来之后发布
 # （上一轮那批是 gyre-captable-summary-v2 v56 / futu-exercises-incremental-merge v9 / esop-exercise-record-sync v14）
 
 # 2) 确认无误后正式发布
@@ -237,7 +240,7 @@ done
 ```bash
 cd <项目根目录>
 export DATABASE_URL='postgres://captable:<密码>@<db-host>:5432/captable'
-for code in employee-import; do
+for code in employee-import five-percent-holders-sync; do
   npm run workflow:publish-seed -- "$code" --dry-run
 done
 # 逐条确认后去掉 --dry-run 再跑一遍
@@ -985,12 +988,47 @@ select id, status,
 
 ---
 
+## 8.13 5% 股东：`Common Stock OS` 改取 `Asset Class Summary: EOM`，并随月度产出自动更新
+
+**现象**：5% 股东页顶部 `Common Stock OS` 与「最新月度 Capitalization Table Summary View 的 `Asset Class Summary: EOM`」对不上；
+月度重跑后这页也不动，要等再次手动跑一次 5% 股东。
+
+**根因**：两处。
+1. 工作流定义里 `common_stock_os = sum(Common Shares OS + Cullgen common stock)`（`five-percent-holders-sync` v1）。业务口径是文件自己的
+   `Asset Class Summary: EOM` 行，两行相加在出现第三种资产类别后就会漂移。
+2. 页面只读「最近一次 5% 股东运行」落盘的 `5% Holders` 工件，所以月度更新不会反映到这个页面。
+
+**改法**：
+- 定义 v2：`common_stock_os` 改 `max(case when lower(trim([Description])) = 'asset class summary: eom' then [Common Shares Equivalent] end)`；
+  守卫改成断言 `Asset Class Summary: EOM` + `Total Fully Diluted Shares Outstand` 两行存在（`expectedValue = 2`）。
+- 页面（`GET /api/five-percent-holders`）：分母（`Common Stock OS` / `Fully Diluted`）与 `As of` 改为从**最新月度产物**
+  的 `Capitalization Summary` sheet 派生（`asOf` 取该次月度运行的 `month`），行内两位股东仍取 Global Parameters，
+  `% of Class` / `% Fully Diluted` 用新分母重算；月度没跑过时回落到 5% 工件里的值。
+- 5% 运行补 `month`：由绑定的 Capacity Summary 文件名前缀（或最新月度运行）决定，否则定义里的固定默认月份会把新文件标成旧 as-of。
+
+**验证**（本地已跑通）：
+
+```bash
+# 月度产物 2026-08 的 Capitalization Summary：EOM = 112,079,026、Total FD = 156,190,293
+curl -s https://<域名>/api/five-percent-holders | jq '.summary'
+# 期望：{"asOfDate":"2026/8/31","fullyDiluted":156190293,"commonStockOs":112079026}
+
+# 重跑 5% 股东（会自动绑定最新月度产物），落盘 Excel 的三行应带同一组分母
+curl -s -X POST https://<域名>/api/data-management-workflows/five-percent-holders/runs   -H 'content-type: application/json' -d '{"sources":{}}'
+```
+
+百分比会随之变化（分母变大）：GNI Group 的 `% of Class` 从 68.55% 变成 64.93%，`% Fully Diluted` 从 56.78% 变成 55.27%。
+这是口径修正的结果，不是数据错误。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 本轮（`main`，上一轮部署之后到 HEAD）一次性提交了这些内容：
 
 - `feat(workflows): read the Futu exercise summary instead of the detail export`（月度 **v56**、`futu-exercises-incremental-merge` **v9**、`esop-exercise-record-sync` **v13**、前端 `MONTHLY_WORKFLOW_VERSION` → 56、新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts` 并改写 `controlBookMergeDateTypes.test.ts` 的一条旧断言、本文件的 4.1/4.5/4.6/6.2/6.3/7/8/8.10）
 - `fix(workflows): cut the Futu exercise snapshot at the run month`（`esop-exercise-record-sync` **v14**：合并后按运行月份截断，见 8.11）
+- `feat(holdings): take the 5% holder denominators from the monthly summary`（`five-percent-holders-sync` **v2**：`Common Stock OS` 改取 `Asset Class Summary: EOM`；页面分母与 `As of` 改从最新月度产物派生并按新分母重算百分比；5% 运行补 `month`；新增 `src/server/fivePercentHolders/summary.ts` 与测试；本文件 4.1/4.2/4.3/8.13）
 - `feat(employees): let the update dialog pick each source's sheet`（`employee-import` **v2**：两个源的 sheet 跟随页面选择、Shareworks 默认 sheet 改 `Personnel Summary (Options OS D`；弹窗 Sheet 下拉框 + `getWorkflowUpdateSheetOptions`；`sourcesFromWorkflowSchemaJson` 改读 `defaultSheetName`；新增 `employeeImportSheetOverride.test.ts` / `workflowUpdateModal.test.ts` / `workflowSourceDescriptor.test.ts`；本文件的 4.1/4.2/4.3/8.12）
 
 完整的 `git log <上一轮部署的 commit>..HEAD` 为准；更早的提交属于上一轮已上线的代码。

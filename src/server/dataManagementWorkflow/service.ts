@@ -56,10 +56,19 @@ export async function startDataManagementWorkflow(
   executor: WorkflowRunStarter,
   pageKey: DataManagementPageKey,
   sources: DataManagementSourceBindings,
+  /**
+   * Caller-known runtime parameters that must win over the definition's defaults — the 5% Holders
+   * page passes the month of the Capitalization Summary it bound, because the definition's
+   * `month` default is one fixed month and would label a fresh workbook with a stale as-of date.
+   */
+  runtimeOverrides: Record<string, unknown> = {},
 ): Promise<WorkflowRunRecord> {
   const config = DATA_MANAGEMENT_WORKFLOW_CONFIGS[pageKey];
   const workflow = await loadActiveWorkflowDefinition(db, config.workflowCode);
   if (!workflow) throw new Error(`Data management workflow is not available: ${config.workflowCode}`);
-  const runtimeParameters = pageKey === 'five-percent-holders' ? await loadFivePercentHolderRuntimeOverrides(db) : {};
+  const runtimeParameters = {
+    ...(pageKey === 'five-percent-holders' ? await loadFivePercentHolderRuntimeOverrides(db) : {}),
+    ...runtimeOverrides,
+  };
   return startWorkflowRun({ db, runStore, executor, workflow, sources, runtimeParameters });
 }

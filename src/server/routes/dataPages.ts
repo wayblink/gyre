@@ -60,6 +60,11 @@ import {
   loadLatestFixedValuesByKey,
   fivePercentHolderGlobalParameterOrder,
 } from './parameters.js';
+import {
+  applyFivePercentHolderDenominators,
+  deriveFivePercentHolderDenominators,
+} from '../fivePercentHolders/summary.js';
+import { workflowEomLabel } from '../workflow/operators/sqlUtils.js';
 import type { EmployeeLabelRef, RequestWithAuth, WorkflowPageSourceBindingResponse } from './support.js';
 
 import { MONTHLY_WORKFLOW_CODE } from '../monthlyRun/store.js';
@@ -390,6 +395,25 @@ function transferPlanEditedWorkbookBuffer(
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, '2025 BC Subplan Transfer');
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+}
+
+/**
+ * The month a monthly Capitalization Table Summary View belongs to, read from its file name
+ * (`output/captable/2026-08-Capitalization_Table_Summary_View.v<stamp>.xlsx`). Falls back to the
+ * newest completed monthly run's month when the bound file is not one of those outputs.
+ */
+async function capitalisationSummaryMonth(
+  db: RouteContext['db'],
+  fileId: number | undefined,
+): Promise<string | null> {
+  if (fileId) {
+    const file = await getProductFileOrThrow(db, fileId);
+    const name = productFileDisplayPath(file).split('/').pop() ?? '';
+    const match = /^(\d{4}-\d{2})-/.exec(name);
+    if (match) return match[1];
+  }
+  const latestMonthlyOutput = await getLatestMonthlyRunOutput(db);
+  return latestMonthlyOutput?.monthKey ?? null;
 }
 
 async function latestFivePercentHolderInputSourceBindings(
@@ -1353,6 +1377,20 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     };
     if (!fixedValuesComplete) return emptyResult;
 
+    // The denominators belong to the newest monthly Capitalization Table Summary View, not to the
+    // last 5% Holders run: re-running the monthly update has to move this page without anyone
+    // re-running 5% Holders. The stored artifact stays the fallback so a deployment that has never
+    // produced a monthly summary still renders.
+    const monthlySummary = await readLatestWorkflowDataFrameArtifact(db, {
+      workflowCode: MONTHLY_WORKFLOW_CODE,
+      taskId: 'persist_capitalization_summary',
+      fallbackSheetName: 'Capitalization Summary',
+      // The workbook's other sheet (`Shares OS Reconciliation`) is what the artifact recorded; the
+      // denominators live in `Capitalization Summary`.
+      sheetName: 'Capitalization Summary',
+    });
+    const monthlyDenominators = monthlySummary ? deriveFivePercentHolderDenominators(monthlySummary.rows) : null;
+
     const artifact = await readLatestWorkflowDataFrameArtifact(db, {
       workflowCode: 'five-percent-holders-sync',
       taskId: 'persist_five_percent_holders_file',
@@ -1369,18 +1407,20 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       : [];
     const workbook = parseFivePercentHoldersGrid(grid);
     const holders = applyFivePercentHolderGlobalParameters(workbook, fixedValues);
+    const summary = {
+      asOfDate:
+        (monthlySummary?.month ? workflowEomLabel(monthlySummary.month) : null) ?? workbook.asOfDate,
+      fullyDiluted: monthlyDenominators?.fullyDiluted ?? workbook.fullyDiluted,
+      commonStockOs: monthlyDenominators?.commonStockOs ?? workbook.commonStockOs,
+    };
     return {
       sourceFiles: inputSourceFiles,
       workflowSourceBindings: inputSourceBindings,
       resultFileName: artifact?.fileName ?? null,
       workflowResultFiles: resultFilesFromArtifacts(artifact),
       resultFiles: sourceFilesFromArtifacts(artifact),
-      summary: {
-        asOfDate: workbook.asOfDate,
-        fullyDiluted: workbook.fullyDiluted,
-        commonStockOs: workbook.commonStockOs,
-      },
-      items: holders.map((row, index) => ({ id: index + 1, ...row })),
+      summary,
+      items: applyFivePercentHolderDenominators(holders, summary).map((row, index) => ({ id: index + 1, ...row })),
     };
   });
 
@@ -1459,7 +1499,21 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
         }
       }
     }
-    const run = await startDataManagementWorkflow(db, workflowRunStore, workflowRunExecutor, pageKey, sources);
+    // A 5% Holders run labels its output with the month of the Capitalization Summary it read. The
+    // definition's `month` default is a single hard-coded month, so the caller has to pass the real
+    // one or a fresh workbook comes out stamped with a stale as-of date.
+    const runtimeOverrides =
+      pageKey === 'five-percent-holders'
+        ? { month: await capitalisationSummaryMonth(db, sources.capitalization_summary?.fileId) }
+        : {};
+    const run = await startDataManagementWorkflow(
+      db,
+      workflowRunStore,
+      workflowRunExecutor,
+      pageKey,
+      sources,
+      runtimeOverrides.month ? runtimeOverrides : {},
+    );
     return reply.code(201).send(workflowRunToExecutionResult(run));
   });
 }
