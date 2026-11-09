@@ -386,7 +386,13 @@ export function sourcesFromWorkflowSchemaJson(schemaJson: unknown): WorkflowPage
       .filter(([, field]) => !(isRecord(field) && field.hidden === true))
       .map(([sourceKey, field]) => {
         const nested = isRecord(field) && isRecord(field.properties) ? field.properties : {};
-        const sheet = isRecord(nested.sheet) ? String(nested.sheet.default ?? '').trim() : '';
+        // `defaultSheetName` is the documented, editor-preserved home for a source's sheet default
+        // (Monthly Update derives its source list from it). `properties.sheet` only declares that
+        // the sheet is operator-settable, and its optional `default` is a legacy second source.
+        const declaredDefault =
+          isRecord(field) && typeof field.defaultSheetName === 'string' ? field.defaultSheetName : '';
+        const sheet =
+          declaredDefault.trim() || (isRecord(nested.sheet) ? String(nested.sheet.default ?? '').trim() : '');
         return {
           sourceKey,
           label:

@@ -111,6 +111,37 @@ export type WorkflowUpdateModal = {
   bindEvents: () => void;
 };
 
+export type WorkflowUpdateSheetOptionInput = {
+  /** The operator's pick (or the last run's sheet); wins over everything else. */
+  selectedSheet?: string | null;
+  /** The source's configured default from the workflow schema. */
+  defaultSheet?: string | null;
+  /** Sheet names the bound workbook actually contains. */
+  sheets: ReadonlyArray<string>;
+};
+
+/**
+ * Sheet choices for an update-modal source, mirroring Monthly Update's picker.
+ *
+ * The bound file decides which sheets exist, but a pick that the workbook no longer contains must
+ * stay visible and selected: silently falling back to another sheet would extract the wrong table
+ * (and Excel truncates sheet names at 31 characters, so near-misses are easy to create).
+ */
+export function getWorkflowUpdateSheetOptions(params: WorkflowUpdateSheetOptionInput): {
+  selectedSheet: string;
+  options: string[];
+} {
+  const options = params.sheets.map((sheetName) => String(sheetName ?? '').trim()).filter(Boolean);
+  const selectedSheet =
+    String(params.selectedSheet ?? '').trim() || String(params.defaultSheet ?? '').trim() || options[0] || '';
+  if (selectedSheet && !options.includes(selectedSheet)) {
+    return { selectedSheet, options: [selectedSheet, ...options] };
+  }
+  return { selectedSheet, options };
+}
+
+type SourceSheetSummaryState = { loading: boolean; errorMessage: string; sheets: string[] };
+
 export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): WorkflowUpdateModal {
   const { el, api, escapeHtml, notify } = deps;
   const lang = deps.getLanguage;
@@ -119,6 +150,10 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
 
   const sourceBindingsByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowPageSourceBinding[]>> = {};
   const resultFilesByPage: Partial<Record<WorkflowUpdatePageKey, WorkflowResultFileBinding[]>> = {};
+  // Workbook sheet lists, cached per product file: the sheet picker offers the real sheet names
+  // because Excel truncates them at 31 characters and nobody can retype those reliably.
+  const sourceSheetSummaries = new Map<number, SourceSheetSummaryState>();
+  const pendingSheetRequests = new Set<number>();
   let configs: Partial<Record<WorkflowUpdatePageKey, WorkflowPageConfig>> = {};
   let activePage: WorkflowUpdatePageKey | null = null;
   let selectedFiles: Record<string, number | null> = {};
@@ -172,6 +207,67 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
     return sourceBindingsByPage[page]?.find((binding) => binding.sourceKey === sourceKey) ?? null;
   }
 
+  /**
+   * Fetch (once per file) the sheet names a bound workbook carries, then repaint the picker.
+   * Cached by file id, including failures: a broken workbook must not turn the modal into a
+   * request loop on every repaint.
+   */
+  async function ensureSourceSheetSummaries(fileId: number) {
+    if (sourceSheetSummaries.has(fileId) || pendingSheetRequests.has(fileId)) return;
+    pendingSheetRequests.add(fileId);
+    sourceSheetSummaries.set(fileId, { loading: true, errorMessage: '', sheets: [] });
+    renderSources();
+    try {
+      const detail = await api<{ sheets?: Array<{ sheetName?: unknown }> }>(`/api/files/${fileId}`);
+      const sheets = (detail.sheets ?? []).map((sheet) => String(sheet.sheetName ?? '').trim()).filter(Boolean);
+      sourceSheetSummaries.set(fileId, { loading: false, errorMessage: '', sheets });
+    } catch (error) {
+      sourceSheetSummaries.set(fileId, {
+        loading: false,
+        errorMessage: (error as Error).message,
+        sheets: [],
+      });
+    } finally {
+      pendingSheetRequests.delete(fileId);
+      renderSources();
+    }
+  }
+
+  function renderSourceSheetControl(
+    source: WorkflowPageConfig['sources'][number],
+    previous: WorkflowPageSourceBinding | null,
+    selectedFileId: number | null,
+  ) {
+    if (source.sheet === undefined && !previous?.sheet) return '';
+    const fileId = selectedFileId ?? previous?.fileId ?? null;
+    const sheetState = fileId ? sourceSheetSummaries.get(fileId) ?? null : null;
+    if (fileId) void ensureSourceSheetSummaries(fileId);
+    const model = getWorkflowUpdateSheetOptions({
+      selectedSheet: selectedSheets[source.sourceKey] ?? previous?.sheet ?? source.sheet ?? '',
+      defaultSheet: source.sheet ?? null,
+      sheets: sheetState?.sheets ?? [],
+    });
+    const sourceKey = escapeHtml(source.sourceKey);
+    const label = `<span class="workflow-update-source-card__sheet-label">Sheet</span>`;
+    const hint = sheetState?.loading
+      ? `<span class="workflow-update-source-card__sheet-hint">Loading sheets...</span>`
+      : sheetState?.errorMessage
+        ? `<span class="workflow-update-source-card__sheet-hint workflow-update-source-card__sheet-hint--error">${escapeHtml(sheetState.errorMessage)}</span>`
+        : '';
+    if (model.options.length > 0) {
+      const options = model.options
+        .map(
+          (sheetName) =>
+            `<option value="${escapeHtml(sheetName)}"${sheetName === model.selectedSheet ? ' selected' : ''}>${escapeHtml(sheetName)}</option>`,
+        )
+        .join('');
+      return `<label class="workflow-update-source-card__sheet">${label}<select class="search-input workflow-update-source-card__sheet-input" data-workflow-update-sheet="${sourceKey}"${sheetState?.loading ? ' disabled' : ''}>${options}</select></label>${hint}`;
+    }
+    // No sheet list yet (still loading, unreadable workbook, or no file bound): fall back to free
+    // text so the operator can still state the sheet instead of being blocked by the picker.
+    return `<label class="workflow-update-source-card__sheet">${label}<input class="workflow-update-source-card__sheet-input" type="text" data-workflow-update-sheet="${sourceKey}" value="${escapeHtml(model.selectedSheet)}" placeholder="${escapeHtml(source.sheet ?? 'Sheet')}" /></label>${hint}`;
+  }
+
   function renderSources() {
     const page = activePage;
     if (!page) return;
@@ -202,14 +298,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
               <span class="workbook-tree__folder-icon" aria-hidden="true"></span>
               <span class="workflow-update-source-card__pick-label">${escapeHtml(pickLabel)}</span>
             </button>
-            ${
-              source.sheet !== undefined || previous?.sheet
-                ? `<label class="workflow-update-source-card__sheet">
-                  <span class="workflow-update-source-card__sheet-label">Sheet</span>
-                  <input class="workflow-update-source-card__sheet-input" type="text" data-workflow-update-sheet="${escapeHtml(source.sourceKey)}" value="${escapeHtml(selectedSheets[source.sourceKey] ?? previous?.sheet ?? source.sheet ?? '')}" />
-                </label>`
-                : ''
-            }
+            ${renderSourceSheetControl(source, previous, selectedFileId)}
           </div>
         </div>`;
       })
@@ -225,12 +314,14 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
         });
       });
     el('workflowUpdateSourceList')
-      .querySelectorAll<HTMLInputElement>('[data-workflow-update-sheet]')
-      .forEach((input) => {
-        input.addEventListener('input', () => {
-          const sourceKey = input.dataset.workflowUpdateSheet;
-          if (sourceKey) selectedSheets[sourceKey] = input.value;
-        });
+      .querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-workflow-update-sheet]')
+      .forEach((control) => {
+        const save = () => {
+          const sourceKey = control.dataset.workflowUpdateSheet;
+          if (sourceKey) selectedSheets[sourceKey] = control.value;
+        };
+        control.addEventListener('input', save);
+        control.addEventListener('change', save);
       });
   }
 
@@ -245,6 +336,10 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
     });
     if (!result) return;
     selectedFiles[sourceKey] = result.action === 'pick' ? result.fileId : null;
+    // A different workbook almost certainly carries a different sheet set, so drop the previous
+    // pick and let the source default (or the new workbook's first sheet) take over.
+    const source = activePage ? getConfig(activePage).sources.find((item) => item.sourceKey === sourceKey) : undefined;
+    if (result.action === 'pick') selectedSheets[sourceKey] = source?.sheet ?? '';
     renderSources();
     if (result.action === 'pick') {
       const file = deps.getProductFiles().find((item) => item.id === result.fileId);
