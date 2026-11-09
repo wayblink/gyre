@@ -174,7 +174,13 @@ select count(*) as monthly_instances from monthly_run_instances;
 
 ### 4.1 要发布哪些
 
-本轮 `database/workflows/*.json` 里有 3 个定义的版本变了，**全部都要发布**：
+**本轮（2026-11-09，员工归集 sheet 可选）只补发 1 个定义**：
+
+| code              | 目标版本 | 上一轮基线 | 改了什么                                                                                                                                                             |
+| ----------------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `employee-import` | **2**    | 1          | 两个输入源的 sheet 改为跟随更新弹窗的选择（`allowSheetNameOverride` + `defaultSheetName` + `properties.sheet`），extract 任务读 `fileRefs.<source>.sheet`；Shareworks 默认 sheet 从旧母表的 `Options OS Detail` 改成 `Personnel Summary (Options OS D`（见 8.12） |
+
+上一轮（月度 v56 + 行权汇总表）发布的那批定义如下，云端已发布过就不用再发：
 
 | code                               | 目标版本 | 上一轮基线 | 改了什么                                                                                                                                                                             |
 | ---------------------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -182,7 +188,7 @@ select count(*) as monthly_instances from monthly_run_instances;
 | `futu-exercises-incremental-merge` | **9**    | 6          | 增量改吃 13 列汇总表（中文『行权汇总数据』/英文 `Futu BCI Exercises to Date`）；合并键换成 员工号+授予编号+行权日期；base 补 `Exercise Order No.` 空列；retain 后补列，空结果不再丢列 |
 | `esop-exercise-record-sync`        | **14**   | 12         | 行权源 sheet 改为跟随运行时选择（不再写死『行权汇总数据』）；投影兼容两种表头、丢弃 `合计`/`in Total` 行；**合并后按运行月份截断**（页面是「截至当月」，此前会端出未来月份的行）       |
 
-其余定义不需动：`eq-control-book-incremental-merge` 7、`plan-summary-sync` 6、`read-series-b` 2、`gyre-therapeutics-cancel-restore-incremental-merge` 3、`esop-cancellation/sold-shares/grant` 7/8/12、`employee-import`/`esop-transfer-to-futu-sync`/`five-percent-holders-sync`/`option-plans-summary-values`/`gyre-therapeutics-cancel-restore-report-read` 均为 1；若云端缺失会被启动 seed 自动补上。
+其余定义不需动：`eq-control-book-incremental-merge` 7、`plan-summary-sync` 6、`read-series-b` 2、`gyre-therapeutics-cancel-restore-incremental-merge` 3、`esop-cancellation/sold-shares/grant` 7/8/12、`employee-import` 2（本轮补发，见上表）、`esop-transfer-to-futu-sync`/`five-percent-holders-sync`/`option-plans-summary-values`/`gyre-therapeutics-cancel-restore-report-read` 均为 1；若云端缺失会被启动 seed 自动补上。
 
 > 判断方法：`select code, version from workflow_definitions;` 与上表对比。低于目标版本的才需要发布；发布脚本拒绝版本倒退，重复执行是安全的。
 >
@@ -197,8 +203,8 @@ select count(*) as monthly_instances from monthly_run_instances;
 ```bash
 cd <项目根目录>
 
-# 本轮发布清单（3 个）
-CODES='gyre-captable-summary-v2 futu-exercises-incremental-merge esop-exercise-record-sync'
+# 本轮发布清单（1 个）
+CODES='employee-import'
 
 # 1) 先全部 dry-run：同一事务但 rollback，只验证能读、能连、版本没倒退
 for code in $CODES; do
@@ -206,9 +212,9 @@ for code in $CODES; do
     node dist/src/server/workflow/publishWorkflowSeed.js "$code" --dry-run
 done
 
-# 期望：每个都输出
-#   validated <code> v<N> from database/workflows/<code>.json (workflow_id=..., version_id=...)
-# 其中 gyre-captable-summary-v2 必须是 v56、futu-exercises-incremental-merge v9、esop-exercise-record-sync v14
+# 期望：输出
+#   validated employee-import v2 from database/workflows/employee-import.json (workflow_id=..., version_id=...)
+# （上一轮那批是 gyre-captable-summary-v2 v56 / futu-exercises-incremental-merge v9 / esop-exercise-record-sync v14）
 
 # 2) 确认无误后正式发布
 for code in $CODES; do
@@ -231,7 +237,7 @@ done
 ```bash
 cd <项目根目录>
 export DATABASE_URL='postgres://captable:<密码>@<db-host>:5432/captable'
-for code in gyre-captable-summary-v2 futu-exercises-incremental-merge esop-exercise-record-sync; do
+for code in employee-import; do
   npm run workflow:publish-seed -- "$code" --dry-run
 done
 # 逐条确认后去掉 --dry-run 再跑一遍
@@ -432,6 +438,19 @@ print('required =', [s['sourceKey'] for s in d['sources'] if s.get('required')])
 ```
 
 **期望**：`workflowVersion = 56`、`sources = 20`、`visible = 13`（7 个 base 隐藏）、`required = ['option_plans_summary', 'incremental_control_book']`；`incremental_futu_exercises` 的 `defaultSheetName` 应为 `行权汇总数据`。
+
+```bash
+# 员工归集（v2）：两个输入源必须各自带 sheet 默认值，弹窗才有 Sheet 下拉框
+curl -s "$BASE/api/data-management-workflows" | python3 -c "
+import sys, json
+items = json.load(sys.stdin)['items']
+employee = next(i for i in items if i['pageKey'] == 'employee')
+for s in employee['sources']:
+    print(s['sourceKey'], '->', s.get('sheet'))
+"
+```
+
+**期望**：`futu_grants -> 授予记录`、`shareworks_grants -> Personnel Summary (Options OS D`（旧的定义 v1 是没有 `sheet` 字段的，见 8.12）。
 
 ```bash
 # 月份标记：本轮新增 hasGrantData
@@ -902,12 +921,59 @@ Cap Table 的 to-date sheet（全量历史），截断后就是"截至当月的�
 
 ---
 
+## 8.12 员工归集 v2：两个输入源的 sheet 改为在页面选择（兼容弃用的 `!!Gyre Cap Table` 母表）
+
+**现象**：员工管理页的「更新」弹窗里，Shareworks 那一栏的输入文件显示为空；换了新的 Shareworks 导出重跑会
+停在第一步：`Sheet Options OS Detail not found`。
+
+**根因**：`!!Gyre Cap Table <MM.DD.YY>.xlsx` 是旧的「全家桶」母表（29 个 sheet，含 `Options OS Detail`、
+`Futu BCI Exercises to Date`、`EQ Control Book`、`2025 BC Subplan Transfer` 等），已弃用。现在按主题分别导出，
+员工归集需要的 Shareworks 那份是 `!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx`，
+它的数据 sheet 叫 **`Personnel Summary (Options OS D`**（Excel 31 字符上限截断了 `...Detail)`）。
+而 `employee-import` v1 把 `sheetName` 写死成旧母表的 `Options OS Detail`，`sheet.range.extract` 找不到即抛错。
+
+**改法**（与月度更新同一套契约）：
+
+- `employee-import` v2：两个源都声明 `allowSheetNameOverride: true` + `defaultSheetName`（Futu `授予记录`、
+  Shareworks `Personnel Summary (Options OS D`）+ `properties.sheet`；两个 extract 任务的 `params.sheetName`
+  改成 `$fromRuntime: fileRefs.<source>.sheet`，`runtimeParamsDefaults` 给同样的默认值。
+- 前端「更新」弹窗：Sheet 控件从自由文本升级为下拉框，选项来自 `GET /api/files/:id` 的 `sheets`（按 fileId 缓存）；
+  已选但工作簿里没有的 sheet 会保留并置顶（避免静默换成别的表）；读不到 sheet 列表时回落文本框。
+- 服务端派生：`sourcesFromWorkflowSchemaJson` 改为优先读 `defaultSheetName`（`properties.sheet.default` 会被
+  schema 归一化丢掉，导致控件在编辑器保存后消失）。
+
+**部署步骤**：第 5 节构建启动新镜像 → 回到 4.2 发布 `employee-import` v2 → 打开员工管理页点「更新」，
+两栏各自选文件 + sheet 后「确认并运行」。
+
+**验证**：
+
+```bash
+# 1) 页面来源清单必须带 sheet（离线也能看）
+curl -s https://<域名>/api/data-management-workflows \
+  | jq '.items[] | select(.pageKey=="employee") | .sources'
+# 期望：futu_grants.sheet = "授予记录"，shareworks_grants.sheet = "Personnel Summary (Options OS D"
+
+# 2) 跑一次后，运行时参数里落库的就是所选 sheet
+#    （表：workflow_runs，取最近一条 code='employee-import' 的行）
+select id, status,
+       runtime_parameters_json->'fileRefs'->'futu_grants'->>'sheet'       as futu_sheet,
+       runtime_parameters_json->'fileRefs'->'shareworks_grants'->>'sheet' as sw_sheet
+  from workflow_runs where workflow_code = 'employee-import'
+ order by id desc limit 1;
+```
+
+**回滚**：`employee-import` 回 v1 只需把定义版本号改回 1 再发布（`--force`）；但 v1 只认旧母表的
+`Options OS Detail` sheet，员工管理页会失去 sheet 选择能力，且用新导出必失败——所以回滚只在「新导出本身有问题」时用。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 本轮（`main`，上一轮部署之后到 HEAD）一次性提交了这些内容：
 
 - `feat(workflows): read the Futu exercise summary instead of the detail export`（月度 **v56**、`futu-exercises-incremental-merge` **v9**、`esop-exercise-record-sync` **v13**、前端 `MONTHLY_WORKFLOW_VERSION` → 56、新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts` 并改写 `controlBookMergeDateTypes.test.ts` 的一条旧断言、本文件的 4.1/4.5/4.6/6.2/6.3/7/8/8.10）
 - `fix(workflows): cut the Futu exercise snapshot at the run month`（`esop-exercise-record-sync` **v14**：合并后按运行月份截断，见 8.11）
+- `feat(employees): let the update dialog pick each source's sheet`（`employee-import` **v2**：两个源的 sheet 跟随页面选择、Shareworks 默认 sheet 改 `Personnel Summary (Options OS D`；弹窗 Sheet 下拉框 + `getWorkflowUpdateSheetOptions`；`sourcesFromWorkflowSchemaJson` 改读 `defaultSheetName`；新增 `employeeImportSheetOverride.test.ts` / `workflowUpdateModal.test.ts` / `workflowSourceDescriptor.test.ts`；本文件的 4.1/4.2/4.3/8.12）
 
 完整的 `git log <上一轮部署的 commit>..HEAD` 为准；更早的提交属于上一轮已上线的代码。
 
