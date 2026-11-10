@@ -180,7 +180,7 @@ select count(*) as monthly_instances from monthly_run_instances;
 | --------------------------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `employee-import`           | **2**    | 1          | 两个输入源的 sheet 改为跟随更新弹窗的选择（`allowSheetNameOverride` + `defaultSheetName` + `properties.sheet`），extract 任务读 `fileRefs.<source>.sheet`；Shareworks 默认 sheet 从旧母表的 `Options OS Detail` 改成 `Personnel Summary (Options OS D`（见 8.12） |
 | `five-percent-holders-sync` | **2**    | 1          | `Common Stock OS` 改取 Capitalization Summary 的 `Asset Class Summary: EOM` 行（原来是 `Common Shares OS + Cullgen common stock` 两行相加），守卫与描述同步（见 8.13） |
-| `gyre-captable-summary-v2`  | **58**   | 56         | v57：`SERIES B Control Book`（`series_b`）与 `Control Book Detail`（`incremental_control_book`）改为必填（见 8.14）；v58：删除 `2025 BC Subplan Transfer` 输入与 `calc_bc_subplan_cancelled`、`calc_option_metrics` 的 BC 修正项（见 8.15）。前端 `MONTHLY_WORKFLOW_VERSION` 同步 58 |
+| `gyre-captable-summary-v2`  | **59**   | 56         | v57：`SERIES B Control Book`（`series_b`）与 `Control Book Detail`（`incremental_control_book`）改为必填（见 8.14）；v58：删除 `2025 BC Subplan Transfer` 输入与 `calc_bc_subplan_cancelled`、`calc_option_metrics` 的 BC 修正项（见 8.15）；v59：`Cancel & Restore Summary` / `Cancel & Restore Record` 两个输入源加 `FUTU-` 前缀（见 8.17）。前端 `MONTHLY_WORKFLOW_VERSION` 同步 59 |
 | `plan-summary-sync`         | **7**    | 6          | Plan Summary 的 `cancelled` 改为按取消与恢复报表的「所属计划」逐计划计算（原本只有一个写死的 `GYRE 2025 BC Subplan` 覆盖行，其余读源文件列）；报表没覆盖的计划仍回退源文件（见 8.16） |
 
 上一轮（月度 v56 + 行权汇总表）发布的那批定义如下，云端已发布过就不用再发：
@@ -412,7 +412,7 @@ select code, version, status
    'employee-import', 'five-percent-holders-sync', 'plan-summary-sync'
  )
  order by code;
--- 期望：gyre-captable-summary-v2 = 58、futu-exercises-incremental-merge = 9、esop-exercise-record-sync = 14、
+-- 期望：gyre-captable-summary-v2 = 59、futu-exercises-incremental-merge = 9、esop-exercise-record-sync = 14、
 --      employee-import = 2、five-percent-holders-sync = 2、plan-summary-sync = 7
 
 -- ①a 员工归集 v2 的两个源必须已声明 sheet（否则弹窗没有 Sheet 下拉框）
@@ -463,7 +463,7 @@ print('required =', [s['sourceKey'] for s in d['sources'] if s.get('required')])
 "
 ```
 
-**期望**：`workflowVersion = 58`、`sources = 19`、`visible = 12`（7 个 base 隐藏，`bc_subplan_transfer` 已删除，见 8.15）、`required = ['incremental_control_book', 'series_b', 'option_plans_summary']`（2026-11 起 SERIES B Control Book 与 Control Book Detail 也是必填，见 8.14）；`incremental_futu_exercises` 的 `defaultSheetName` 应为 `行权汇总数据`。
+**期望**：`workflowVersion = 59`、`sources = 19`、`visible = 12`（7 个 base 隐藏，`bc_subplan_transfer` 已删除，见 8.15）、`required = ['incremental_control_book', 'series_b', 'option_plans_summary']`（2026-11 起 SERIES B Control Book 与 Control Book Detail 也是必填，见 8.14）；`incremental_futu_exercises` 的 `defaultSheetName` 应为 `行权汇总数据`。
 
 ```bash
 # 员工归集（v2）：两个输入源必须各自带 sheet 默认值，弹窗才有 Sheet 下拉框
@@ -583,7 +583,7 @@ done
 - [ ] 月度输入源 **20** 个（6.2 ③）
 - [ ] `docker compose ps` 两个服务均 Up / healthy
 - [ ] `app` 日志无 error / fatal / unhandled / reference not found
-- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 58`、`sources = 19`、`visible = 12`、三个必填（`incremental_control_book` / `series_b` / `option_plans_summary`），且 `incremental_futu_exercises.defaultSheetName = 行权汇总数据`（6.3）
+- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 59`、`sources = 19`、`visible = 12`、三个必填（`incremental_control_book` / `series_b` / `option_plans_summary`），且 `incremental_futu_exercises.defaultSheetName = 行权汇总数据`（6.3）
 - [ ] `GET /api/months` 的标记里含 `hasGrantData` 在内的六个 `has*Data`（6.3）
 - [ ] 八个记录页接口带 `?month=` 都返回 2xx（6.3）
 - [ ] `GET /api/files` 未登录返回 401
@@ -1130,12 +1130,35 @@ select code, version from workflow_definitions where code = 'plan-summary-sync';
 
 ---
 
+## 8.17 月度输入改名：`FUTU-Cancel & Restore Summary` / `FUTU-Cancel & Restore Record`（月度定义 v59）
+
+**改动**：`gyre-captable-summary-v2` v59 把两个取消与恢复输入源的显示名加了 `FUTU-` 前缀
+（`base_cancel_restore_report` 的「Cancel & Restore Summary」、`incremental_cancel_restore_report` 的「Cancel & Restore Record」，
+以及月度 invoke 任务里的同名 `$label`）。两个源仍保持「Summary 由上月自动继承、Record 可留空」的旧行为，只改名字。
+前端 `MONTHLY_WORKFLOW_VERSION` 同步 59。
+
+**验证**：
+
+```bash
+curl -s https://<域名>/api/monthly-runs/source-config \
+  | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['workflowVersion']);print([s['label'] for s in d['sources'] if 'Cancel' in s['label']])"
+# 期望：59
+#      ['FUTU-Cancel & Restore Summary', 'FUTU-Cancel & Restore Record']
+```
+
+月度页输入列表里这两行应显示带前缀的名字。数据库里按 `sourceKey` 存的历史绑定与实例数据不受影响（改的是 label，不是 key）。
+
+**回滚**：把 label 改回原名并重新发布（版本号不变也可，`publishWorkflowSeed` 对同版本是 upsert）；`MONTHLY_WORKFLOW_VERSION` 只有在版本号变化时才需要跟着改。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 本轮（`main`，上一轮部署之后到 HEAD）一次性提交了这些内容：
 
 - `feat(workflows): read the Futu exercise summary instead of the detail export`（月度 **v56**、`futu-exercises-incremental-merge` **v9**、`esop-exercise-record-sync` **v13**、前端 `MONTHLY_WORKFLOW_VERSION` → 56、新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts` 并改写 `controlBookMergeDateTypes.test.ts` 的一条旧断言、本文件的 4.1/4.5/4.6/6.2/6.3/7/8/8.10）
 - `fix(workflows): cut the Futu exercise snapshot at the run month`（`esop-exercise-record-sync` **v14**：合并后按运行月份截断，见 8.11）
+- `feat(monthly): prefix the Cancel & Restore inputs with FUTU-`（`gyre-captable-summary-v2` **v59**：两个取消与恢复输入源及其 invoke `$label` 加 `FUTU-` 前缀；前端 `MONTHLY_WORKFLOW_VERSION` → 59；本文件的 4.1/6.2/6.3/8.17）
 - `feat(plan-summary): compute cancelled per plan from the cancel & restore ledger`（`plan-summary-sync` **v7**：`cancelled` 按报表「所属计划」逐计划计算、报表未覆盖的计划回退源文件；新增 `src/server/workflow/planSummaryCancelled.test.ts`；本文件的 4.1/4.2/4.3/6.2/8.16）
 - `feat(monthly): retire the 2025 transfer-to-Futu page and the BC Subplan transfer input`（删除 `transfer-plan` 页面与其 4 个 API、`esop` 页面注册；月度 **v58** 去掉 `bc_subplan_transfer` 与两个转仓任务、`calc_option_metrics` 不再做 BC cancelled 修正；前端 `MONTHLY_WORKFLOW_VERSION` → 58；新增 `monthlyOptionMetrics.test.ts`；本文件的 4.1/4.2/6.2/6.3/8.15）
 - `feat(monthly): require the Series B and Control Book detail inputs`（`gyre-captable-summary-v2` **v57**：`series_b` / `incremental_control_book` 改必填、`series_b` 去掉 supplement 标记；前端 `MONTHLY_WORKFLOW_VERSION` → 57；`sourceSchema.test.ts` 与 `controlBookIncrementOptional.test.ts` 的旧「可选」断言改为必填；本文件的 4.1/4.2/4.3/6.2/6.3/8.14）

@@ -26,8 +26,9 @@ test('monthly input sources render in the order the workflow definition declares
       'Futu Exercise Record',
       // Previous Capitalization Summary sits between these two in `order` but stays hidden: the
       // system injects last month's output itself, so there is nothing for the operator to upload.
-      'Cancel & Restore Summary',
-      'Cancel & Restore Record',
+      // Futu-only exports: the prefix tells the operator which system the workbook came from.
+      'FUTU-Cancel & Restore Summary',
+      'FUTU-Cancel & Restore Record',
       // Record pages are refreshed at the end of the monthly run. The Futu view reuses the Futu
       // exercise export above (same workbook, other sheet), so only these two are extra uploads.
       'Shareworks Exercise Record',
