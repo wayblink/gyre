@@ -105,13 +105,17 @@ test('the Control Book increment is read with the optional extractor and declare
   assert.deepEqual(emptyColumns, CONTROL_BOOK_COLUMNS);
 });
 
-test('the monthly page marks the Control Book detail as optional', () => {
+test('the monthly page requires the Control Book detail export', () => {
   const seed = JSON.parse(readFileSync(monthlySeedPath, 'utf8')) as {
     runtimeParamsSchema: { fileRefs: { properties: Record<string, { required?: boolean; label?: string }> } };
   };
   const source = seed.runtimeParamsSchema.fileRefs.properties.incremental_control_book;
   assert.ok(source, 'the monthly definition must still declare the Control Book detail source');
-  assert.equal(source.required, false, 'a missing detail export must not block the monthly run');
+  // Required on demand (2026-11-09): every month must state its own capital structure. A quiet month
+  // now has to upload the unchanged export instead of leaning on last month's base, and the run is
+  // rejected up front with `Missing source binding: incremental_control_book`. The child merge
+  // workflow still tolerates an absent increment when it is invoked directly.
+  assert.equal(source.required, true, 'the monthly run must not start without the Control Book detail');
 });
 
 test('merging an absent increment returns the base rows untouched', async () => {

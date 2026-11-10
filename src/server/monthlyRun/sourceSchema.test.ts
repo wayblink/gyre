@@ -106,18 +106,19 @@ test('monthly input sources distinguish required business files from optional in
   const byKey = new Map(sources.map((source) => [source.sourceKey, source]));
 
   // Business files the operator must always bring: without them the month cannot be computed.
-  for (const sourceKey of ['option_plans_summary']) {
+  // `series_b` (SERIES B Control Book) and `incremental_control_book` (Control Book Detail) joined
+  // this list on demand: the month's capital structure cannot be stated without the current detail
+  // export, and SERIES B is no longer a nice-to-have supplement. A quiet month therefore has to
+  // upload the (unchanged) export instead of leaning on last month's base — `assertMonthlyRunInstanceReady`
+  // rejects the run with `Missing source binding: <key>` when it is absent.
+  for (const sourceKey of ['option_plans_summary', 'series_b', 'incremental_control_book']) {
     assert.equal(byKey.get(sourceKey)?.required, true, `${sourceKey} should be required`);
   }
 
-  // The incremental merges are optional: a given month may simply have no new detail export. The merge
-  // sub-workflows then fall back to their base alone (an unbound optional source resolves to a
-  // declared-but-empty dataframe), so a missing file must not block the run.
-  for (const sourceKey of [
-    'incremental_control_book',
-    'incremental_futu_exercises',
-    'incremental_cancel_restore_report',
-  ]) {
+  // The remaining incremental merges stay optional: a given month may simply have no new export of
+  // that kind. Their sub-workflows then fall back to their base alone (an unbound optional source
+  // resolves to a declared-but-empty dataframe), so a missing file must not block the run.
+  for (const sourceKey of ['incremental_futu_exercises', 'incremental_cancel_restore_report']) {
     assert.equal(byKey.get(sourceKey)?.required, false, `${sourceKey} should be optional`);
     assert.equal(byKey.get(sourceKey)?.hidden, false, `${sourceKey} should stay visible`);
   }
@@ -128,7 +129,6 @@ test('monthly input sources distinguish required business files from optional in
     'base_cancel_restore_report',
     'bc_subplan_transfer',
     'previous_capitalization_summary',
-    'series_b',
   ]) {
     assert.equal(byKey.get(sourceKey)?.required, false, `${sourceKey} should remain optional`);
   }
@@ -138,7 +138,8 @@ test('monthly input sources distinguish required business files from optional in
   assert.equal(byKey.get('previous_capitalization_summary')?.optionalCategory, 'inherit');
   assert.equal(byKey.get('base_cancel_restore_report')?.optionalCategory, 'inherit');
   assert.equal(byKey.get('bc_subplan_transfer')?.optionalCategory, 'validation');
-  assert.equal(byKey.get('series_b')?.optionalCategory, 'supplement');
+  // A required source must not still be tagged as an optional supplement.
+  assert.equal(byKey.get('series_b')?.optionalCategory, undefined);
 });
 
 test('2025 BC Subplan transfer remains as an optional compatibility input source', () => {

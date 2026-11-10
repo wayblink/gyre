@@ -174,12 +174,13 @@ select count(*) as monthly_instances from monthly_run_instances;
 
 ### 4.1 要发布哪些
 
-**本轮（2026-11-09：员工归集 sheet 可选、5% 股东分母改 EOM）补发 2 个定义**：
+**本轮（2026-11-09/10：员工归集 sheet 可选、5% 股东分母改 EOM、月度两个输入改必填）补发 3 个定义**：
 
 | code                        | 目标版本 | 上一轮基线 | 改了什么                                                                                                                                                             |
 | --------------------------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `employee-import`           | **2**    | 1          | 两个输入源的 sheet 改为跟随更新弹窗的选择（`allowSheetNameOverride` + `defaultSheetName` + `properties.sheet`），extract 任务读 `fileRefs.<source>.sheet`；Shareworks 默认 sheet 从旧母表的 `Options OS Detail` 改成 `Personnel Summary (Options OS D`（见 8.12） |
 | `five-percent-holders-sync` | **2**    | 1          | `Common Stock OS` 改取 Capitalization Summary 的 `Asset Class Summary: EOM` 行（原来是 `Common Shares OS + Cullgen common stock` 两行相加），守卫与描述同步（见 8.13） |
+| `gyre-captable-summary-v2`  | **57**   | 56         | `SERIES B Control Book`（`series_b`）与 `Control Book Detail`（`incremental_control_book`）改为必填；前端 `MONTHLY_WORKFLOW_VERSION` 同步 57（见 8.14） |
 
 上一轮（月度 v56 + 行权汇总表）发布的那批定义如下，云端已发布过就不用再发：
 
@@ -204,8 +205,8 @@ select count(*) as monthly_instances from monthly_run_instances;
 ```bash
 cd <项目根目录>
 
-# 本轮发布清单（2 个）
-CODES='employee-import five-percent-holders-sync'
+# 本轮发布清单（3 个）
+CODES='employee-import five-percent-holders-sync gyre-captable-summary-v2'
 
 # 1) 先全部 dry-run：同一事务但 rollback，只验证能读、能连、版本没倒退
 for code in $CODES; do
@@ -216,6 +217,7 @@ done
 # 期望：输出
 #   validated employee-import v2 from database/workflows/employee-import.json (workflow_id=..., version_id=...)
 #   validated five-percent-holders-sync v2 from database/workflows/five-percent-holders-sync.json (...)
+#   validated gyre-captable-summary-v2 v57 from database/workflows/gyre-captable-summary-v2.json (...)
 # 注意：容器里的种子要随镜像一起更新，所以这两个定义必须在新镜像起来之后发布
 # （上一轮那批是 gyre-captable-summary-v2 v56 / futu-exercises-incremental-merge v9 / esop-exercise-record-sync v14）
 
@@ -240,7 +242,7 @@ done
 ```bash
 cd <项目根目录>
 export DATABASE_URL='postgres://captable:<密码>@<db-host>:5432/captable'
-for code in employee-import five-percent-holders-sync; do
+for code in employee-import five-percent-holders-sync gyre-captable-summary-v2; do
   npm run workflow:publish-seed -- "$code" --dry-run
 done
 # 逐条确认后去掉 --dry-run 再跑一遍
@@ -400,15 +402,16 @@ docker compose -f docker-compose.prod.yml logs --tail=200 app | grep -iE 'error|
 ### 6.2 数据库状态
 
 ```sql
--- ① 4.1 表里定义的版本必须与目标一致（本轮新增 employee-import = 2）
+-- ① 4.1 表里定义的版本必须与目标一致（本轮新增 employee-import = 2、gyre-captable-summary-v2 = 57、five-percent-holders-sync = 2）
 select code, version, status
   from workflow_definitions
  where code in (
-   'gyre-captable-summary-v2', 'futu-exercises-incremental-merge', 'esop-exercise-record-sync', 'employee-import'
+   'gyre-captable-summary-v2', 'futu-exercises-incremental-merge', 'esop-exercise-record-sync',
+   'employee-import', 'five-percent-holders-sync'
  )
  order by code;
--- 期望：gyre-captable-summary-v2 = 56、futu-exercises-incremental-merge = 9、
---      esop-exercise-record-sync = 14、employee-import = 2
+-- 期望：gyre-captable-summary-v2 = 57、futu-exercises-incremental-merge = 9、esop-exercise-record-sync = 14、
+--      employee-import = 2、five-percent-holders-sync = 2
 
 -- ①a 员工归集 v2 的两个源必须已声明 sheet（否则弹窗没有 Sheet 下拉框）
 select jsonb_pretty(jsonb_build_object(
@@ -458,7 +461,7 @@ print('required =', [s['sourceKey'] for s in d['sources'] if s.get('required')])
 "
 ```
 
-**期望**：`workflowVersion = 56`、`sources = 20`、`visible = 13`（7 个 base 隐藏）、`required = ['option_plans_summary', 'incremental_control_book']`；`incremental_futu_exercises` 的 `defaultSheetName` 应为 `行权汇总数据`。
+**期望**：`workflowVersion = 57`、`sources = 20`、`visible = 13`（7 个 base 隐藏）、`required = ['incremental_control_book', 'series_b', 'option_plans_summary']`（2026-11 起 SERIES B Control Book 与 Control Book Detail 也是必填，见 8.14）；`incremental_futu_exercises` 的 `defaultSheetName` 应为 `行权汇总数据`。
 
 ```bash
 # 员工归集（v2）：两个输入源必须各自带 sheet 默认值，弹窗才有 Sheet 下拉框
@@ -519,7 +522,7 @@ done
 
 若需求方批准：
 
-1. 在「月度更新」页把两个必填源选好（`incremental_control_book`、`option_plans_summary`），按需补可选源
+1. 在「月度更新」页把三个必填源选好（`incremental_control_book`、`series_b`、`option_plans_summary`），按需补可选源
 2. 点执行 → 期望 23 个步骤全部 completed（四个 `invoke_*_record_sync` 按是否配置源决定 completed 或跳过）。**本轮重点看这三步**：`invoke_read_series_b`、`invoke_futu_exercises_merge`、`invoke_plan_summary_sync` —— 修复前它们在线上会报 `Product file not found` / `Sheet Options OS Detail not found`，现在即使对应输入留空也必须 completed
 3. 运行常在 `calc_control_book_metrics` 因 Omnibus 拼写变体停在 `waiting_approval`，批准后继续——**这是预期行为**
 4. 跑完后该月的 `has*Data` 变为 true
@@ -578,7 +581,7 @@ done
 - [ ] 月度输入源 **20** 个（6.2 ③）
 - [ ] `docker compose ps` 两个服务均 Up / healthy
 - [ ] `app` 日志无 error / fatal / unhandled / reference not found
-- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 56`、`sources = 20`、`visible = 13`、只有两个必填，且 `incremental_futu_exercises.defaultSheetName = 行权汇总数据`（6.3）
+- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 57`、`sources = 20`、`visible = 13`、三个必填（`incremental_control_book` / `series_b` / `option_plans_summary`），且 `incremental_futu_exercises.defaultSheetName = 行权汇总数据`（6.3）
 - [ ] `GET /api/months` 的标记里含 `hasGrantData` 在内的六个 `has*Data`（6.3）
 - [ ] 八个记录页接口带 `?month=` 都返回 2xx（6.3）
 - [ ] `GET /api/files` 未登录返回 401
@@ -1022,12 +1025,49 @@ curl -s -X POST https://<域名>/api/data-management-workflows/five-percent-hold
 
 ---
 
+## 8.14 月度输入：`SERIES B Control Book` 与 `Control Book Detail` 改为必填（月度定义 v57）
+
+**现象**：月度更新页里这两行显示「可选 · 补充材料」，不配置也能运行；Operator 反馈这两个输入其实每个月都必须给。
+
+**改法**：`gyre-captable-summary-v2` v57 把 `series_b`（SERIES B Control Book）与 `incremental_control_book`（Control Book Detail）的
+`required` 置 true，`series_b` 同时去掉 `optionalCategory: supplement`，两行描述改成必填口径；前端 `MONTHLY_WORKFLOW_VERSION` 同步 57
+（版本锁不一致时月度页会拒绝渲染输入源）。
+
+**行为变化（重要）**：
+- 月度页这两行显示「必须」，未配置时「确认并运行」被拦；服务端同样拦截：`POST /api/monthly-runs` 返回
+  400 `Missing source binding: incremental_control_book`（按 schema 顺序报第一个缺失的）。
+- **安静月份不再能靠上一月的基表直接跑**：以前「本月没有新交易」可以不传 Control Book Detail，合并结果等于基表、运行照常继续；
+  现在必须上传当期（未变化）的明细导出。历史上依赖该行为跑过的月份（如 2026-02「无 Control Book 更新」那次），重新运行时
+  会先被这条校验拦下，需要补一份当期导出。
+- 子工作流 `eq-control-book-incremental-merge` 本身仍然容忍增量缺省（`sheet.optional-range.extract` + 空列契约），
+  所以直接从工作流页单独跑它、只给 base 仍然可用；被收紧的只是月度入口。
+
+**验证**：
+
+```bash
+curl -s https://<域名>/api/monthly-runs/source-config \
+  | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['workflowVersion']);print([s['sourceKey'] for s in d['sources'] if s['required']])"
+# 期望：57
+#      ['incremental_control_book', 'series_b', 'option_plans_summary']
+
+# 不带这两个源直接触发一个月，应被拦（而不是跑起来）
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<域名>/api/monthly-runs \
+  -H 'content-type: application/json' -d '{"month":"2026-09"}'
+# 期望：400，body 为 {"error":"Missing source binding: incremental_control_book"}
+```
+
+**回滚**：把 `gyre-captable-summary-v2` 的版本号改回 56 再发布（或把这两个源的 `required` 改回 false），同时把
+`MONTHLY_WORKFLOW_VERSION` 改回 56——两侧必须一起改，否则月度页会因版本锁不一致拒绝渲染输入源。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 本轮（`main`，上一轮部署之后到 HEAD）一次性提交了这些内容：
 
 - `feat(workflows): read the Futu exercise summary instead of the detail export`（月度 **v56**、`futu-exercises-incremental-merge` **v9**、`esop-exercise-record-sync` **v13**、前端 `MONTHLY_WORKFLOW_VERSION` → 56、新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts` 并改写 `controlBookMergeDateTypes.test.ts` 的一条旧断言、本文件的 4.1/4.5/4.6/6.2/6.3/7/8/8.10）
 - `fix(workflows): cut the Futu exercise snapshot at the run month`（`esop-exercise-record-sync` **v14**：合并后按运行月份截断，见 8.11）
+- `feat(monthly): require the Series B and Control Book detail inputs`（`gyre-captable-summary-v2` **v57**：`series_b` / `incremental_control_book` 改必填、`series_b` 去掉 supplement 标记；前端 `MONTHLY_WORKFLOW_VERSION` → 57；`sourceSchema.test.ts` 与 `controlBookIncrementOptional.test.ts` 的旧「可选」断言改为必填；本文件的 4.1/4.2/4.3/6.2/6.3/8.14）
 - `feat(holdings): take the 5% holder denominators from the monthly summary`（`five-percent-holders-sync` **v2**：`Common Stock OS` 改取 `Asset Class Summary: EOM`；页面分母与 `As of` 改从最新月度产物派生并按新分母重算百分比；5% 运行补 `month`；新增 `src/server/fivePercentHolders/summary.ts` 与测试；本文件 4.1/4.2/4.3/8.13）
 - `feat(employees): let the update dialog pick each source's sheet`（`employee-import` **v2**：两个源的 sheet 跟随页面选择、Shareworks 默认 sheet 改 `Personnel Summary (Options OS D`；弹窗 Sheet 下拉框 + `getWorkflowUpdateSheetOptions`；`sourcesFromWorkflowSchemaJson` 改读 `defaultSheetName`；新增 `employeeImportSheetOverride.test.ts` / `workflowUpdateModal.test.ts` / `workflowSourceDescriptor.test.ts`；本文件的 4.1/4.2/4.3/8.12）
 
