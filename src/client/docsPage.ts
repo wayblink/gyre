@@ -331,8 +331,8 @@ GNI Group Ltd. 和 Songjiang Ma 的 Common Stock、Total CSEs 来自全局参数
 | --- | --- |
 | 授予记录 | 授予明细，可切换 Futu、Shareworks、Merge（合并对齐）三个视图 |
 | 行权记录 | Futu 行权记录 |
-| 卖出记录 | Futu 卖出记录 |
-| 取消记录 | 取消与恢复报表的明细台账 |
+| 卖出记录-FUTU | Futu 卖出记录 |
+| 取消记录-FUTU | 取消与恢复报表的明细台账 |
 
 ## 通用操作
 
@@ -734,8 +734,8 @@ To investigate a number, check the workflow month, selected file and sheet, run 
 | --- | --- |
 | Grant Record | Grant details, with Futu, Shareworks, and Merge (normalized) views |
 | Exercise Record | Futu exercise records |
-| Sold Shares | Futu sold-share records |
-| Cancellation Records | Detail ledger of the cancel-and-restore report |
+| Sold Shares-FUTU | Futu sold-share records |
+| Cancellation Records-FUTU | Detail ledger of the cancel-and-restore report |
 
 ## Common actions
 
