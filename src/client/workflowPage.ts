@@ -22,6 +22,7 @@ import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import { applyStaticTranslations, translateStaticText, type AppLanguage } from './i18n.js';
 import { createFilePickerModal } from './filePickerModal.js';
+import { createTextFormatter } from './texts.js';
 import { renderOperatorConfigForm, syncOperatorConfigForm } from './workflow/operatorConfigForm.js';
 import {
   applyTaskOperatorDefaults,
@@ -151,6 +152,7 @@ export function createWorkflowPage({
       getProductFiles: files,
       productFileDisplayName,
       openFilePicker: (options) => filePicker.open(options),
+      getLanguage: () => lang(),
     },
     {
       getWorkflow: getActiveWorkflow,
@@ -297,6 +299,8 @@ export function createWorkflowPage({
   function lang(): AppLanguage {
     return getLanguage?.() ?? 'zh-CN';
   }
+
+  const tp = createTextFormatter('workflow');
 
   function localizeWorkflowDom() {
     const page = document.getElementById('page-workflow');
@@ -771,7 +775,7 @@ export function createWorkflowPage({
               <span class="workflow-version-badge">v${escapeHtml(workflow.version)}</span>
             </div>
             <div class="workflow-list__desc">${escapeHtml(workflow.description || '暂无描述')}</div>
-            <div class="workflow-list__meta">${workflow.tasks.length} 个节点</div>
+            <div class="workflow-list__meta">${tp('nodeCount', { count: workflow.tasks.length }, lang())}</div>
           </div>
           <div class="workflow-list__actions">
             <button class="btn btn-secondary btn-sm" data-role="export" data-id="${workflow.id}" type="button">导出</button>
@@ -992,7 +996,7 @@ export function createWorkflowPage({
     summary.innerHTML = `
       <strong>${escapeHtml(operator.name)}</strong>
       <div>${escapeHtml(operator.description || '暂无描述')}</div>
-      <div style="margin-top:8px;">${escapeHtml(getWorkflowOperatorGroupLabel(operator.category))} · ${operator.inputSlots.length} 个输入 · ${operator.outputSlots.length} 个输出</div>
+      <div style="margin-top:8px;">${escapeHtml(getWorkflowOperatorGroupLabel(operator.category))} · ${tp('ioCount', { inputs: operator.inputSlots.length, outputs: operator.outputSlots.length }, lang())}</div>
     `;
   }
 

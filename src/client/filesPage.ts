@@ -824,6 +824,7 @@ export function createFilesPage({
       container: mount,
       workbookData,
       readOnly: !productFileEditing,
+      language: lang(),
     });
     updateFileActionState();
   }
@@ -1101,6 +1102,11 @@ export function createFilesPage({
       updateFileActionState();
       if (!currentProductFileDetail && !productFileLoading && !productFileLoadError) {
         renderFileBrowserMessage(tt('chooseFile'));
+      }
+      // Univer renders its own menus/toolbar in the language it was created with, so an open
+      // workbook has to be rebuilt to follow a language switch.
+      if (currentWorkbookBuffer && currentProductFileDetail && !productFileSaving) {
+        void renderWorkbookViewer(currentWorkbookBuffer, currentProductFileDetail);
       }
     },
   };

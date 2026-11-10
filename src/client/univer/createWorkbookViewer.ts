@@ -1,6 +1,8 @@
 import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
+import sheetsCoreEnUS from '@univerjs/preset-sheets-core/locales/en-US';
+import type { AppLanguage } from '../i18n.js';
 import * as XLSX from 'xlsx';
 import '@univerjs/design/lib/index.css';
 import '@univerjs/ui/lib/index.css';
@@ -10,13 +12,21 @@ type CreateWorkbookViewerOptions = {
   container: HTMLElement;
   workbookData: object;
   readOnly?: boolean;
+  /** Univer ships its own UI copy (context menus, sheet tabs, toolbar), so it needs the same language. */
+  language?: AppLanguage;
 };
 
-export function createWorkbookViewer({ container, workbookData, readOnly = false }: CreateWorkbookViewerOptions) {
+export function createWorkbookViewer({
+  container,
+  workbookData,
+  readOnly = false,
+  language = 'zh-CN',
+}: CreateWorkbookViewerOptions) {
+  const univerLocale = language === 'en-US' ? LocaleType.EN_US : LocaleType.ZH_CN;
   const { univer, univerAPI } = createUniver({
-    locale: LocaleType.ZH_CN,
+    locale: univerLocale,
     locales: {
-      [LocaleType.ZH_CN]: mergeLocales(sheetsCoreZhCN),
+      [univerLocale]: mergeLocales(language === 'en-US' ? sheetsCoreEnUS : sheetsCoreZhCN),
     },
     presets: [
       UniverSheetsCorePreset({

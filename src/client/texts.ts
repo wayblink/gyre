@@ -585,6 +585,15 @@ export const TEXTS = {
     files: { 'zh-CN': '个文件', 'en-US': 'files' },
   },
   /** workflowUpdateModal.ts: the shared "update this page" workflow modal. */
+  /** workflowPage / runtimeParamsPanel: counts and labels around the workflow canvas. */
+  workflow: {
+    nodeCount: { 'zh-CN': '{count} 个节点', 'en-US': '{count} nodes' },
+    parameterCount: { 'zh-CN': '{count} 项参数', 'en-US': '{count} parameters' },
+    ioCount: {
+      'zh-CN': '{inputs} 个输入 · {outputs} 个输出',
+      'en-US': '{inputs} inputs · {outputs} outputs',
+    },
+  },
   workflowUpdateModal: {
     chooseFromFilesCenter: { 'zh-CN': '从文件中心选择', 'en-US': 'Choose from the Files Center' },
     selectFile: { 'zh-CN': '选择文件…', 'en-US': 'Select file…' },

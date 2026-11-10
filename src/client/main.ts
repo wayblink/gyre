@@ -1535,7 +1535,7 @@ async function renderMonthlyPage(filterMonth: string) {
         <td><span class="status-badge ${statusClass(plan.status)}">${escapeHtml(monthlyRunStatusLabel(plan.status))}</span></td>
         <td><div class="action-buttons">
           <button class="btn btn-primary" data-action="view" data-id="${plan.id}">查看详情</button>
-          <button class="btn btn-danger" data-action="delete" data-id="${plan.id}">删除</button>
+          <button class="btn btn-danger" data-action="delete" data-id="${plan.id}">${t('delete')}</button>
         </div></td>
       </tr>`,
     )
@@ -1836,7 +1836,7 @@ function renderEmployeeLabelsTable() {
         <td>
           <div class="action-buttons">
             <button class="btn btn-secondary btn-sm" data-action="edit-employee-label" data-id="${label.id}">${t('edit')}</button>
-            <button class="btn btn-danger btn-sm" data-action="delete-employee-label" data-id="${label.id}">删除</button>
+            <button class="btn btn-danger btn-sm" data-action="delete-employee-label" data-id="${label.id}">${t('delete')}</button>
           </div>
         </td>
       </tr>`,

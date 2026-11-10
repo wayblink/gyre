@@ -14,6 +14,8 @@ import {
   workflowRuntimeDefaultString,
 } from './runtimeDefaults.js';
 import type { FilePickerResult } from '../filePickerModal.js';
+import type { AppLanguage } from '../i18n.js';
+import { createTextFormatter } from '../texts.js';
 import type { ProductFileDetail, ProductFileRecord, WorkflowDefinition, WorkflowTask } from '../../shared/types.js';
 
 /**
@@ -39,6 +41,8 @@ export type RuntimeParamsPanelDeps = {
     allowClear?: boolean;
     uploadFolderPrefix?: string;
   }) => Promise<FilePickerResult | null>;
+  /** The canvas language, so counts like "36 项参数" can be rendered in the active language. */
+  getLanguage?: () => AppLanguage;
 };
 
 export type RuntimeParamsPanelHost = {
@@ -63,6 +67,9 @@ export type RuntimeParamsPanelHost = {
 };
 
 export function createRuntimeParamsPanel(deps: RuntimeParamsPanelDeps, host: RuntimeParamsPanelHost) {
+  const tp = createTextFormatter('workflow');
+  const lang = (): AppLanguage => deps.getLanguage?.() ?? 'zh-CN';
+
   function renderRuntimeDefaultEditor(entry: { path: string; type: string }, value: unknown) {
     const pathAttr = deps.escapeHtml(entry.path);
     if (isRuntimeFileParameter(entry)) {
@@ -326,7 +333,7 @@ export function createRuntimeParamsPanel(deps: RuntimeParamsPanelDeps, host: Run
       >
         <span class="workflow-runtime-summary__chevron" aria-hidden="true">▸</span>
         <span class="workflow-runtime-summary__title">运行时参数</span>
-        <span class="workflow-runtime-summary__summary">${entries.length} 项参数</span>
+        <span class="workflow-runtime-summary__summary">${deps.escapeHtml(tp('parameterCount', { count: entries.length }, lang()))}</span>
       </button>
       <button class="btn btn-secondary btn-sm workflow-runtime-summary__apply" type="button" data-workflow-runtime-json-apply>应用 JSON</button>
     </div>
