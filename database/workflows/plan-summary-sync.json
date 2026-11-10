@@ -1,9 +1,9 @@
 {
   "code": "plan-summary-sync",
   "name": "Plan Summary Sync",
-  "description": "读取 Gyre Option Plans Summary SL，并消费取消与恢复报表增量合并后的完整基表；仅在 Plan Summary 指标计算时按变更月份累计 GYRE 2025 BC Subplan 的 Cancelled，保留 Outstanding 不为 0 的计划。",
+  "description": "读取 Gyre Option Plans Summary SL，并消费取消与恢复报表增量合并后的完整基表；Plan Summary 的 Cancelled 按报表的「所属计划」逐计划计算（报表没覆盖的计划回退到源文件列），保留 Outstanding 不为 0 的计划。",
   "status": "active",
-  "version": 6,
+  "version": 7,
   "tasks": [
     {
       "x": 420,
@@ -79,10 +79,15 @@
           "from": "invoke_cancel_restore_report",
           "slot": "dataframe",
           "guards": []
+        },
+        "plans": {
+          "from": "invoke_option_plans_summary",
+          "slot": "dataframe",
+          "guards": []
         }
       },
       "params": {
-        "sql": "\nselect\n  'cancel_restore' as category_for_grouping,\n  'GYRE 2025 BC Subplan' as plan_name,\n  'Cancelled' as [key],\n  sum(\n    case\n      when wf_month_key([变更日期]) is not null\n       and wf_month_key([变更日期]) <= {constants.workflowMonth}\n       and cast(coalesce([变更类型], '') as string) <> '已归属到期失效'\n      then case\n        when cast(coalesce([数量], 0) as string) in ('--', '', 'null') then 0\n        else cast([数量] as number)\n      end\n      else 0\n    end\n  ) as [value]\nfrom {cancel_restore}",
+        "sql": "\nselect\n  'cancel_restore' as category_for_grouping,\n  names.plan_name as plan_name,\n  'Cancelled' as [key],\n  agg.ledger_total as [value]\nfrom (\n  select distinct plan_name\n  from {plans}\n  where trim(concat('', coalesce(plan_name, ''))) <> ''\n) names\ninner join (\n  select\n    lower(trim(concat('', coalesce([所属计划], '')))) as plan_key,\n    sum(\n      case\n        when trim(concat('', coalesce(cast([数量] as string), '0'))) in ('--', '', 'null') then 0\n        else cast([数量] as number)\n      end\n    ) as ledger_total\n  from {cancel_restore}\n  where wf_month_key([变更日期]) is not null\n    and wf_month_key([变更日期]) <= {constants.workflowMonth}\n    and trim(concat('', coalesce(cast([变更类型] as string), ''))) <> '已归属到期失效'\n  group by lower(trim(concat('', coalesce([所属计划], ''))))\n) agg\non (\n  lower(trim(concat('', coalesce(names.plan_name, '')))) = agg.plan_key\n  or lower(trim(concat('', coalesce(names.plan_name, '')))) like concat('% ', agg.plan_key)\n)\n",
         "constants": {
           "workflowMonth": {
             "$type": "string",
@@ -94,11 +99,15 @@
           {
             "inputSlot": "input1",
             "tableName": "cancel_restore"
+          },
+          {
+            "inputSlot": "plans",
+            "tableName": "plans"
           }
         ]
       },
       "dependsOn": [],
-      "description": "按变更日期月份不晚于业务月份筛选取消与恢复报表，排除已归属到期失效，再合计数量作为 GYRE 2025 BC Subplan Cancelled。",
+      "description": "按「变更日期」截止到业务月份、排除「已归属到期失效」，按取消与恢复报表的「所属计划」分组汇总数量，并把每个分组挂到 Option Plans Summary 中对应的计划名上（大小写/前后缀差异通过 lower+trim 与后缀匹配归一），输出每个计划的 Cancelled 覆盖行。报表里没有出现的计划不产出覆盖行，下游回退到源文件里的取消列。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -123,7 +132,7 @@
         "distinct": false
       },
       "dependsOn": [],
-      "description": "合并 Option Plans Summary 指标与取消恢复报表生成的 BC Subplan Cancelled 覆盖行。",
+      "description": "合并 Option Plans Summary 指标与取消恢复报表按计划算出的 Cancelled 覆盖行。",
       "operatorCode": "dataframe.union",
       "operatorVersion": "1.0.0"
     },
@@ -140,7 +149,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  plan_name,\n  sum(case when [key] = 'Granted' then coalesce([value], 0) else 0 end) as granted,\n  sum(case when [key] = 'Exercised' then coalesce([value], 0) else 0 end) as exercised,\n  case\n    when plan_name = 'GYRE 2025 BC Subplan'\n      then sum(case when [key] = 'Cancelled' and category_for_grouping = 'cancel_restore' then coalesce([value], 0) else 0 end)\n    else sum(case when [key] = 'Cancelled' and coalesce(category_for_grouping, '') <> 'cancel_restore' then coalesce([value], 0) else 0 end)\n  end as cancelled,\n  sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) as outstanding\nfrom {plans}\nwhere trim(concat('', coalesce(plan_name, ''))) <> ''\ngroup by plan_name\nhaving sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) <> 0\norder by plan_name",
+        "sql": "\nselect\n  plan_name,\n  sum(case when [key] = 'Granted' then coalesce([value], 0) else 0 end) as granted,\n  sum(case when [key] = 'Exercised' then coalesce([value], 0) else 0 end) as exercised,\n  case\n    when sum(case when [key] = 'Cancelled' and category_for_grouping = 'cancel_restore' then 1 else 0 end) > 0\n      then sum(case when [key] = 'Cancelled' and category_for_grouping = 'cancel_restore' then coalesce([value], 0) else 0 end)\n    else sum(case when [key] = 'Cancelled' then coalesce([value], 0) else 0 end)\n  end as cancelled,\n  sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) as outstanding\nfrom {plans}\nwhere trim(concat('', coalesce(plan_name, ''))) <> ''\ngroup by plan_name\nhaving sum(case when [key] = 'Awards Outstanding' then coalesce([value], 0) else 0 end) <> 0\norder by plan_name\n",
         "tableBindings": [
           {
             "inputSlot": "input1",
@@ -149,7 +158,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "按标准化计划名汇总 Granted、Exercised、Cancelled 和 Awards Outstanding，并过滤 Outstanding 为 0 的计划。",
+      "description": "按标准化计划名汇总 Granted、Exercised、Cancelled 和 Awards Outstanding；Cancelled 优先取取消与恢复报表算出的值（报表覆盖到的计划），报表里没有该计划时回退到源文件列；过滤 Outstanding 为 0 的计划。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },

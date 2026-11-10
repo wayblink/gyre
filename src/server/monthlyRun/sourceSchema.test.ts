@@ -209,7 +209,11 @@ test('Plan Summary overrides BC Subplan Cancelled from the dated cancel/restore 
   assert.match(calculate?.params?.sql ?? '', /\[变更类型\]/);
   assert.match(calculate?.params?.sql ?? '', /已归属到期失效/);
   assert.match(calculate?.params?.sql ?? '', /wf_month_key\(\[变更日期\]\) <= \{constants\.workflowMonth\}/);
-  assert.match(calculate?.params?.sql ?? '', /GYRE 2025 BC Subplan/);
+  // The cancelled total is derived per plan from the report's 所属计划 column; pinning a single plan
+  // name in the SQL attributed every ledger row to whichever plan the definition hard-coded.
+  assert.match(calculate?.params?.sql ?? '', /所属计划/);
+  assert.doesNotMatch(calculate?.params?.sql ?? '', /'GYRE 2025 BC Subplan' as plan_name/);
+  assert.equal(calculate?.inputs?.plans?.from, 'invoke_option_plans_summary');
   const aggregate = workflow.tasks.find((task) => task.id === 'aggregate_plan_summary');
   assert.equal(aggregate?.inputs?.input1?.from, 'union_plan_summary_inputs');
   assert.match(aggregate?.params?.sql ?? '', /category_for_grouping = 'cancel_restore'/);

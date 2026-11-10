@@ -174,13 +174,14 @@ select count(*) as monthly_instances from monthly_run_instances;
 
 ### 4.1 要发布哪些
 
-**本轮（2026-11-09/10：员工归集 sheet 可选、5% 股东分母改 EOM、月度两个输入改必填、删除 2025 转仓至 Futu 与月度 BC Subplan Transfer）补发 3 个定义**：
+**本轮（2026-11-09/10：员工归集 sheet 可选、5% 股东分母改 EOM、月度两个输入改必填、删除 2025 转仓至 Futu 与月度 BC Subplan Transfer、计划汇总取消数改按报表计算）补发 4 个定义**：
 
 | code                        | 目标版本 | 上一轮基线 | 改了什么                                                                                                                                                             |
 | --------------------------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `employee-import`           | **2**    | 1          | 两个输入源的 sheet 改为跟随更新弹窗的选择（`allowSheetNameOverride` + `defaultSheetName` + `properties.sheet`），extract 任务读 `fileRefs.<source>.sheet`；Shareworks 默认 sheet 从旧母表的 `Options OS Detail` 改成 `Personnel Summary (Options OS D`（见 8.12） |
 | `five-percent-holders-sync` | **2**    | 1          | `Common Stock OS` 改取 Capitalization Summary 的 `Asset Class Summary: EOM` 行（原来是 `Common Shares OS + Cullgen common stock` 两行相加），守卫与描述同步（见 8.13） |
 | `gyre-captable-summary-v2`  | **58**   | 56         | v57：`SERIES B Control Book`（`series_b`）与 `Control Book Detail`（`incremental_control_book`）改为必填（见 8.14）；v58：删除 `2025 BC Subplan Transfer` 输入与 `calc_bc_subplan_cancelled`、`calc_option_metrics` 的 BC 修正项（见 8.15）。前端 `MONTHLY_WORKFLOW_VERSION` 同步 58 |
+| `plan-summary-sync`         | **7**    | 6          | Plan Summary 的 `cancelled` 改为按取消与恢复报表的「所属计划」逐计划计算（原本只有一个写死的 `GYRE 2025 BC Subplan` 覆盖行，其余读源文件列）；报表没覆盖的计划仍回退源文件（见 8.16） |
 
 上一轮（月度 v56 + 行权汇总表）发布的那批定义如下，云端已发布过就不用再发：
 
@@ -205,8 +206,8 @@ select count(*) as monthly_instances from monthly_run_instances;
 ```bash
 cd <项目根目录>
 
-# 本轮发布清单（3 个）
-CODES='employee-import five-percent-holders-sync gyre-captable-summary-v2'
+# 本轮发布清单（4 个）
+CODES='employee-import five-percent-holders-sync gyre-captable-summary-v2 plan-summary-sync'
 
 # 1) 先全部 dry-run：同一事务但 rollback，只验证能读、能连、版本没倒退
 for code in $CODES; do
@@ -218,6 +219,7 @@ done
 #   validated employee-import v2 from database/workflows/employee-import.json (workflow_id=..., version_id=...)
 #   validated five-percent-holders-sync v2 from database/workflows/five-percent-holders-sync.json (...)
 #   validated gyre-captable-summary-v2 v58 from database/workflows/gyre-captable-summary-v2.json (...)
+#   validated plan-summary-sync v7 from database/workflows/plan-summary-sync.json (...)
 # 注意：容器里的种子要随镜像一起更新，所以这两个定义必须在新镜像起来之后发布
 # （上一轮那批是 gyre-captable-summary-v2 v56 / futu-exercises-incremental-merge v9 / esop-exercise-record-sync v14）
 
@@ -242,7 +244,7 @@ done
 ```bash
 cd <项目根目录>
 export DATABASE_URL='postgres://captable:<密码>@<db-host>:5432/captable'
-for code in employee-import five-percent-holders-sync gyre-captable-summary-v2; do
+for code in employee-import five-percent-holders-sync gyre-captable-summary-v2 plan-summary-sync; do
   npm run workflow:publish-seed -- "$code" --dry-run
 done
 # 逐条确认后去掉 --dry-run 再跑一遍
@@ -407,11 +409,11 @@ select code, version, status
   from workflow_definitions
  where code in (
    'gyre-captable-summary-v2', 'futu-exercises-incremental-merge', 'esop-exercise-record-sync',
-   'employee-import', 'five-percent-holders-sync'
+   'employee-import', 'five-percent-holders-sync', 'plan-summary-sync'
  )
  order by code;
 -- 期望：gyre-captable-summary-v2 = 58、futu-exercises-incremental-merge = 9、esop-exercise-record-sync = 14、
---      employee-import = 2、five-percent-holders-sync = 2
+--      employee-import = 2、five-percent-holders-sync = 2、plan-summary-sync = 7
 
 -- ①a 员工归集 v2 的两个源必须已声明 sheet（否则弹窗没有 Sheet 下拉框）
 select jsonb_pretty(jsonb_build_object(
@@ -1090,12 +1092,51 @@ curl -s -o /dev/null -w '%{http_code}\n' https://<域名>/transfer-plan   # 期�
 
 ---
 
+## 8.16 计划汇总的 `cancelled` 改为按取消与恢复报表逐计划计算（`plan-summary-sync` v7）
+
+**现象**：Plan Summary 页的 `cancelled` 列基本来自源文件（Option Plans Summary 的 `Cancelled` 行），唯一例外是定义里写死的一行
+覆盖：把取消与恢复报表的合计总额算成 `GYRE 2025 BC Subplan` 的取消数。于是报表里明明写着 `所属计划 = 2023 OMNIBUS INCENTIVE PLAN`
+的取消，全被记到了 BC Subplan 头上，而 2023 Omnibus 继续显示源文件里的旧值。
+
+**改法**：
+- `calculate_cancel_restore_cancelled`：按报表的「所属计划」分组汇总（`变更日期` 截止到运行月份、排除 `已归属到期失效`），
+  再把每个分组挂到 Option Plans Summary 的计划名上——名称归一用 `lower`+`trim` 做等值匹配，并额外用 `like concat('% ', plan_key)`
+  兼容 `GYRE 2023 Omnibus Incentive Plan` ↔ `2023 OMNIBUS INCENTIVE PLAN` 这类前后缀差异。注意 SQL 里不能用 `replace()`
+  （引擎的关键字白名单把 `replace` 当成写操作拦掉了）。
+- `aggregate_plan_summary`：`cancelled` 优先取报表算出的值（该计划有报表行时），没有报表行的计划回退到源文件的 `Cancelled` 列。
+
+**2026-08 实测（本地真跑 run 321，输入与月度一致）**：
+
+| 计划 | 改前 | 改后 |
+| --- | --- | --- |
+| GYRE 2023 Omnibus Incentive Plan | -435,000（源文件） | **-67,616**（报表：-96-95-1,000+… 截止 2026-08） |
+| GYRE 2025 BC Subplan | -67,616（写死覆盖） | **-36,620**（报表无此计划 → 源文件列） |
+| CBIO 2015 / CBIO 2018 / 2018 Cullgen / 2018 Equity / GYRE 2023 Non-China BCI | 不变 | 不变（报表无这些计划的行，仍取源文件） |
+
+也就是说两个计划的取消数**交换了来源**：报表覆盖的 2023 Omnibus 现在按报表算，BC Subplan 回到源文件口径。
+
+**验证**：
+
+```bash
+# 版本
+select code, version from workflow_definitions where code = 'plan-summary-sync';   -- 期望 7
+
+# 重跑一次 2026-08 的计划汇总（或直接看月度跑完后的 Plan Summary 文件），
+# GYRE 2023 Omnibus Incentive Plan 的 cancelled 应等于取消与恢复报表截止该月的合计，
+# GYRE 2025 BC Subplan 应等于 Option Plans Summary 源文件里的 Cancelled 列。
+```
+
+**回滚**：把定义版本号改回 6 重新发布（或把两条 SQL 还原），`cancelled` 会恢复到「写死 BC Subplan 覆盖 + 其余读源文件」的旧口径。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 本轮（`main`，上一轮部署之后到 HEAD）一次性提交了这些内容：
 
 - `feat(workflows): read the Futu exercise summary instead of the detail export`（月度 **v56**、`futu-exercises-incremental-merge` **v9**、`esop-exercise-record-sync` **v13**、前端 `MONTHLY_WORKFLOW_VERSION` → 56、新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts` 并改写 `controlBookMergeDateTypes.test.ts` 的一条旧断言、本文件的 4.1/4.5/4.6/6.2/6.3/7/8/8.10）
 - `fix(workflows): cut the Futu exercise snapshot at the run month`（`esop-exercise-record-sync` **v14**：合并后按运行月份截断，见 8.11）
+- `feat(plan-summary): compute cancelled per plan from the cancel & restore ledger`（`plan-summary-sync` **v7**：`cancelled` 按报表「所属计划」逐计划计算、报表未覆盖的计划回退源文件；新增 `src/server/workflow/planSummaryCancelled.test.ts`；本文件的 4.1/4.2/4.3/6.2/8.16）
 - `feat(monthly): retire the 2025 transfer-to-Futu page and the BC Subplan transfer input`（删除 `transfer-plan` 页面与其 4 个 API、`esop` 页面注册；月度 **v58** 去掉 `bc_subplan_transfer` 与两个转仓任务、`calc_option_metrics` 不再做 BC cancelled 修正；前端 `MONTHLY_WORKFLOW_VERSION` → 58；新增 `monthlyOptionMetrics.test.ts`；本文件的 4.1/4.2/6.2/6.3/8.15）
 - `feat(monthly): require the Series B and Control Book detail inputs`（`gyre-captable-summary-v2` **v57**：`series_b` / `incremental_control_book` 改必填、`series_b` 去掉 supplement 标记；前端 `MONTHLY_WORKFLOW_VERSION` → 57；`sourceSchema.test.ts` 与 `controlBookIncrementOptional.test.ts` 的旧「可选」断言改为必填；本文件的 4.1/4.2/4.3/6.2/6.3/8.14）
 - `feat(holdings): take the 5% holder denominators from the monthly summary`（`five-percent-holders-sync` **v2**：`Common Stock OS` 改取 `Asset Class Summary: EOM`；页面分母与 `As of` 改从最新月度产物派生并按新分母重算百分比；5% 运行补 `month`；新增 `src/server/fivePercentHolders/summary.ts` 与测试；本文件 4.1/4.2/4.3/8.13）
