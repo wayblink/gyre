@@ -44,7 +44,6 @@ import {
   type MonthAvailabilityKey,
 } from './summaryPage.js';
 import { buildEmployeesApiUrl, type EmployeeSourceFilter } from './employeesPage.js';
-import { createTransferPlanPage } from './transferPlanPage.js';
 import { createCaptablePage } from './captablePage.js';
 import { paginationSummaryText } from './tableSort.js';
 import { createEsopTables, formatCurrency } from './esopTables.js';
@@ -81,7 +80,6 @@ const pageTitles: Record<string, string> = {
   'exercise-record': '行权记录',
   'sold-shares': '卖出记录',
   'cancellation-record': '取消记录',
-  'transfer-plan': '2025 转仓至 Futu',
   'employee-management': '员工管理',
   'plan-summary': '计划汇总',
   'five-percent-holders': '5% 股东',
@@ -168,8 +166,6 @@ async function refreshWorkflowUpdatePage(page: WorkflowUpdatePageKey) {
     await esopTables.renderSoldShares();
   } else if (page === 'cancellation-record') {
     await esopTables.renderCancellationRecords();
-  } else if (page === 'transfer-plan') {
-    await transferPlanPage.render();
   } else if (page === 'employee-management') {
     await loadEmployeesPage();
   } else if (page === 'plan-summary') {
@@ -257,27 +253,6 @@ const captablePage = createCaptablePage(
     localizeDom: localizeAppDom,
   },
 );
-
-const transferPlanPage = createTransferPlanPage({
-  el,
-  api,
-  escapeHtml,
-  formatNumber,
-  notify,
-  getLanguage: () => currentLanguage,
-  setButtonLabel,
-  rememberPageData: (page, response) => workflowUpdateModal.rememberPageData(page, response),
-  refreshProductFiles: () => filesPage.refreshProductFiles(),
-  localizeDom: localizeAppDom,
-  workflowModal: {
-    openProgressModal: (title, subtitle) => workflowUpdateModal.openProgressModal(title, subtitle),
-    renderProgress: (run) => workflowUpdateModal.renderProgress(run),
-    statusMessage: (key, detail) => workflowUpdateModal.statusMessage(key, detail),
-    pollRunUntilFinished: (runId, onProgress) => workflowUpdateModal.pollRunUntilFinished(runId, onProgress),
-    forceCloseModal: () => workflowUpdateModal.forceCloseModal(),
-    setCloseLocked: (locked) => workflowUpdateModal.setCloseLocked(locked),
-  },
-});
 
 const accountPage = createAccountPage({
   el,
@@ -458,7 +433,7 @@ type LanguageBinding =
  * applyLanguage() used to be ~150 hand-written DOM statements, so every new label meant another
  * line buried in the middle of it. These entries are applied in order by applyLanguageBindings();
  * the imperative tail of applyLanguage() keeps only what depends on live state (editing mode, the
- * transposed transfer-plan table, pagination re-renders).
+ * transposed tables, pagination re-renders).
  */
 const LANGUAGE_BINDINGS: LanguageBinding[] = [
   { kind: 'text', selector: '.nav-section-label', key: 'devTools' },
@@ -469,7 +444,6 @@ const LANGUAGE_BINDINGS: LanguageBinding[] = [
   { kind: 'hero', page: 'exercise-record', key: 'exerciseHeroText' },
   { kind: 'hero', page: 'sold-shares', key: 'soldHeroText' },
   { kind: 'hero', page: 'cancellation-record', key: 'cancellationHeroText' },
-  { kind: 'hero', page: 'transfer-plan', key: 'transferHeroText' },
   { kind: 'hero', page: 'employee-management', key: 'employeeHeroText' },
   { kind: 'hero', page: 'plan-summary', key: 'planHeroText' },
   { kind: 'hero', page: 'five-percent-holders', key: 'holdersHeroText' },
@@ -764,7 +738,6 @@ function applyLanguage() {
   applyLanguageBindings();
 
   // Labels that depend on live page state stay imperative.
-  transferPlanPage.syncLabels();
   syncCurrentViewInfoText();
 
   setText('#page-user-management .card-title', pageTitleFor('user-management'));
@@ -1196,10 +1169,6 @@ async function activatePage(page: PageKey) {
       await esopTables.renderCancellationRecords();
     }
 
-    if (page === 'transfer-plan') {
-      await transferPlanPage.render();
-    }
-
     if (page === 'employee-management') {
       await loadEmployeesPage();
     }
@@ -1623,14 +1592,6 @@ function initWorkflowUpdateModal() {
   });
   el('btnCancelFivePercentHoldersEdit').addEventListener('click', () => void fivePercentHoldersPage.cancelEdit());
   workflowUpdateModal.bindEvents();
-}
-
-async function initTransferPlanPage() {
-  el('btnToggleTransferPlanTableView').addEventListener('click', () => void transferPlanPage.toggleTableView());
-  el('btnEditTransferPlan').addEventListener('click', () => void transferPlanPage.startEdit());
-  el('btnCancelTransferPlanEdit').addEventListener('click', () => void transferPlanPage.cancelEdit());
-  el('btnSaveTransferPlanEdit').addEventListener('click', () => void transferPlanPage.saveEdit());
-  await transferPlanPage.render();
 }
 
 function renderEmployeesPagination(page: number, totalPages: number, total: number) {
@@ -2406,7 +2367,6 @@ async function initializeApp() {
     render: () => esopTables.renderCancellationRecords(),
   });
   await esopTables.init();
-  await initTransferPlanPage();
   await initEmployeesPage();
   initWorkflowUpdateModal();
   userManagementPage.bindEvents();

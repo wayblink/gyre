@@ -41,7 +41,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 ## 你可以用它做什么
 
 - 每月更新一次股权数据，得到最新的股本对账与 Capitalization Summary。
-- 查看授予、行权、卖出、转仓等 ESOP 明细台账。
+- 查看授予、行权、卖出、取消等 ESOP 明细台账。
 - 维护员工主数据、计划汇总与 5% 股东。
 - 上传、预览和管理所有来源与产出的 Excel 文件。
 
@@ -71,7 +71,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 左侧菜单是主要入口，从上到下依次是：
 
 - **股权汇总 / 月度更新**：每月更新与最终结果。
-- **ESOP 明细**：授予记录、行权记录、卖出记录、2025 转仓至 Futu 四个明细页。
+- **ESOP 明细**：授予记录、行权记录、卖出记录、取消记录四个明细页。
 - **员工管理 / 计划汇总**：员工主数据与按计划的汇总。
 - **5% 股东**：按 EDGAR SC13 口径展示持股 5% 以上的股东，其数字由数据管理工作流手工维护。
 
@@ -267,12 +267,6 @@ Futu 行权表的 --、空值和 null 数量都按 0；页面展示下单数量�
 
 过滤空工号、空姓名、标题行 工号，并排除姓名以 note: 开头的备注行；有效记录输出 sold_shares.xlsx。
 
-### 2025 转仓至 Futu
-
-读取 2025 BC Subplan Transfer 的第 4 行表头和明细，输出转仓文件。页面编辑 Options cancelled/forfeited 后按以下公式即时重算：
-
-    Transfer to Futu = In Total + Cancelled / Forfeited
-
 ## 五、计划汇总与员工归集
 
 ### 计划汇总
@@ -325,8 +319,8 @@ GNI Group Ltd. 和 Songjiang Ma 的 Common Stock、Total CSEs 来自全局参数
     id: 'esop-detail',
     title: 'ESOP 明细',
     group: '数据页面',
-    summary: '授予 / 行权 / 卖出 / 转仓四个台账',
-    body: `# ESOP 明细：授予 / 行权 / 卖出 / 转仓
+    summary: '授予 / 行权 / 卖出 / 取消四个台账',
+    body: `# ESOP 明细：授予 / 行权 / 卖出 / 取消
 
 **ESOP 明细** 下有四个台账页面，分别展示不同类型的持股数据。它们不是手工录入表，而是由月度流程自动生成的结果页。
 
@@ -338,7 +332,7 @@ GNI Group Ltd. 和 Songjiang Ma 的 Common Stock、Total CSEs 来自全局参数
 | 授予记录 | 授予明细，可切换 Futu、Shareworks、Merge（合并对齐）三个视图 |
 | 行权记录 | Futu 行权记录 |
 | 卖出记录 | Futu 卖出记录 |
-| 2025 转仓至 Futu | 按月份汇总的转仓数据 |
+| 取消记录 | 取消与恢复报表的明细台账 |
 
 ## 通用操作
 
@@ -348,12 +342,12 @@ GNI Group Ltd. 和 Songjiang Ma 的 Common Stock、Total CSEs 来自全局参数
 - **SourceFiles**：页面顶部标注了本页数据来自哪些来源文件。
 - **Update / 导出**：**Update** 重新选择来源并生成最新数据；**导出** 下载当前表格。
 
-## 2025 转仓至 Futu
+## 取消记录
 
-![2025 转仓至 Futu 页](/guide/transfer-plan.png)
-*转仓页：按月份汇总，可编辑取消数量，并可切换转置表格*
+![取消记录页](/guide/cancellation-record.png)
+*取消记录：取消与恢复报表的明细台账*
 
-转仓页顶部用卡片汇总总量、取消 / 作废、转入 Futu 与明细条数。表格里 **Options cancelled/forfeited** 一行可以直接编辑，修改后「Transfer to Futu」会即时重算。右上角 **转置表格** 可在横向与转置视图之间切换。`,
+取消记录页按月份列出取消与恢复的明细，可按姓名、计划、创建编号搜索。`,
   },
   {
     id: 'employees',
@@ -523,7 +517,7 @@ The interface has three parts: the left menu, the top bar, and the main content 
 The left menu is the main navigation, from top to bottom:
 
 - **CapTable / Monthly Updates**: monthly runs and final results.
-- **ESOP Detail**: the Grant Record, Exercise Record, Sold Shares, and 2025 Transfer to Futu pages.
+- **ESOP Detail**: the Grant Record, Exercise Record, Sold Shares, and Cancellation Records pages.
 - **Employee Management / Plan Summary**: employee master data and by-plan rollups.
 - **5% Holders**: shareholders above the 5% threshold, maintained by the 5% Holders data workflow.
 
@@ -695,7 +689,6 @@ Increment rows are limited to exercise dates at or before the workflow month; --
 - **Grant Record**: Futu grants are copied from the Grant Record sheet. Shareworks projects employee, plan, grant, vesting, exercise, cancellation, and outstanding fields. The Merge view aligns Futu and Shareworks fields; it does not recalculate source quantities.
 - **Exercise Record**: Futu --, empty, and null quantities become zero. The page shows ordered, exercised, cost, deduction/selling, and dealt quantities. Shareworks exercise rows remain a separate source.
 - **Sold Shares**: empty employee number, empty name, the header 工号, and names beginning with note: are removed before output.
-- **2025 Transfer to Futu**: after editing Options cancelled/forfeited, the page recalculates Transfer to Futu as In Total + Cancelled / Forfeited.
 
 ## Plan summary and employee import
 
@@ -742,7 +735,7 @@ To investigate a number, check the workflow month, selected file and sheet, run 
 | Grant Record | Grant details, with Futu, Shareworks, and Merge (normalized) views |
 | Exercise Record | Futu exercise records |
 | Sold Shares | Futu sold-share records |
-| 2025 Transfer to Futu | Transfer data summarized by month |
+| Cancellation Records | Detail ledger of the cancel-and-restore report |
 
 ## Common actions
 
@@ -752,12 +745,12 @@ The grant, exercise, and sold-share pages work the same way:
 - **SourceFiles**: the top of the page shows which source files this page's data came from.
 - **Update / Export**: **Update** reselects sources and regenerates the data; **Export** downloads the current table.
 
-## 2025 Transfer to Futu
+## Cancellation Records
 
-![The 2025 Transfer to Futu page](/guide/en/transfer-plan.png)
-*Transfer page: summarized by month, editable cancellation quantity, and a transpose toggle*
+![The Cancellation Records page](/guide/en/cancellation-record.png)
+*Cancellation records: the detail ledger of the cancel-and-restore report*
 
-The transfer page summarizes totals, cancellations/forfeitures, transfers to Futu, and detail record counts in cards at the top. The **Options cancelled/forfeited** row in the table is editable — changing it recalculates "Transfer to Futu" instantly. The **Transpose** button in the top-right switches between the horizontal and transposed views.`,
+The page lists cancellation and restoration detail by month and can be searched by name, plan, or creation number.`,
   },
   {
     id: 'employees',

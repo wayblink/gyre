@@ -14,7 +14,7 @@ import type {
 
 /**
  * The "update this page" modal shared by the workflow-backed product pages (grant record, exercise
- * record, sold shares, transfer plan, employee management, plan summary, 5% holders).
+ * record, sold shares, employee management, plan summary, 5% holders).
  *
  * It owns the state that used to live at module level in main.ts: the per-page workflow configs, the
  * source/result bindings the last run recorded, the modal's selection drafts and its close lock.
@@ -25,7 +25,6 @@ export type WorkflowUpdatePageKey =
   | 'exercise-record'
   | 'sold-shares'
   | 'cancellation-record'
-  | 'transfer-plan'
   | 'employee-management'
   | 'plan-summary'
   | 'five-percent-holders';
@@ -71,7 +70,6 @@ const PAGE_KINDS: Record<WorkflowUpdatePageKey, WorkflowUpdateKind> = {
   'exercise-record': 'esop',
   'sold-shares': 'esop',
   'cancellation-record': 'esop',
-  'transfer-plan': 'esop',
   'employee-management': 'data-management',
   'plan-summary': 'data-management',
   'five-percent-holders': 'data-management',

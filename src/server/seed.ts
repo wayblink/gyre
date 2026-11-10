@@ -65,28 +65,6 @@ export type SoldSharesWorkbookRow = {
   withholdingTaxCny: number;
   cashNetProceedsUsd: number;
 };
-export type TransferPlanWorkbookDetail = {
-  employeeNumber: string;
-  periodValues: Record<string, number>;
-  total: number;
-};
-export type TransferPlanWorkbookPeriod = {
-  period: string;
-  inTotal: number;
-  sourceCancelled: number;
-  transferToFutu: number;
-  sortOrder: number;
-};
-export type TransferPlanWorkbookData = {
-  details: TransferPlanWorkbookDetail[];
-  periods: TransferPlanWorkbookPeriod[];
-  totals: {
-    inTotal: number;
-    sourceCancelled: number;
-    transferToFutu: number;
-  };
-};
-
 function readSeedWorkbook(workbookPath: string): XLSX.WorkBook {
   return XLSX.read(readFileSync(workbookPath), { type: 'buffer' });
 }
@@ -182,109 +160,6 @@ export function loadSoldSharesWorkbook(): SoldSharesWorkbookRow[] {
     }));
 }
 
-export function loadTransferPlanWorkbook(
-  workbookPath = path.join(config.rootDir, 'database', 'extracted-sheets', '2025 BC Subplan Transfer.xlsx'),
-): TransferPlanWorkbookData {
-  const workbook = readSeedWorkbook(workbookPath);
-  const sheet = workbook.Sheets['2025 BC Subplan Transfer'];
-  if (!sheet) throw new Error(`Missing 2025 BC Subplan Transfer sheet in ${workbookPath}`);
-
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    defval: null,
-    raw: true,
-  });
-  const headerIndex = rows.findIndex((row) => asText(row[0]) === '行标签');
-  if (headerIndex < 0) throw new Error(`Missing 行标签 header in ${workbookPath}`);
-
-  const header = rows[headerIndex];
-  const periodColumns = header
-    .map((value, column) => ({ period: asText(value), column }))
-    .filter(
-      (item): item is { period: string; column: number } =>
-        item.column > 0 && item.period !== null && !['(空白)', '总计'].includes(item.period),
-    );
-  const totalColumn = header.findIndex((value) => asText(value) === '总计');
-  const totalRows = rows.filter((row) => asText(row[0]) === '总计');
-  if (totalColumn < 0 || totalRows.length < 2) {
-    throw new Error(`Missing source and adjusted total rows in ${workbookPath}`);
-  }
-
-  const numberAt = (row: unknown[], column: number) => Number(row[column] ?? 0);
-  const sourceTotalRow = totalRows[0];
-  const adjustedTotalRow = totalRows[1];
-  const periods = periodColumns.map(({ period, column }, sortOrder) => {
-    const inTotal = numberAt(sourceTotalRow, column);
-    const transferToFutu = numberAt(adjustedTotalRow, column);
-    return {
-      period,
-      inTotal,
-      sourceCancelled: transferToFutu - inTotal,
-      transferToFutu,
-      sortOrder,
-    };
-  });
-  const details = rows
-    .filter((row) => /^K\d+$/.test(asText(row[0]) ?? ''))
-    .map((row) => ({
-      employeeNumber: asText(row[0]) ?? '',
-      periodValues: Object.fromEntries(periodColumns.map(({ period, column }) => [period, numberAt(row, column)])),
-      total: numberAt(row, totalColumn),
-    }));
-  const inTotal = numberAt(sourceTotalRow, totalColumn);
-  const transferToFutu = numberAt(adjustedTotalRow, totalColumn);
-
-  return {
-    details,
-    periods,
-    totals: {
-      inTotal,
-      sourceCancelled: transferToFutu - inTotal,
-      transferToFutu,
-    },
-  };
-}
-
-export async function seedTransferPlanData(
-  db: Pick<DbClient, 'queryOne' | 'execute'>,
-  workbook = loadTransferPlanWorkbook(),
-  sourceFileId?: number | null,
-) {
-  let resolvedSourceFileId = sourceFileId;
-  if (resolvedSourceFileId === undefined) {
-    const sourceFile = await db.queryOne<{ id: number }>(
-      `select id
-       from product_files
-       where original_name = $1
-       order by created_at desc, id desc
-       limit 1`,
-      ['2025 BC Subplan Transfer.xlsx'],
-    );
-    resolvedSourceFileId = sourceFile?.id ?? null;
-  }
-
-  for (const item of workbook.periods) {
-    await db.execute(
-      `insert into transfer_plan_periods (
-        source_file_id, period, in_total, source_cancelled, cancelled_quantity,
-        manually_edited, sort_order, raw_json
-      ) values ($1, $2, $3, $4, $4, false, $5, $6::jsonb)
-      on conflict (period) do update set
-        source_file_id = excluded.source_file_id,
-        in_total = excluded.in_total,
-        source_cancelled = excluded.source_cancelled,
-        cancelled_quantity = case
-          when transfer_plan_periods.manually_edited then transfer_plan_periods.cancelled_quantity
-          else excluded.cancelled_quantity
-        end,
-        sort_order = excluded.sort_order,
-        raw_json = excluded.raw_json,
-        updated_at = current_timestamp`,
-      [resolvedSourceFileId, item.period, item.inTotal, item.sourceCancelled, item.sortOrder, JSON.stringify(item)],
-    );
-  }
-}
-
 const GLOBAL_PARAMETER_SEEDS: Array<[string, string, number]> = [
   ['cullgen_common_stock', 'Cullgen common stock（母公司普通股，固定值可修改）', 14_450_527],
   ['gyre_2023_china_subplan_total', 'Gyre 2023 China SubPlan Total（Futu 侧已归属总数，固定值可修改）', 7_815_396],
@@ -299,9 +174,6 @@ const GLOBAL_PARAMETER_SEEDS: Array<[string, string, number]> = [
   [FIVE_PERCENT_HOLDER_GLOBAL_PARAMETER_KEYS.songjiangMaTotalCses, '5% Holders - Songjiang Ma Total CSEs', 0],
 ];
 
-// Global Parameter defaults are product configuration, not demo business data, so they are
-// seeded during service initialization (see ensureWorkflowSeedData) even when demo seeding
-// is disabled. The upsert only refreshes label/editable and never overwrites an edited value.
 export async function seedGlobalParameters(db: DbClient) {
   for (const [key, label, value] of GLOBAL_PARAMETER_SEEDS) {
     await db.execute(

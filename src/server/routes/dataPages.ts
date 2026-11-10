@@ -9,7 +9,6 @@ import {
   mergeShareworksGrant,
   toTransferPlanPeriod,
 } from '../esopPages.js';
-import { loadTransferPlanWorkbook, seedTransferPlanData } from '../seed.js';
 import { expandByLinkedGroup } from '../employeeLinkExpansion.js';
 import { distinctGrantTypes } from '../utils/grantTypes.js';
 import { assembleShareworksName } from '../employees.js';
@@ -94,7 +93,6 @@ const esopPageKeySchema = z.enum([
   'exercise-record',
   'sold-shares',
   'cancellation-record',
-  'transfer-plan',
 ]);
 
 const esopWorkflowRunBodySchema = z.object({
@@ -322,86 +320,6 @@ function cancellationRecordFromWorkflowRow(
   };
 }
 
-function transferPlanFromWorkflowRows(rows: Array<Record<string, unknown>>, sourceFileId: number | null) {
-  const periodColumns = Object.keys(rows[0] ?? {}).filter((column) => {
-    const normalized = column.trim();
-    return normalized && !['行标签', '(空白)', '总计'].includes(normalized);
-  });
-  const totalRows = rows.filter((row) => textValue(row['行标签']) === '总计');
-  const sourceTotalRow = totalRows[0] ?? {};
-  const adjustedTotalRow = totalRows[1] ?? sourceTotalRow;
-  const details = rows.filter((row) => /^K\d+$/.test(textValue(row['行标签']) ?? ''));
-  return periodColumns.map((period, sortOrder) => {
-    const inTotal = numberValue(sourceTotalRow[period]);
-    const transferToFutu = numberValue(adjustedTotalRow[period], inTotal);
-    const sourceCancelled = transferToFutu - inTotal;
-    return {
-      id: sortOrder + 1,
-      sourceFileId,
-      period,
-      inTotal,
-      sourceCancelled,
-      cancelledQuantity: sourceCancelled,
-      transferToFutu,
-      manuallyEdited: false,
-      sortOrder,
-      detailCount: details.length,
-    };
-  });
-}
-
-function transferPlanEditedWorkbookBuffer(
-  rows: Array<Record<string, unknown>>,
-  edits: Array<{ period: string; cancelledQuantity: number }>,
-): Buffer {
-  if (rows.length === 0) throw badRequest('Transfer Plan result file has no rows to edit');
-  const firstRow = rows[0] ?? {};
-  const rowLabelColumn = Object.keys(firstRow).find((column) => column.trim() === '行标签') ?? '行标签';
-  const columns = Object.keys(firstRow);
-  if (!columns.includes(rowLabelColumn)) columns.unshift(rowLabelColumn);
-  const periodColumns = columns.filter((column) => {
-    const normalized = column.trim();
-    return normalized && normalized !== rowLabelColumn && !['(空白)', '总计'].includes(normalized);
-  });
-  const totalColumn = columns.find((column) => column.trim() === '总计') ?? '总计';
-  if (!columns.includes(totalColumn)) columns.push(totalColumn);
-
-  const editedRows = rows.map((row) => ({ ...row }));
-  const totalRows = editedRows.filter((row) => textValue(row[rowLabelColumn]) === '总计');
-  if (totalRows.length < 2) {
-    throw badRequest('Transfer Plan result file is missing source and adjusted total rows');
-  }
-  const sourceTotalRow = totalRows[0]!;
-  const adjustedTotalRow = totalRows[1]!;
-  const editsByPeriod = new Map(edits.map((edit) => [edit.period, edit.cancelledQuantity]));
-  const unknownPeriod = [...editsByPeriod.keys()].find((period) => !periodColumns.includes(period));
-  if (unknownPeriod) throw badRequest(`Unknown Transfer Plan period: ${unknownPeriod}`);
-
-  for (const period of periodColumns) {
-    const sourceValue = numberValue(sourceTotalRow[period]);
-    const cancelledQuantity = editsByPeriod.get(period);
-    if (cancelledQuantity !== undefined) {
-      adjustedTotalRow[period] = sourceValue + cancelledQuantity;
-    }
-  }
-  sourceTotalRow[totalColumn] = periodColumns.reduce((total, period) => total + numberValue(sourceTotalRow[period]), 0);
-  adjustedTotalRow[totalColumn] = periodColumns.reduce(
-    (total, period) => total + numberValue(adjustedTotalRow[period]),
-    0,
-  );
-
-  const sheetRows = [[], [], [], columns, ...editedRows.map((row) => columns.map((column) => row[column] ?? null))];
-  const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, '2025 BC Subplan Transfer');
-  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
-}
-
-/**
- * The month a monthly Capitalization Table Summary View belongs to, read from its file name
- * (`output/captable/2026-08-Capitalization_Table_Summary_View.v<stamp>.xlsx`). Falls back to the
- * newest completed monthly run's month when the bound file is not one of those outputs.
- */
 async function capitalisationSummaryMonth(
   db: RouteContext['db'],
   fileId: number | undefined,
@@ -1174,159 +1092,6 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
       pageSize: paginated.pageSize,
       totalPages: paginated.totalPages,
     };
-  });
-
-  app.get('/api/transfer-plan', async () => {
-    const artifact = await readLatestWorkflowDataFrameArtifact(db, {
-      workflowCode: 'esop-transfer-to-futu-sync',
-      taskId: 'persist_transfer_plan_file',
-      fallbackSheetName: '2025 BC Subplan Transfer',
-    });
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(db, 'esop-transfer-to-futu-sync');
-    const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
-    const baseItems = transferPlanFromWorkflowRows(artifact?.rows ?? [], artifact?.fileId ?? null);
-    const detailCount = baseItems[0]?.detailCount ?? 0;
-    const items = baseItems.map(({ detailCount: _detailCount, ...item }) => item);
-    const sourceFileId = items[0]?.sourceFileId ?? null;
-    const totals = items.reduce(
-      (result, item) => ({
-        inTotal: result.inTotal + item.inTotal,
-        sourceCancelled: result.sourceCancelled + item.sourceCancelled,
-        cancelledQuantity: result.cancelledQuantity + item.cancelledQuantity,
-        transferToFutu: result.transferToFutu + item.transferToFutu,
-      }),
-      { inTotal: 0, sourceCancelled: 0, cancelledQuantity: 0, transferToFutu: 0 },
-    );
-
-    return {
-      sourceFileId,
-      sourceFileName: artifact?.fileName ?? '2025 BC Subplan Transfer.xlsx',
-      sourceFiles: inputSourceFiles,
-      workflowSourceBindings: inputSourceBindings,
-      resultFileName: artifact?.fileName ?? null,
-      workflowResultFiles: resultFilesFromArtifacts(artifact),
-      resultFiles: sourceFilesFromArtifacts(artifact),
-      detailCount,
-      items,
-      totals,
-    };
-  });
-
-  app.post('/api/transfer-plan/edits', async (request, reply) => {
-    const body = transferPlanEditBodySchema.parse(request.body ?? {});
-    const artifact = await readLatestWorkflowDataFrameArtifact(db, {
-      workflowCode: 'esop-transfer-to-futu-sync',
-      taskId: 'persist_transfer_plan_file',
-      fallbackSheetName: '2025 BC Subplan Transfer',
-    });
-    if (!artifact) throw notFound('Transfer Plan result file not found');
-
-    const buffer = transferPlanEditedWorkbookBuffer(artifact.rows, body.edits);
-    const saved = await saveProductWorkbook(db, {
-      originalName: '2025 BC Subplan Transfer.xlsx',
-      buffer,
-      uploadedBy: `Transfer Plan Edit · ${updatedByFromRequest(request as RequestWithAuth)}`,
-      folderPrefix: inputStorageFolderPrefix('transfer-plan'),
-    });
-    const run = await startEsopPageWorkflow(db, workflowRunStore, workflowRunExecutor, 'transfer-plan', {
-      transfer_plan: { fileId: Number(saved.file.id) },
-    });
-
-    return reply.code(201).send({
-      file: toProductFile(saved.file),
-      ...workflowRunToExecutionResult(run),
-    });
-  });
-
-  app.patch('/api/transfer-plan/:id', async (request) => {
-    const { id } = request.params as { id: string };
-    const body = z.object({ cancelledQuantity: z.number().finite() }).parse(request.body ?? {});
-    let row = await db.queryOne<Record<string, unknown>>(
-      `update transfer_plan_periods
-          set cancelled_quantity = $2,
-              manually_edited = true,
-              updated_at = current_timestamp
-        where id = $1
-        returning *`,
-      [Number(id), body.cancelledQuantity],
-    );
-    if (!row) {
-      const artifact = await readLatestWorkflowDataFrameArtifact(db, {
-        workflowCode: 'esop-transfer-to-futu-sync',
-        taskId: 'persist_transfer_plan_file',
-        fallbackSheetName: '2025 BC Subplan Transfer',
-      });
-      const item = transferPlanFromWorkflowRows(artifact?.rows ?? [], artifact?.fileId ?? null).find(
-        (candidate) => candidate.id === Number(id),
-      );
-      if (item) {
-        row = await db.queryOne<Record<string, unknown>>(
-          `insert into transfer_plan_periods (
-             source_file_id, period, in_total, source_cancelled, cancelled_quantity, manually_edited, sort_order, raw_json
-           ) values ($1, $2, $3, $4, $5, true, $6, $7::jsonb)
-           on conflict (period) do update
-             set source_file_id = excluded.source_file_id,
-                 in_total = excluded.in_total,
-                 source_cancelled = excluded.source_cancelled,
-                 cancelled_quantity = excluded.cancelled_quantity,
-                 manually_edited = true,
-                 sort_order = excluded.sort_order,
-                 raw_json = excluded.raw_json,
-                 updated_at = current_timestamp
-           returning *`,
-          [
-            item.sourceFileId,
-            item.period,
-            item.inTotal,
-            item.sourceCancelled,
-            body.cancelledQuantity,
-            item.sortOrder,
-            JSON.stringify(item),
-          ],
-        );
-      }
-    }
-    if (!row) throw notFound('Transfer plan period not found');
-    return { item: toTransferPlanPeriod(row as never) };
-  });
-
-  app.post('/api/transfer-plan/import', async (request, reply) => {
-    let uploaded: { buffer: Buffer; mimeType: string } | null = null;
-    for await (const part of request.parts()) {
-      if (part.type === 'file') {
-        uploaded = {
-          buffer: await part.toBuffer(),
-          mimeType: part.mimetype,
-        };
-      }
-    }
-    if (!uploaded) return reply.code(400).send({ error: 'No file uploaded' });
-
-    const canonicalName = '2025 BC Subplan Transfer.xlsx';
-    const canonicalPath = path.join(config.rootDir, 'database', 'extracted-sheets', canonicalName);
-    const temporaryPath = `${canonicalPath}.${crypto.randomUUID()}.tmp.xlsx`;
-    fs.writeFileSync(temporaryPath, uploaded.buffer);
-    let workbook;
-    try {
-      workbook = loadTransferPlanWorkbook(temporaryPath);
-      fs.renameSync(temporaryPath, canonicalPath);
-    } catch (error) {
-      fs.rmSync(temporaryPath, { force: true });
-      throw error;
-    }
-
-    const saved = await saveProductWorkbook(db, {
-      originalName: canonicalName,
-      buffer: uploaded.buffer,
-      mimeType: uploaded.mimeType,
-      uploadedBy: 'Administrator',
-      folderPrefix: inputStorageFolderPrefix('transfer-plan'),
-    });
-    await seedTransferPlanData(db, workbook, Number(saved.file.id));
-    return reply.code(201).send({
-      file: toProductFile(saved.file),
-      detailCount: workbook.details.length,
-    });
   });
 
   app.get('/api/plan-summary', async (request) => {

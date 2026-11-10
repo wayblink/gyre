@@ -128,12 +128,6 @@ export const TEXTS = {
       'zh-CN': '展示取消与恢复明细，数据来自 Files 中的取消与恢复报表。',
       'en-US': 'View cancel-and-restore detail records from the report stored in Files.',
     },
-    transferHeroEyebrow: { 'zh-CN': '2025年计划', 'en-US': '2025 Plan' },
-    transferHeroText: {
-      'zh-CN': '按月汇总归属记录；取消数量需进入 Edit 模式修改，保存后生成新输入文件并运行 workflow。',
-      'en-US':
-        'Summarize monthly vesting records. Edit cancellations in Edit mode; saving creates a new input file and reruns the workflow.',
-    },
     employeeHeroEyebrow: { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
     employeeHeroText: {
       'zh-CN': '员工主数据由员工归集 workflow 从 ESOP 明细输入文件中生成，并支持手工补充。',
@@ -162,8 +156,8 @@ export const TEXTS = {
     },
     esopHeroEyebrow: { 'zh-CN': '股权明细', 'en-US': 'ESOP Detail' },
     esopHeroText: {
-      'zh-CN': '股权明细的业务总入口，包含授予、行权、卖出和 2025 转富途计划四类台账。',
-      'en-US': 'The ESOP detail hub for grants, exercises, sold shares, and the 2025 transfer plan.',
+      'zh-CN': '股权明细的业务总入口，包含授予、行权、卖出和取消四类台账。',
+      'en-US': 'The ESOP detail hub for grants, exercises, sold shares and cancellations.',
     },
     dataManagementHeroText: {
       'zh-CN': '数据管理业务入口，维护 5% 股东与全局参数等可由管理员调整的数据。',
@@ -209,16 +203,6 @@ export const TEXTS = {
       'zh-CN': 'Futu 行权流水 + Shareworks 逐授予拼接',
       'en-US': 'Futu exercise transactions + Shareworks per-grant rows',
     },
-    transferPlanEditStatusEditing: {
-      'zh-CN': '编辑模式：仅 Options cancelled/forfeited 可修改。Confirm & Run 后会生成新的输入文件并运行 workflow。',
-      'en-US':
-        'Edit mode: only Options cancelled/forfeited is editable. Confirm & Run creates a new input file and runs the workflow.',
-    },
-    transferPlanEditStatusIdle: {
-      'zh-CN': '页面按最新 workflow 结果文件渲染；如需调整取消数量，请进入 Edit 后 Confirm & Run。',
-      'en-US':
-        'This page renders the latest workflow result file. Use Edit, then Confirm & Run to adjust cancellations.',
-    },
     paginationSummaryRecords: {
       'zh-CN': '显示 {start}-{end}，共 {total} 条记录',
       'en-US': 'Showing {start}-{end} of {total} records',
@@ -229,20 +213,6 @@ export const TEXTS = {
       'en-US': 'Showing {start}-{end} of {total} employees',
     },
     paginationSummaryEmployeesEmpty: { 'zh-CN': '共 0 名员工', 'en-US': '0 employees' },
-    transferPlanSavingStatus: {
-      'zh-CN': '正在保存编辑、生成输入文件并运行 workflow...',
-      'en-US': 'Saving edits, creating an input file, and running the workflow...',
-    },
-    transferPlanInvalidQuantity: { 'zh-CN': '请输入有效的取消数量', 'en-US': 'Enter a valid cancellation quantity' },
-    transferPlanUpdated: { 'zh-CN': 'Transfer Plan 已更新', 'en-US': 'Transfer Plan updated' },
-    transferPlanUpdatedWithWarnings: {
-      'zh-CN': 'Transfer Plan 已更新（包含 Warning）',
-      'en-US': 'Transfer Plan updated with warnings',
-    },
-    transferPlanProgressSubtitle: {
-      'zh-CN': '正在根据编辑内容生成新的输入文件，并运行 Transfer Plan workflow。',
-      'en-US': 'Creating a new input file from your edits and running the Transfer Plan workflow.',
-    },
     employeeLabelModalTitleEdit: { 'zh-CN': '编辑标签', 'en-US': 'Edit Tag' },
     employeeLabelModalTitleCreate: { 'zh-CN': '新增标签', 'en-US': 'New Tag' },
     employeesPageModalTitleEdit: { 'zh-CN': '编辑员工', 'en-US': 'Edit Employee' },
@@ -303,7 +273,6 @@ export const TEXTS = {
       'zh-CN': '先创建标签，再分配给员工；名称或颜色变更会自动影响所有员工。',
       'en-US': 'Create labels first, then assign them to employees. Name or color changes apply to all employees.',
     },
-    transferPlanConfirmAndRun: { 'zh-CN': 'Transfer Plan Confirm & Run', 'en-US': 'Transfer Plan Confirm & Run' },
 
     placeholderSearchHolder: { 'zh-CN': '按姓名、计划、授予编号搜索...', 'en-US': 'Search by name, plan, grant...' },
     placeholderFilterHoldingsTag: { 'zh-CN': '按员工标签筛选', 'en-US': 'Filter by employee tag' },
@@ -361,7 +330,6 @@ export const TEXTS = {
     'exercise-record': { 'zh-CN': '行权记录', 'en-US': 'Exercise Record' },
     'sold-shares': { 'zh-CN': '卖出记录', 'en-US': 'Sold Shares' },
     'cancellation-record': { 'zh-CN': '取消记录', 'en-US': 'Cancellation Records' },
-    'transfer-plan': { 'zh-CN': '2025 转仓至 Futu', 'en-US': '2025 Transfer to Futu' },
     'employee-management': { 'zh-CN': '员工管理', 'en-US': 'Employee Management' },
     'plan-summary': { 'zh-CN': '计划汇总', 'en-US': 'Plan Summary' },
     'five-percent-holders': { 'zh-CN': '5% 股东', 'en-US': '5% Holders' },

@@ -6,7 +6,6 @@ import {
   loadFivePercentHoldersWorkbook,
   loadShareworksGrantWorkbook,
   loadSoldSharesWorkbook,
-  loadTransferPlanWorkbook,
 } from './seed.js';
 
 test('Shareworks seed rows preserve displayed dates instead of Excel serial numbers', () => {
@@ -100,48 +99,6 @@ test('5% Holders sheet parses header context and the >5% ownership rows', () => 
   const total = data.holders.find((h) => h.rowType === 'total');
   assert.equal(total?.commonStock, 75579303);
   assert.equal(total?.totalCses, 93665146);
-});
-
-test('Transfer to Futu seed data comes from the standalone workbook and preserves source totals', () => {
-  const workbook = loadTransferPlanWorkbook();
-
-  assert.equal(workbook.details.length, 451);
-  assert.equal(workbook.details[0]?.employeeNumber, 'K00004');
-  assert.equal(workbook.details[0]?.periodValues['2025-11'], 1175);
-  assert.equal(workbook.details[0]?.periodValues['2026-05 Performance part'], 940);
-  assert.equal(workbook.details[0]?.total, 4700);
-  assert.equal(workbook.details.at(-1)?.employeeNumber, 'K01574');
-
-  assert.equal(workbook.periods.length, 31);
-  assert.deepEqual(workbook.periods[0], {
-    period: '2025-11',
-    inTotal: 518797,
-    sourceCancelled: 0,
-    transferToFutu: 518797,
-    sortOrder: 0,
-  });
-  assert.deepEqual(
-    workbook.periods.find((item) => item.period === '2026-01'),
-    {
-      period: '2026-01',
-      inTotal: 31082,
-      sourceCancelled: -303,
-      transferToFutu: 30779,
-      sortOrder: 2,
-    },
-  );
-  assert.deepEqual(workbook.periods.at(-1), {
-    period: '2027-05 Performance part',
-    inTotal: 420000,
-    sourceCancelled: 0,
-    transferToFutu: 420000,
-    sortOrder: 30,
-  });
-  assert.deepEqual(workbook.totals, {
-    inTotal: 2100000,
-    sourceCancelled: -28171,
-    transferToFutu: 2071829,
-  });
 });
 
 test('workflow definition seed only bootstraps missing rows and does not overwrite database workflows', async () => {

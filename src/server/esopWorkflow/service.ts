@@ -13,7 +13,7 @@ import { ESOP_PAGE_WORKFLOW_CONFIGS, type EsopPageKey } from './workflowDefiniti
 export type EsopWorkflowSourceBindings = Record<string, WorkflowSourceBinding | undefined>;
 
 /**
- * ESOP pages (grant/exercise/sold-shares/transfer-plan) each map to one DB workflow definition.
+ * ESOP pages (grant/exercise/sold-shares/cancellation) each map to one DB workflow definition.
  * The generic bootstrap does the actual work; this only resolves the page's workflow code.
  */
 export async function startEsopPageWorkflow(

@@ -24,7 +24,6 @@ test('monthly input sources render in the order the workflow definition declares
       'Gyre Option Plans Summary',
       'Futu Exercises Summary',
       'Futu Exercise Record',
-      '2025 BC Subplan Transfer',
       // Previous Capitalization Summary sits between these two in `order` but stays hidden: the
       // system injects last month's output itself, so there is nothing for the operator to upload.
       'Cancel & Restore Summary',
@@ -76,7 +75,6 @@ test('only sources the operator uploads carry a file-name template', () => {
     'option_plans_summary',
     'series_b',
     'incremental_futu_exercises',
-    'bc_subplan_transfer',
     'incremental_cancel_restore_report',
     'exercise_record_shareworks',
     'sold_shares_futu',
@@ -127,7 +125,6 @@ test('monthly input sources distinguish required business files from optional in
     'base_control_book',
     'base_futu_exercises',
     'base_cancel_restore_report',
-    'bc_subplan_transfer',
     'previous_capitalization_summary',
   ]) {
     assert.equal(byKey.get(sourceKey)?.required, false, `${sourceKey} should remain optional`);
@@ -137,48 +134,36 @@ test('monthly input sources distinguish required business files from optional in
   assert.equal(byKey.get('base_futu_exercises')?.optionalCategory, 'inherit');
   assert.equal(byKey.get('previous_capitalization_summary')?.optionalCategory, 'inherit');
   assert.equal(byKey.get('base_cancel_restore_report')?.optionalCategory, 'inherit');
-  assert.equal(byKey.get('bc_subplan_transfer')?.optionalCategory, 'validation');
   // A required source must not still be tagged as an optional supplement.
   assert.equal(byKey.get('series_b')?.optionalCategory, undefined);
 });
 
-test('2025 BC Subplan transfer remains as an optional compatibility input source', () => {
+test('the monthly workflow no longer reads a 2025 BC Subplan Transfer input', () => {
   const sources = monthlySourcesFromSchemaOrdered(monthlyWorkflowSchema());
-  const transfer = sources.find((source) => source.sourceKey === 'bc_subplan_transfer');
-  assert.equal(transfer?.label, '2025 BC Subplan Transfer');
-  assert.equal(transfer?.required, false);
-  assert.equal(transfer?.hidden, false);
-  assert.equal(transfer?.order, 7);
+  assert.equal(
+    sources.some((source) => source.sourceKey === 'bc_subplan_transfer'),
+    false,
+    'the BC Subplan transfer export was retired: the monthly page must not offer it',
+  );
 
   const workflow = JSON.parse(
     readFileSync(path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'), 'utf8'),
   ) as { tasks: Array<Record<string, unknown>> };
-  assert.equal(
-    workflow.tasks.some((candidate) => candidate.id === 'extract_bc_subplan_transfer'),
-    true,
-  );
-  assert.equal(
-    workflow.tasks.some((candidate) => candidate.id === 'calc_bc_subplan_cancelled'),
-    true,
-  );
+  const taskIds = workflow.tasks.map((candidate) => String(candidate.id));
+  assert.equal(taskIds.includes('extract_bc_subplan_transfer'), false);
+  assert.equal(taskIds.includes('calc_bc_subplan_cancelled'), false);
+
+  // The BC Subplan numbers in the Capitalization Summary come from the Control Book itself
+  // (`Omnibus Inc…Pl…` rows) and stay: only the separate transfer export and its option-cancelled
+  // cross-check are gone.
   const controlMetrics = workflow.tasks.find((candidate) => candidate.id === 'calc_control_book_metrics') as
     { params?: { sql?: string } } | undefined;
-  assert.match(controlMetrics?.params?.sql ?? '', /Omnibus Inc%Pl%/);
   assert.match(controlMetrics?.params?.sql ?? '', /Ominibus Inc%Pl%/);
   assert.match(controlMetrics?.params?.sql ?? '', /bc_subplan_transfer_control_book/);
-  // A non-canonical Omnibus spelling must be surfaced as a warning, never as a silent drop.
-  const controlMetricsGuards = JSON.stringify(
-    (
-      workflow.tasks.find((candidate) => candidate.id === 'calc_control_book_metrics') as
-        { inputs?: unknown } | undefined
-    )?.inputs ?? {},
-  );
-  assert.match(controlMetricsGuards, /guard_warn_control_book_comment_variants/);
-  assert.match(controlMetricsGuards, /"failureStrategy":"warning"/);
   const optionMetrics = workflow.tasks.find((candidate) => candidate.id === 'calc_option_metrics') as
     { inputs?: unknown; params?: { sql?: string } } | undefined;
-  assert.equal(JSON.stringify(optionMetrics?.inputs ?? {}).includes('bc_subplan'), true);
-  assert.match(optionMetrics?.params?.sql ?? '', /bc_subplan_cancelled_adjustment/);
+  assert.equal(JSON.stringify(optionMetrics?.inputs ?? {}).includes('bc_subplan'), false);
+  assert.doesNotMatch(optionMetrics?.params?.sql ?? '', /bc_subplan_cancelled_adjustment/);
 });
 
 test('CapTable workflow derives Series B Preferred Stock from the Read SERIES B child workflow', () => {

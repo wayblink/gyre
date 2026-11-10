@@ -852,58 +852,6 @@ test('the workflow runtime parameter panel renders its groups and file pickers',
   assert.ok(doc.querySelector('[data-file-pick-open]'), 'file pick trigger missing');
 });
 
-const TRANSFER_PLAN = {
-  sourceFileName: 'Gyre Option Plans Summary.xlsx',
-  detailCount: 3,
-  totals: { inTotal: 1000, cancelledQuantity: 40, transferToFutu: 960 },
-  items: [{ period: '2026-01', cancelledQuantity: 10 }],
-  workflowSourceBindings: [],
-  workflowResultFiles: [],
-};
-
-test('the transfer plan page toggles its table view and edit mode', async () => {
-  const window = await bootApp([...API_STUBS, { match: /\/api\/transfer-plan$/, respond: TRANSFER_PLAN }], 120);
-  const doc = window.document;
-
-  doc.querySelector<HTMLButtonElement>('.nav-item[data-page="transfer-plan"]')?.click();
-  await new Promise((resolve) => setTimeout(resolve, 250));
-
-  // Read mode: the totals render and the edit controls are hidden.
-  assert.equal(doc.getElementById('transferPlanInTotal')?.textContent, '1,000');
-  assert.equal(doc.getElementById('transferPlanCancelled')?.textContent, '40');
-  assert.ok(doc.getElementById('btnEditTransferPlan')?.classList.contains('hidden') === false, 'edit shown');
-  assert.ok(doc.getElementById('btnSaveTransferPlanEdit')?.classList.contains('hidden'), 'save hidden');
-
-  // Transposing switches the table class and the button label.
-  const transpose = doc.getElementById('btnToggleTransferPlanTableView');
-  assert.equal(transpose?.textContent?.trim(), '转置表格');
-  transpose?.click();
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  assert.equal(transpose?.textContent?.trim(), '恢复横向');
-  assert.ok(
-    doc.getElementById('transferPlanSummaryTable')?.classList.contains('table-transfer-plan--transposed'),
-    'the table should switch to the period view',
-  );
-
-  // Edit mode reveals the save/cancel pair and hides the workflow actions.
-  doc.getElementById('btnEditTransferPlan')?.click();
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  assert.ok(doc.getElementById('btnEditTransferPlan')?.classList.contains('hidden'), 'edit hidden while editing');
-  assert.ok(!doc.getElementById('btnSaveTransferPlanEdit')?.classList.contains('hidden'), 'save shown');
-  assert.ok(!doc.getElementById('btnCancelTransferPlanEdit')?.classList.contains('hidden'), 'cancel shown');
-  assert.ok(
-    doc.querySelector('[data-workflow-update-page="transfer-plan"]')?.classList.contains('hidden'),
-    'the workflow update action is hidden while editing',
-  );
-  assert.match(doc.getElementById('transferPlanEditStatus')?.textContent ?? '', /编辑模式/);
-
-  // Cancelling restores read mode.
-  doc.getElementById('btnCancelTransferPlanEdit')?.click();
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  assert.ok(!doc.getElementById('btnEditTransferPlan')?.classList.contains('hidden'), 'edit shown again');
-  assert.match(doc.getElementById('transferPlanEditStatus')?.textContent ?? '', /最新 workflow 结果文件/);
-});
-
 const SUMMARY_SNAPSHOT = {
   month: '2026-09',
   eomDate: '09/30/2026',

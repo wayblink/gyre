@@ -58,7 +58,6 @@ test('primary navigation follows the product menu layout before dev tools', () =
     'exercise-record',
     'sold-shares',
     'cancellation-record',
-    'transfer-plan',
     'employee-management',
     'plan-summary',
     'five-percent-holders',
@@ -74,7 +73,6 @@ test('primary navigation follows the product menu layout before dev tools', () =
       'Exercise Record',
       'Sold Shares',
       'Cancellation Records',
-      '2025 Transfer to Futu',
       'Employee Management',
       'Plan Summary',
       '5% Holders',
@@ -108,7 +106,6 @@ test('captable is the renamed Summary page and new product pages have matching s
     'exercise-record',
     'sold-shares',
     'cancellation-record',
-    'transfer-plan',
     'employee-management',
     'plan-summary',
     'five-percent-holders',
@@ -311,8 +308,8 @@ test('file uploads use a shared visible progress dialog', () => {
     /uploadFormDataWithProgress\(`\/api\/files\/\$\{currentProductFileDetail\.file\.id\}\/content`, form,/,
   );
   assert.match(filePickerSource, /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/);
-  // The transfer-plan page no longer owns a local file input (its import runs through the shared
-  // workflow update modal), so main.ts itself must not grow an ad-hoc upload call site.
+  // Product pages run their imports through the shared workflow update modal, so main.ts itself
+  // must not grow an ad-hoc upload call site.
   assert.doesNotMatch(mainSource, /uploadFormDataWithProgress/);
   assert.match(
     monthlyRunPageSource,
@@ -537,7 +534,7 @@ test('Exercise Record exposes Futu / Shareworks / Merge source tabs like Grant R
 });
 
 test('Sold Shares exposes file-backed filters, nineteen-column table, and pagination', () => {
-  const soldSharesPage = html.match(/id="page-sold-shares"[\s\S]*?id="page-transfer-plan"/)?.[0] ?? '';
+  const soldSharesPage = html.match(/id="page-sold-shares"[\s\S]*?id="page-employee-management"/)?.[0] ?? '';
 
   assert.match(soldSharesPage, /id="searchSoldShares"/);
   assert.match(soldSharesPage, /id="filterSoldSharesTag"/);
@@ -571,45 +568,12 @@ test('Sold Shares workflow reads the Futu source workbook summary sheet', () => 
   assert.match(soldSharesWorkflow, /"sourceKey": "futu_sold_shares"/);
 });
 
-test('Transfer to Futu exposes file-backed monthly summary, cancellation editing, and workbook actions', () => {
-  const transferPage = html.match(/id="page-transfer-plan"[\s\S]*?id="page-employee-management"/)?.[0] ?? '';
-
-  assert.match(transferPage, /2025 BC Subplan Transfer\.xlsx/);
-  assert.match(transferPage, /id="transferPlanSummaryTable"/);
-  assert.match(transferPage, /id="transferPlanSummaryHead"/);
-  assert.match(transferPage, /id="transferPlanSummaryBody"/);
-  assert.match(transferPage, /id="btnEditTransferPlan"/);
-  assert.match(transferPage, /id="btnSaveTransferPlanEdit"[\s\S]*Confirm &amp; Run/);
-  assert.match(transferPage, /id="btnCancelTransferPlanEdit"/);
-  assert.match(transferPage, /Options cancelled\/forfeited/);
-  assert.match(transferPage, /data-transfer-cancelled/);
-  assert.doesNotMatch(transferPage, /id="btnImportTransferPlan"/);
-  assert.doesNotMatch(transferPage, /id="btnExportTransferPlan"/);
-  assert.doesNotMatch(transferPage, /id="transferPlanFileInput"/);
-  assert.match(transferPage, /id="btnToggleTransferPlanTableView"[\s\S]*<svg/);
-  assert.match(
-    transferPage,
-    /id="btnToggleTransferPlanTableView"[\s\S]*<rect x="6" y="3" width="8" height="14" rx="2"/,
-  );
-  assert.match(transferPage, /id="btnToggleTransferPlanTableView"[\s\S]*v-3\.1h3\.1/);
-  // The page controller owns the edit mode and hides the workflow actions while editing.
-  const transferPlanPageSource = readFileSync(new URL('./transferPlanPage.ts', import.meta.url), 'utf8');
-  assert.match(
-    transferPlanPageSource,
-    /\[data-workflow-update-page="transfer-plan"\], \[data-workflow-export-page="transfer-plan"\]/,
-  );
-  assert.match(transferPlanPageSource, /button\.classList\.toggle\('hidden', editMode\)/);
-  assert.match(transferPlanPageSource, /export function createTransferPlanPage/);
-  assert.match(mainSource, /transferPlanPage\.saveEdit\(\)/);
-});
-
 test('workflow-backed product pages expose update actions and shared update modal', () => {
   for (const page of [
     'grant-record',
     'exercise-record',
     'sold-shares',
     'cancellation-record',
-    'transfer-plan',
     'five-percent-holders',
   ]) {
     assert.match(html, new RegExp(`data-workflow-update-page="${page}"`));
@@ -709,8 +673,7 @@ test('workflow update and export actions live in table card headers, not hero fi
   const workflowPages = [
     ['grant-record', 'exercise-record'],
     ['exercise-record', 'sold-shares'],
-    ['sold-shares', 'transfer-plan'],
-    ['transfer-plan', 'employee-management'],
+    ['sold-shares', 'employee-management'],
     ['plan-summary', 'five-percent-holders'],
     ['five-percent-holders', 'fixed-value'],
   ] as const;
@@ -729,7 +692,7 @@ test('workflow update and export actions live in table card headers, not hero fi
       assert.match(
         section,
         new RegExp(
-          `(?:card-header-actions product-table-actions|transfer-plan-actions)[\\s\\S]*data-workflow-update-page="${page}"[\\s\\S]*data-workflow-export-page="${page}"`,
+          `card-header-actions product-table-actions[\\s\\S]*data-workflow-update-page="${page}"[\\s\\S]*data-workflow-export-page="${page}"`,
         ),
       );
     }
@@ -757,10 +720,6 @@ test('ESOP Detail hero cards link to their corresponding pages', () => {
   assert.match(
     esopDetailPage,
     /<a class="product-card product-card--link" href="\/sold-shares" aria-label="进入卖出记录页面">/,
-  );
-  assert.match(
-    esopDetailPage,
-    /<a class="product-card product-card--link" href="\/transfer-plan" aria-label="进入 2025 年计划页面">/,
   );
 });
 
@@ -978,8 +937,7 @@ test('result file labels are exposed only for monthly output pages', () => {
   for (const [page, nextPage] of [
     ['grant-record', 'exercise-record'],
     ['exercise-record', 'sold-shares'],
-    ['sold-shares', 'transfer-plan'],
-    ['transfer-plan', 'employee-management'],
+    ['sold-shares', 'employee-management'],
     ['plan-summary', 'five-percent-holders'],
     ['five-percent-holders', 'fixed-value'],
     ['captable', 'monthly'],
@@ -996,7 +954,7 @@ test('result file labels are exposed only for monthly output pages', () => {
 });
 
 test('workflow update and export actions include svg icons and stable labels', () => {
-  for (const page of ['grant-record', 'exercise-record', 'sold-shares', 'transfer-plan', 'five-percent-holders']) {
+  for (const page of ['grant-record', 'exercise-record', 'sold-shares', 'five-percent-holders']) {
     assert.match(
       html,
       new RegExp(

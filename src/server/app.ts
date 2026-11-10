@@ -34,7 +34,6 @@ const SPA_PAGES = [
   'exercise-record',
   'sold-shares',
   'cancellation-record',
-  'transfer-plan',
   'employee-management',
   'plan-summary',
   'five-percent-holders',
