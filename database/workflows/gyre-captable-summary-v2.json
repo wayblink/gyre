@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 59,
+  "version": 60,
   "tasks": [
     {
       "x": 48,
@@ -1156,6 +1156,41 @@
           }
         }
       }
+    },
+    {
+      "x": 1056,
+      "y": 1470,
+      "id": "invoke_employee_import",
+      "name": "Invoke Employee Import",
+      "inputs": {},
+      "params": {
+        "outputTaskId": "upsert_employees",
+        "workflowCode": "employee-import",
+        "inputMappings": [],
+        "skipWhenEmpty": [
+          "fileRefs.futu_grants",
+          "fileRefs.shareworks_grants"
+        ],
+        "runtimeParameters": {
+          "fileRefs": {
+            "futu_grants": {
+              "$type": "object",
+              "$label": "Futu 授予记录",
+              "$fromRuntime": "fileRefs.futu_grants"
+            },
+            "shareworks_grants": {
+              "$type": "object",
+              "$label": "Shareworks Options OS Detail",
+              "$fromRuntime": "fileRefs.shareworks_grants"
+            }
+          }
+        },
+        "inheritRuntimeParameters": true
+      },
+      "dependsOn": [],
+      "description": "用本月已收集的两份授予导出刷新员工主数据（员工归集：按工号 UPSERT，幂等）。两份都没提供时跳过；只提供一份时按该来源归集。",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0"
     }
   ],
   "runtimeParamsSchema": {

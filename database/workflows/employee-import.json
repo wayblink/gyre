@@ -3,7 +3,7 @@
   "name": "Employee Import / 员工归集",
   "description": "从 Futu 授予明细与 Shareworks 明细提取员工，各自规范成 (employee_id, source, employee_name) 后 union，再按 employee_id UPSERT 进 employees 表。两个输入源的 sheet 都可在更新弹窗里选择（默认 Futu「授予记录」、Shareworks「Personnel Summary (Options OS D」）。换文件重跑即幂等重归集；跨来源同人由「关联」处理。",
   "status": "active",
-  "version": 2,
+  "version": 3,
   "tasks": [
     {
       "x": 48,
@@ -25,11 +25,12 @@
           "$default": "授予记录",
           "$fromRuntime": "fileRefs.futu_grants.sheet"
         },
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "工号, 姓名"
       },
       "dependsOn": [],
-      "description": "从 Futu 授予数据导出报表的「授予记录」sheet 提取明细（含 工号、姓名）；sheet 名可由运行时参数覆盖。",
-      "operatorCode": "sheet.range.extract",
+      "description": "从 Futu 授予数据导出报表的「授予记录」sheet 提取明细（含 工号、姓名）；sheet 名可由运行时参数覆盖。未提供该工作簿时输出空表，不影响另一来源的归集（月度里只有一份授予导出时照常运行）。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {
@@ -52,11 +53,12 @@
           "$default": "Personnel Summary (Options OS D",
           "$fromRuntime": "fileRefs.shareworks_grants.sheet"
         },
-        "dropTrailingEmptyRows": true
+        "dropTrailingEmptyRows": true,
+        "emptyColumns": "Employee Number, Last Name, First Name, Middle Name, Plan Name, Grant Name"
       },
       "dependsOn": [],
-      "description": "从 Shareworks「Options OS Detail by Plan」导出（如 !Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx）的 `Personnel Summary (Options OS D` sheet 提取明细（表头在第 2 行）；旧的 !!Gyre Cap Table 母表用的是「Options OS Detail」sheet，两种 sheet 名都可在弹窗里切换。",
-      "operatorCode": "sheet.range.extract",
+      "description": "从 Shareworks「Options OS Detail by Plan」导出（如 !Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx）的 `Personnel Summary (Options OS D` sheet 提取明细（表头在第 2 行）；旧的 !!Gyre Cap Table 母表用的是「Options OS Detail」sheet，两种 sheet 名都可在弹窗里切换。未提供该工作簿时输出空表，不影响另一来源的归集。",
+      "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
     {

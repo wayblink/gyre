@@ -174,13 +174,13 @@ select count(*) as monthly_instances from monthly_run_instances;
 
 ### 4.1 要发布哪些
 
-**本轮（2026-11-09/10：员工归集 sheet 可选、5% 股东分母改 EOM、月度两个输入改必填、删除 2025 转仓至 Futu 与月度 BC Subplan Transfer、计划汇总取消数改按报表计算）补发 4 个定义**：
+**本轮（2026-11-09/10：员工归集 sheet 可选并接入月度、5% 股东分母改 EOM、月度两个输入改必填、删除 2025 转仓至 Futu 与月度 BC Subplan Transfer、计划汇总取消数改按报表计算、月度输入改名）补发 4 个定义**：
 
 | code                        | 目标版本 | 上一轮基线 | 改了什么                                                                                                                                                             |
 | --------------------------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `employee-import`           | **2**    | 1          | 两个输入源的 sheet 改为跟随更新弹窗的选择（`allowSheetNameOverride` + `defaultSheetName` + `properties.sheet`），extract 任务读 `fileRefs.<source>.sheet`；Shareworks 默认 sheet 从旧母表的 `Options OS Detail` 改成 `Personnel Summary (Options OS D`（见 8.12） |
+| `employee-import`           | **3**    | 1          | v2：两个输入源的 sheet 改为跟随更新弹窗的选择（`allowSheetNameOverride` + `defaultSheetName` + `properties.sheet`），extract 任务读 `fileRefs.<source>.sheet`（见 8.12）；v3：两个 extract 改 `sheet.optional-range.extract` + 声明 `emptyColumns`，允许只给一份授予导出（月度只带一份时不再失败，见 8.18） |
 | `five-percent-holders-sync` | **2**    | 1          | `Common Stock OS` 改取 Capitalization Summary 的 `Asset Class Summary: EOM` 行（原来是 `Common Shares OS + Cullgen common stock` 两行相加），守卫与描述同步（见 8.13） |
-| `gyre-captable-summary-v2`  | **59**   | 56         | v57：`SERIES B Control Book`（`series_b`）与 `Control Book Detail`（`incremental_control_book`）改为必填（见 8.14）；v58：删除 `2025 BC Subplan Transfer` 输入与 `calc_bc_subplan_cancelled`、`calc_option_metrics` 的 BC 修正项（见 8.15）；v59：`Cancel & Restore Summary` / `Cancel & Restore Record` 两个输入源加 `FUTU-` 前缀（见 8.17）。前端 `MONTHLY_WORKFLOW_VERSION` 同步 59 |
+| `gyre-captable-summary-v2`  | **60**   | 56         | v57：`SERIES B Control Book`（`series_b`）与 `Control Book Detail`（`incremental_control_book`）改为必填（见 8.14）；v58：删除 `2025 BC Subplan Transfer` 输入与 `calc_bc_subplan_cancelled`、`calc_option_metrics` 的 BC 修正项（见 8.15）；v59：`Cancel & Restore Summary` / `Cancel & Restore Record` 两个输入源加 `FUTU-` 前缀（见 8.17）；v60：新增 `invoke_employee_import`，月度跑完顺带刷新员工主数据（见 8.18）。前端 `MONTHLY_WORKFLOW_VERSION` 同步 60 |
 | `plan-summary-sync`         | **7**    | 6          | Plan Summary 的 `cancelled` 改为按取消与恢复报表的「所属计划」逐计划计算（原本只有一个写死的 `GYRE 2025 BC Subplan` 覆盖行，其余读源文件列）；报表没覆盖的计划仍回退源文件（见 8.16） |
 
 上一轮（月度 v56 + 行权汇总表）发布的那批定义如下，云端已发布过就不用再发：
@@ -216,9 +216,9 @@ for code in $CODES; do
 done
 
 # 期望：输出
-#   validated employee-import v2 from database/workflows/employee-import.json (workflow_id=..., version_id=...)
+#   validated employee-import v3 from database/workflows/employee-import.json (workflow_id=..., version_id=...)
 #   validated five-percent-holders-sync v2 from database/workflows/five-percent-holders-sync.json (...)
-#   validated gyre-captable-summary-v2 v58 from database/workflows/gyre-captable-summary-v2.json (...)
+#   validated gyre-captable-summary-v2 v60 from database/workflows/gyre-captable-summary-v2.json (...)
 #   validated plan-summary-sync v7 from database/workflows/plan-summary-sync.json (...)
 # 注意：容器里的种子要随镜像一起更新，所以这两个定义必须在新镜像起来之后发布
 # （上一轮那批是 gyre-captable-summary-v2 v56 / futu-exercises-incremental-merge v9 / esop-exercise-record-sync v14）
@@ -412,8 +412,8 @@ select code, version, status
    'employee-import', 'five-percent-holders-sync', 'plan-summary-sync'
  )
  order by code;
--- 期望：gyre-captable-summary-v2 = 59、futu-exercises-incremental-merge = 9、esop-exercise-record-sync = 14、
---      employee-import = 2、five-percent-holders-sync = 2、plan-summary-sync = 7
+-- 期望：gyre-captable-summary-v2 = 60、futu-exercises-incremental-merge = 9、esop-exercise-record-sync = 14、
+--      employee-import = 3、five-percent-holders-sync = 2、plan-summary-sync = 7
 
 -- ①a 员工归集 v2 的两个源必须已声明 sheet（否则弹窗没有 Sheet 下拉框）
 select jsonb_pretty(jsonb_build_object(
@@ -463,7 +463,7 @@ print('required =', [s['sourceKey'] for s in d['sources'] if s.get('required')])
 "
 ```
 
-**期望**：`workflowVersion = 59`、`sources = 19`、`visible = 12`（7 个 base 隐藏，`bc_subplan_transfer` 已删除，见 8.15）、`required = ['incremental_control_book', 'series_b', 'option_plans_summary']`（2026-11 起 SERIES B Control Book 与 Control Book Detail 也是必填，见 8.14）；`incremental_futu_exercises` 的 `defaultSheetName` 应为 `行权汇总数据`。
+**期望**：`workflowVersion = 60`、`sources = 19`、`visible = 12`（7 个 base 隐藏，`bc_subplan_transfer` 已删除，见 8.15）、`required = ['incremental_control_book', 'series_b', 'option_plans_summary']`（2026-11 起 SERIES B Control Book 与 Control Book Detail 也是必填，见 8.14）；`incremental_futu_exercises` 的 `defaultSheetName` 应为 `行权汇总数据`。
 
 ```bash
 # 员工归集（v2）：两个输入源必须各自带 sheet 默认值，弹窗才有 Sheet 下拉框
@@ -583,7 +583,7 @@ done
 - [ ] 月度输入源 **20** 个（6.2 ③）
 - [ ] `docker compose ps` 两个服务均 Up / healthy
 - [ ] `app` 日志无 error / fatal / unhandled / reference not found
-- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 59`、`sources = 19`、`visible = 12`、三个必填（`incremental_control_book` / `series_b` / `option_plans_summary`），且 `incremental_futu_exercises.defaultSheetName = 行权汇总数据`（6.3）
+- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 60`、`sources = 19`、`visible = 12`、三个必填（`incremental_control_book` / `series_b` / `option_plans_summary`），且 `incremental_futu_exercises.defaultSheetName = 行权汇总数据`（6.3）
 - [ ] `GET /api/months` 的标记里含 `hasGrantData` 在内的六个 `has*Data`（6.3）
 - [ ] 八个记录页接口带 `?month=` 都返回 2xx（6.3）
 - [ ] `GET /api/files` 未登录返回 401
@@ -1152,12 +1152,48 @@ curl -s https://<域名>/api/monthly-runs/source-config \
 
 ---
 
+## 8.18 月度跑完顺带刷新员工主数据（月度 v60 + 员工归集 v3）
+
+**问题**：员工管理页的数据只在有人点「更新」时变（`employee-import` 是数据归集页的工作流），月度更新从不调用它，所以每月跑了月度、员工名单还是旧的。
+
+**改法**：
+- 月度 `gyre-captable-summary-v2` v60 新增第 22 个任务 `invoke_employee_import`：`workflow.invoke` → `employee-import`，
+  `outputTaskId: upsert_employees`，`skipWhenEmpty: ['fileRefs.futu_grants', 'fileRefs.shareworks_grants']`，
+  并把月度已有的两份授予导出（含页面选的 sheet）透传给子流程。
+- `employee-import` v3：两个 `extract_*` 从 `sheet.range.extract` 换成 `sheet.optional-range.extract` 并声明
+  `emptyColumns`（Futu：`工号, 姓名`；Shareworks：`Employee Number, Last Name, First Name, Middle Name, Plan Name, Grant Name`）。
+  原因：`workflow.invoke` 的 `skipWhenEmpty` 只在**所有**列出的源都为空时跳过，只带一份授予导出的月份仍会调子流程，
+  旧版本会因为缺另一个源的 `fileRef` 直接失败。
+- 页面行为不变：员工管理页的两个源仍显示「必须」，弹窗里照样两个都要选。
+
+**行为变化**：月度运行结束后员工主数据会被 UPSERT（`employee_name` / `has_file_evidence` 可能被源数据刷新，
+人工标签、关联、停用状态不受影响，因为 upsert 只写这四列）。只带一份授予导出的月份会只归集那一个来源。
+
+**验证**（本地实测）：
+
+```bash
+# 1) 定义已带新任务
+curl -s https://<域名>/api/workflows | jq '.items[] | select(.code=="gyre-captable-summary-v2") | .tasks[] | select(.id=="invoke_employee_import") | .params.workflowCode'
+# 期望 "employee-import"
+
+# 2) 单任务预览：两份授予导出都在时
+#    POST /api/workflows/preview-task {"workflowId":<monthly id>,"taskId":"invoke_employee_import","runtimeParameters":{...}}
+#    期望 dataFrame 一行：{"table":"employees","inserted":0,"updated":476,"total":476,"skipped":0}
+# 3) 只给 futu_grants 时同样成功（旧版本会报缺 shareworks_grants 的 fileRef）
+#    期望 {"inserted":0,"updated":474,...}
+```
+
+**回滚**：删掉月度里的 `invoke_employee_import` 任务并重新发布（月度版本号回退需 `--force`），员工归集回到只靠页面「更新」触发；`employee-import` 的 optional extract 可保留，它只是更宽容。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 本轮（`main`，上一轮部署之后到 HEAD）一次性提交了这些内容：
 
 - `feat(workflows): read the Futu exercise summary instead of the detail export`（月度 **v56**、`futu-exercises-incremental-merge` **v9**、`esop-exercise-record-sync` **v13**、前端 `MONTHLY_WORKFLOW_VERSION` → 56、新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts` 并改写 `controlBookMergeDateTypes.test.ts` 的一条旧断言、本文件的 4.1/4.5/4.6/6.2/6.3/7/8/8.10）
 - `fix(workflows): cut the Futu exercise snapshot at the run month`（`esop-exercise-record-sync` **v14**：合并后按运行月份截断，见 8.11）
+- `feat(monthly): refresh the employee master list as part of the monthly run`（月度 **v60** 加 `invoke_employee_import`；`employee-import` **v3** 两个 extract 改 optional 并声明 `emptyColumns`，允许只给一份授予导出；前端 `MONTHLY_WORKFLOW_VERSION` → 60；新增 `src/server/workflow/employeeImportMonthlyLink.test.ts`；本文件的 4.1/4.2/6.2/6.3/8.18）
 - `feat(monthly): prefix the Cancel & Restore inputs with FUTU-`（`gyre-captable-summary-v2` **v59**：两个取消与恢复输入源及其 invoke `$label` 加 `FUTU-` 前缀；前端 `MONTHLY_WORKFLOW_VERSION` → 59；本文件的 4.1/6.2/6.3/8.17）
 - `feat(plan-summary): compute cancelled per plan from the cancel & restore ledger`（`plan-summary-sync` **v7**：`cancelled` 按报表「所属计划」逐计划计算、报表未覆盖的计划回退源文件；新增 `src/server/workflow/planSummaryCancelled.test.ts`；本文件的 4.1/4.2/4.3/6.2/8.16）
 - `feat(monthly): retire the 2025 transfer-to-Futu page and the BC Subplan transfer input`（删除 `transfer-plan` 页面与其 4 个 API、`esop` 页面注册；月度 **v58** 去掉 `bc_subplan_transfer` 与两个转仓任务、`calc_option_metrics` 不再做 BC cancelled 修正；前端 `MONTHLY_WORKFLOW_VERSION` → 58；新增 `monthlyOptionMetrics.test.ts`；本文件的 4.1/4.2/6.2/6.3/8.15）
