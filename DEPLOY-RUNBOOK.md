@@ -172,6 +172,23 @@ select count(*) as monthly_instances from monthly_run_instances;
 
 ## 4. 数据库变更：发布工作流定义
 
+### 4.0 本轮要做什么（照这个顺序做，30 秒版）
+
+本轮**没有数据库结构变更、没有新增 npm 依赖**；要发布 4 个工作流定义 + 一份新前端镜像，外加一处历史数据清理（§4.5.1）。
+完整顺序：
+
+1. **取代码**（§5 第 0 步）：服务器上 `git pull --ff-only`，确认 `HEAD` 是本轮的提交。
+2. **重建并启动镜像**（§5）：`AUTH_BOOTSTRAP_SECRET=... docker compose -f docker-compose.prod.yml up -d --build`。**必须带 `--build`**，定义种子和前端都在镜像里。
+3. **发布 4 个定义**（§4.2，先 `--dry-run` 再正式）：`employee-import`、`five-percent-holders-sync`、`gyre-captable-summary-v2`、`plan-summary-sync`。
+   紧接着执行 §4.5.1 的清理 SQL：删掉月度实例里已下线的 `bc_subplan_transfer` / `futu_exercises` / `cancel_restore_report` 行，
+   否则重跑 2026-01~06 会在启动阶段抛 `Unknown runtime parameter`。
+4. **验证**（§6.2 / §6.3 的关键几条）：版本号、月度输入源个数、`/api/monthly-runs/source-config` 的 `workflowVersion`。
+5. **肉眼确认**（§6.4）：侧边栏、月度输入清单、员工管理、5% 股东、计划汇总四处变化与手册截图一致。
+
+> 顺序不能反：**先重建镜像，再发布定义**。旧镜像里的 `database/*.json` 是旧种子，在旧镜像里发布等于把旧版本又写一遍。
+>
+> 发布完成前**不要打开月度更新页**：前端版本锁（本轮 = **60**）和数据库版本对不上时，页面会拒绝渲染输入源并弹版本不匹配。
+
 ### 4.1 要发布哪些
 
 **本轮（2026-11-09/10：员工归集 sheet 可选并接入月度、5% 股东分母改 EOM、月度两个输入改必填、删除 2025 转仓至 Futu 与月度 BC Subplan Transfer、计划汇总取消数改按报表计算、月度输入改名）补发 4 个定义**：
@@ -183,19 +200,13 @@ select count(*) as monthly_instances from monthly_run_instances;
 | `gyre-captable-summary-v2`  | **60**   | 56         | v57：`SERIES B Control Book`（`series_b`）与 `Control Book Detail`（`incremental_control_book`）改为必填（见 8.14）；v58：删除 `2025 BC Subplan Transfer` 输入与 `calc_bc_subplan_cancelled`、`calc_option_metrics` 的 BC 修正项（见 8.15）；v59：`Cancel & Restore Summary` / `Cancel & Restore Record` 两个输入源加 `FUTU-` 前缀（见 8.17）；v60：新增 `invoke_employee_import`，月度跑完顺带刷新员工主数据（见 8.18）。前端 `MONTHLY_WORKFLOW_VERSION` 同步 60 |
 | `plan-summary-sync`         | **7**    | 6          | Plan Summary 的 `cancelled` 改为按取消与恢复报表的「所属计划」逐计划计算（原本只有一个写死的 `GYRE 2025 BC Subplan` 覆盖行，其余读源文件列）；报表没覆盖的计划仍回退源文件（见 8.16） |
 
-上一轮（月度 v56 + 行权汇总表）发布的那批定义如下，云端已发布过就不用再发：
+（上一轮已发布的 `futu-exercises-incremental-merge` 9 与 `esop-exercise-record-sync` 14 不需要再发；本轮表格里的月度 60 已经包含 v56 那次的内容。）
 
-| code                               | 目标版本 | 上一轮基线 | 改了什么                                                                                                                                                                             |
-| ---------------------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `gyre-captable-summary-v2`         | **56**   | 55         | 行权增量的默认 sheet 改『行权汇总数据』（含页面 source meta 的 `defaultSheetName` 与描述）；前端版本锁同步 56                                                                      |
-| `futu-exercises-incremental-merge` | **9**    | 6          | 增量改吃 13 列汇总表（中文『行权汇总数据』/英文 `Futu BCI Exercises to Date`）；合并键换成 员工号+授予编号+行权日期；base 补 `Exercise Order No.` 空列；retain 后补列，空结果不再丢列 |
-| `esop-exercise-record-sync`        | **14**   | 12         | 行权源 sheet 改为跟随运行时选择（不再写死『行权汇总数据』）；投影兼容两种表头、丢弃 `合计`/`in Total` 行；**合并后按运行月份截断**（页面是「截至当月」，此前会端出未来月份的行）       |
-
-其余定义不需动：`eq-control-book-incremental-merge` 7、`plan-summary-sync` 6、`read-series-b` 2、`gyre-therapeutics-cancel-restore-incremental-merge` 3、`esop-cancellation/sold-shares/grant` 7/8/12、`employee-import` 2（本轮补发，见上表）、`esop-transfer-to-futu-sync`/`five-percent-holders-sync`/`option-plans-summary-values`/`gyre-therapeutics-cancel-restore-report-read` 均为 1；若云端缺失会被启动 seed 自动补上。
+其余定义不需动：`eq-control-book-incremental-merge` 7、`futu-exercises-incremental-merge` 9、`esop-exercise-record-sync` 14、`esop-cancellation/sold-shares/grant` 7/8/12、`read-series-b` 2、`gyre-therapeutics-cancel-restore-incremental-merge` 3、`esop-transfer-to-futu-sync`/`option-plans-summary-values`/`gyre-therapeutics-cancel-restore-report-read` 均为 1；若云端缺失会被启动 seed 自动补上（注意 `esop-transfer-to-futu-sync` 的页面已下线，定义保留但没有入口）。
 
 > 判断方法：`select code, version from workflow_definitions;` 与上表对比。低于目标版本的才需要发布；发布脚本拒绝版本倒退，重复执行是安全的。
 >
-> **任何一个定义高于目标版本 → 停下来报告**，说明云端不是从上一轮基线（月度 55 / futu 6 / esop 12）起的。
+> **任何一个定义高于目标版本 → 停下来报告**：说明云端已经有人发布过更新的版本，先弄清来源再动。
 >
 > 线上还留着一个旧版 `gyre-captable-summary`（v1，已被 v2 取代）。它不影响运行，本轮不删；删除属于破坏性操作，先取得许可。
 
@@ -220,8 +231,7 @@ done
 #   validated five-percent-holders-sync v2 from database/workflows/five-percent-holders-sync.json (...)
 #   validated gyre-captable-summary-v2 v60 from database/workflows/gyre-captable-summary-v2.json (...)
 #   validated plan-summary-sync v7 from database/workflows/plan-summary-sync.json (...)
-# 注意：容器里的种子要随镜像一起更新，所以这两个定义必须在新镜像起来之后发布
-# （上一轮那批是 gyre-captable-summary-v2 v56 / futu-exercises-incremental-merge v9 / esop-exercise-record-sync v14）
+# 注意：容器里的种子要随镜像一起更新，所以这 4 个定义必须在新镜像起来之后发布
 
 # 2) 确认无误后正式发布
 for code in $CODES; do
@@ -302,9 +312,52 @@ psql "$DATABASE_URL" -f /tmp/publish.sql
 | 增量是 Cap Table 的 to-date 快照（2026-04） | `Retained Futu base is missing a merge key column: missing=[Exercise Order No., Grant No., Exercise Date, Exercised Qty]` | retain 结果为空时补回 14 列，合并继续，completed |
 | 记录页同步选了 Cap Table 那份 | `Sheet 行权汇总数据 not found` | sheet 跟随页面选择，completed |
 
+### 4.5.1 清理已下线输入源的历史残留（重跑历史月份之前必做）
+
+月度实例把每个输入存在 `monthly_run_instance_sources`，运行时会**整表**转成 `fileRefs`。本轮删掉了
+`bc_subplan_transfer`（2025 转仓）这个源，如果某个月份还留着它的行，重跑该月会在参数校验阶段直接抛
+`Unknown runtime parameter: fileRefs.bc_subplan_transfer`（不是页面上的「缺少输入」，而是一运行就失败）。
+
+同理，早期遗留的 `futu_exercises` / `cancel_restore_report` 两个旧 key 也会触发同样的错误
+（`cancel_restore_report` 代码里有兼容重命名，`futu_exercises` 没有）。
+
+```sql
+-- ① 看哪些实例还留着「当前 schema 之外」的源
+select s.instance_id, i.month_key, s.source_key
+  from monthly_run_instance_sources s
+  join monthly_run_instances i on i.id = s.instance_id
+ where not (s.source_key = any (
+   select jsonb_object_keys(runtime_params_schema_json->'fileRefs'->'properties')
+     from workflow_definitions where code = 'gyre-captable-summary-v2' and status = 'active'
+ ))
+ order by i.month_key, s.source_key;
+-- 本地库的样子（2026-11-10，供对照；线上以 ① 的实际输出为准）：10 行 ——
+--   bc_subplan_transfer 在 2026-01/03/04/05/06，futu_exercises 在 2026-01/03/04/05，
+--   cancel_restore_report 在 2026-06
+
+-- ② 清理（只删这些已下线的 key，不动任何现有源）
+begin;
+delete from monthly_run_instance_sources s
+ where not (s.source_key = any (
+   select jsonb_object_keys(runtime_params_schema_json->'fileRefs'->'properties')
+     from workflow_definitions where code = 'gyre-captable-summary-v2' and status = 'active'
+ ));
+-- 期望：DELETE <行数>
+select s.instance_id, i.month_key, s.source_key
+  from monthly_run_instance_sources s join monthly_run_instances i on i.id = s.instance_id
+ where s.source_key in ('bc_subplan_transfer', 'futu_exercises', 'cancel_restore_report');
+-- 期望：0 行
+commit;
+```
+
+> 不重跑历史月份的话这一步不着急，但**下一次要跑 2026-01~06 中的任何一个月之前必须先做**，否则会撞上面那个报错。
+> 只是往前跑新月份（比如 2026-09）不受影响。
+
 ### 4.6 数据迁移：把实例里的行权输入 sheet 改成『行权汇总数据』
 
-**必须做，否则发布后第一次运行仍会失败。** 月度实例把每个输入的文件和 sheet 存在
+> 这一步是**上一轮**（月度 v56）的迁移；线上已经做过就不用重做，用下面 ① 查一遍确认没有残留即可。
+
+**必须做（首次部署 v56 时），否则发布后第一次运行仍会失败。** 月度实例把每个输入的文件和 sheet 存在
 `monthly_run_instance_sources`，页面渲染和运行都用它，**它会覆盖定义里的 `defaultSheetName`**。
 上一轮存下来的值是「行权明细数据」，而新的子工作流只认 13 列汇总表，于是会被形状守卫拦下
 （本地首次重跑就是这样挂的：`行权汇总数据 缺少必要列: missing=[授予日期, 授予价(USD), 行权日期, …]`）。
@@ -371,6 +424,8 @@ docker compose -f docker-compose.prod.yml logs --tail=80 app
 
 **启动成功后回到第 4 节执行发布**，然后继续第 6 节。
 
+本轮构建没有新增 npm 依赖、没有 `schema.ts` 改动，`npm ci` + `npm run build` 的路径与上一轮一致。`npm run build` 同时会把 `public/guide/*` 里重拍的手册截图打进 `dist/client`，所以 `/docs` 的截图会跟界面一起更新，不需要额外步骤。
+
 > 本轮**没有新增 npm 依赖、没有改 `schema.ts`、没有新增 `workflow_operators`**，镜像构建路径与上一轮完全一致（`npm ci` + 构建产物）。仍然要用仓库里的 `package-lock.json`，不要删掉它再 `npm install`。
 
 ### 环境变量核对
@@ -404,7 +459,7 @@ docker compose -f docker-compose.prod.yml logs --tail=200 app | grep -iE 'error|
 ### 6.2 数据库状态
 
 ```sql
--- ① 4.1 表里定义的版本必须与目标一致（本轮新增 employee-import = 2、gyre-captable-summary-v2 = 57、five-percent-holders-sync = 2）
+-- ① 4.1 表里定义的版本必须与目标一致
 select code, version, status
   from workflow_definitions
  where code in (
@@ -415,7 +470,7 @@ select code, version, status
 -- 期望：gyre-captable-summary-v2 = 60、futu-exercises-incremental-merge = 9、esop-exercise-record-sync = 14、
 --      employee-import = 3、five-percent-holders-sync = 2、plan-summary-sync = 7
 
--- ①a 员工归集 v2 的两个源必须已声明 sheet（否则弹窗没有 Sheet 下拉框）
+-- ①a 员工归集 v3 的两个源必须已声明 sheet（否则弹窗没有 Sheet 下拉框）
 select jsonb_pretty(jsonb_build_object(
   'futu_grants', runtime_params_schema_json#>'{"fileRefs","properties","futu_grants"}',
   'shareworks_grants', runtime_params_schema_json#>'{"fileRefs","properties","shareworks_grants"}'
@@ -436,12 +491,18 @@ select code, version from workflow_operators
  where code in ('dataframe.keyed.merge', 'dataframe.ensure.columns', 'dataframe.persist.excel');
 -- 期望：3 行；空行说明 WORKFLOW_SEED_ON_INIT 没开
 
--- ③ 月度输入源个数（schema 里 20 个，其中 7 个 hidden）
+-- ③ 月度输入源个数（schema 里 19 个，其中 7 个 hidden；`bc_subplan_transfer` 已随 2025 转仓下线）
 select count(*) as sources from jsonb_object_keys(
   (select runtime_params_schema_json->'fileRefs'->'properties'
      from workflow_definitions where code = 'gyre-captable-summary-v2')
 );
--- 期望：20
+-- 期望：19
+
+-- ④ 月度 v60 的任务数与会刷新员工的那一步必须都在（22 个任务）
+select jsonb_array_length(tasks_json) as tasks,
+       tasks_json::text like '%"invoke_employee_import"%' as has_employee_import
+  from workflow_definitions where code = 'gyre-captable-summary-v2';
+-- 期望：tasks = 22，has_employee_import = true
 ```
 
 ### 6.3 HTTP 接口
@@ -503,12 +564,16 @@ done
 
 用浏览器登录后逐页打开，确认无白屏、无控制台报错：
 
-`股权汇总` → `月度更新` → `ESOP 明细` → `授予记录` → `行权记录` → `卖出记录` → `取消记录` → `员工管理` → `计划汇总` → `5% 股东` → `全局参数` → `数据管理` → `文件中心` → `工作流` → `用户管理` → `使用手册` → `账号设置` → `系统设置`
+`股权汇总` → `月度更新` → `ESOP 明细` → `授予记录` → `行权记录` → `卖出记录-FUTU` → `取消记录-FUTU` → `员工管理` → `计划汇总` → `5% 股东` → （仅管理员）`文件中心` → `工作流` → `审计日志` → `用户管理` → 右上角`使用手册` / `设置` / `账号`
+
+> 侧边栏现在**没有** `2025 转仓至 Futu`、`全局参数`、`数据管理` 三项（前两项对应页面已下线，第三项并入了各业务页）。
 
 在「月度更新」页额外确认：
 
 - 顶部**没有**「版本不匹配」红色提示
-- 输入文件表格是 **13 行**（20 个源减去 7 个 hidden：`previous_capitalization_summary` + 6 个 `*_base`）
+- 输入文件表格是 **12 行**（19 个源减去 7 个 hidden：`previous_capitalization_summary` + 6 个 `*_base`）
+- 表格有五列：`FILE NAME / 说明 / UPLOADED FILE / UPLOADED TIME / ACTIONS`；**必须** 徽章出现在 Control Book Detail、SERIES B Control Book、Gyre Option Plans Summary 三行
+- 表格下方有 **月度常量** 卡片（5 行：Options Outstanding/Available - Cullgen、Warrants、Cullgen Common Stock、Gyre 2023 China SubPlan Total）
 - 每个需要上传的源，说明文字右边有一个 📄 图标；点开显示「文件名参考」和对应的文件名模板；自动带出的源没有图标
 - 「配置输入源」弹窗里，选好文件后出现 **输入 Sheet** 下拉，默认选中配置的 sheet
 
@@ -518,6 +583,20 @@ done
 - 切换到没有快照的月份时，表格显示「暂无符合条件的…记录」，而不是上一个月的数据
 - 全年只有一个月有某一侧数据时（例如 2026-08 只有 Shareworks 授予），打开页面应**自动切到有数据的视图**并弹出提示；手动切回空视图时，空态里会写明「本月「X 视图」有 N 条记录」
 
+### 6.4b 本轮的前端可见变化（部署后逐个对照）
+
+| 位置 | 部署后应该看到 |
+| --- | --- |
+| 侧边栏 | 没有 `2025 转仓至 Futu` / `全局参数` / `数据管理`；卖出、取消两页名字带 `-FUTU` |
+| `/transfer-plan` | 页面已下线（直接访问只会落到 SPA 首页），导航里没有入口 |
+| 月度更新 · Input Files | 12 行、说明列带 📄 图标可看「文件名参考」；`FUTU-Cancel & Restore Summary` / `FUTU-Cancel & Restore Record` 两个名字带前缀；三项「必须」 |
+| 月度更新 · 月度常量 | 输入表下方有 5 行常量卡片，可直接编辑保存（新建月份继承上月值） |
+| 月度运行 | 最后一步多出 `Invoke Employee Import`，跑完员工管理页的员工名单随本月授予导出刷新 |
+| 员工管理 · 更新弹窗 | 两个来源各有一个 **Sheet 下拉框**（授予记录 / Personnel Summary (Options OS D） |
+| 5% 股东 | 顶部 `Common Stock OS` 等于当月 Capitalization Summary 的 `Asset Class Summary: EOM` 行（不再是两行相加） |
+| 计划汇总 | `Cancelled` 列来自取消与恢复报表按「所属计划」计算（报表没覆盖的计划仍是源文件值） |
+| 使用手册 `/docs` | 「月度更新与运行」里有完整的 Input Files（12 行）与月度常量（5 行）清单；所有截图是本轮重拍的 |
+
 ### 6.5 月度运行冒烟（需需求方明确批准）
 
 **默认不做。** 这一步会真实执行业务工作流、写文件、改实例状态。
@@ -525,7 +604,7 @@ done
 若需求方批准：
 
 1. 在「月度更新」页把三个必填源选好（`incremental_control_book`、`series_b`、`option_plans_summary`），按需补可选源
-2. 点执行 → 期望 23 个步骤全部 completed（四个 `invoke_*_record_sync` 按是否配置源决定 completed 或跳过）。**本轮重点看这三步**：`invoke_read_series_b`、`invoke_futu_exercises_merge`、`invoke_plan_summary_sync` —— 修复前它们在线上会报 `Product file not found` / `Sheet Options OS Detail not found`，现在即使对应输入留空也必须 completed
+2. 点执行 → 期望所有步骤 completed（月度 v60 有 22 个父任务，四个 `invoke_*_record_sync` 与 `invoke_employee_import` 按是否配置源决定 completed 或跳过）。**本轮重点看四步**：`invoke_read_series_b`、`invoke_futu_exercises_merge`、`invoke_plan_summary_sync`、`invoke_employee_import` —— 前三步历史上会因缺省输入报 `Product file not found` / `Sheet Options OS Detail not found`，现在即使留空也必须 completed；最后一步在员工管理页应该带来本月新增/更名的员工
 3. 运行常在 `calc_control_book_metrics` 因 Omnibus 拼写变体停在 `waiting_approval`，批准后继续——**这是预期行为**
 4. 跑完后该月的 `has*Data` 变为 true
 
@@ -539,7 +618,10 @@ done
 
 ### 7.1 只回滚工作流定义（保留新镜像）
 
-**没有意义**：前端常量是 56，把数据库回滚到 55 或更早，月度页会重新进入「版本不匹配」并拒绝执行。要回滚定义就必须连镜像一起回。
+**没有意义**：前端的月度版本锁跟着镜像走（本轮 = 60），把数据库定义回退到更早的版本，月度页会重新进入「版本不匹配」并拒绝执行。要回滚定义就必须连镜像一起回。
+
+> 部署**之前**先把线上版本抄一份留底，回滚时才有目标值：
+> `docker compose -f docker-compose.prod.yml exec postgres psql -U captable -d captable -c "select code, version from workflow_definitions order by code;"`
 
 ### 7.2 回滚整个版本
 
@@ -549,25 +631,26 @@ git checkout <上一轮部署的 commit>
 AUTH_BOOTSTRAP_SECRET='<口令>' docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-镜像起来后，数据库里的定义仍是 v56，而旧镜像的前端期望 v55 → 月度页会报版本不匹配。**必须把定义也随之回退**：
+镜像起来后，数据库里的定义仍是本轮的版本，而旧镜像的前端期望它自己那一版 → 月度页会报版本不匹配。**必须把定义也随之回退到部署前抄下的那组版本号**：
 
 容器里通常没有 `git`，所以顺序是「先让镜像带旧种子，再强制发布」：上一步 `git checkout cb7bb44` 已经让重新构建的镜像里装的是旧种子文件；容器跑起来后再对每个定义执行 `--force`（云端版本高于种子，不加 `--force` 会被拒绝）：
 
 ```bash
-CODES='gyre-captable-summary-v2 futu-exercises-incremental-merge esop-exercise-record-sync'
+# 回滚要覆盖本轮发布过的全部 4 个定义；具体目标版本用部署前抄下的那组
+CODES='gyre-captable-summary-v2 plan-summary-sync employee-import five-percent-holders-sync'
 
 for code in $CODES; do
   docker compose -f docker-compose.prod.yml exec app \
     node dist/src/server/workflow/publishWorkflowSeed.js "$code" --dry-run --force
 done
-# 逐个确认输出是 expected 的旧版本号（月度 = 55、futu = 6、esop = 12）后再正式发布
+# 逐个确认输出是部署前抄下的旧版本号，再正式发布
 for code in $CODES; do
   docker compose -f docker-compose.prod.yml exec app \
     node dist/src/server/workflow/publishWorkflowSeed.js "$code" --force
 done
 ```
 
-> `--force` 是本节唯一许可的强制发布场景（云端 56/9/14 高于旧镜像种子的 55/6/12）。回退后前端常量是旧镜像里的 55，两侧对上。
+> `--force` 是本节唯一许可的强制发布场景（云端版本高于旧镜像里的种子，不加会被拒绝）。回退后前端常量回到旧镜像里那一版，两侧对上。
 >
 > 4.6 的 sheet 迁移**不需要回滚**：旧代码读的是『行权明细数据』，回滚后要把它改回 `行权明细数据` 才能与旧链路一致——
 > 只有在真的要整体回退镜像时才做：`update monthly_run_instance_sources set sheet_name='行权明细数据' where source_key='incremental_futu_exercises';`
@@ -577,10 +660,10 @@ done
 ## 8. 完成标准（全部打勾才算完成）
 
 - [ ] 第 3 节预检 ① 返回 0；② ③ 若为 1 已报告并得到许可
-- [ ] **三个定义已发布**，版本与 4.1 节一致（月度 = **56**、`futu-exercises-incremental-merge` **9**、`esop-exercise-record-sync` **14**）
+- [ ] **4 个定义已发布**，版本与 4.1 节一致（`employee-import` **3**、`five-percent-holders-sync` **2**、`gyre-captable-summary-v2` **60**、`plan-summary-sync` **7**）
 - [ ] **4.6 的 sheet 迁移已执行**：`monthly_run_instance_sources` 里 `incremental_futu_exercises` 全是 `行权汇总数据`（6.2 ①b）
 - [ ] `workflow_operators` 里有 `dataframe.keyed.merge`、`dataframe.ensure.columns`、`dataframe.persist.excel`（6.2 ②）
-- [ ] 月度输入源 **20** 个（6.2 ③）
+- [ ] 月度输入源 **19** 个、任务 **22** 个且含 `invoke_employee_import`（6.2 ③ ④）
 - [ ] `docker compose ps` 两个服务均 Up / healthy
 - [ ] `app` 日志无 error / fatal / unhandled / reference not found
 - [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 60`、`sources = 19`、`visible = 12`、三个必填（`incremental_control_book` / `series_b` / `option_plans_summary`），且 `incremental_futu_exercises.defaultSheetName = 行权汇总数据`（6.3）
@@ -590,10 +673,10 @@ done
 - [ ] 月度工作流版本为 46；`Comment` 为 `Omnibus Inc.Pl.` 的运行不再停在复核；输入源显示「Futu Exercise Record」（见 8.3）
 - [ ] 「需复核」的运行历史行，「删除」按钮可用，点删除后该行消失、对应 workflow run 变成 `skipped`（见 8.1）
 - [ ] 停在「需复核」时，该行内部有「复核并继续 / 跳过后续」；点一下面板自己走到 23 / 23，全程无需刷新（见 8.2）
-- [ ] 「月度更新」页无版本不匹配提示；输入表格 13 行；文件名模板图标只在需上传的行出现（6.4）
+- [ ] 「月度更新」页无版本不匹配提示；输入表格 12 行；文件名模板图标只在需上传的行出现（6.4）
 - [ ] 四个记录页都有「月份」选择器，无快照月份显示空提示；单侧有数据时自动换视图并提示（6.4）
 - [ ] 顶栏「?」能打开引导下拉，条目按左侧导航分组，「当前页」标记跟随当前路由
-- [ ] 第 6.5 节若已执行：月度 23 个步骤；记录页快照写在 `<folder>/*_Base_YYYY_MM.xlsx`，并按月累计
+- [ ] 第 6.5 节若已执行：月度所有步骤 completed（含 `invoke_employee_import`）；记录页快照写在 `<folder>/*_Base_YYYY_MM.xlsx`，并按月累计
 - [ ] 冷启动种子已注册：`select count(*) from product_files where uploaded_by = 'BaseSeed'` 返回 **9**（见 10.4）
 - [ ] 错位 base 已搬迁：`input/cancel_restore/`、`input/futu_exercises/` 下不再有 `*_Base_*.xlsx`（见 10.8）
 - [ ] `git status --short` 干净（若执行了第 2 节）
