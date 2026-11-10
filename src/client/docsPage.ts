@@ -111,10 +111,10 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
     id: 'monthly-flow',
     title: '月度更新与运行',
     group: '月度主流程',
-    summary: '建立月份、配置文件、运行与回退',
+    summary: '建立月份、配方输入文件与月度常量、运行与回退',
     body: `# 月度更新与运行
 
-**月度更新** 是系统的主线：每个月建立一个计划，配置好本月的输入文件，运行后得到最新的股权结果。
+**月度更新** 是系统的主线：每个月建立一个计划，配置好本月的输入文件与月度常量，运行后得到最新的股权结果。
 
 ## 月度更新列表
 
@@ -122,13 +122,54 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 
 ## 运行页面
 
-点某个月的 **查看详情** 进入运行页面，它分成两部分：
+点某个月的 **查看详情** 进入运行页面，它分成三部分：
 
 ![月度运行的输入配置与执行状态](/guide/monthly-run.png)
-*运行页面：上方配置输入文件，下方查看执行状态*
+*运行页面：上方配置输入文件与月度常量，下方查看执行状态*
 
-- **Input Configuration**：按来源列出每份需要的文件，带 **Required** 的是必填项，**Optional** 可以留空。每行用 **选择** 从当月 input 目录挑选文件（需要上传新文件时，也在「选择」弹窗里完成）；**Control Book Summary** 是特例，从独立的 control_book 目录选择上月产出的 base。允许覆盖 Sheet 的输入源（Control Book、Option Plans、Futu Exercises、2025 BC Subplan Transfer 等）还能指定使用哪个 Sheet，并各有合理的默认 Sheet。
+- **Input Files**：按来源列出本月的每份文件，**必须** 三项（Control Book Detail、SERIES B Control Book、Gyre Option Plans Summary）缺一不可，其余标记 **可选**（其中带「继承」的由上月自动带入、带「补充」的可留空）。每行用 **选择** 从当月 input 目录挑文件（上传新文件也在弹窗里完成）；Control Book Summary 是特例，从独立的 control_book 目录取上月产出的 base。允许覆盖 Sheet 的来源可以直接选该工作簿里的哪张表，未选时用下面的默认 Sheet。
+- **月度常量**：5 个随月份保存的固定数字，新建月份自动继承上个月的值，可随时编辑保存（详见下一节）。
 - **执行状态**：点 **执行** 后，这里会实时显示每个步骤的进度、成功或失败，以及产出的文件。
+
+## Input Files（输入文件清单）
+
+按运行页的显示顺序；「文件名参考」是该来源期望的导出命名，**默认 Sheet** 是选择文件后自动带出的工作表（可改）。
+
+| # | 输入源 | 必填 | 用途 | 文件名参考 / 默认 Sheet |
+| --- | --- | --- | --- | --- |
+| 1 | Control Book Summary | 可选 · 继承 | 完整的 EQ Control Book，作为增量合并的基表；默认带入上月产出，也可换成新的 Cap Table 文件 | 继承上月，无模板 / \`EQ Control Book\` |
+| 2 | Control Book Detail | **必须** | 本月 Control Book 明细导出，幂等合并进基表；报告期必须是本月，本月没有新交易也要上传当期导出 | \`Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / \`27591\` |
+| 3 | SERIES B Control Book | **必须** | 本月 Series B 的 Control Book 明细，Shares Issued × 5 得到 Series B Preferred Stock | \`SeriesB_Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / \`43105\` |
+| 4 | Gyre Option Plans Summary | **必须** | 各计划的 outstanding 与 available 股数，用于 Options Outstanding / Available | \`DD-M-YYYY_HH-mm-ss_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx\` / \`!Option Plans Summary (Post-Gyr…\` |
+| 5 | Futu Exercises Summary | 可选 · 继承 | 完整的 Futu BCI Exercises 基表，作为行权增量合并的基表 | 继承上月，无模板 / \`Futu BCI Exercises\` |
+| 6 | Futu Exercise Record | 可选 | 富途「员工行权记录」导出，取 **行权汇总数据** sheet（一人一天一行、末行为合计），按 员工号+授予编号+行权日期 幂等合并；同时供「行权记录-FUTU」。不要选「行权明细数据」 | \`Gyre Therapeutics员工行权记录.xlsx\` / \`行权汇总数据\` |
+| 7 | FUTU-Cancel & Restore Summary | 可选 · 继承 | 上月完整的取消与恢复基表，默认由上月合并结果自动延续 | 继承上月，无模板 / \`取消与恢复明细\` |
+| 8 | FUTU-Cancel & Restore Record | 可选 | 本月「取消与恢复报表」明细，用于 Plan Summary 增量合并，并生成「取消记录-FUTU」页的当月快照 | \`Gyre Therapeutics取消与恢复报表.xlsx\` / \`取消与恢复明细\` |
+| 9 | Shareworks Exercise Record | 可选 · 补充 | Shareworks「Executive Awards OS Only」导出，供「行权记录」页的 Shareworks 视图 | \`DD-M-YYYY_HH-mm-ss_MDT_!GYRE_Exec_Option_OS.xlsx\` / \`Executive Awards OS Only\` |
+| 10 | Futu Sold Shares Record | 可选 · 补充 | 富途「出售汇总」导出，生成「卖出记录-FUTU」页的当月快照 | \`Gyre Therapeutics-公司出售记录YYYY-MM-DD-YYYY-MM-DD.xlsx\` / \`出售汇总数据\` |
+| 11 | Shareworks Grant Record | 可选 · 补充 | Shareworks「Options OS Detail by Plan」导出，供「授予记录」页的 Shareworks 视图 | \`DD-M-YYYY_HH-mm-ss_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx\` / \`Personnel Summary (Options OS D\` |
+| 12 | Futu Grant Record | 可选 · 补充 | 富途「授予记录」导出，供「授予记录」页的 Futu 视图，并用于刷新员工主数据 | \`Gyre Therapeutics授予数据导出报表YYYYMMDD.xlsx\` / \`授予记录\` |
+
+### 系统自动带入（不在页面上显示）
+
+以下 7 项由系统按上月结果自动绑定，**不需要也不要手工上传**：
+
+- **Previous Capitalization Summary**：上月产出的 Capitalization Summary，只用来校验本月的 Last Month。
+- **六份上月快照**（\`*_Base_<yyyy_MM>.xlsx\`）：授予记录 Futu / 授予记录 Shareworks / 行权记录 Futu / 行权记录 Shareworks / 卖出记录 / 取消记录，是各记录页「截至当月」链条的基表，由月度运行按月份顺序自动接上。
+
+## 月度常量
+
+月度常量是每月独立保存、可编辑的 5 个数字，卡片在输入文件下方。**新建月份会自动继承上个月的值**，改了只影响该月（以及之后继承它的月份），改动即时写入数据库。
+
+| 常量 | 默认值 | 说明 |
+| --- | --- | --- |
+| Options Outstanding - Cullgen | 4,156,815 | Cullgen 已授予且已发行、尚未行权的期权数，作为固定项计入 Total Fully Diluted |
+| Options Available - Cullgen | 10,994 | Cullgen 计划池中仍可授予的额度，同样计入 Total Fully Diluted |
+| Warrants for Convertible Preferred Stock | 540,666 | 可转换优先股对应的认股权证数，计入 Total Fully Diluted |
+| Cullgen Common Stock | 14,450,527 | 与 EQ Control Book 的 \`Agr. & Pl. of Merger\` 行（按 As of Date 截断）对账，不一致直接阻断。合并发生前（2026-05 之前）该值为 **0**，这是合法值 |
+| Gyre 2023 China SubPlan Total | 7,815,396 | 与 EQ Control Book 的 \`Equity Inc.Sub-Pl. Futu Network Technology\` 行对账，不一致直接阻断。该行出现前（2024-07 之前）为 **0**，同样合法 |
+
+> 这两个「对账基准」不是算出来的，是业务维护的口径值：系统拿它跟 Control Book 的实际行比对，用来发现漏传或错传的 Control Book。填 0 表示该事件尚未发生，不是「未填写」。
 
 ## 运行记录与回退
 
@@ -204,17 +245,17 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 这里的 Exercised Qty 是成功行权数量，不是下单数量、扣除/卖出数量或成交数量。
 行权数量按 Exercise Date 截断到运行月份（含当月），与 Control Book 的 As of Date 口径一致：底表是「到当日」的累计合并结果时，回算历史月份也不会把以后的月行权算进来。日期为空的行按计入处理；晚于运行月份的行不计入，并在运行页给出 warning 说明排除了多少行、多少股、涉及哪些月份。
 
-### 2.3 Option Plans 与 BC Subplan 调整
+### 2.3 Option Plans 指标
 
 Option Plans 子工作流为每个计划生成 key/value：优先 Outstanding Calc.，否则 Options Outstanding，再否则 Available Shares in Pool，都为空时按 0；空计划名、空分类和 0011PLAN_2018 ESPP (Manual Reserve) 排除。
 
-主汇总使用 Awards Outstanding、Shares Remaining For Issuance、Awards Outstanding + Shares Remaining for Issuance 三类 key。对 GYRE 2025 BC Subplan，如果存在 Awards Outstanding 行且 Cancelled 合计为 0，则把 Transfer Plan 的取消量从 outstanding 挪到 available：
+主汇总使用 Awards Outstanding、Shares Remaining For Issuance、Awards Outstanding + Shares Remaining for Issuance 三类 key，直接按计划求和：
 
-    Options Outstanding = sum(Awards Outstanding) - BC Subplan Cancelled Adjustment
-    Options Available = sum(Shares Remaining For Issuance) + BC Subplan Cancelled Adjustment
+    Options Outstanding = sum(Awards Outstanding)
+    Options Available = sum(Shares Remaining For Issuance)
     Outstanding + Available = sum(Awards Outstanding + Shares Remaining for Issuance)
 
-Transfer Plan 的取消量优先取 总计 列负数的绝对值；没有负数时，取 总计 标记行最大值与最小值的差。因此取消调整不会改变 outstanding 与 available 的合计。
+> 2026-11 起不再有「用 Transfer Plan 的取消量把 outstanding 挪到 available」这一步：\`2025 转仓至 Futu\` 页面与月度里的 \`2025 BC Subplan Transfer\` 输入已下线，期权数完全以 Option Plans Summary 为准。
 
 ### 2.4 Fully Diluted 分母
 
@@ -263,7 +304,7 @@ Futu 读取 授予记录 Sheet 并输出 Grant_Record_Futu.xlsx。Shareworks 读
 
 Futu 行权表的 --、空值和 null 数量都按 0；页面展示下单数量、成功行权数量、行权成本、扣除/卖出数量和成交数量。Shareworks 行权表作为独立来源输出，不与 Futu 交易行伪合并。
 
-### 卖出记录
+### 卖出记录-FUTU
 
 过滤空工号、空姓名、标题行 工号，并排除姓名以 note: 开头的备注行；有效记录输出 sold_shares.xlsx。
 
@@ -275,20 +316,24 @@ Option Plans 子工作流按分类和排序号向前回溯，给统计行找到�
 
     Granted = sum(value where key = Granted)
     Exercised = sum(value where key = Exercised)
-    Cancelled = sum(value where key = Cancelled)
+    Cancelled = 取消与恢复报表按「所属计划」汇总的数量（该计划没有报表行时回退源文件的 Cancelled 列）
     Outstanding = sum(value where key = Awards Outstanding)
+
+取消数取自「取消与恢复报表」：按「变更日期」截止到运行月份、排除「已归属到期失效」，按报表里的「所属计划」分组，再把每个分组挂到摘要里对应的计划名上（大小写、\`GYRE\` 前后缀差异会归一）。报表里没有出现的计划（例如 CBIO 2015/2018、Cullgen 等历史计划）保留源文件的取消列，不会被清零。
 
 只保留 Outstanding 不为 0 的计划，输出 Plan_Summary.xlsx。
 
 ### 员工归集
 
-Futu 工号 trim 后转大写，姓名 trim，来源标记 futu。Shareworks 排除 Last Name 为 subplan 且计划名或授予名含 subplan 的行；员工编号 trim 后转大写，姓名按 First + Middle + Last 拼接，来源标记 shareworks。两个来源 union 后按 employee_id upsert；冲突时更新姓名和文件证据，不删除历史员工。
+Futu 工号 trim 后转大写，姓名 trim，来源标记 futu。Shareworks 排除 Last Name 为 subplan 且计划名或授予名含 subplan 的行；员工编号 trim 后转大写，姓名按 First + Middle + Last 拼接，来源标记 shareworks。两个来源 union 后按 employee_id upsert；冲突时只更新姓名和文件证据，不删除历史员工，也不动人工标签、关联和停用状态。
+
+**什么时候跑**：月度运行的最后一步会调用员工归集（月度用的那两份授予导出就是输入），所以每月跑完月度，员工主数据会跟着刷新；两份授予导出都没配时会自动跳过。员工管理页的 **Update** 仍可单独重跑，输入与月度一致。
 
 ## 六、5% 股东
 
-工作流先检查 Capitalization Summary 中存在且唯一的 Common Shares OS、Cullgen common stock、Total Fully Diluted Shares Outstand 分母：
+工作流先检查 Capitalization Summary 中存在 Asset Class Summary: EOM 与 Total Fully Diluted Shares Outstand 两个分母：
 
-    Common Stock OS = Common Shares OS + Cullgen common stock
+    Common Stock OS = Asset Class Summary: EOM 行的 Common Shares Equivalent
     Fully Diluted = Total Fully Diluted Shares Outstanding
     % of Class = holder Common Stock / Common Stock OS
     % Fully Diluted = holder Total CSEs / Fully Diluted
@@ -557,10 +602,10 @@ If a warning appears during the run, review and confirm or fix it before continu
     id: 'monthly-flow',
     title: 'Monthly Updates and Runs',
     group: 'Monthly Process',
-    summary: 'Create a month, configure files, run, and roll back',
+    summary: 'Create a month, configure files and constants, run, and roll back',
     body: `# Monthly Updates and Runs
 
-**Monthly Updates** is the system's main line: each month you create a plan, configure its input files, and run it to get the latest equity results.
+**Monthly Updates** is the system's main line: each month you create a plan, configure its input files and monthly constants, and run it to get the latest equity results.
 
 ## The updates list
 
@@ -568,13 +613,54 @@ On the **Monthly Updates** page, four cards at the top show the total, completed
 
 ## The run page
 
-Clicking a month's **View Details** opens the run page, which has two parts:
+Clicking a month's **View Details** opens the run page, which has three parts:
 
 ![The Monthly Run input configuration and execution status](/guide/en/monthly-run.png)
-*The run page: configure input files above, watch execution status below*
+*The run page: configure inputs and constants above, watch execution status below*
 
-- **Input Configuration**: lists each required file by source; **Required** items are mandatory and **Optional** ones may be left empty. Each row's **Select** picks a file from the current month's input folder (uploading a new file happens inside the picker); **Control Book Summary** is the exception and is picked from the dedicated control_book folder (last month's produced base). Sources that allow a sheet override (Control Book, Option Plans, Futu Exercises, 2025 BC Subplan Transfer) can also choose which sheet to use, each with a sensible default sheet.
+- **Input Files**: lists this month's files by source. Three are **required** (Control Book Detail, SERIES B Control Book, Gyre Option Plans Summary); the rest are **optional** — those marked *inherit* are carried over from last month, those marked *supplement* may be left empty. Each row's **Select** picks a file from the current month's input folder (uploading happens inside the picker); **Control Book Summary** is the exception and comes from the dedicated control_book folder (last month's produced base). Sources that allow a sheet override let you pick which sheet of that workbook to read; the default sheet is used when you do not.
+- **Monthly constants**: five per-month numbers, inherited from the previous month when the month is created; editable at any time (see below).
 - **Execution status**: after you click **Run**, this shows each step's progress, success or failure, and the files produced, in real time.
+
+## Input Files
+
+In the order the run page shows them. "File name" is the export naming the source expects; **default sheet** is what is picked after choosing a file (and can be changed).
+
+| # | Source | Required | Purpose | File name / default sheet |
+| --- | --- | --- | --- | --- |
+| 1 | Control Book Summary | Optional · inherit | The complete EQ Control Book used as the base for the incremental merge; last month's output by default | Inherited / \`EQ Control Book\` |
+| 2 | Control Book Detail | **Required** | This month's Control Book detail export, merged idempotently into the base; the reporting period must be this month, and a quiet month still has to upload it | \`Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / \`27591\` |
+| 3 | SERIES B Control Book | **Required** | This month's Series B Control Book detail; Shares Issued × 5 gives Series B Preferred Stock | \`SeriesB_Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / \`43105\` |
+| 4 | Gyre Option Plans Summary | **Required** | Per-plan outstanding and available shares, feeding Options Outstanding / Available | \`DD-M-YYYY_HH-mm-ss_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx\` / \`!Option Plans Summary (Post-Gyr…\` |
+| 5 | Futu Exercises Summary | Optional · inherit | The complete Futu BCI Exercises base the exercise increment merges into | Inherited / \`Futu BCI Exercises\` |
+| 6 | Futu Exercise Record | Optional | Futu "employee exercise records"; the **行权汇总数据** sheet (one row per person per day, totals on the last row) is merged idempotently by employee + grant + exercise date and also feeds "Exercise Record-FUTU". Do not pick 行权明细数据 | \`Gyre Therapeutics员工行权记录.xlsx\` / \`行权汇总数据\` |
+| 7 | FUTU-Cancel & Restore Summary | Optional · inherit | Last month's complete cancel & restore base, carried over automatically | Inherited / \`取消与恢复明细\` |
+| 8 | FUTU-Cancel & Restore Record | Optional | This month's cancel & restore detail; merged into Plan Summary and used for the "Cancellation Records-FUTU" snapshot | \`Gyre Therapeutics取消与恢复报表.xlsx\` / \`取消与恢复明细\` |
+| 9 | Shareworks Exercise Record | Optional · supplement | Shareworks "Executive Awards OS Only" export for the Shareworks view of Exercise Record | \`DD-M-YYYY_HH-mm-ss_MDT_!GYRE_Exec_Option_OS.xlsx\` / \`Executive Awards OS Only\` |
+| 10 | Futu Sold Shares Record | Optional · supplement | Futu "sold shares summary" export for the "Sold Shares-FUTU" snapshot | \`Gyre Therapeutics-公司出售记录YYYY-MM-DD-YYYY-MM-DD.xlsx\` / \`出售汇总数据\` |
+| 11 | Shareworks Grant Record | Optional · supplement | Shareworks "Options OS Detail by Plan" export for the Shareworks view of Grant Record | \`DD-M-YYYY_HH-mm-ss_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx\` / \`Personnel Summary (Options OS D\` |
+| 12 | Futu Grant Record | Optional · supplement | Futu "grant records" export for the Futu view of Grant Record; also refreshes the employee master list | \`Gyre Therapeutics授予数据导出报表YYYYMMDD.xlsx\` / \`授予记录\` |
+
+### Bound automatically (never shown on the page)
+
+Seven sources are bound by the system from last month's results — do not upload them by hand:
+
+- **Previous Capitalization Summary**: last month's produced summary, used only to reconcile this month's Last Month.
+- **Six last-month snapshots** (\`*_Base_<yyyy_MM>.xlsx\`): grant records Futu / Shareworks, exercise records Futu / Shareworks, sold shares, cancellation records — the bases that make the record pages "as of this month".
+
+## Monthly constants
+
+Five numbers stored per month, in the card below the input table. A new month **inherits the previous month's values**, edits apply to that month only, and changes are saved immediately.
+
+| Constant | Default | Meaning |
+| --- | --- | --- |
+| Options Outstanding - Cullgen | 4,156,815 | Granted and issued Cullgen options not yet exercised; a fixed term in Total Fully Diluted |
+| Options Available - Cullgen | 10,994 | Cullgen pool still available for grants; likewise in Total Fully Diluted |
+| Warrants for Convertible Preferred Stock | 540,666 | Warrants attached to convertible preferred stock; in Total Fully Diluted |
+| Cullgen Common Stock | 14,450,527 | Reconciled against the EQ Control Book \`Agr. & Pl. of Merger\` row (truncated at As of Date); a mismatch blocks the run. Before the merger (2026-05) this is **0**, which is legitimate |
+| Gyre 2023 China SubPlan Total | 7,815,396 | Reconciled against the EQ Control Book \`Equity Inc.Sub-Pl. Futu Network Technology\` row; a mismatch blocks. Before that row exists (2024-07) it is **0**, also legitimate |
+
+> These two reconciliation baselines are maintained by the business, not computed: the system compares them against the real Control Book rows to catch a missing or wrong Control Book. A 0 means the event has not happened yet, not "not filled in".
 
 ## Run history and rollback
 
@@ -643,16 +729,15 @@ Rows with an empty employee number or the header 员工编号 are excluded. The 
     Futu Exercised Qty = sum(Exercised Qty)
     BCI Shares Held by Futu = China Subplan total - Futu Exercised Qty
 
-### Option plans and BC Subplan adjustment
+### Option plan metrics
 
-The option-plan subworkflow chooses Outstanding Calc. first, then Options Outstanding, then Available Shares in Pool, and otherwise zero. Blank plan/category rows and 0011PLAN_2018 ESPP (Manual Reserve) are excluded. The main summary uses Awards Outstanding, Shares Remaining For Issuance, and Awards Outstanding + Shares Remaining for Issuance.
+The option-plan subworkflow chooses Outstanding Calc. first, then Options Outstanding, then Available Shares in Pool, and otherwise zero. Blank plan/category rows and 0011PLAN_2018 ESPP (Manual Reserve) are excluded. The main summary uses Awards Outstanding, Shares Remaining For Issuance, and Awards Outstanding + Shares Remaining for Issuance, summed per plan:
 
-If GYRE 2025 BC Subplan has an Awards Outstanding row and its Cancelled total is zero, the Transfer Plan cancellation amount is moved from outstanding to available:
+    Options Outstanding = sum(Awards Outstanding)
+    Options Available = sum(Shares Remaining For Issuance)
+    Outstanding + Available = sum(Awards Outstanding + Shares Remaining for Issuance)
 
-    Options Outstanding = sum(Awards Outstanding) - BC Subplan Cancelled Adjustment
-    Options Available = sum(Shares Remaining For Issuance) + BC Subplan Cancelled Adjustment
-
-The adjustment is the absolute negative Total value when available; otherwise it is the difference between the maximum and minimum Total rows labelled Total. The outstanding-plus-available total remains unchanged.
+> Since 2026-11 there is no longer a "move Transfer Plan cancellations from outstanding to available" step: the 2025 transfer-to-Futu page and the monthly 2025 BC Subplan Transfer input were retired, so option counts come from the Option Plans Summary alone.
 
 ### Fully diluted denominator
 
@@ -696,16 +781,20 @@ Plan names are recovered by walking backward within category and sort order, ski
 
     Granted = sum(value where key = Granted)
     Exercised = sum(value where key = Exercised)
-    Cancelled = sum(value where key = Cancelled)
+    Cancelled = the cancel & restore ledger summed per 所属计划 (falls back to the workbook column for plans the ledger never mentions)
     Outstanding = sum(value where key = Awards Outstanding)
 
-Only plans with non-zero Outstanding are written to Plan Summary. For employee import, Futu employee numbers are trimmed and upper-cased. Shareworks subplan rows are excluded when Last Name is subplan and plan or grant name contains subplan; names are First + Middle + Last. Both sources are unioned and upserted by employee_id, updating name and file evidence without deleting history.
+Cancelled comes from the cancel & restore report: rows dated up to the run month, excluding '已归属到期失效', grouped by the ledger's 所属计划 and mapped onto the summary's plan names (case and a leading GYRE are normalised). Plans the report never mentions — the legacy CBIO 2015/2018 and Cullgen plans — keep the workbook's cancellation column instead of being zeroed.
+
+Only plans with non-zero Outstanding are written to Plan Summary. For employee import, Futu employee numbers are trimmed and upper-cased. Shareworks subplan rows are excluded when Last Name is subplan and plan or grant name contains subplan; names are First + Middle + Last. Both sources are unioned and upserted by employee_id, updating name and file evidence without deleting history or touching manual labels, links, and deactivation state.
+
+**When it runs**: the monthly run invokes employee import as its last step, using the same two grant exports, so the employee master list follows the month; it is skipped when neither grant export is configured. The Employee Management page's **Update** button still re-runs it on demand with the same inputs.
 
 ## 5% holders
 
-The workflow checks for the Common Shares OS, Cullgen common stock, and Total Fully Diluted Shares Outstand denominator rows. It calculates:
+The workflow checks for the Asset Class Summary: EOM and Total Fully Diluted Shares Outstand rows. It calculates:
 
-    Common Stock OS = Common Shares OS + Cullgen common stock
+    Common Stock OS = the Asset Class Summary: EOM row's Common Shares Equivalent
     % of Class = holder Common Stock / Common Stock OS
     % Fully Diluted = holder Total CSEs / Fully Diluted
     Total >5% = GNI Group Ltd. + Songjiang Ma
