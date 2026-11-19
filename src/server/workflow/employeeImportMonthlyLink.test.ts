@@ -50,7 +50,14 @@ function frame(columns: string[], rows: Array<Record<string, unknown>>): Workflo
     rows,
     index: rows.map((_, index) => index + 1),
     matrix: [],
-    range: { sheetName: 'input', a1Range: '', startRow: 1, endRow: rows.length + 1, startCol: 1, endCol: columns.length },
+    range: {
+      sheetName: 'input',
+      a1Range: '',
+      startRow: 1,
+      endRow: rows.length + 1,
+      startCol: 1,
+      endCol: columns.length,
+    },
   };
 }
 
@@ -96,9 +103,7 @@ test('an absent Futu workbook yields no Futu employees instead of breaking the r
     dependsOn: [],
   } as unknown as WorkflowTask;
 
-  const { dataFrame } = await executeSqlDataFrameQuery(bound, runtime, async () =>
-    frame(['工号', '姓名'], []),
-  );
+  const { dataFrame } = await executeSqlDataFrameQuery(bound, runtime, async () => frame(['工号', '姓名'], []));
   assert.equal(dataFrame.rows.length, 0);
 });
 

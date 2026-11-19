@@ -123,7 +123,9 @@ async function runTask(
     x: 0,
     y: 0,
     params: { ...task.params, constants: { workflowMonth: WORKFLOW_MONTH } },
-    inputs: Object.fromEntries(Object.keys(task.inputs ?? {}).map((slot) => [slot, { from: 'seed', slot: 'dataframe' }])),
+    inputs: Object.fromEntries(
+      Object.keys(task.inputs ?? {}).map((slot) => [slot, { from: 'seed', slot: 'dataframe' }]),
+    ),
     dependsOn: [],
   } as unknown as WorkflowTask;
   const slots = Object.keys(task.inputs ?? {});
@@ -140,10 +142,7 @@ async function planSummary(): Promise<Array<Record<string, unknown>>> {
   const plans = frame('plans', Object.keys(planRows()[0]), planRows());
   const cancelRestore = frame('cancel_restore', Object.keys(cancelRestoreRows()[0]), cancelRestoreRows());
   const cancelled = await runTask('calculate_cancel_restore_cancelled', { input1: cancelRestore, plans });
-  const union = frame('union', Object.keys(plans.rows[0]), [
-    ...plans.rows,
-    ...cancelled.map((row) => ({ ...row })),
-  ]);
+  const union = frame('union', Object.keys(plans.rows[0]), [...plans.rows, ...cancelled.map((row) => ({ ...row }))]);
   return runTask('aggregate_plan_summary', { input1: union });
 }
 

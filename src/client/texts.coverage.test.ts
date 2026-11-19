@@ -49,7 +49,8 @@ test('placeholders survive translation', () => {
     for (const [key, entry] of Object.entries(table as Record<string, { 'zh-CN'?: string; 'en-US'?: string }>)) {
       const zh = [...String(entry['zh-CN'] ?? '').matchAll(placeholders)].map((match) => match[1]).sort();
       const en = [...String(entry['en-US'] ?? '').matchAll(placeholders)].map((match) => match[1]).sort();
-      if (zh.join(',') !== en.join(',')) mismatched.push(`${namespace}.${key}: zh={${zh.join(',')}} en={${en.join(',')}}`);
+      if (zh.join(',') !== en.join(','))
+        mismatched.push(`${namespace}.${key}: zh={${zh.join(',')}} en={${en.join(',')}}`);
     }
   }
   assert.deepEqual(mismatched, []);

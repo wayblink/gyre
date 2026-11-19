@@ -1,21 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import * as XLSX from 'xlsx';
 import {
   buildPlanSummary,
   mergeFutuExercise,
   mergeFutuGrant,
   mergeShareworksExercise,
   mergeShareworksGrant,
-  toTransferPlanPeriod,
 } from '../esopPages.js';
 import { expandByLinkedGroup } from '../employeeLinkExpansion.js';
 import { distinctGrantTypes } from '../utils/grantTypes.js';
 import { assembleShareworksName } from '../employees.js';
-import { config } from '../config.js';
-import fs from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
 import { parseFivePercentHoldersGrid } from '../fivePercentHolders/persistence.js';
 import { getLatestMonthlyRunOutput } from '../monthlyRun/instanceStore.js';
 import { startEsopPageWorkflow } from '../esopWorkflow/service.js';
@@ -33,7 +27,6 @@ import {
   employeeLinkGroupByNumber,
   getProductFileOrThrow,
   latestWorkflowInputSourceBindings,
-  notFound,
   nullableNumberValue,
   numberValue,
   pageWorkflowConfig,
@@ -44,12 +37,9 @@ import {
   readProductFileSheetByLogicalPath,
   readNameEmpNoSort,
   resultFilesFromArtifacts,
-  saveProductWorkbook,
   sortRowsByNameOrEmpNo,
   sourceFilesFromArtifacts,
   textValue,
-  toProductFile,
-  updatedByFromRequest,
   workflowSourceDescriptors,
 } from './support.js';
 import { employeeLabelIds, employeeLabelNames, employeeNumberByName, normalizeEmployeeName } from './employees.js';
@@ -65,7 +55,7 @@ import {
   deriveFivePercentHolderDenominators,
 } from '../fivePercentHolders/summary.js';
 import { workflowEomLabel } from '../workflow/operators/sqlUtils.js';
-import type { EmployeeLabelRef, RequestWithAuth, WorkflowPageSourceBindingResponse } from './support.js';
+import type { EmployeeLabelRef, WorkflowPageSourceBindingResponse } from './support.js';
 
 import { MONTHLY_WORKFLOW_CODE } from '../monthlyRun/store.js';
 import { workflowRunToExecutionResult } from '../workflow/runResult.js';
@@ -147,17 +137,6 @@ const esopWorkflowRunBodySchema = z.object({
       sheet: z.string().trim().min(1).max(255).optional(),
     }),
   ),
-});
-
-const transferPlanEditBodySchema = z.object({
-  edits: z
-    .array(
-      z.object({
-        period: z.string().trim().min(1),
-        cancelledQuantity: z.number().finite(),
-      }),
-    )
-    .min(1),
 });
 
 const dataManagementPageKeySchema = z.enum(['employee', 'plan-summary', 'five-percent-holders']);

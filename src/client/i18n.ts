@@ -317,7 +317,7 @@ const STATIC_TEXT_TRANSLATIONS: Record<string, string> = {
   下一页: 'Next',
   // 月度更新与运行页
   '记录每次月度工作流执行的输入、输出与状态': 'Inputs, outputs and status of every monthly workflow run',
-  '配置月度输入源': 'Configure monthly input sources',
+  配置月度输入源: 'Configure monthly input sources',
   '各输入源默认只能选择当前月份目录内的文件；Control Book Summary、Futu Exercises Summary、Cancel & Restore Summary 从各自的专属目录（control_book / futu_exercises / cancel_restore）选择。':
     'Each source picks from the current month folder by default; Control Book Summary, Futu Exercises Summary and Cancel & Restore Summary come from their own folders (control_book / futu_exercises / cancel_restore).',
   // 文件中心 / 工作簿工具栏

@@ -20,9 +20,7 @@ import { resolveWorkflowRuntimeConfiguration } from './runtimeParameters.js';
  * task reading `params.sheetName` is what makes the whole chain work.
  */
 
-const seed = JSON.parse(
-  readFileSync(path.join(process.cwd(), 'database/workflows/employee-import.json'), 'utf8'),
-) as {
+const seed = JSON.parse(readFileSync(path.join(process.cwd(), 'database/workflows/employee-import.json'), 'utf8')) as {
   tasks: WorkflowTask[];
   runtimeParamsSchema: WorkflowRuntimeParametersSchema;
   runtimeParamsDefaults: WorkflowRuntimeParameters;

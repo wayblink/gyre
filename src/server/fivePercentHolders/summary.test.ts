@@ -3,10 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import {
-  applyFivePercentHolderDenominators,
-  deriveFivePercentHolderDenominators,
-} from './summary.js';
+import { applyFivePercentHolderDenominators, deriveFivePercentHolderDenominators } from './summary.js';
 
 /**
  * The 5% Holders page used to take "Common Stock OS" as `Common Shares OS + Cullgen common stock`.

@@ -42,7 +42,10 @@ test('sheet options fall back to the source default before the first workbook sh
       defaultSheet: 'Personnel Summary (Options OS D',
       sheets: ['Report Information', 'Personnel Summary (Options OS D'],
     }),
-    { selectedSheet: 'Personnel Summary (Options OS D', options: ['Report Information', 'Personnel Summary (Options OS D'] },
+    {
+      selectedSheet: 'Personnel Summary (Options OS D',
+      options: ['Report Information', 'Personnel Summary (Options OS D'],
+    },
   );
 });
 

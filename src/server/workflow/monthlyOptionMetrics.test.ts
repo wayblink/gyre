@@ -63,7 +63,12 @@ test('option metrics are computed from the Option Plans Summary alone', async ()
   const { dataFrame: out } = await executeSqlDataFrameQuery(bound, runtime, async () =>
     plansFrame([
       { category_for_grouping: 'Gyre', plan_name: 'GYRE 2023 Plan', key: 'Awards Outstanding', value: 13_690_892 },
-      { category_for_grouping: 'Gyre', plan_name: 'GYRE 2023 Plan', key: 'Shares Remaining For Issuance', value: 3_667_401 },
+      {
+        category_for_grouping: 'Gyre',
+        plan_name: 'GYRE 2023 Plan',
+        key: 'Shares Remaining For Issuance',
+        value: 3_667_401,
+      },
       {
         category_for_grouping: 'Gyre',
         plan_name: 'GYRE 2023 Plan',

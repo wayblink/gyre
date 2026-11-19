@@ -3,13 +3,7 @@ import test from 'node:test';
 
 process.env.AUTH_DISABLED = 'true';
 
-import {
-  auditEntityFromPath,
-  redactAuditPayload,
-  registerAuditHook,
-  writeAuditLog,
-  type AuditLogEntry,
-} from './audit.js';
+import { auditEntityFromPath, redactAuditPayload, writeAuditLog, type AuditLogEntry } from './audit.js';
 
 /**
  * The audit trail: what gets recorded, what must never be recorded, and what must not break the app.

@@ -206,7 +206,10 @@ test('the increment extracts 行权汇总数据 (13 columns), not 行权明细�
   // The guard is a column-count contract now: the increment may be the Chinese summary or the cap table's
   // English to-date sheet, so "which header language" is decided by the projection, not by the guard.
   const projection = seedTask('project_futu_exercises_increment');
-  const guards = (projection.inputs?.increment?.guards ?? []) as Array<{ type: string; params: Record<string, unknown> }>;
+  const guards = (projection.inputs?.increment?.guards ?? []) as Array<{
+    type: string;
+    params: Record<string, unknown>;
+  }>;
   const shape = guards.find((guard) => guard.type === 'dataframe.shape.assert');
   assert.ok(shape, 'the increment must be guarded by a column-shape assertion');
   assert.equal(shape.params.expectedColumns, 13);
@@ -267,7 +270,14 @@ test('merging the same summary twice is still idempotent', async () => {
 test('history rows the increment does not mention survive, and their order numbers are kept', async () => {
   const merged = await runTask('merge_futu_exercises', {
     base: frame(
-      [baseRow({ 'Exercise Order No.': '', 'Exercise Date': '2024-08-26', 'Exercised Qty': 2000, 'Employee No.': 'K00381' })],
+      [
+        baseRow({
+          'Exercise Order No.': '',
+          'Exercise Date': '2024-08-26',
+          'Exercised Qty': 2000,
+          'Employee No.': 'K00381',
+        }),
+      ],
       BASE_COLUMNS,
     ),
     increment: frame([], BASE_COLUMNS),
@@ -393,7 +403,12 @@ test("the cap table's English to-date sheet projects to the same base contract",
 test("the cap table's to-date sheet is cut at the run month like the Chinese summary", async () => {
   const projected = await runTask(
     'project_futu_exercises_increment',
-    { increment: frame([englishRow(), englishRow({ 'Exercise Date': '2026-09-03', 'Exercised Qty': 10 })], ENGLISH_COLUMNS) },
+    {
+      increment: frame(
+        [englishRow(), englishRow({ 'Exercise Date': '2026-09-03', 'Exercised Qty': 10 })],
+        ENGLISH_COLUMNS,
+      ),
+    },
     '2026-08',
   );
   assert.equal(projected.length, 1);
@@ -460,7 +475,10 @@ test('the record page sync takes the chosen sheet and reads both header flavours
 
   const projected = await runTaskFrom(recordTask('project_futu_exercise_summary'), {
     input1: frame(
-      [englishRow(), englishRow({ Name: 'in Total', 'Employee No.': '', 'Exercise Date': '', 'Exercised Qty': 2938523 })],
+      [
+        englishRow(),
+        englishRow({ Name: 'in Total', 'Employee No.': '', 'Exercise Date': '', 'Exercised Qty': 2938523 }),
+      ],
       ENGLISH_COLUMNS,
     ),
   });

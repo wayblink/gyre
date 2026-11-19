@@ -311,7 +311,8 @@ test('a 5% Holders run carries the month of the capitalisation summary it was gi
   await startDataManagementWorkflow(
     {
       async queryOne(_sql, params) {
-        if (_sql.includes('logical_path')) return { logical_path: 'output/captable/2026-08-Capitalization_Table_Summary_View.v1.xlsx' };
+        if (_sql.includes('logical_path'))
+          return { logical_path: 'output/captable/2026-08-Capitalization_Table_Summary_View.v1.xlsx' };
         assert.deepEqual(params, ['five-percent-holders-sync']);
         return workflow;
       },
