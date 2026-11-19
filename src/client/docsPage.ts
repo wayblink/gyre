@@ -454,14 +454,14 @@ GNI Group Ltd. 和 Songjiang Ma 的 Common Stock、Total CSEs 来自全局参数
 
 ## 左侧：文件目录
 
-- 文件按 **input / output / control_book** 等目录分组，可展开查看。每月月度运行产出的完整 EQ Control Book base 会写到 **control_book** 目录（文件名带年月），作为下个月运行时的 base 输入。
+- 文件按 **input / output / control_book** 等目录分组，**默认全部收起**，点文件夹才展开；搜索时命中的文件会临时展开显示。每月月度运行产出的完整 EQ Control Book base 会写到 **control_book** 目录（文件名带年月），作为下个月运行时的 base 输入。
 - 顶部可 **搜索**、**刷新**、**上传**（支持 \`.xlsx\`、\`.xls\`、\`.csv\`），也可 **新建** 文件。
 - 每个文件项都可以重命名或删除。
-- **从月度更新跳转**：在月度更新页「Input Files」里点文件名，会直接打开该文件——文件中心左侧会自动展开它所在的文件夹、把该文件滚动到列表中间并闪烁高亮一次，省去在几百个文件里找它。
+- **从月度更新跳转**：在月度更新页「Input Files」里点文件名，会直接打开该文件——文件中心左侧只展开它所在的文件夹（其它目录保持收起）、把该文件滚动到列表中间并闪烁高亮一次，省去在几百个文件里找它。
 
 ## 右侧：在线预览
 
-点开一个文件，右侧会打开工作簿，可以逐个 Sheet 查看内容，无需下载到本地。
+点开一个文件，右侧会打开工作簿，可以逐个 Sheet 查看内容，无需下载到本地；确实需要原文件时，点右上角的 **下载文件** 保存到本机。
 
 打开时默认是 **只读预览**，不能改动单元格；需要修改时点工作簿上方的 **编辑**，改完点 **保存** 写回文件，或点 **取消** 放弃修改。
 
@@ -901,17 +901,17 @@ Plan Summary and 5% Holders are result pages: after changing source files or par
 
 ## Left: the folder tree
 
-- Files are grouped into folders like **input / output / control_book** that you can expand. Each month's full EQ Control Book base is written to the **control_book** folder (the file name carries the year-month) to serve as next month's base input.
+- Files are grouped into folders like **input / output / control_book**. Folders start **collapsed** and open when you click them; a search temporarily expands the matches. Each month's full EQ Control Book base is written to the **control_book** folder (the file name carries the year-month) to serve as next month's base input.
 - The top lets you **search**, **refresh**, and **upload** (\`.xlsx\`, \`.xls\`, \`.csv\`), or **create** a new file.
 - Each file can be renamed or deleted.
 
 ## Right: in-browser preview
 
-Open a file to view its workbook on the right, inspecting each sheet without downloading it.
+Open a file to view its workbook on the right, inspecting each sheet without downloading it. When you do need the original, click **Download file** in the top-right corner of the preview.
 
 Files open as a **read-only preview**, so cells cannot be changed. To make changes, click **Edit** above the workbook, then **Save** to write them back, or **Cancel** to discard them.
 
-Clicking an uploaded file name in a Monthly Updates input table also jumps here and previews that file read-only.
+Clicking an uploaded file name in a Monthly Updates input table also jumps here, opening only that file's folder and highlighting the row before previewing it read-only.
 
 Uploaded files become "product files" that can be selected as inputs in Monthly Updates or Workflow.`,
   },

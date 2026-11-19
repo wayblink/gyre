@@ -14,6 +14,10 @@ export function installDom({ url = 'http://localhost/' } = {}) {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', { url, pretendToBeVisual: true });
   const { window } = dom;
 
+  // jsdom implements no layout, so scrollIntoView does not exist. The app calls it to bring a file
+  // row into view when a deep link lands on the Files page; without the no-op that path throws.
+  window.Element.prototype.scrollIntoView = function scrollIntoView() {};
+
   const globals = {
     window,
     document: window.document,

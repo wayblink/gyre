@@ -322,11 +322,12 @@ test('file uploads use a shared visible progress dialog', () => {
   assert.match(monthlyRunPageSource, /openProductFile\(fileId\)/);
 });
 
-test('files viewer opens read-only and exposes edit/save/cancel controls', () => {
+test('files viewer opens read-only and exposes download/edit/save/cancel controls', () => {
   const filesPageMarkup = html.match(/<section class="sheet-card">[\s\S]*?<\/section>/)?.[0] ?? '';
 
   assert.match(filesPageMarkup, /id="filesViewerToolbar"/);
   assert.match(filesPageMarkup, /id="filesViewerModeBadge"/);
+  assert.match(filesPageMarkup, /id="btnDownloadProductFile"/);
   assert.match(filesPageMarkup, /id="btnEditProductFile"/);
   assert.match(filesPageMarkup, /id="btnSaveProductFile"/);
   assert.match(filesPageMarkup, /id="btnCancelProductFileEdit"/);

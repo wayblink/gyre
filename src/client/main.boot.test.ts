@@ -16,8 +16,8 @@ import { MONTHLY_WORKFLOW_VERSION } from './monthlyRunPage.js';
 
 const INDEX_HTML = readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
 
-function installAppDom() {
-  const { window } = installDom({ url: 'http://localhost/captable' });
+function installAppDom(url = 'http://localhost/captable') {
+  const { window } = installDom({ url });
   window.document.documentElement.innerHTML = INDEX_HTML.slice(
     INDEX_HTML.indexOf('<body'),
     INDEX_HTML.lastIndexOf('</body>'),
@@ -110,8 +110,8 @@ const FALLBACK = {
 let bootCount = 0;
 let lastRequests: Array<{ url: string; method: string }> = [];
 
-async function bootApp(stubs = API_STUBS, settleMs = 250) {
-  const window = installAppDom();
+async function bootApp(stubs = API_STUBS, settleMs = 250, url?: string) {
+  const window = installAppDom(url);
   lastRequests = installFetch(stubs, { fallback: FALLBACK }).calls;
   // A cache-busting query re-executes main.ts for each test: the module wires itself to the DOM
   // that exists when it is imported, so every test needs a fresh instance.
@@ -1083,7 +1083,7 @@ test('the source table states requiredness and purpose in one Notes column', asy
   assert.match(optionalCell?.querySelector('.source-purpose')?.textContent ?? '', /Series B Preferred Stock/);
 });
 
-test('the uploaded-file cell keeps the file name and its sheet selector on one line', async () => {
+test('the uploaded-file cell keeps the file name on its own line above the sheet selector', async () => {
   const window = await bootApp([
     ...API_STUBS,
     {
@@ -1145,15 +1145,21 @@ test('the uploaded-file cell keeps the file name and its sheet selector on one l
   const cell = doc.querySelector('#monthlyRunSourcesBody tr .source-uploaded-cell');
   assert.ok(cell, 'the uploaded-file cell renders');
 
-  // The file name and the sheet selector must sit in the same flex row, not stacked.
+  // The file name owns the first line and the sheet selector is stacked underneath it. On one line
+  // the fixed-width selector left the name a handful of characters ("Contro…").
   const inline = cell.firstElementChild;
   assert.equal(inline?.className, 'source-uploaded-inline');
-  assert.ok(inline?.querySelector('.source-file-actions'), 'file name is inside the row');
-  assert.ok(inline?.querySelector('.source-sheet-control'), 'sheet selector is inside the same row');
+  const inlineChildren = [...(inline?.children ?? [])];
+  assert.deepEqual(
+    inlineChildren.map((child) => child.className),
+    ['source-file-actions', 'source-sheet-field'],
+    'file name comes first, the sheet selector is the second line',
+  );
+  assert.ok(inline?.querySelector('.source-file-actions .source-file-link'), 'the file name lives on line one');
+  assert.ok(inline?.querySelector('.source-sheet-field .source-sheet-control'), 'the sheet selector lives on line two');
 
-  // The sheet control is a bordered group with a short "Sheet" prefix, not a caption above a select.
+  // The sheet control keeps its bordered group with a short "Sheet" prefix, not a caption above a select.
   assert.equal(inline?.querySelector('.source-sheet-control__label')?.textContent, 'Sheet');
-  assert.ok(inline?.querySelector('.source-sheet-field .source-sheet-control'), 'grouped control is wrapped');
 
   // The copy button follows the file name directly; the link no longer grows to push it away.
   const actions = inline?.querySelector('.source-file-actions');
@@ -1164,13 +1170,14 @@ test('the uploaded-file cell keeps the file name and its sheet selector on one l
     'copy button is the immediate sibling of the file name',
   );
   const css = readFileSync(new URL('../../css/style.css', import.meta.url), 'utf8');
+  const inlineRule = css.match(/\.source-uploaded-inline\s*\{[\s\S]*?\}/)?.[0] ?? '';
+  assert.match(inlineRule, /flex-direction:\s*column/, 'the name and the selector stack, they do not share a line');
   const linkRule = css.match(/\.source-file-link\s*\{[\s\S]*?\}/)?.[0] ?? '';
   assert.match(linkRule, /flex:\s*0 1 auto/, 'the file link must shrink-to-fit, not grow');
 
-  // The utility columns are narrow so the Sheet selector gets the width, and the selector itself is
-  // wide enough for long sheet names (e.g. "!Option Plans Summary (Post-Gyr").
+  // The name gets the whole column on its own line, so the column stays wide and the selector keeps
+  // enough room for long sheet names (e.g. "!Option Plans Summary (Post-Gyr").
   assert.match(css, /\.source-table__col-uploaded\s*\{\s*width:\s*43%/, 'uploaded-file column widened');
-  assert.match(css, /\.source-table__col-actions\s*\{\s*width:\s*145px/, 'actions column narrowed');
   assert.match(css, /\.source-sheet-control__select\s*\{[^}]*width:\s*320px/, 'sheet selector widened');
 
   // Header and values must share the time column's left edge: right-aligning the shorter header
@@ -1184,6 +1191,122 @@ test('the uploaded-file cell keeps the file name and its sheet selector on one l
     readFileSync(new URL('./monthlyRunPage.ts', import.meta.url), 'utf8'),
   );
   assert.ok(actionsHtml, 'the actions cell must not carry a right-align class');
+});
+
+const FILES_TREE_STUBS: FetchStub[] = [
+  ...API_STUBS,
+  {
+    match: /\/api\/files$/,
+    respond: {
+      files: [
+        {
+          id: 901,
+          originalName: 'root_level.xlsx',
+          displayName: '',
+          displayPath: 'root_level.xlsx',
+          storedName: 'root_level.xlsx',
+          fileExt: 'xlsx',
+          logicalPath: 'root_level.xlsx',
+          createdAt: '2026-09-01T10:00:00.000Z',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          fileSizeBytes: 2048,
+          workbookSheetCount: 1,
+        },
+        {
+          id: 902,
+          originalName: 'Control_Books_Detail_Data_09.07.2026_14.19.xlsx',
+          displayName: '',
+          displayPath: 'input/2026-06/Control_Books_Detail_Data_09.07.2026_14.19.xlsx',
+          storedName: 'Control_Books_Detail_Data_09.07.2026_14.19.xlsx',
+          fileExt: 'xlsx',
+          logicalPath: 'input/2026-06/Control_Books_Detail_Data_09.07.2026_14.19.xlsx',
+          createdAt: '2026-07-09T14:19:00.000Z',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          fileSizeBytes: 4096,
+          workbookSheetCount: 2,
+        },
+        {
+          id: 903,
+          originalName: 'archive_copy.xlsx',
+          displayName: '',
+          displayPath: 'archive/2026-08/archive_copy.xlsx',
+          storedName: 'archive_copy.xlsx',
+          fileExt: 'xlsx',
+          logicalPath: 'archive/2026-08/archive_copy.xlsx',
+          createdAt: '2026-08-20T09:00:00.000Z',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          fileSizeBytes: 1024,
+          workbookSheetCount: 1,
+        },
+      ],
+    },
+  },
+  // Opening the workbook is out of scope here: the content endpoint fails, which is enough to keep
+  // the selection/highlight assertions meaningful without booting the spreadsheet engine in jsdom.
+  {
+    match: /\/api\/files\/902$/,
+    respond: {
+      file: {
+        id: 902,
+        originalName: 'Control_Books_Detail_Data_09.07.2026_14.19.xlsx',
+        displayName: '',
+        logicalPath: 'input/2026-06/nested.xlsx',
+      },
+      sheets: [],
+    },
+  },
+  { match: /\/api\/files\/902\/content$/, respond: { error: 'no workbook in tests' }, status: 500 },
+];
+
+test('the file tree opens with every folder collapsed', async () => {
+  const window = await bootApp(FILES_TREE_STUBS, 300);
+  const doc = window.document;
+  doc.querySelector<HTMLElement>('.nav-item[data-page="files"]')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  const dirs = [...doc.querySelectorAll<HTMLElement>('.workbook-tree__dir')];
+  assert.ok(dirs.length >= 2, `expected the folder rows, got ${dirs.length}`);
+  assert.equal(dirs.filter((dir) => dir.classList.contains('is-expanded')).length, 0, 'no folder may start expanded');
+  // Only root-level files are visible; nested files stay inside their collapsed folders.
+  assert.ok(doc.querySelector('[data-file-id="901"]'), 'a root-level file is visible');
+  assert.equal(doc.querySelector('[data-file-id="902"]'), null, 'a nested file is hidden until its folder opens');
+  // Nothing is auto-opened: with everything collapsed the right pane cannot point at a hidden row.
+  assert.ok(
+    doc.getElementById('fileBrowserEmpty')?.classList.contains('hidden') === false,
+    'the viewer keeps its hint',
+  );
+
+  dirs.find((dir) => dir.getAttribute('data-tree-dir-path') === 'input')?.click();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.deepEqual(
+    [...doc.querySelectorAll<HTMLElement>('.workbook-tree__dir.is-expanded')].map((dir) =>
+      dir.getAttribute('data-tree-dir-path'),
+    ),
+    ['input'],
+    'clicking a folder expands exactly that folder',
+  );
+});
+
+test('a file deep link expands only that file path, scrolls to it and highlights it', async () => {
+  const window = await bootApp(FILES_TREE_STUBS, 500, 'http://localhost/files?fileId=902');
+  const doc = window.document;
+
+  assert.ok(doc.getElementById('page-files')?.classList.contains('active'), 'the files page is active');
+  assert.deepEqual(
+    [...doc.querySelectorAll<HTMLElement>('.workbook-tree__dir.is-expanded')]
+      .map((dir) => dir.getAttribute('data-tree-dir-path'))
+      .sort(),
+    ['input', 'input/2026-06'],
+    'only the ancestors of the target file are expanded',
+  );
+  const row = doc.querySelector<HTMLElement>('[data-file-id="902"]');
+  assert.ok(row, 'the target file row is rendered');
+  assert.ok(row?.classList.contains('is-active'), 'the target file is highlighted');
+  assert.equal(
+    doc.querySelector<HTMLElement>('[data-tree-dir-path="archive"]')?.classList.contains('is-collapsed'),
+    true,
+    'unrelated folders stay collapsed',
+  );
 });
 
 test('the cancellation-record page boots, binds its controls, and renders records', async () => {

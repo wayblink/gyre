@@ -9222,19 +9222,29 @@ textarea.form-input {
     white-space: normal;
 }
 
-/* File name and its sheet selector share one line: the name truncates with an ellipsis and the
-   selector keeps its width, so the row never wraps into three stacked lines. */
+/* The file name owns its own line and the sheet selector sits underneath it. Sharing one line made
+   the name unreadable ("Contro…", "09-7-…"): the selector keeps a fixed 320px, so on every row the
+   name was squeezed into whatever was left. Stacking them gives the name the whole column width. */
 .source-uploaded-inline {
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
     min-width: 0;
     flex-wrap: nowrap;
 }
 
 .source-uploaded-inline > .source-file-actions {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
+    max-width: 100%;
+}
+
+/* The second line starts at the column's left edge, like the name above it, instead of being
+   centred under it. */
+.source-uploaded-inline > .source-sheet-field {
+    align-self: stretch;
+    max-width: 100%;
 }
 
 .source-sheet-name {

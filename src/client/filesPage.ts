@@ -82,7 +82,11 @@ export function createFilesPage({
   let selectedProductFileIds = new Set<number>();
   let filesViewControlsBound = false;
   let filesSearchBound = false;
-  const collapsedTreeDirectoryPaths = new Set<string>();
+  // Directories are collapsed unless the operator expanded them. Storing what is open (instead of
+  // what is closed) makes "everything collapsed" the initial state: the tree opens with 27 folders
+  // and 563 files hidden instead of printing the whole library. A jump from another page expands
+  // exactly the ancestors of the file it points at, so the tree shows where that file lives.
+  const expandedTreeDirectoryPaths = new Set<string>();
 
   function lang(): AppLanguage {
     return getLanguage?.() ?? 'zh-CN';
@@ -102,6 +106,10 @@ export function createFilesPage({
     el('btnCreateProductFile').addEventListener('click', () => void createProductFile());
     el('btnUploadProductFile').addEventListener('click', () => void uploadProductFile());
     el('btnRefreshFiles').addEventListener('click', () => void loadProductFiles());
+    el('btnDownloadProductFile').addEventListener('click', () => {
+      const fileId = currentProductFileDetail?.file.id ?? selectedProductFileId;
+      if (fileId) downloadProductFile(fileId);
+    });
     el('btnEditProductFile').addEventListener('click', () => enterProductFileEditing());
     el('btnSaveProductFile').addEventListener('click', () => void saveCurrentProductFile());
     el('btnCancelProductFileEdit').addEventListener('click', () => void cancelProductFileEditing());
@@ -180,7 +188,12 @@ export function createFilesPage({
       return;
     }
 
-    const targetId = selectedId ?? selectedProductFileId ?? currentProductFileDetail?.file.id ?? productFiles[0]?.id;
+    // An explicit id means the caller sent the operator here for that file (the Monthly Update input
+    // list, a `?fileId=` deep link, a finished upload). Expand exactly its path and nothing else.
+    const requestedFile = selectedId ? productFiles.find((file) => file.id === selectedId) : undefined;
+    if (requestedFile) expandProductFilePath(requestedFile);
+
+    const targetId = selectedId ?? selectedProductFileId ?? currentProductFileDetail?.file.id ?? null;
     if (!isFilesPageActive()) {
       if (targetId) selectedProductFileId = targetId;
       renderProductFilesList();
@@ -189,9 +202,23 @@ export function createFilesPage({
     }
     renderProductFilesList();
     updateFileActionState();
-    if (targetId) {
-      await openProductFile(targetId);
-      revealProductFile(targetId);
+    if (!targetId) {
+      // Nothing is selected on a plain visit: the tree opens fully collapsed, so auto-opening the
+      // first file would show a workbook whose row is hidden somewhere in a closed folder.
+      currentProductFileDetail = null;
+      currentWorkbookBuffer = null;
+      renderFileBrowserMessage(tt('chooseFile'));
+      return;
+    }
+    await openProductFile(targetId);
+    if (requestedFile) revealProductFile(targetId);
+  }
+
+  /** Open the ancestor folders of one file and close everything else, so the tree reads as a path. */
+  function expandProductFilePath(file: ProductFileRecord) {
+    expandedTreeDirectoryPaths.clear();
+    for (const directoryPath of fileAncestorDirectories(productFileTreePath(file))) {
+      expandedTreeDirectoryPaths.add(directoryPath);
     }
   }
 
@@ -208,22 +235,26 @@ export function createFilesPage({
     const file = productFiles.find((item) => item.id === fileId);
     if (!file) return;
 
-    let expandedAny = false;
-    for (const directoryPath of fileAncestorDirectories(productFileTreePath(file))) {
-      if (collapsedTreeDirectoryPaths.delete(directoryPath)) expandedAny = true;
-    }
-
-    let row = container.querySelector<HTMLElement>(`[data-file-id="${fileId}"]`);
-    if (!row && filesSearchQuery) {
+    let needsRender = false;
+    if (filesSearchQuery) {
       // The search box is hiding the target; the jump wins over the previous filter.
       filesSearchQuery = '';
       const searchInput = document.getElementById('filesBrowserSearch') as HTMLInputElement | null;
       if (searchInput) searchInput.value = '';
-      expandedAny = true;
+      needsRender = true;
     }
-    if (expandedAny) renderProductFilesList();
+    for (const directoryPath of fileAncestorDirectories(productFileTreePath(file))) {
+      if (!expandedTreeDirectoryPaths.has(directoryPath)) {
+        expandedTreeDirectoryPaths.add(directoryPath);
+        needsRender = true;
+      }
+    }
+    if (needsRender) renderProductFilesList();
 
-    row = container.querySelector<HTMLElement>(`[data-file-id="${fileId}"]`);
+    // A collapsed Browser pane hides the highlight entirely; a jump asks to show the file.
+    if (filesLeftCollapsed) setFilesPaneCollapsed(false);
+
+    const row = container.querySelector<HTMLElement>(`[data-file-id="${fileId}"]`);
     if (!row) return;
     row.scrollIntoView({ block: 'center' });
     row.classList.add('is-revealed');
@@ -580,10 +611,10 @@ export function createFilesPage({
 
   function toggleTreeDirectory(path: string) {
     if (!path) return;
-    if (collapsedTreeDirectoryPaths.has(path)) {
-      collapsedTreeDirectoryPaths.delete(path);
+    if (expandedTreeDirectoryPaths.has(path)) {
+      expandedTreeDirectoryPaths.delete(path);
     } else {
-      collapsedTreeDirectoryPaths.add(path);
+      expandedTreeDirectoryPaths.add(path);
     }
     renderProductFilesList();
   }
@@ -655,7 +686,9 @@ export function createFilesPage({
   }
 
   function renderTreeDirectory(node: FileTreeNode, depth: number): string {
-    const collapsed = collapsedTreeDirectoryPaths.has(node.path);
+    // While searching, everything that survived the filter is shown open: a collapsed folder holding
+    // the only match would otherwise look like "no results".
+    const collapsed = !filesSearchQuery && !expandedTreeDirectoryPaths.has(node.path);
     const childCount = countTreeFiles(node);
     const childDirectories = collapsed
       ? ''
@@ -1010,7 +1043,8 @@ export function createFilesPage({
     const editButton = document.getElementById('btnEditProductFile') as HTMLButtonElement | null;
     const saveButton = document.getElementById('btnSaveProductFile') as HTMLButtonElement | null;
     const cancelButton = document.getElementById('btnCancelProductFileEdit') as HTMLButtonElement | null;
-    if (!toolbar || !nameLabel || !badge || !editButton || !saveButton || !cancelButton) return;
+    const downloadButton = document.getElementById('btnDownloadProductFile') as HTMLButtonElement | null;
+    if (!toolbar || !nameLabel || !badge || !editButton || !saveButton || !cancelButton || !downloadButton) return;
 
     const hasWorkbook = Boolean(currentProductFileDetail && workbookViewer);
     toolbar.classList.toggle('hidden', !hasWorkbook);
@@ -1026,6 +1060,9 @@ export function createFilesPage({
     editButton.textContent = tt('edit');
     editButton.classList.toggle('hidden', productFileEditing);
     editButton.disabled = productFileLoading || productFileSaving;
+
+    downloadButton.textContent = tt('downloadFile');
+    downloadButton.disabled = productFileLoading || productFileSaving;
 
     saveButton.textContent = productFileSaving ? tt('saving') : tt('save');
     saveButton.classList.toggle('hidden', !productFileEditing);

@@ -135,8 +135,17 @@ test('a file reveal opens the tree and marks the row', () => {
   assert.match(reveal, /scrollIntoView\(\{ block: 'center' \}\)/, 'the row is scrolled to the middle of the list');
   assert.match(reveal, /classList\.add\('is-revealed'\)/, 'the row flashes so the eye lands on it');
   assert.match(reveal, /filesSearchQuery = ''/, 'a search filter that hides the target is dropped');
-  // Called whenever a file id was explicitly requested, i.e. when arriving from another page.
-  assert.match(source, /await openProductFile\(targetId\);\s*\n\s*revealProductFile\(targetId\);/);
+  // Only an explicitly requested file expands a path and flashes; a plain page visit stays collapsed.
+  assert.match(
+    source,
+    /if \(requestedFile\) expandProductFilePath\(requestedFile\);/,
+    'the requested file path is expanded',
+  );
+  assert.match(
+    source,
+    /if \(requestedFile\) revealProductFile\(targetId\);/,
+    'the row is revealed for an explicit request',
+  );
 });
 
 test('the monthly input list opens the file from its name, and the file centre takes it from there', () => {
