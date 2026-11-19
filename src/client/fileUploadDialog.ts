@@ -1,7 +1,7 @@
 import type { ProductFileSummary } from '../shared/types.js';
 import type { AppLanguage } from './i18n.js';
 import { createTexts, type TextKey } from './texts.js';
-import { buildProductFileFolderTree, inputUploadFolder, type FolderTreeNode } from './fileTree.js';
+import { buildProductFileFolderTree, normalizeClientFolder } from './fileTree.js';
 import { renderFolderTreePicker } from './folderTreePicker.js';
 
 const t = createTexts('fileUpload');
@@ -18,8 +18,8 @@ export type FileUploadDialogDeps = {
 /**
  * Asks where an upload should land before it starts.
  *
- * Uploads are stored under `input/` (the server normalises any path with `inputStorageFolderPrefix`),
- * so the tree only offers that subtree plus a free-text path for a new folder.
+ * The dialog shows the whole folder tree, the same one the move dialog and the file centre use:
+ * picking `control_book/` uploads there, and the free-text box accepts a new folder path.
  */
 export function createFileUploadDialog({ el, escapeHtml, getProductFiles, getLanguage }: FileUploadDialogDeps) {
   const tt = (key: TextKey<'fileUpload'>) => t(key, getLanguage?.() ?? 'zh-CN');
@@ -39,13 +39,14 @@ export function createFileUploadDialog({ el, escapeHtml, getProductFiles, getLan
     bind();
     fileName = file.name;
     selectedFolder = 'input';
-    expandedFolderPaths = new Set(['input']);
+    // Start with every root folder visible instead of opening `input/`: the point of this dialog is
+    // the whole tree, so the first screen shows where an upload may go.
+    expandedFolderPaths = new Set();
     el<HTMLInputElement>('fileUploadNewFolder').value = '';
     setError('');
     renderHeader();
     overlay().classList.remove('hidden');
-    // The tree is rendered once the dialog is visible, otherwise the reveal measures a hidden container.
-    renderFolderTree({ revealSelected: true });
+    renderFolderTree();
     return new Promise((resolve) => {
       pending = resolve;
     });
@@ -79,15 +80,10 @@ export function createFileUploadDialog({ el, escapeHtml, getProductFiles, getLan
     el('btnConfirmFileUploadModal').textContent = tt('confirm');
   }
 
-  function inputSubtree(): FolderTreeNode[] {
-    const input = buildProductFileFolderTree(getProductFiles()).find((node) => node.path === 'input');
-    return input ? [input] : [{ name: 'input', path: 'input', children: [] }];
-  }
-
   function renderFolderTree(options: { revealSelected?: boolean } = {}) {
     renderFolderTreePicker({
       container: el('fileUploadFolderList'),
-      nodes: inputSubtree(),
+      nodes: buildProductFileFolderTree(getProductFiles()),
       selectedPath: selectedFolder,
       expandedPaths: expandedFolderPaths,
       escapeHtml,
@@ -116,7 +112,7 @@ export function createFileUploadDialog({ el, escapeHtml, getProductFiles, getLan
     const typed = el<HTMLInputElement>('fileUploadNewFolder').value.trim();
     let folder: string;
     try {
-      folder = inputUploadFolder(typed || selectedFolder);
+      folder = normalizeClientFolder(typed) || selectedFolder;
     } catch {
       setError(tt('invalidFolder'));
       return;

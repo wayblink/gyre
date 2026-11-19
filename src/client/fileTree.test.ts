@@ -11,7 +11,6 @@ import {
   compareProductFile,
   countTreeFiles,
   fileAncestorDirectories,
-  inputUploadFolder,
   normalizeClientFolder,
   productFileFolder,
   productFileLogicalTreePath,
@@ -200,13 +199,4 @@ test('the move-target folder tree lists a shared folder once and nests deeper pa
     input.children[0].children.map((node) => node.path),
     ['input/2026-08/nested'],
   );
-});
-
-test('upload folder paths are normalised under input exactly like the server does', () => {
-  assert.equal(inputUploadFolder(''), 'input');
-  assert.equal(inputUploadFolder('2026-08'), 'input/2026-08');
-  assert.equal(inputUploadFolder('input/2026-08'), 'input/2026-08');
-  assert.equal(inputUploadFolder(' /input\\2026-08/ '), 'input/2026-08');
-  assert.equal(inputUploadFolder('control_book'), 'input/control_book');
-  assert.throws(() => inputUploadFolder('input/../x'), /Invalid folder path/);
 });

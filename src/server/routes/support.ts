@@ -331,13 +331,6 @@ export function normalizeStorageFolderPrefix(prefix?: string): string | undefine
   }
 }
 
-export function inputStorageFolderPrefix(prefix?: string): string {
-  const normalized = normalizeStorageFolderPrefix(prefix);
-  if (!normalized) return 'input';
-  if (normalized === 'input' || normalized.startsWith('input/')) return normalized;
-  return `input/${normalized}`;
-}
-
 export function stripFileVersion(fileName: string): string {
   return fileName.replace(/\.v\d{14}(?=\.[^.]+$)/i, '');
 }
@@ -530,22 +523,24 @@ export async function saveProductWorkbook(
     folderPrefix?: string;
     conflictPolicy?: 'error' | 'overwrite';
     /**
-     * Set when the caller *declares* an output folder rather than picking one for an upload.
+     * Set when the caller has already decided the folder: a folder the operator picked in the file
+     * centre (upload / move) or a workflow's declared output directory.
      *
      * `workbook.persist.excel`'s `folderPrefix` means "输出目录" — the folder the workflow writes its
      * result to, which later tasks and `injectPreviousMonthBase()` look the file up by. Running it
      * through `normalizeProductFileStoragePrefix()` rewrites anything outside a hardcoded allowlist
      * (`output/`, `input/`, `control_book/`) into `input/<folder>`, so a base persisted to
      * `cancel_restore/` landed in `input/cancel_restore/` and the month-to-month inheritance chain
-     * could never find it. Uploads keep the rewrite, where a bare folder really does mean "under
-     * input/"; they already normalise with `inputStorageFolderPrefix()` before calling in.
+     * could never find it. A folder picked in the file centre has the same problem in miniature:
+     * the tree shows `control_book/` as `control_book/`, so the stored path has to stay exactly that
+     * instead of being pushed under `input/`.
      */
-    declaredOutputFolder?: boolean;
+    folderPrefixIsFinal?: boolean;
   },
 ) {
   const mimeType = params.mimeType?.trim() || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const uploadedBy = params.uploadedBy?.trim() || 'Workflow';
-  const folderPrefix = params.declaredOutputFolder
+  const folderPrefix = params.folderPrefixIsFinal
     ? (normalizeStorageFolderPrefix(params.folderPrefix) ?? 'input')
     : normalizeProductFileStoragePrefix(params.folderPrefix);
   const originalName = normalizeProductFileName(params.originalName);

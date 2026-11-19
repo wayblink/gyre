@@ -66,7 +66,7 @@ export function createRouteContext(db: AppDb): RouteContext {
     async saveGeneratedWorkbook(params) {
       // `folderPrefix` here is the operator's declared output directory, so it must survive as
       // written: later tasks (and the monthly base-inheritance lookup) resolve the file by that path.
-      const saved = await saveProductWorkbook(db, { ...params, declaredOutputFolder: true });
+      const saved = await saveProductWorkbook(db, { ...params, folderPrefixIsFinal: true });
       return toProductFile(saved.file);
     },
     upsertTableRows(params) {

@@ -598,8 +598,8 @@ export const TEXTS = {
       'en-US': 'Pick a target folder, or enter a new folder path.',
     },
     newFolderLabel: {
-      'zh-CN': '或填写新目录路径（默认在 input 下）',
-      'en-US': 'Or enter a new folder path (under input)',
+      'zh-CN': '或填写新目录路径',
+      'en-US': 'Or enter a new folder path',
     },
     cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
     confirm: { 'zh-CN': '上传', 'en-US': 'Upload' },

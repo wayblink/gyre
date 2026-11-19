@@ -186,14 +186,3 @@ export function normalizeClientFolder(value: string): string {
   }
   return segments.join('/');
 }
-
-/**
- * Client mirror of `inputStorageFolderPrefix` in src/server/routes/support.ts: uploads always live under
- * `input/`, so `2026-08` and `input/2026-08` both mean `input/2026-08`, and an empty path means `input`.
- */
-export function inputUploadFolder(value: string): string {
-  const normalized = normalizeClientFolder(value);
-  if (!normalized) return 'input';
-  if (normalized === 'input' || normalized.startsWith('input/')) return normalized;
-  return `input/${normalized}`;
-}

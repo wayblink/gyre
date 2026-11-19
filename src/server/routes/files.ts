@@ -3,12 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { DbClient } from '../db.js';
 import { fileStorage } from '../storage.js';
-import {
-  canonicalProductFilePath,
-  normalizeProductFileName,
-  normalizeProductFolder,
-  productFileCollisionKey,
-} from '../fileIdentity.js';
+import { canonicalProductFilePath, normalizeProductFileName, productFileCollisionKey } from '../fileIdentity.js';
 import { extractSheetRangeAsDataFrame, previewWorkbookSheet, summarizeWorkbookAsync } from '../excel.js';
 import { workbookSummaryFor } from '../workbookSummaryCache.js';
 import { cachedSheetPreview, invalidateSheetPreviewCache, sheetPreviewCacheKey } from '../utils/sheetPreviewCache.js';
@@ -18,8 +13,7 @@ import {
   badRequest,
   conflict,
   getProductFileOrThrow,
-  inputStorageFolderPrefix,
-  normalizeProductFileStoragePrefix,
+  normalizeStorageFolderPrefix,
   notFound,
   parseIdParam,
   productFileDisplayPath,
@@ -138,7 +132,8 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
         buffer: uploaded.buffer,
         mimeType: uploaded.mimeType,
         uploadedBy,
-        folderPrefix: inputStorageFolderPrefix(folderPrefix),
+        folderPrefix,
+        folderPrefixIsFinal: true,
         conflictPolicy,
       });
     } catch (error) {
@@ -220,11 +215,9 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
 
     let folderPrefix: string;
     try {
-      const requestedFolder = normalizeProductFolder(body.folder);
-      // Output workbooks stay in the output class; everything else is an input.
-      folderPrefix = oldLogicalPath.startsWith('output/')
-        ? normalizeProductFileStoragePrefix(requestedFolder)
-        : inputStorageFolderPrefix(requestedFolder);
+      // The move dialog lists the real folder tree, so the picked path is stored as-is instead of
+      // being pushed under input/ (the old rules rewrote `control_book` to `input/control_book`).
+      folderPrefix = normalizeStorageFolderPrefix(body.folder) ?? 'input';
     } catch {
       throw badRequest('Invalid folder path');
     }

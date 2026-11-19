@@ -78,10 +78,10 @@ const monthlySourceDedicatedFolders: Record<string, string> = {
  * `injectPreviousMonthBase()` looks them up there. Scoping the picker to that one folder is what keeps
  * a raw monthly export from being bound where a merged base belongs.
  *
- * Deliberately a single root, with no `input/<folder>/` twin: uploads are normalised under `input/`
- * by `inputStorageFolderPrefix()`, so that twin is where mis-filed copies accumulate (a raw
- * cancel/restore report registered at `input/cancel_restore/` before the folder normalisation was
- * fixed, plus duplicate Futu bases). Including it surfaced those in the picker.
+ * Deliberately a single root, with no `input/<folder>/` twin: an upload or move that targeted
+ * `cancel_restore/` used to be normalised under `input/`, so that twin is where mis-filed copies
+ * accumulate (a raw cancel/restore report registered at `input/cancel_restore/`, plus duplicate
+ * Futu bases). Including it surfaced those in the picker.
  */
 export function monthlyRunSourceFolders(sourceKey: string | null | undefined, month?: string | null): string[] {
   const dedicated = sourceKey ? monthlySourceDedicatedFolders[sourceKey] : undefined;

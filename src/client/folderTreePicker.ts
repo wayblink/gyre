@@ -24,7 +24,7 @@ export function folderAncestors(folder: string): string[] {
 }
 
 export function renderFolderTreePicker(options: FolderTreePickerOptions): void {
-  const { container, nodes, escapeHtml, onSelect, onToggle } = options;
+  const { container, nodes, onSelect, onToggle } = options;
   const scrollTop = container.scrollTop;
   container.innerHTML = nodes.map((node) => renderFolderNode(node, 0, options)).join('');
   container.scrollTop = scrollTop;
@@ -42,14 +42,20 @@ export function renderFolderTreePicker(options: FolderTreePickerOptions): void {
   if (options.revealSelected) revealSelectedFolder(container);
 }
 
-/** `scrollIntoView` does not move this grid container, so the selected row is centred by hand. */
+/**
+ * `scrollIntoView` does not move this grid container, so the selected row is revealed by hand.
+ * It scrolls the minimum needed instead of centring, so the folders above it stay in view.
+ */
 export function revealSelectedFolder(container: HTMLElement): void {
   const selected = container.querySelector<HTMLElement>('[data-folder-tree-dir].is-selected');
   if (!selected) return;
   const containerRect = container.getBoundingClientRect();
   const rowRect = selected.getBoundingClientRect();
-  if (rowRect.top >= containerRect.top && rowRect.bottom <= containerRect.bottom) return;
-  container.scrollTop += rowRect.top - containerRect.top - (containerRect.height - rowRect.height) / 2;
+  if (rowRect.bottom > containerRect.bottom) {
+    container.scrollTop += rowRect.bottom - containerRect.bottom + 4;
+  } else if (rowRect.top < containerRect.top) {
+    container.scrollTop -= containerRect.top - rowRect.top + 4;
+  }
 }
 
 function renderFolderNode(node: FolderTreeNode, depth: number, options: FolderTreePickerOptions): string {
