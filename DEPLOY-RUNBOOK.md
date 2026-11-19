@@ -4,8 +4,8 @@
 > **不要跳过第 1 节的安全边界。** 遇到「停下来报告」的条件时，停下来，把输出原样贴回给需求方，不要自行决定继续。
 
 - 适用代码版本：`main` HEAD（见第 9 节提交清单）
-- 上一轮部署的基线：月度 v55 / `futu-exercises-incremental-merge` v6 / `esop-exercise-record-sync` v12
-- 本轮目标：月度工作流 **v56**，另有 2 个子工作流要发布（`futu-exercises-incremental-merge` **v9**、`esop-exercise-record-sync` **v13**），外加一条**数据迁移**：把月度实例里行权输入的 sheet 从「行权明细数据」改成「行权汇总数据」（见 4.6）
+- 上一轮部署的基线：月度 v60 / `employee-import` v3 / `plan-summary-sync` v7 / `five-percent-holders-sync` v2
+- 本轮目标：月度工作流 **v61**、`gyre-therapeutics-cancel-restore-incremental-merge` **v4**，**下线** `esop-cancellation-record-sync`，并清理它留下的重复快照与月度实例残留（见 4.5.1）
 - 部署形态：Fastify + 打包前端 + Postgres，单容器（Dockerfile 两阶段构建）
 - 云上编排：`docker-compose.prod.yml`（app + postgres + Caddy 反代网）
 
@@ -13,19 +13,19 @@
 
 ## 0. 一分钟背景（为什么有这些步骤）
 
-这一轮必须人工执行的有两步：**发布工作流定义**（`workflow_definitions` 的启动 seed 只插入缺失行、绝不覆盖已有行，而本轮 3 个定义的版本都变了）和**一条数据迁移**（实例输入里存着的旧 sheet 名会覆盖定义里的新默认值，见 4.6）。
+这一轮必须人工执行的有三步：**发布 2 个工作流定义**（`workflow_definitions` 的启动 seed 只插入缺失行、绝不覆盖已有行，而本轮的月度与取消合并两个定义的版本都变了）、**下线 1 个定义**、**清掉它留下的重复数据**（定义行、月度实例残留、`cancellation_record/` 下的重复快照，见 4.5.1）。
 
-前端硬编码 `MONTHLY_WORKFLOW_VERSION = 56` 与服务端版本比对，不一致时月度页报「版本不匹配」并拒绝执行（409）——不发布就是硬失效。
+前端硬编码 `MONTHLY_WORKFLOW_VERSION = 61` 与服务端版本比对，不一致时月度页报「版本不匹配」并拒绝执行（409）——不发布就是硬失效。
 
-**这一轮修的是「行权记录」这条链路的口径**（详见 4.5）：
+**这一轮修的是「同一份台账存了两份」**（详见 4.5、8.19）：同一个富途「取消与恢复报表」被两条流水线各合并了一次——`gyre-therapeutics-cancel-restore-incremental-merge` 写 `cancel_restore/`（供 Plan Summary 的 `Cancelled`），`esop-cancellation-record-sync` 写 `cancellation_record/`（供取消记录页）。2026-08 的两份快照逐行比较 0 处差异，文件中心里就是两个长得一样的目录。本轮删掉页面那条独立链路，让页面读同一份台账：
 
-1. **月度行权增量读错了 sheet**：一直吃富途界面导出的『行权明细数据』（59 列，按 `行权订单编号` 做幂等键）。明细是界面导出，列契约与分页窗口随导出状态漂移，换个导出形态就直接被守卫拦死（线上报过 `缺少幂等键或行权日期列: missing=[全部列]`）。改为读『行权汇总数据』（13 列，一人一天一行，末行合计），合并键换成 **员工号+授予编号+行权日期**，与「行权记录」页的 Futu 视图同一口径。数字不变：2026-06 / 2026-08 两份真实导出的已行权合计逐月一致。
-2. **同一张表还有第二种写法**：月度 Cap Table 工作簿（`!!Gyre Cap Table MM.DD.YY.xlsx`）的 `Futu BCI Exercises to Date` sheet 是同一张表的英文版（13 列，列序与语义一一对应，末尾多一行 `in Total`）。投影改成 `coalesce(中文列, 英文列)`，两种表头都能吃；base 侧补 `Exercise Order No.` 空列，13 列英文 sheet 可以直接当基表；`合计`/`in Total` 与空工号行一律丢弃。
-3. **空结果不能丢列**：把全量 to-date 快照当增量时，base 的每一行都被重述，retain 的 SQL 结果为空，而 `sql.compute` 在空结果时不带出列 → 合并守卫报 `Retained Futu base is missing a merge key column: missing=[Exercise Order No., Grant No., Exercise Date, Exercised Qty]`（2026-04 就是这样挂的）。修法是在 retain 与 merge 之间补一个 `dataframe.ensure.columns`，让空结果也是合法的 14 列。
+1. **月度少一个任务**：`invoke_cancellation_record_sync` 删除（22 → 21），对应的隐藏输入 `cancellation_record_base` 一起删（19 → 18 个源，**可见的输入表仍是 12 行**）。合并本身没变，仍由 `plan-summary-sync` 执行。
+2. **页面改读共享台账**：取消记录页映射到合并工作流，按 `cancel_restore/<name>_Base_YYYY_MM.xlsx` 的 `取消与恢复明细` sheet 取数。因为这个 merge 跑在 `workflow.invoke` 里且**不 propagate 子产物**，历史月份在 artifact 表里没有记录，所以改成按 logical_path 直接读文件——顺带让 2026-01/03/04/05 这些老月份也能在页面上选到。
+3. **文件中心顺手修了两处**（见 8.20）：目录树默认全收起、跳转只展开目标目录并高亮；预览面板加下载按钮；月度更新的 `Uploaded file` 列改成文件名在上、Sheet 在下两行。
 
 本轮不含任何 `schema.ts` 变更，**没有手写 DDL**；也没有新增 `workflow_operators`，没有新增 npm 依赖。
 
-记录页的「截至当月累计快照」语义（上一轮引入）本轮不变，操作规则仍见 11.1：快照落在 `<folder>/*_Base_YYYY_MM.xlsx`，由系统自动注入，**不需要也不要手工上传**。
+记录页的「截至当月累计快照」语义不变，操作规则仍见 11.1：快照落在 `<folder>/*_Base_YYYY_MM.xlsx`，由系统自动注入，**不需要也不要手工上传**。
 
 ---
 
@@ -125,6 +125,10 @@ git status --short
 
 ## 3. 数据库预检（三项，任一异常就停）
 
+> **本轮没有 `schema.ts` 变更**（没有新表、没有加列、没有数据迁移），下面三条是历次遗留的结构检查，
+> 正常情况下都已经处理过；跑一遍只是为了确认数据库没有意外回退。真正必须做的是本节最后的
+> 「记录当前状态」——回滚要靠它。
+
 在能连到云端 Postgres 的机器上执行。三条都为了确认 `schema.ts` 里的迁移语句能安全跑完。
 
 ```sql
@@ -156,12 +160,18 @@ select
 
 **判定**：① 必须为 0。② ③ 若为 1，先报告再继续。
 
-同时记录当前状态，供第 6 节对比：
+同时记录当前状态，供第 6 节对比、并在回滚时作为目标值（**把输出整段抄下来**）：
 
 ```sql
 select id, code, version, status, updated_at
   from workflow_definitions
- where code = 'gyre-captable-summary-v2';
+ where code in (
+   'gyre-captable-summary-v2', 'gyre-therapeutics-cancel-restore-incremental-merge',
+   'esop-cancellation-record-sync'
+ )
+ order by code;
+-- 本轮之前应当是：gyre-captable-summary-v2 = 60、gyre-therapeutics-cancel-restore-incremental-merge = 3、
+--                esop-cancellation-record-sync = 7
 
 select count(*) as users from app_users;
 select count(*) as employees from employees;
@@ -174,35 +184,36 @@ select count(*) as monthly_instances from monthly_run_instances;
 
 ### 4.0 本轮要做什么（照这个顺序做，30 秒版）
 
-本轮**没有数据库结构变更、没有新增 npm 依赖**；要发布 4 个工作流定义 + 一份新前端镜像，外加一处历史数据清理（§4.5.1）。
+本轮**没有数据库结构变更、没有新增 npm 依赖**；要发布 2 个工作流定义、**下线 1 个定义**，外加一处产物清理（§4.5.1）。
 完整顺序：
 
 1. **取代码**（§5 第 0 步）：服务器上 `git pull --ff-only`，确认 `HEAD` 是本轮的提交。
 2. **重建并启动镜像**（§5）：`AUTH_BOOTSTRAP_SECRET=... docker compose -f docker-compose.prod.yml up -d --build`。**必须带 `--build`**，定义种子和前端都在镜像里。
-3. **发布 4 个定义**（§4.2，先 `--dry-run` 再正式）：`employee-import`、`five-percent-holders-sync`、`gyre-captable-summary-v2`、`plan-summary-sync`。
-   紧接着执行 §4.5.1 的清理 SQL：删掉月度实例里已下线的 `bc_subplan_transfer` / `futu_exercises` / `cancel_restore_report` 行，
-   否则重跑 2026-01~06 会在启动阶段抛 `Unknown runtime parameter`。
-4. **验证**（§6.2 / §6.3 的关键几条）：版本号、月度输入源个数、`/api/monthly-runs/source-config` 的 `workflowVersion`。
-5. **肉眼确认**（§6.4）：侧边栏、月度输入清单、员工管理、5% 股东、计划汇总四处变化与手册截图一致。
+3. **发布 2 个定义**（§4.2，先 `--dry-run` 再正式）：`gyre-captable-summary-v2`（→61）、`gyre-therapeutics-cancel-restore-incremental-merge`（→4）。
+4. **下线旧定义**（§4.5.1 第 ② 步）：删掉 `esop-cancellation-record-sync`，并清理它在 `monthly_run_instance_sources` 里留下的 `cancellation_record_base` 行与 `cancellation_record/` 下的重复快照。
+5. **验证**（§6.2 / §6.3 的关键几条）：版本号、月度源 **18** 个 / 任务 **21** 个、`/api/monthly-runs/source-config` 的 `workflowVersion = 61`。
+6. **肉眼确认**（§6.4 / §6.4b）：文件中心只剩一个取消目录、月度输入仍是 12 行、取消记录页数据不变。
 
 > 顺序不能反：**先重建镜像，再发布定义**。旧镜像里的 `database/*.json` 是旧种子，在旧镜像里发布等于把旧版本又写一遍。
 >
-> 发布完成前**不要打开月度更新页**：前端版本锁（本轮 = **60**）和数据库版本对不上时，页面会拒绝渲染输入源并弹版本不匹配。
+> 发布完成前**不要打开月度更新页**：前端版本锁（本轮 = **61**）和数据库版本对不上时，页面会拒绝渲染输入源并弹版本不匹配。
 
 ### 4.1 要发布哪些
 
-**本轮（2026-11-09/10：员工归集 sheet 可选并接入月度、5% 股东分母改 EOM、月度两个输入改必填、删除 2025 转仓至 Futu 与月度 BC Subplan Transfer、计划汇总取消数改按报表计算、月度输入改名）补发 4 个定义**：
+**本轮（2026-11-19：取消与恢复台账去掉重复链路、文件中心目录树默认收起）发布 2 个定义、下线 1 个**：
 
-| code                        | 目标版本 | 上一轮基线 | 改了什么                                                                                                                                                             |
-| --------------------------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `employee-import`           | **3**    | 1          | v2：两个输入源的 sheet 改为跟随更新弹窗的选择（`allowSheetNameOverride` + `defaultSheetName` + `properties.sheet`），extract 任务读 `fileRefs.<source>.sheet`（见 8.12）；v3：两个 extract 改 `sheet.optional-range.extract` + 声明 `emptyColumns`，允许只给一份授予导出（月度只带一份时不再失败，见 8.18） |
-| `five-percent-holders-sync` | **2**    | 1          | `Common Stock OS` 改取 Capitalization Summary 的 `Asset Class Summary: EOM` 行（原来是 `Common Shares OS + Cullgen common stock` 两行相加），守卫与描述同步（见 8.13） |
-| `gyre-captable-summary-v2`  | **60**   | 56         | v57：`SERIES B Control Book`（`series_b`）与 `Control Book Detail`（`incremental_control_book`）改为必填（见 8.14）；v58：删除 `2025 BC Subplan Transfer` 输入与 `calc_bc_subplan_cancelled`、`calc_option_metrics` 的 BC 修正项（见 8.15）；v59：`Cancel & Restore Summary` / `Cancel & Restore Record` 两个输入源加 `FUTU-` 前缀（见 8.17）；v60：新增 `invoke_employee_import`，月度跑完顺带刷新员工主数据（见 8.18）。前端 `MONTHLY_WORKFLOW_VERSION` 同步 60 |
-| `plan-summary-sync`         | **7**    | 6          | Plan Summary 的 `cancelled` 改为按取消与恢复报表的「所属计划」逐计划计算（原本只有一个写死的 `GYRE 2025 BC Subplan` 覆盖行，其余读源文件列）；报表没覆盖的计划仍回退源文件（见 8.16） |
+| code | 目标版本 | 上一轮基线 | 改了什么 |
+| --- | --- | --- | --- |
+| `gyre-captable-summary-v2` | **61** | 60 | 删除 `invoke_cancellation_record_sync`（22 → **21** 个任务）与它隐藏的 `cancellation_record_base` 输入（19 → **18** 个源；可见表仍是 12 行）。合并本身没变，仍由 `plan-summary-sync` 的 `invoke_cancel_restore_report` 产出（见 8.19）。前端 `MONTHLY_WORKFLOW_VERSION` 同步 **61** |
+| `gyre-therapeutics-cancel-restore-incremental-merge` | **4** | 3 | 两个 `fileRef` 补 `defaultSheetName: 取消与恢复明细`，取消记录页的「更新」弹窗才有 Sheet 默认值（见 8.19） |
 
-（上一轮已发布的 `futu-exercises-incremental-merge` 9 与 `esop-exercise-record-sync` 14 不需要再发；本轮表格里的月度 60 已经包含 v56 那次的内容。）
+**要下线 1 个**：
 
-其余定义不需动：`eq-control-book-incremental-merge` 7、`futu-exercises-incremental-merge` 9、`esop-exercise-record-sync` 14、`esop-cancellation/sold-shares/grant` 7/8/12、`read-series-b` 2、`gyre-therapeutics-cancel-restore-incremental-merge` 3、`esop-transfer-to-futu-sync`/`option-plans-summary-values`/`gyre-therapeutics-cancel-restore-report-read` 均为 1；若云端缺失会被启动 seed 自动补上（注意 `esop-transfer-to-futu-sync` 的页面已下线，定义保留但没有入口）。
+| code | 动作 | 原因 |
+| --- | --- | --- |
+| `esop-cancellation-record-sync` | 删除定义（v7） | 它的产物与 `cancel_restore/` 逐行相同，取消记录页改读同一份台账后不再需要（见 8.19） |
+
+其余定义不需动：`employee-import` 3、`five-percent-holders-sync` 2、`plan-summary-sync` 7、`eq-control-book-incremental-merge` 7、`futu-exercises-incremental-merge` 9、`esop-exercise-record-sync` 14、`esop-sold-shares-sync` 8、`esop-grant-record-sync` 12、`read-series-b` 2、`esop-transfer-to-futu-sync`/`option-plans-summary-values`/`gyre-therapeutics-cancel-restore-report-read` 均为 1；若云端缺失会被启动 seed 自动补上。
 
 > 判断方法：`select code, version from workflow_definitions;` 与上表对比。低于目标版本的才需要发布；发布脚本拒绝版本倒退，重复执行是安全的。
 >
@@ -217,8 +228,8 @@ select count(*) as monthly_instances from monthly_run_instances;
 ```bash
 cd <项目根目录>
 
-# 本轮发布清单（4 个）
-CODES='employee-import five-percent-holders-sync gyre-captable-summary-v2 plan-summary-sync'
+# 本轮发布清单（2 个）
+CODES='gyre-captable-summary-v2 gyre-therapeutics-cancel-restore-incremental-merge'
 
 # 1) 先全部 dry-run：同一事务但 rollback，只验证能读、能连、版本没倒退
 for code in $CODES; do
@@ -227,11 +238,9 @@ for code in $CODES; do
 done
 
 # 期望：输出
-#   validated employee-import v3 from database/workflows/employee-import.json (workflow_id=..., version_id=...)
-#   validated five-percent-holders-sync v2 from database/workflows/five-percent-holders-sync.json (...)
-#   validated gyre-captable-summary-v2 v60 from database/workflows/gyre-captable-summary-v2.json (...)
-#   validated plan-summary-sync v7 from database/workflows/plan-summary-sync.json (...)
-# 注意：容器里的种子要随镜像一起更新，所以这 4 个定义必须在新镜像起来之后发布
+#   validated gyre-captable-summary-v2 v61 from database/workflows/gyre-captable-summary-v2.json (...)
+#   validated gyre-therapeutics-cancel-restore-incremental-merge v4 from database/workflows/...json (...)
+# 注意：容器里的种子要随镜像一起更新，所以这 2 个定义必须在新镜像起来之后发布
 
 # 2) 确认无误后正式发布
 for code in $CODES; do
@@ -254,7 +263,7 @@ done
 ```bash
 cd <项目根目录>
 export DATABASE_URL='postgres://captable:<密码>@<db-host>:5432/captable'
-for code in employee-import five-percent-holders-sync gyre-captable-summary-v2 plan-summary-sync; do
+for code in gyre-captable-summary-v2 gyre-therapeutics-cancel-restore-incremental-merge; do
   npm run workflow:publish-seed -- "$code" --dry-run
 done
 # 逐条确认后去掉 --dry-run 再跑一遍
@@ -287,8 +296,8 @@ process.stdout.write(out);
 MJS
 
 node /tmp/gen-publish-sql.mjs \
-  gyre-captable-summary-v2 futu-exercises-incremental-merge esop-exercise-record-sync > /tmp/publish.sql
-grep -o "where code = '[^']*'" /tmp/publish.sql   # 自检，必须是 3 行
+  gyre-captable-summary-v2 gyre-therapeutics-cancel-restore-incremental-merge > /tmp/publish.sql
+grep -o "where code = '[^']*'" /tmp/publish.sql   # 自检，必须是 2 行
 psql "$DATABASE_URL" -f /tmp/publish.sql
 ```
 
@@ -297,29 +306,41 @@ psql "$DATABASE_URL" -f /tmp/publish.sql
 ### 4.5 这一轮到底改了什么
 
 | 范围 | 变更 |
-| ---- | ---- |
-| 子工作流 `futu-exercises-incremental-merge` v6 → **v9** | 增量改可选抽取『行权汇总数据』（`A1:M`、13 列契约）；投影改成 `coalesce(中文列, 英文列)`，同时吃下『行权汇总数据』与 Cap Table 工作簿的 `Futu BCI Exercises to Date`；守卫由「必须含 13 个中文列」改成「必须是 13 列」+「每行必须有员工号」；合并键由 `行权订单编号` 换成 **员工号+授予编号+行权日期**；base 侧补 `Exercise Order No.` 空列；retain 丢弃无员工号的页脚行（`in Total`）；retain 之后补 14 列契约，空结果不再丢列 |
-| 子工作流 `esop-exercise-record-sync` v12 → **v14** | 行权源 sheet 改为 `$fromRuntime: fileRefs.futu_exercises.sheet`（原来写死『行权汇总数据』，选 Cap Table 那份会 `Sheet not found`）；投影兼容两种表头；合并后新增 `filter_exercise_records_to_month`，按运行月份截断（见 8.11） |
-| 月度 `gyre-captable-summary-v2` v55 → **v56** | 行权增量默认 sheet 改『行权汇总数据』，页面 source meta 的 `defaultSheetName` 与描述同步；子流程调用的默认值同步 |
-| 前端 | `MONTHLY_WORKFLOW_VERSION` 55 → **56**，与月度定义版本锁死 |
-| 测试 | 新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts`（13 个用例：合计行不落库、按粒度替换、幂等、历史不丢、serial/文本日期等价、英文表头、列数守卫、13 列 base、空结果补列、记录页 sheet 跟随）；改写 `controlBookMergeDateTypes.test.ts` 里那条「带订单号的行即使被重述也保留」的旧断言 |
+| --- | --- |
+| 月度 `gyre-captable-summary-v2` v60 → **v61** | 删除任务 `invoke_cancellation_record_sync`（22 → 21）与隐藏输入 `cancellation_record_base`（19 → 18 个源，可见 12 行不变）。月度不再重复生成取消记录快照，统一读 `plan-summary-sync` 产出的 `cancel_restore/` 台账（见 8.19） |
+| 子工作流 `gyre-therapeutics-cancel-restore-incremental-merge` v3 → **v4** | 两个 `fileRef` 补 `defaultSheetName: 取消与恢复明细`，取消记录页「更新」弹窗的 Sheet 默认值来自这里（见 8.19） |
+| 下线 `esop-cancellation-record-sync` | 定义从库里删除、种子文件从仓库删除、`database/base-seeds/cancellation_record/` 种子移除（9 → 8 个）。它的 4 次历史运行记录保留在 `workflow_runs` 里，不影响页面 |
+| 取消记录页的数据来源 | 改读 `cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_YYYY_MM.xlsx` 的 `取消与恢复明细` sheet。因为这个 merge 跑在 `plan-summary-sync` 的 `workflow.invoke` 里、且**不 propagate 子产物**，历史月份在 `workflow_run_artifacts` 里没有记录，所以按 logical_path 直接读文件（见 8.19） |
+| `/api/months` 的 `hasCancellationData` | 从「查 artifact」改成「查 `cancel_restore/*_Base_<month>.xlsx` 是否存在且非空」。对本轮之前的月份，标记会从 false 变成 true（历史快照现在都能被认出来） |
+| 文件中心目录树 | **默认全部收起**；从月度更新点文件名跳转时只展开该文件的祖先目录并高亮，其它目录保持收起；搜索时临时展开命中项；预览面板右上角新增**下载文件**按钮（见 8.20） |
+| 月度更新 · Uploaded file 列 | 文件名独占一行、Sheet 选择器下沉到第二行，长文件名不再被截成 `Contro…`（见 8.20） |
+| 前端 | `MONTHLY_WORKFLOW_VERSION` 60 → **61** |
 
-数字口径没有变：同一份真实导出在改动前后，2026-08 的 `BCI Shares Held by Futu` 都是 **4,698,412**（7,815,396 − 3,116,984），2026-04 是 **4,995,535**（7,815,396 − 2,819,861）；变的只是「从哪个 sheet、按哪个粒度取数」以及错误提示。
+**没有变的口径**：Plan Summary 的 `Cancelled` 计算 SQL、月度 12 行输入表、其余 13 个定义、`cancel_restore/` 里已有的每月快照内容。
 
-| 步骤 / 场景 | 修复前 | 修复后 |
-| --- | --- | --- |
-| 选『行权明细数据』或换了列的明细导出 | `Futu increment schema changed: 缺少幂等键或行权日期列: missing=[全部列]` | 选错 sheet 会被 13 列形状守卫拦下，提示「请选行权汇总数据 / Futu BCI Exercises to Date」 |
-| 增量是 Cap Table 的 to-date 快照（2026-04） | `Retained Futu base is missing a merge key column: missing=[Exercise Order No., Grant No., Exercise Date, Exercised Qty]` | retain 结果为空时补回 14 列，合并继续，completed |
-| 记录页同步选了 Cap Table 那份 | `Sheet 行权汇总数据 not found` | sheet 跟随页面选择，completed |
+### 4.5.1 下线残留清理（三步，都要做）
 
-### 4.5.1 清理已下线输入源的历史残留（重跑历史月份之前必做）
+本轮下线了 `esop-cancellation-record-sync`，并在月度定义里删掉了 `cancellation_record_base` 输入。云端库和
+MinIO 里会留下三样东西：**定义行**、**月度实例里的输入行**、**重复的取消记录快照文件**。照着下面清。
 
-月度实例把每个输入存在 `monthly_run_instance_sources`，运行时会**整表**转成 `fileRefs`。本轮删掉了
-`bc_subplan_transfer`（2025 转仓）这个源，如果某个月份还留着它的行，重跑该月会在参数校验阶段直接抛
-`Unknown runtime parameter: fileRefs.bc_subplan_transfer`（不是页面上的「缺少输入」，而是一运行就失败）。
+#### ① 删定义（幂等，可重复执行）
 
-同理，早期遗留的 `futu_exercises` / `cancel_restore_report` 两个旧 key 也会触发同样的错误
-（`cancel_restore_report` 代码里有兼容重命名，`futu_exercises` 没有）。
+```sql
+delete from workflow_definitions where code = 'esop-cancellation-record-sync';
+-- 期望：DELETE 1（已经删过则 DELETE 0）
+-- workflow_definition_versions 有 on delete cascade，版本行会一起消失；
+-- 历史 workflow_runs 不会被删（它们只存 workflow_code 文本），取消记录页的历史查询也不依赖它。
+```
+
+> **必须在重建镜像之后再删**：启动 seed 只插入缺失行，而旧镜像里还带着
+> `database/workflows/esop-cancellation-record-sync.json`。如果先删定义、再重启旧镜像，它会被重新插回来。
+> 本轮镜像已经删掉这个种子文件，所以按 §4.0 的顺序（先建镜像，再发布，最后删）操作就不会回魂。
+
+#### ② 清月度实例里已下线的输入 key
+
+月度实例把每个输入存在 `monthly_run_instance_sources`，运行时会**整表**转成 `fileRefs`。schema 里已经删除的 key
+如果还留在某个月份，重跑该月会在参数校验阶段直接抛 `Unknown runtime parameter: fileRefs.<key>`
+（不是页面上的「缺少输入」，而是一运行就失败）。
 
 ```sql
 -- ① 看哪些实例还留着「当前 schema 之外」的源
@@ -331,9 +352,10 @@ select s.instance_id, i.month_key, s.source_key
      from workflow_definitions where code = 'gyre-captable-summary-v2' and status = 'active'
  ))
  order by i.month_key, s.source_key;
--- 本地库的样子（2026-11-10，供对照；线上以 ① 的实际输出为准）：10 行 ——
+-- 本地库的样子（2026-11-19，供对照；线上以 ① 的实际输出为准）：10 行 ——
 --   bc_subplan_transfer 在 2026-01/03/04/05/06，futu_exercises 在 2026-01/03/04/05，
---   cancel_restore_report 在 2026-06
+--   cancel_restore_report 在 2026-06。
+-- 本轮新增的待清理项：cancellation_record_base（若有月份跑过月度 v60）。
 
 -- ② 清理（只删这些已下线的 key，不动任何现有源）
 begin;
@@ -345,17 +367,49 @@ delete from monthly_run_instance_sources s
 -- 期望：DELETE <行数>
 select s.instance_id, i.month_key, s.source_key
   from monthly_run_instance_sources s join monthly_run_instances i on i.id = s.instance_id
- where s.source_key in ('bc_subplan_transfer', 'futu_exercises', 'cancel_restore_report');
+ where s.source_key in ('bc_subplan_transfer', 'futu_exercises', 'cancel_restore_report', 'cancellation_record_base');
 -- 期望：0 行
 commit;
 ```
 
-> 不重跑历史月份的话这一步不着急，但**下一次要跑 2026-01~06 中的任何一个月之前必须先做**，否则会撞上面那个报错。
-> 只是往前跑新月份（比如 2026-09）不受影响。
+> 不重跑历史月份的话这一步不着急，但**下一次要跑这些月份之前必须先做**。
+> 只是往前跑新月份不受影响。
+
+#### ③ 删重复的取消记录快照（`cancellation_record/` 整个目录）
+
+同一个月的数据现在只写 `cancel_restore/`；`cancellation_record/` 下的文件是旧链路的重复副本，逐行相同。
+**用应用自己的接口删**（`DELETE /api/files/<id>` 会同时删 MinIO 对象），不要只删数据库行，否则对象存储里会留孤儿文件。
+
+```sql
+-- 先看清楚有哪些（预期：每月一份，与 cancel_restore/ 同日期的文件行数/内容一致）
+select id, logical_path, workbook_row_count, created_at
+  from product_files
+ where logical_path like 'cancellation_record/%'
+ order by logical_path;
+```
+
+然后二选一删除：
+
+```bash
+# 方式 A（推荐）：文件中心里勾选这些文件 → 批量删除；或逐个调接口
+curl -X DELETE -H 'cookie: <登录后的 cookie>' "$BASE/api/files/<id>"
+# 期望：204
+
+# 方式 B（只有数据库权限，且能接受 MinIO 里残留对象）：先确认存储路径，再删行
+#   select id, file_path from product_files where logical_path like 'cancellation_record/%';
+#   删除后请记下这些 file_path，后续用 minio 客户端清掉，避免存储泄漏
+```
+
+```sql
+-- 复查：应为 0
+select count(*) from product_files where logical_path like 'cancellation_record/%';
+```
+
+> 删之前如果想留底，先 `select row_to_json` 导出这几行，或把文件下载到本地；本轮本地就是这么做的。
 
 ### 4.6 数据迁移：把实例里的行权输入 sheet 改成『行权汇总数据』
 
-> 这一步是**上一轮**（月度 v56）的迁移；线上已经做过就不用重做，用下面 ① 查一遍确认没有残留即可。
+> 这一步是**更早一轮**（月度 v56）的迁移；线上已经做过就不用重做，用下面 ① 查一遍确认没有残留即可。
 
 **必须做（首次部署 v56 时），否则发布后第一次运行仍会失败。** 月度实例把每个输入的文件和 sheet 存在
 `monthly_run_instance_sources`，页面渲染和运行都用它，**它会覆盖定义里的 `defaultSheetName`**。
@@ -459,16 +513,16 @@ docker compose -f docker-compose.prod.yml logs --tail=200 app | grep -iE 'error|
 ### 6.2 数据库状态
 
 ```sql
--- ① 4.1 表里定义的版本必须与目标一致
+-- ① 4.1 表里定义的版本必须与目标一致，且已下线的定义必须不在
 select code, version, status
   from workflow_definitions
  where code in (
-   'gyre-captable-summary-v2', 'futu-exercises-incremental-merge', 'esop-exercise-record-sync',
-   'employee-import', 'five-percent-holders-sync', 'plan-summary-sync'
+   'gyre-captable-summary-v2', 'gyre-therapeutics-cancel-restore-incremental-merge',
+   'esop-cancellation-record-sync', 'plan-summary-sync'
  )
  order by code;
--- 期望：gyre-captable-summary-v2 = 60、futu-exercises-incremental-merge = 9、esop-exercise-record-sync = 14、
---      employee-import = 3、five-percent-holders-sync = 2、plan-summary-sync = 7
+-- 期望：gyre-captable-summary-v2 = 61、gyre-therapeutics-cancel-restore-incremental-merge = 4、
+--      plan-summary-sync = 7；esop-cancellation-record-sync 应当**查不到**（见 4.5.1 ①）
 
 -- ①a 员工归集 v3 的两个源必须已声明 sheet（否则弹窗没有 Sheet 下拉框）
 select jsonb_pretty(jsonb_build_object(
@@ -491,18 +545,30 @@ select code, version from workflow_operators
  where code in ('dataframe.keyed.merge', 'dataframe.ensure.columns', 'dataframe.persist.excel');
 -- 期望：3 行；空行说明 WORKFLOW_SEED_ON_INIT 没开
 
--- ③ 月度输入源个数（schema 里 19 个，其中 7 个 hidden；`bc_subplan_transfer` 已随 2025 转仓下线）
+-- ③ 月度输入源个数（schema 里 18 个，其中 6 个 hidden；`bc_subplan_transfer` 已随 2025 转仓下线，
+--    `cancellation_record_base` 已随取消记录去重下线）
 select count(*) as sources from jsonb_object_keys(
   (select runtime_params_schema_json->'fileRefs'->'properties'
      from workflow_definitions where code = 'gyre-captable-summary-v2')
 );
--- 期望：19
+-- 期望：18
 
--- ④ 月度 v60 的任务数与会刷新员工的那一步必须都在（22 个任务）
+-- ④ 月度 v61 的任务数：员工刷新那一步还在，重复的取消记录同步必须不在（21 个任务）
 select jsonb_array_length(tasks_json) as tasks,
-       tasks_json::text like '%"invoke_employee_import"%' as has_employee_import
+       tasks_json::text like '%"invoke_employee_import"%' as has_employee_import,
+       tasks_json::text like '%"invoke_cancellation_record_sync"%' as has_cancellation_sync
   from workflow_definitions where code = 'gyre-captable-summary-v2';
--- 期望：tasks = 22，has_employee_import = true
+-- 期望：tasks = 21，has_employee_import = true，has_cancellation_sync = false
+
+-- ⑤ 重复的取消记录快照必须清空（见 4.5.1 ③）
+select count(*) as cancellation_record_files
+  from product_files where logical_path like 'cancellation_record/%';
+-- 期望：0
+
+-- ⑥ 取消台账只剩一个目录：按月各一份
+select count(*) as cancel_restore_files
+  from product_files where logical_path like 'cancel_restore/%';
+-- 期望：与云端跑过的月份数一致（本地为 7）
 ```
 
 ### 6.3 HTTP 接口
@@ -524,7 +590,7 @@ print('required =', [s['sourceKey'] for s in d['sources'] if s.get('required')])
 "
 ```
 
-**期望**：`workflowVersion = 60`、`sources = 19`、`visible = 12`（7 个 base 隐藏，`bc_subplan_transfer` 已删除，见 8.15）、`required = ['incremental_control_book', 'series_b', 'option_plans_summary']`（2026-11 起 SERIES B Control Book 与 Control Book Detail 也是必填，见 8.14）；`incremental_futu_exercises` 的 `defaultSheetName` 应为 `行权汇总数据`。
+**期望**：`workflowVersion = 61`、`sources = 18`、`visible = 12`（6 个隐藏：`previous_capitalization_summary` + 5 个 `*_base`；`bc_subplan_transfer` 见 8.15、`cancellation_record_base` 见 8.19）、`required = ['incremental_control_book', 'series_b', 'option_plans_summary']`（2026-11 起 SERIES B Control Book 与 Control Book Detail 也是必填，见 8.14）；`incremental_futu_exercises` 的 `defaultSheetName` 应为 `行权汇总数据`。
 
 ```bash
 # 员工归集（v2）：两个输入源必须各自带 sheet 默认值，弹窗才有 Sheet 下拉框
@@ -552,6 +618,19 @@ print('latest =', months[0])
 **期望** flags 含 `hasCapTableData` / `hasPlanSummaryData` / `hasExerciseData` / `hasSoldSharesData` / `hasCancellationData` / `hasGrantData` 六项。空库全为 `false` 是正常的。
 
 ```bash
+# 取消记录页改读共享台账（本轮）：文件来自 cancel_restore/，不是已下线的 cancellation_record/
+curl -s "$BASE/api/cancellation-records?month=2026-08&pageSize=1" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print('total =', d['total'])
+print('file  =', d['resultFileName'])
+print('sources =', d['sourceFiles'])
+"
+```
+
+**期望**：`resultFileName` 是 `Gyre_Therapeutics_Cancel_Restore_Base_2026_08.xlsx`（**不是** `Cancellation_Records_Base_…`），`total` 与迁移前一致（本地 2026-08 = 766），`sources` 是该月上传的「取消与恢复报表」。再抽查一个只有历史快照的月份（例如 `?month=2026-05`），应仍能返回数据 —— 这类月份在 `workflow_run_artifacts` 里没有记录，靠 logical_path 读取。
+
+```bash
 # 记录页接口都必须接受 month（空月份返回空集合而不是 500）
 for path in 'exercises' 'exercises/shareworks' 'exercises/merge' 'sold-shares' \
             'cancellation-records' 'holdings' 'grants/shareworks' 'grants/merge'; do
@@ -571,11 +650,13 @@ done
 在「月度更新」页额外确认：
 
 - 顶部**没有**「版本不匹配」红色提示
-- 输入文件表格是 **12 行**（19 个源减去 7 个 hidden：`previous_capitalization_summary` + 6 个 `*_base`）
+- 输入文件表格是 **12 行**（18 个源减去 6 个 hidden：`previous_capitalization_summary` + 5 个 `*_base`）
 - 表格有五列：`FILE NAME / 说明 / UPLOADED FILE / UPLOADED TIME / ACTIONS`；**必须** 徽章出现在 Control Book Detail、SERIES B Control Book、Gyre Option Plans Summary 三行
 - 表格下方有 **月度常量** 卡片（5 行：Options Outstanding/Available - Cullgen、Warrants、Cullgen Common Stock、Gyre 2023 China SubPlan Total）
 - 每个需要上传的源，说明文字右边有一个 📄 图标；点开显示「文件名参考」和对应的文件名模板；自动带出的源没有图标
 - 「配置输入源」弹窗里，选好文件后出现 **输入 Sheet** 下拉，默认选中配置的 sheet
+
+在文件中心额外确认（本轮）：目录树**默认全部收起**，只有根目录；点文件夹才展开；从月度更新点文件名跳过来时，只有该文件的祖先目录被展开并高亮，其它目录仍收起；预览面板右上角有**下载文件**按钮。
 
 在四个记录页（授予 / 行权 / 卖出 / 取消）额外确认：
 
@@ -587,15 +668,14 @@ done
 
 | 位置 | 部署后应该看到 |
 | --- | --- |
-| 侧边栏 | 没有 `2025 转仓至 Futu` / `全局参数` / `数据管理`；卖出、取消两页名字带 `-FUTU` |
-| `/transfer-plan` | 页面已下线（直接访问只会落到 SPA 首页），导航里没有入口 |
-| 月度更新 · Input Files | 12 行、说明列带 📄 图标可看「文件名参考」；`FUTU-Cancel & Restore Summary` / `FUTU-Cancel & Restore Record` 两个名字带前缀；三项「必须」 |
-| 月度更新 · 月度常量 | 输入表下方有 5 行常量卡片，可直接编辑保存（新建月份继承上月值） |
-| 月度运行 | 最后一步多出 `Invoke Employee Import`，跑完员工管理页的员工名单随本月授予导出刷新 |
-| 员工管理 · 更新弹窗 | 两个来源各有一个 **Sheet 下拉框**（授予记录 / Personnel Summary (Options OS D） |
-| 5% 股东 | 顶部 `Common Stock OS` 等于当月 Capitalization Summary 的 `Asset Class Summary: EOM` 行（不再是两行相加） |
-| 计划汇总 | `Cancelled` 列来自取消与恢复报表按「所属计划」计算（报表没覆盖的计划仍是源文件值） |
-| 使用手册 `/docs` | 「月度更新与运行」里有完整的 Input Files（12 行）与月度常量（5 行）清单；所有截图是本轮重拍的 |
+| 文件中心 · 左侧目录 | **默认全部收起**，只剩根目录列表；点文件夹才展开。以前是 27 个目录全展开、563 个文件全铺开 |
+| 文件中心 · 从月度更新跳转 | 只展开目标文件的祖先目录（例如 `input` → `input/2026-06`），该行滚动到中间并闪烁高亮一次；其它目录保持收起；左栏被收起时会自动展开 |
+| 文件中心 · 搜索 | 搜索词命中时，命中的目录临时展开（不再出现「有结果但看不见」）；清空搜索回到全收起 |
+| 文件中心 · 预览面板 | 右上角依次是 **下载文件 / 编辑**（编辑中变成 **保存 / 取消**）；下载直接拿到当前工作簿 |
+| 月度更新 · Input Files | 仍是 **12 行**；但 `Uploaded file` 列变成**两行**：第一行文件名（完整显示，不再截成 `Contro…`）、第二行 `Sheet` 选择器 |
+| 取消记录-FUTU | 数据不变（同月的行数与迁移前一致），SourceFiles 仍指向本月上传的取消与恢复报表；文件来自 `cancel_restore/` |
+| 文件中心 · 取消目录 | **只剩 `cancel_restore` 一个**，`cancellation_record` 目录消失（4.5.1 ③ 做完后） |
+| 月份标记 | 历史上跑过取消台账的月份（例如 2026-01/03/04/05/06）现在也能在月份选择里显示「有取消数据」 |
 
 ### 6.5 月度运行冒烟（需需求方明确批准）
 
@@ -604,7 +684,7 @@ done
 若需求方批准：
 
 1. 在「月度更新」页把三个必填源选好（`incremental_control_book`、`series_b`、`option_plans_summary`），按需补可选源
-2. 点执行 → 期望所有步骤 completed（月度 v60 有 22 个父任务，四个 `invoke_*_record_sync` 与 `invoke_employee_import` 按是否配置源决定 completed 或跳过）。**本轮重点看四步**：`invoke_read_series_b`、`invoke_futu_exercises_merge`、`invoke_plan_summary_sync`、`invoke_employee_import` —— 前三步历史上会因缺省输入报 `Product file not found` / `Sheet Options OS Detail not found`，现在即使留空也必须 completed；最后一步在员工管理页应该带来本月新增/更名的员工
+2. 点执行 → 期望所有步骤 completed（月度 v61 有 **21** 个父任务，三个 `invoke_*_record_sync` 与 `invoke_employee_import` 按是否配置源决定 completed 或跳过；`invoke_cancellation_record_sync` 已删除，**不应再出现**）。**本轮重点看三步**：`invoke_plan_summary_sync`（它内部要跑取消与恢复合并，并写出 `cancel_restore/` 台账）、`invoke_employee_import`、`invoke_read_series_b` —— 前两步决定取消记录页和员工管理页的数据是否更新
 3. 运行常在 `calc_control_book_metrics` 因 Omnibus 拼写变体停在 `waiting_approval`，批准后继续——**这是预期行为**
 4. 跑完后该月的 `has*Data` 变为 true
 
@@ -613,12 +693,13 @@ done
 - 空库第一次跑某个月：没有 base，该月快照 = 当月增量
 - 要看到累计效果，**必须按月份升序逐月跑**（例如 2026-01 → 03 → 04 …）
 - 校验累计是否生效：`select logical_path, workbook_row_count from product_files where logical_path like '%_Base_2026_08.xlsx'` —— 08 的行数应 ≥ 06 的行数（同一视图）
+- 取消台账只应出现在 `cancel_restore/`；跑完后确认 `select count(*) from product_files where logical_path like 'cancellation_record/%'` 仍是 **0**（已下线的链路不应再写文件）
 
 ## 7. 回滚
 
 ### 7.1 只回滚工作流定义（保留新镜像）
 
-**没有意义**：前端的月度版本锁跟着镜像走（本轮 = 60），把数据库定义回退到更早的版本，月度页会重新进入「版本不匹配」并拒绝执行。要回滚定义就必须连镜像一起回。
+**没有意义**：前端的月度版本锁跟着镜像走（本轮 = 61），把数据库定义回退到更早的版本，月度页会重新进入「版本不匹配」并拒绝执行。要回滚定义就必须连镜像一起回。
 
 > 部署**之前**先把线上版本抄一份留底，回滚时才有目标值：
 > `docker compose -f docker-compose.prod.yml exec postgres psql -U captable -d captable -c "select code, version from workflow_definitions order by code;"`
@@ -636,8 +717,8 @@ AUTH_BOOTSTRAP_SECRET='<口令>' docker compose -f docker-compose.prod.yml up -d
 容器里通常没有 `git`，所以顺序是「先让镜像带旧种子，再强制发布」：上一步 `git checkout cb7bb44` 已经让重新构建的镜像里装的是旧种子文件；容器跑起来后再对每个定义执行 `--force`（云端版本高于种子，不加 `--force` 会被拒绝）：
 
 ```bash
-# 回滚要覆盖本轮发布过的全部 4 个定义；具体目标版本用部署前抄下的那组
-CODES='gyre-captable-summary-v2 plan-summary-sync employee-import five-percent-holders-sync'
+# 回滚要覆盖本轮发布过的 2 个定义；具体目标版本用部署前抄下的那组
+CODES='gyre-captable-summary-v2 gyre-therapeutics-cancel-restore-incremental-merge'
 
 for code in $CODES; do
   docker compose -f docker-compose.prod.yml exec app \
@@ -652,6 +733,8 @@ done
 
 > `--force` 是本节唯一许可的强制发布场景（云端版本高于旧镜像里的种子，不加会被拒绝）。回退后前端常量回到旧镜像里那一版，两侧对上。
 >
+> **回滚本轮还要把旧定义装回来**：旧镜像自带 `database/workflows/esop-cancellation-record-sync.json`，重新构建后启动 seed 会把它插回去（`insert ... on conflict do nothing`），随后按旧版本发布一次即可恢复页面。被删掉的 `cancellation_record/` 快照**不需要**恢复——旧代码按 `Cancellation_Records_Base_<上月>.xlsx` 找不到 base 时会走「首月从增量开始」，只是历史月份的行数会退化到该月增量，不会报错。若要完全复原，从 §4.5.1 ③ 的前置备份导回。
+>
 > 4.6 的 sheet 迁移**不需要回滚**：旧代码读的是『行权明细数据』，回滚后要把它改回 `行权明细数据` 才能与旧链路一致——
 > 只有在真的要整体回退镜像时才做：`update monthly_run_instance_sources set sheet_name='行权明细数据' where source_key='incremental_futu_exercises';`
 
@@ -660,24 +743,28 @@ done
 ## 8. 完成标准（全部打勾才算完成）
 
 - [ ] 第 3 节预检 ① 返回 0；② ③ 若为 1 已报告并得到许可
-- [ ] **4 个定义已发布**，版本与 4.1 节一致（`employee-import` **3**、`five-percent-holders-sync` **2**、`gyre-captable-summary-v2` **60**、`plan-summary-sync` **7**）
+- [ ] **2 个定义已发布**，版本与 4.1 节一致（`gyre-captable-summary-v2` **61**、`gyre-therapeutics-cancel-restore-incremental-merge` **4**）
+- [ ] **1 个定义已下线**：`esop-cancellation-record-sync` 查不到（4.5.1 ①、6.2 ①）
 - [ ] **4.6 的 sheet 迁移已执行**：`monthly_run_instance_sources` 里 `incremental_futu_exercises` 全是 `行权汇总数据`（6.2 ①b）
 - [ ] `workflow_operators` 里有 `dataframe.keyed.merge`、`dataframe.ensure.columns`、`dataframe.persist.excel`（6.2 ②）
-- [ ] 月度输入源 **19** 个、任务 **22** 个且含 `invoke_employee_import`（6.2 ③ ④）
+- [ ] 月度输入源 **18** 个、任务 **21** 个，含 `invoke_employee_import`、不含 `invoke_cancellation_record_sync`（6.2 ③ ④）
+- [ ] `cancellation_record/` 下已无文件，`cancel_restore/` 每月一份（6.2 ⑤ ⑥、4.5.1 ③）
+- [ ] 月度实例里已无已下线的输入 key（4.5.1 ②，期望 0 行）
 - [ ] `docker compose ps` 两个服务均 Up / healthy
 - [ ] `app` 日志无 error / fatal / unhandled / reference not found
-- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 60`、`sources = 19`、`visible = 12`、三个必填（`incremental_control_book` / `series_b` / `option_plans_summary`），且 `incremental_futu_exercises.defaultSheetName = 行权汇总数据`（6.3）
+- [ ] `GET /api/monthly-runs/source-config` 返回 `workflowVersion = 61`、`sources = 18`、`visible = 12`、三个必填（`incremental_control_book` / `series_b` / `option_plans_summary`），且 `incremental_futu_exercises.defaultSheetName = 行权汇总数据`（6.3）
+- [ ] `GET /api/cancellation-records?month=<有数据的月>` 的 `resultFileName` 是 `Gyre_Therapeutics_Cancel_Restore_Base_*.xlsx`，`total` 与迁移前一致（6.3）
 - [ ] `GET /api/months` 的标记里含 `hasGrantData` 在内的六个 `has*Data`（6.3）
 - [ ] 八个记录页接口带 `?month=` 都返回 2xx（6.3）
 - [ ] `GET /api/files` 未登录返回 401
-- [ ] 月度工作流版本为 46；`Comment` 为 `Omnibus Inc.Pl.` 的运行不再停在复核；输入源显示「Futu Exercise Record」（见 8.3）
+- [ ] 文件中心默认全收起、跳转只展开目标目录并高亮、预览面板有下载按钮（6.4、8.20）
 - [ ] 「需复核」的运行历史行，「删除」按钮可用，点删除后该行消失、对应 workflow run 变成 `skipped`（见 8.1）
 - [ ] 停在「需复核」时，该行内部有「复核并继续 / 跳过后续」；点一下面板自己走到 23 / 23，全程无需刷新（见 8.2）
 - [ ] 「月度更新」页无版本不匹配提示；输入表格 12 行；文件名模板图标只在需上传的行出现（6.4）
 - [ ] 四个记录页都有「月份」选择器，无快照月份显示空提示；单侧有数据时自动换视图并提示（6.4）
 - [ ] 顶栏「?」能打开引导下拉，条目按左侧导航分组，「当前页」标记跟随当前路由
 - [ ] 第 6.5 节若已执行：月度所有步骤 completed（含 `invoke_employee_import`）；记录页快照写在 `<folder>/*_Base_YYYY_MM.xlsx`，并按月累计
-- [ ] 冷启动种子已注册：`select count(*) from product_files where uploaded_by = 'BaseSeed'` 返回 **9**（见 10.4）
+- [ ] 冷启动种子已注册：`select count(*) from product_files where uploaded_by = 'BaseSeed'` 返回 **8**（见 10.4）
 - [ ] 错位 base 已搬迁：`input/cancel_restore/`、`input/futu_exercises/` 下不再有 `*_Base_*.xlsx`（见 10.8）
 - [ ] `git status --short` 干净（若执行了第 2 节）
 
@@ -1270,21 +1357,82 @@ curl -s https://<域名>/api/workflows | jq '.items[] | select(.code=="gyre-capt
 
 ---
 
+## 8.19 取消与恢复台账只留一份（月度 v61 + 合并工作流 v4，下线 `esop-cancellation-record-sync`）
+
+**现象**：文件中心里同时有 `cancel_restore/` 和 `cancellation_record/` 两个目录，装的是同一份取消与恢复台账。
+
+**根因**：同一个 Futu 报表被两条独立流水线各合并了一次——
+`gyre-therapeutics-cancel-restore-incremental-merge`（被 `plan-summary-sync` 调用，供 Plan Summary 的 `Cancelled` 列）
+写 `cancel_restore/`；`esop-cancellation-record-sync`（供「取消记录-FUTU」页）写 `cancellation_record/`。
+两者合并键都是 `创建编号`、冲突策略都是增量优先，2026-08 的两份快照逐行比较 0 处差异（766 行、766 个创建编号完全重合），
+只差 sheet 名（`取消与恢复明细` / `Cancellation Records`）。
+
+**改法**（保留 `cancel_restore/` 为唯一台账）：
+
+- 月度 v61 删掉 `invoke_cancellation_record_sync` 与隐藏输入 `cancellation_record_base`；合并仍在 `plan-summary-sync` 内执行。
+- 取消记录页改为映射到 `gyre-therapeutics-cancel-restore-incremental-merge`；`recordBases` 的上月基表改为
+  `cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_<上月>.xlsx`（sheet `取消与恢复明细`）。
+- 页面按 **logical_path** 读当月快照，而不是查 `workflow_run_artifacts`：这个 merge 跑在 `workflow.invoke` 里且
+  没有 `propagateChildArtifacts`，历史月份根本没有 artifact 行。副作用是历史可查范围从 2 个月（06、08）变成 6 个月
+  （01、03、04、05、06、08）。
+- 合并工作流 v4 给两个 `fileRef` 补 `defaultSheetName`，页面的「更新」弹窗才有 Sheet 默认值。
+- 删定义、删种子、删 `database/base-seeds/cancellation_record/`（种子 9 → 8），见 §4.5.1。
+
+**为什么是这个方向**：`cancel_restore/` 历史最全（7 个月 vs 2 个）、是 `Cancelled` 计算口径的唯一来源；
+让算钱的口径去依赖给页面看的那条链，方向是反的。
+
+**行为变化**：
+- 页面沿用 merge 的过滤口径（只要求 `创建编号` 非空），`cancellation_record` 那条会额外丢空工号/空姓名的行。
+  当前数据没有差异；若以后报表出现「有创建编号但没工号」的行，页面会多显示它。
+- 页面不再单独落盘，因此**不能再靠 `cancellation_record/` 判断某月有没有跑过**；月份标记改按文件判断。
+
+**验证**（本地实测）：
+
+```bash
+# 1) 页面数据不变
+curl -s "$BASE/api/cancellation-records?month=2026-08&pageSize=1" | jq '{total, resultFileName}'
+# 期望 {"total":766,"resultFileName":"Gyre_Therapeutics_Cancel_Restore_Base_2026_08.xlsx"}
+
+# 2) 真实跑一次页面「更新」：基表自动接上月，产出覆盖同名文件，行数与迁移前一致
+#    本地 run 322 五步全 completed；产出 file 757 仍 766 行、数量合计 -80,702、逐行指纹不变
+```
+
+**回滚**：见 §7.2 的补充说明（旧镜像会重新 seed 出旧定义，`--force` 发布即可恢复；被删的重复快照不必恢复）。
+
+---
+
+## 8.20 文件中心：目录树默认收起 + 跳转定位 + 预览下载（前端）
+
+**问题**：
+1. 月度更新 `Uploaded file` 列里，Sheet 选择器固定 320px 与文件名挤在同一行，文件名被压成 `Contro…`、`09-7-…`。
+2. 从月度更新点文件名跳到文件中心后「看不出跟到哪」——目录树状态记录的是「哪些目录被收起」，默认空集等于
+   **27 个目录全展开、563 个文件全铺开**，展开+滚动+高亮都被淹没。
+3. 预览面板工具栏只有 编辑 / 保存 / 取消，没有下载。
+
+**改法**：
+- `.source-uploaded-inline` 由单行 flex 改为纵向两行：文件名独占一行、Sheet 选择器下沉并左对齐。
+- 文件中心的 `collapsedTreeDirectoryPaths` 反转为 `expandedTreeDirectoryPaths`：默认空集 = 全收起；
+  只有显式带 `fileId` 进来（月度更新跳转、`?fileId=` 深链、上传完成）才清空集合并只展开目标祖先，然后滚动+脉冲高亮；
+  左栏被收起时自动展开；搜索时强制展开命中目录；纯访问不再自动打开第一个文件（否则右侧有文件、左侧行却在关着的目录里）。
+- 预览工具栏新增 `#btnDownloadProductFile`，复用原有下载实现，文案走 i18n（中文「下载文件」/英文 "Download file"）。
+
+**验证**：`npx tsx --test "src/**/*.test.ts"` 621 项 615 pass / 6 skipped；浏览器实测 2026-08 的 `Uploaded file` 单元格
+文件名 323px 完整显示、与 Sheet 行相差 27px；`/files` 默认 9 个根目录全收起；从月度更新点 `Control_Books_Detail_Data_09.07.2026_14.19.xlsx`
+后 URL 为 `/files?fileId=160`、展开恰为 `input` + `input/2026-06`、其余 17 个目录仍收起。
+
+**回滚**：纯前端，随镜像回退即可，不涉及数据库。
+
+---
+
 ## 9. 附：本次发布涉及的代码提交
 
 本轮（`main`，上一轮部署之后到 HEAD）一次性提交了这些内容：
 
-- `feat(workflows): read the Futu exercise summary instead of the detail export`（月度 **v56**、`futu-exercises-incremental-merge` **v9**、`esop-exercise-record-sync` **v13**、前端 `MONTHLY_WORKFLOW_VERSION` → 56、新增 `src/server/workflow/futuExerciseSummaryMerge.test.ts` 并改写 `controlBookMergeDateTypes.test.ts` 的一条旧断言、本文件的 4.1/4.5/4.6/6.2/6.3/7/8/8.10）
-- `fix(workflows): cut the Futu exercise snapshot at the run month`（`esop-exercise-record-sync` **v14**：合并后按运行月份截断，见 8.11）
-- `feat(monthly): refresh the employee master list as part of the monthly run`（月度 **v60** 加 `invoke_employee_import`；`employee-import` **v3** 两个 extract 改 optional 并声明 `emptyColumns`，允许只给一份授予导出；前端 `MONTHLY_WORKFLOW_VERSION` → 60；新增 `src/server/workflow/employeeImportMonthlyLink.test.ts`；本文件的 4.1/4.2/6.2/6.3/8.18）
-- `feat(monthly): prefix the Cancel & Restore inputs with FUTU-`（`gyre-captable-summary-v2` **v59**：两个取消与恢复输入源及其 invoke `$label` 加 `FUTU-` 前缀；前端 `MONTHLY_WORKFLOW_VERSION` → 59；本文件的 4.1/6.2/6.3/8.17）
-- `feat(plan-summary): compute cancelled per plan from the cancel & restore ledger`（`plan-summary-sync` **v7**：`cancelled` 按报表「所属计划」逐计划计算、报表未覆盖的计划回退源文件；新增 `src/server/workflow/planSummaryCancelled.test.ts`；本文件的 4.1/4.2/4.3/6.2/8.16）
-- `feat(monthly): retire the 2025 transfer-to-Futu page and the BC Subplan transfer input`（删除 `transfer-plan` 页面与其 4 个 API、`esop` 页面注册；月度 **v58** 去掉 `bc_subplan_transfer` 与两个转仓任务、`calc_option_metrics` 不再做 BC cancelled 修正；前端 `MONTHLY_WORKFLOW_VERSION` → 58；新增 `monthlyOptionMetrics.test.ts`；本文件的 4.1/4.2/6.2/6.3/8.15）
-- `feat(monthly): require the Series B and Control Book detail inputs`（`gyre-captable-summary-v2` **v57**：`series_b` / `incremental_control_book` 改必填、`series_b` 去掉 supplement 标记；前端 `MONTHLY_WORKFLOW_VERSION` → 57；`sourceSchema.test.ts` 与 `controlBookIncrementOptional.test.ts` 的旧「可选」断言改为必填；本文件的 4.1/4.2/4.3/6.2/6.3/8.14）
-- `feat(holdings): take the 5% holder denominators from the monthly summary`（`five-percent-holders-sync` **v2**：`Common Stock OS` 改取 `Asset Class Summary: EOM`；页面分母与 `As of` 改从最新月度产物派生并按新分母重算百分比；5% 运行补 `month`；新增 `src/server/fivePercentHolders/summary.ts` 与测试；本文件 4.1/4.2/4.3/8.13）
-- `feat(employees): let the update dialog pick each source's sheet`（`employee-import` **v2**：两个源的 sheet 跟随页面选择、Shareworks 默认 sheet 改 `Personnel Summary (Options OS D`；弹窗 Sheet 下拉框 + `getWorkflowUpdateSheetOptions`；`sourcesFromWorkflowSchemaJson` 改读 `defaultSheetName`；新增 `employeeImportSheetOverride.test.ts` / `workflowUpdateModal.test.ts` / `workflowSourceDescriptor.test.ts`；本文件的 4.1/4.2/4.3/8.12）
+- `feat(files): stack the sheet selector under the file name, collapse the tree by default`（月度更新 `Uploaded file` 列改两行；文件中心目录树改成「记录展开集合」、默认全收起，跳转只展开目标祖先并高亮，搜索临时展开；预览工具栏加下载；`test/dom-env.mjs` 补 `scrollIntoView`；本文件 4.5/6.4/6.4b/8.20）
+- `refactor(cancel): keep one cancel & restore ledger instead of two`（月度 **v61** 删 `invoke_cancellation_record_sync` 与 `cancellation_record_base`；合并工作流 **v4** 补 `defaultSheetName`；取消记录页改读 `cancel_restore/` 并按 logical_path 解析；`recordBases`/`months`/`dataPages`/`support` 同步；删除 `esop-cancellation-record-sync` 定义与种子、`base-seeds` 9 → 8；前端 `MONTHLY_WORKFLOW_VERSION` → 61；本文件 4.0/4.1/4.2/4.3/4.4/4.5/4.5.1/6.2/6.3/6.4b/6.5/7/8/8.19）
+- `fix(i18n): close the English-mode gaps and make the workbook viewer follow the language`（英文模式的静态文案补齐；工作簿预览器跟随语言重建）——若线上还没部署这一条，也会随本轮镜像一起生效
 
-完整的 `git log <上一轮部署的 commit>..HEAD` 为准；更早的提交属于上一轮已上线的代码。
+上一轮之前的提交属于已上线的代码；完整的 `git log <上一轮部署的 commit>..HEAD` 为准。
 
 ## 10. 冷启动 base 种子（`database/base-seeds/`）
 
@@ -1310,7 +1458,6 @@ database/base-seeds/
 ├── control_book/EQ_Control_Book_Base_2026_06.xlsx                       # base_control_book
 ├── futu_exercises/Futu_Exercises_Base_2026_06.xlsx                      # base_futu_exercises
 ├── cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx    # base_cancel_restore_report
-├── cancellation_record/Cancellation_Records_Base_2026_08.xlsx           # cancellation_record_base
 ├── sold_shares/Futu_Sold_Shares_Base_2026_08.xlsx                       # sold_shares_base
 ├── grant_record/Futu_Grants_Base_2026_08.xlsx                           # grant_record_futu_base
 ├── grant_record/Shareworks_Grants_Base_2026_08.xlsx                     # grant_record_shareworks_base
@@ -1323,7 +1470,6 @@ database/base-seeds/
 | `base_control_book`               | `EQ Control Book` / A9:L / 12 列            | 120  |
 | `base_futu_exercises`             | `Futu BCI Exercises` / A1:N / 14 列         | 1025 |
 | `base_cancel_restore_report`      | `取消与恢复明细` / A1:W / 23 列             | 758  |
-| `cancellation_record_base`        | `Cancellation Records` / A1:W / 23 列       | 766  |
 | `sold_shares_base`                | `Futu Sold Shares` / A1:S / 19 列           | 21   |
 | `grant_record_futu_base`          | `Futu Grants` / A1:AG / 33 列               | 513  |
 | `grant_record_shareworks_base`    | `Shareworks Grants` / A1:AB / 28 列         | 126  |
@@ -1331,7 +1477,8 @@ database/base-seeds/
 | `exercise_record_shareworks_base` | `Shareworks Exec Option OS` / A1:V / 22 列  | 64   |
 
 - 三个月度 `inherit` base 取 **2026-06** 的合并产出（首月可运行月份 = 2026-07）
-- 六个记录页 base 取 **2026-08** 的累计快照（**截至 2026-08**，含此前全部记录）
+- 五个记录页 base 取 **2026-08** 的累计快照（**截至 2026-08**，含此前全部记录）；取消记录页与 Plan Summary 共用
+  `base_cancel_restore_report`，没有单独的种子（见 8.19）
 
 **为什么带上记录页的 base。** 记录页的快照写在 `<folder>/<Name>_Base_YYYY_MM.xlsx`，下个月的合并就按这个路径去继承。空库没有任何 `*_Base_*.xlsx` 时，第一个月只能得到当月增量——把 2026-08 的快照作为种子放进去，新环境**第一次跑 2026-09 就能继承完整历史**，不需要人工上传任何 base。
 
@@ -1359,13 +1506,12 @@ select logical_path, uploaded_by, workbook_sheet_count, workbook_row_count
  order by logical_path;
 ```
 
-期望 **9 行**。容器日志里对应 9 条 `[base-seeds] registered …`：
+期望 **8 行**。容器日志里对应 8 条 `[base-seeds] registered …`:
 
 ```
 [base-seeds] registered base_control_book @ control_book/EQ_Control_Book_Base_2026_06.xlsx (id=..., 65027 bytes, 1 sheets, 121 rows)
 [base-seeds] registered base_futu_exercises @ futu_exercises/Futu_Exercises_Base_2026_06.xlsx (id=..., 519770 bytes, 1 sheets, 1025 rows)
 [base-seeds] registered base_cancel_restore_report @ cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_2026_06.xlsx (id=..., 756036 bytes, 1 sheets, 758 rows)
-[base-seeds] registered cancellation_record_base @ cancellation_record/Cancellation_Records_Base_2026_08.xlsx (id=..., 763992 bytes, 1 sheets, 766 rows)
 [base-seeds] registered sold_shares_base @ sold_shares/Futu_Sold_Shares_Base_2026_08.xlsx (id=..., 29584 bytes, 1 sheets, 21 rows)
 [base-seeds] registered grant_record_futu_base @ grant_record/Futu_Grants_Base_2026_08.xlsx (id=..., 639945 bytes, 1 sheets, 513 rows)
 [base-seeds] registered grant_record_shareworks_base @ grant_record/Shareworks_Grants_Base_2026_08.xlsx (id=..., 127302 bytes, 1 sheets, 126 rows)
@@ -1480,7 +1626,7 @@ update product_files
 
 - **按月份升序跑**才能看到累计效果；跳着跑（比如先跑 8 月再跑 5 月）不会补上中间月份的数据
 - base 由系统自动注入，页面上不显示，**不需要也不要手工上传**；想覆盖就显式选一个文件（显式绑定优先）
-- 每个视图的快照写在 `<folder>/*_Base_YYYY_MM.xlsx`（`grant_record/` `exercise_record/` `sold_shares/` `cancellation_record/`），同一月重跑会**覆盖**同一路径（`overwrite`）
+- 每个视图的快照写在 `<folder>/*_Base_YYYY_MM.xlsx`（`grant_record/` `exercise_record/` `sold_shares/` `cancel_restore/`），同一月重跑会**覆盖**同一路径（`overwrite`）。取消记录页没有自己的目录：它与 Plan Summary 共用 `cancel_restore/`（见 8.19）
 - `shareworks_grants` / `futu_grants` / `sold_shares_futu` / `incremental_futu_exercises` 这些是「当月增量或截至当月的全量导出」，两种都能吃（合并不产生重复行），但**不要把某个月的导出当作另一个月的增量**——数据会被贴错月份
 - 空输入不会写入 0 行文件（`skipWhenEmpty`），所以某月没配置某视图时，该视图保留上一月的内容而不是被清空
 
@@ -1499,7 +1645,7 @@ update product_files
 | 同月重复运行会累积快照文件 | 页面按 `finished_at` 取最新，功能无影响；Files 里会看到多份带版本号的文件                                            |
 | 空行残留                   | Shareworks 两个视图的快照里可能带 1-2 行全空行（源表中间的空行），页面按工号/授予编号过滤，展示不受影响              |
 | 2026-08 授予记录           | 该月 Shareworks 导出缺 `Middle Name` 列，已由 `dataframe.ensure.columns` 兜住；Futu 侧没有分月导出，故 Futu 视图为空 |
-| 记录页同步失败会连坐整次月度 | 四个记录页 `workflow.invoke`（grant/exercise/sold-shares/cancellation）出错时该 run 直接 `failed`，主交付物也不出。这是**有意为之**（用户 2026-10-27 定调「同进同退」），不要改成静默放行；处理路径是修根因（如 #1825 的补列） |
+| 记录页同步失败会连坐整次月度 | 三个记录页 `workflow.invoke`（grant/exercise/sold-shares）出错时该 run 直接 `failed`，主交付物也不出。这是**有意为之**（用户 2026-10-27 定调「同进同退」），不要改成静默放行；处理路径是修根因（如 #1825 的补列）。取消记录已并入 `invoke_plan_summary_sync`，随它一起失败 |
 
 ### 11.5 本轮修复的三类线上故障（发布后应消失）
 
