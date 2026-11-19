@@ -81,18 +81,16 @@ export function registerMonthRoutes(app: FastifyInstance, ctx: RouteContext) {
                   and file.workbook_row_count > 0
                   and run.runtime_parameters_json->>'month' = m.month_key
              ) as "hasSoldSharesData",
+             /* The cancel & restore ledger is merged inside Plan Summary and its monthly snapshot is
+                addressed by path, not by an artifact row. Asking the file table keeps historical
+                months visible (the merge never propagated child artifacts). */
              exists (
                select 1
-                 from workflow_run_artifacts artifact
-                 join workflow_runs run on run.id = artifact.run_id
-                 join product_files file on file.id = artifact.file_id
-                where run.workflow_code in ('esop-cancellation-record-sync', $1)
-                  and run.status in ('completed', 'completed_with_warnings')
-                  and artifact.task_id = 'persist_cancellation_records_file'
-                  and artifact.artifact_type = 'file'
-                  and artifact.file_id is not null
+                 from product_files file
+                where lower(file.logical_path) =
+                      lower('cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_'
+                            || replace(m.month_key, '-', '_') || '.xlsx')
                   and file.workbook_row_count > 0
-                  and run.runtime_parameters_json->>'month' = m.month_key
              ) as "hasCancellationData",
              exists (
                select 1

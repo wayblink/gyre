@@ -106,46 +106,6 @@
       "note": "冷启动的链首：截至 2025-12 的取消与恢复明细累计。"
     },
     {
-      "sourceKey": "cancellation_record_base",
-      "logicalPath": "cancellation_record/Cancellation_Records_Base_2026_08.xlsx",
-      "fileName": "Cancellation_Records_Base_2026_08.xlsx",
-      "sheetName": "Cancellation Records",
-      "contract": {
-        "range": "A1:W",
-        "headerRow": 1
-      },
-      "columns": [
-        "姓名",
-        "工号",
-        "牛牛号",
-        "员工邮箱",
-        "手机号",
-        "证件号",
-        "在职状态",
-        "授予编号",
-        "激励类型",
-        "所属计划",
-        "授予日期",
-        "授予数量",
-        "授予价(USD)",
-        "创建日期(GMT+8)",
-        "创建编号",
-        "归属日期",
-        "财务变更日期",
-        "变更日期",
-        "变更类型",
-        "取消/恢复原因",
-        "数量",
-        "归属规则",
-        "操作人"
-      ],
-      "rowCount": 766,
-      "bytes": 763992,
-      "sha256": "05279f4c7e4d06146258401b9efd4574560c9860e1d93c8ae6eadc0f3d8eb6f4",
-      "baseMonth": "2026-08",
-      "note": "2026-08 的取消记录累计快照（2025-12 起全部取消/恢复明细）。"
-    },
-    {
       "sourceKey": "sold_shares_base",
       "logicalPath": "sold_shares/Futu_Sold_Shares_Base_2026_08.xlsx",
       "fileName": "Futu_Sold_Shares_Base_2026_08.xlsx",

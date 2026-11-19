@@ -40,7 +40,9 @@ import {
   pageWorkflowConfig,
   paginateItems,
   productFileDisplayPath,
+  productFileKeyAtRuntimePath,
   readLatestWorkflowDataFrameArtifact,
+  readProductFileSheetByLogicalPath,
   readNameEmpNoSort,
   resultFilesFromArtifacts,
   saveProductWorkbook,
@@ -68,6 +70,7 @@ import type { EmployeeLabelRef, RequestWithAuth, WorkflowPageSourceBindingRespon
 
 import { MONTHLY_WORKFLOW_CODE } from '../monthlyRun/store.js';
 import { workflowRunToExecutionResult } from '../workflow/runResult.js';
+import { parseJson } from '../utils/json.js';
 import type { RouteContext } from './context.js';
 
 /**
@@ -76,6 +79,48 @@ import type { RouteContext } from './context.js';
  * either their own workflow or the monthly run.
  */
 const MONTHLY_SNAPSHOT_WORKFLOW_CODES = [MONTHLY_WORKFLOW_CODE];
+
+/**
+ * The cancel & restore ledger lives in one place. `plan-summary-sync` composes the merge (inside a
+ * `workflow.invoke`) so the Plan Summary cancelled column and the cancellation page read the same
+ * snapshot; the separate `esop-cancellation-record-sync` chain that duplicated it was retired.
+ */
+const CANCEL_RESTORE_MERGE_WORKFLOW_CODE = 'gyre-therapeutics-cancel-restore-incremental-merge';
+const CANCEL_RESTORE_LEDGER_SHEET = '取消与恢复明细';
+
+/** `<folder>/<base>_YYYY_MM.xlsx` — the name the merge's persist task writes. */
+function cancelRestoreBaseLogicalPath(month: string): string {
+  return `cancel_restore/Gyre_Therapeutics_Cancel_Restore_Base_${month.trim().replace('-', '_')}.xlsx`;
+}
+
+/**
+ * Which file fed this month's ledger. The merge runs inside Plan Summary, so the run that carries the
+ * binding may be the merge itself, Plan Summary, or the monthly workflow.
+ */
+async function cancelRestoreInputSourceFiles(db: RouteContext['db'], month: string): Promise<string[]> {
+  if (!month) return [];
+  const row = await db.queryOne<Record<string, unknown>>(
+    `select runtime_parameters_json
+       from workflow_runs
+      where status in ('completed', 'completed_with_warnings')
+        and runtime_parameters_json->>'month' = $1
+        and workflow_code = any($2::text[])
+        and runtime_parameters_json->'fileRefs'->'incremental_cancel_restore_report' is not null
+      order by finished_at desc nulls last, id desc
+      limit 1`,
+    [month, [CANCEL_RESTORE_MERGE_WORKFLOW_CODE, MONTHLY_WORKFLOW_CODE, 'plan-summary-sync']],
+  );
+  const key = productFileKeyAtRuntimePath(
+    parseJson<Record<string, unknown>>(row?.runtime_parameters_json, {}),
+    'fileRefs.incremental_cancel_restore_report',
+  );
+  if (!key) return [];
+  const file = await db.queryOne<Record<string, unknown>>(
+    'select * from product_files where lower(logical_path) = lower($1) limit 1',
+    [key],
+  );
+  return [file ? productFileDisplayPath(file) : key];
+}
 
 /**
  * The workflow-backed product pages: holdings/grants, exercises, sold shares, transfer plan, plan
@@ -88,12 +133,7 @@ const paginationQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
-const esopPageKeySchema = z.enum([
-  'grant-record',
-  'exercise-record',
-  'sold-shares',
-  'cancellation-record',
-]);
+const esopPageKeySchema = z.enum(['grant-record', 'exercise-record', 'sold-shares', 'cancellation-record']);
 
 const esopWorkflowRunBodySchema = z.object({
   /** Month snapshot key (YYYY-MM). Tagged onto the run so the page can resolve it per month. */
@@ -320,10 +360,7 @@ function cancellationRecordFromWorkflowRow(
   };
 }
 
-async function capitalisationSummaryMonth(
-  db: RouteContext['db'],
-  fileId: number | undefined,
-): Promise<string | null> {
+async function capitalisationSummaryMonth(db: RouteContext['db'], fileId: number | undefined): Promise<string | null> {
   if (fileId) {
     const file = await getProductFileOrThrow(db, fileId);
     const name = productFileDisplayPath(file).split('/').pop() ?? '';
@@ -1038,15 +1075,31 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     const normalizedLabelId = Number(tagId);
     const labelIdFilter = Number.isInteger(normalizedLabelId) && normalizedLabelId > 0 ? normalizedLabelId : 0;
     const normalizedTag = tag.trim();
-    const artifact = await readLatestWorkflowDataFrameArtifact(db, {
-      workflowCode: 'esop-cancellation-record-sync',
-      taskId: 'persist_cancellation_records_file',
-      alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
-      fallbackSheetName: 'Cancellation Records',
-      month: requestedMonth || null,
-    });
-    const inputSourceBindings = await latestWorkflowInputSourceBindings(db, 'esop-cancellation-record-sync');
-    const inputSourceFiles = inputSourceBindings.map((binding) => binding.fileName).filter(Boolean) as string[];
+    // The cancellation page reads the same merged ledger the Plan Summary cancelled column is
+    // computed from, so the library has one cancel & restore folder instead of two identical ones.
+    // The merge runs inside `plan-summary-sync`'s `workflow.invoke`, which does not propagate child
+    // artifacts, so older monthly snapshots exist as product files without an artifact row: resolve
+    // the month's file by its logical path when the artifact lookup finds nothing.
+    const artifact =
+      (await readLatestWorkflowDataFrameArtifact(db, {
+        workflowCode: CANCEL_RESTORE_MERGE_WORKFLOW_CODE,
+        taskId: 'persist_cancel_restore_base',
+        alsoWorkflowCodes: MONTHLY_SNAPSHOT_WORKFLOW_CODES,
+        fallbackSheetName: CANCEL_RESTORE_LEDGER_SHEET,
+        sheetName: CANCEL_RESTORE_LEDGER_SHEET,
+        month: requestedMonth || null,
+      })) ??
+      (requestedMonth
+        ? await readProductFileSheetByLogicalPath(db, {
+            logicalPath: cancelRestoreBaseLogicalPath(requestedMonth),
+            sheetName: CANCEL_RESTORE_LEDGER_SHEET,
+          })
+        : null);
+    const inputSourceFiles = await cancelRestoreInputSourceFiles(db, requestedMonth);
+    const inputSourceBindings = inputSourceFiles.map((fileName) => ({
+      sourceKey: 'incremental_cancel_restore_report',
+      fileName,
+    }));
     const labelsByEmployee = await employeeLabelsByNumber(db);
     const canonicalByNumber = await employeeCanonicalByNumber(db);
     const linkGroup = await employeeLinkGroupByNumber(db);
@@ -1173,8 +1226,7 @@ export function registerDataPageRoutes(app: FastifyInstance, ctx: RouteContext) 
     const workbook = parseFivePercentHoldersGrid(grid);
     const holders = applyFivePercentHolderGlobalParameters(workbook, fixedValues);
     const summary = {
-      asOfDate:
-        (monthlySummary?.month ? workflowEomLabel(monthlySummary.month) : null) ?? workbook.asOfDate,
+      asOfDate: (monthlySummary?.month ? workflowEomLabel(monthlySummary.month) : null) ?? workbook.asOfDate,
       fullyDiluted: monthlyDenominators?.fullyDiluted ?? workbook.fullyDiluted,
       commonStockOs: monthlyDenominators?.commonStockOs ?? workbook.commonStockOs,
     };

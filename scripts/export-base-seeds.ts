@@ -71,13 +71,6 @@ export const BASE_SEEDS: BaseSeedDefinition[] = [
   // monthly injection looks up — a fresh environment then starts with the accumulated history
   // instead of an empty chain that only fills from the first month it happens to run.
   {
-    sourceKey: 'cancellation_record_base',
-    logicalPath: 'cancellation_record/Cancellation_Records_Base_2026_08.xlsx',
-    sheetName: 'Cancellation Records',
-    contract: { range: 'A1:W', headerRow: 1 },
-    note: '2026-08 的取消记录累计快照（2025-12 起全部取消/恢复明细）。',
-  },
-  {
     sourceKey: 'sold_shares_base',
     logicalPath: 'sold_shares/Futu_Sold_Shares_Base_2026_08.xlsx',
     sheetName: 'Futu Sold Shares',

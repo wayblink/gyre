@@ -1185,26 +1185,27 @@ test('Cancellation Records exposes file-backed filters, table, and pagination', 
   assert.match(cancellationPage, /id="btnCancellationsLastPage"/);
 });
 
-test('Cancellation Records workflow reads the cancel-and-restore detail sheet', () => {
-  const cancellationWorkflow = readFileSync(
-    new URL('../../database/workflows/esop-cancellation-record-sync.json', import.meta.url),
+test('the cancellation page and Plan Summary share one cancel-and-restore merge workflow', () => {
+  const mergeWorkflow = readFileSync(
+    new URL('../../database/workflows/gyre-therapeutics-cancel-restore-incremental-merge.json', import.meta.url),
     'utf8',
   );
 
-  assert.match(cancellationWorkflow, /"code": "esop-cancellation-record-sync"/);
-  assert.match(cancellationWorkflow, /"sheetName": "取消与恢复明细"/);
-  assert.match(cancellationWorkflow, /"sourceKey": "cancellation_report"/);
-  // The cumulative snapshot lives in its own folder (not under output/) so the next month can find
-  // it by path and inherit it as a base.
-  assert.match(cancellationWorkflow, /"folderPrefix": "cancellation_record"/);
-  assert.match(cancellationWorkflow, /Cancellation_Records_Base\.xlsx/);
-  // Shape: optional extract → merge with last month's base → persist. The extract is optional so a
-  // missing monthly input yields an empty increment instead of failing the monthly run.
-  assert.match(cancellationWorkflow, /sheet\.optional-range\.extract/);
-  assert.match(cancellationWorkflow, /"month"/);
-  assert.match(cancellationWorkflow, /"fileNameSuffix"/);
-  assert.match(cancellationWorkflow, /sql\.compute/);
-  assert.match(cancellationWorkflow, /dataframe\.persist\.excel/);
+  assert.match(mergeWorkflow, /"code": "gyre-therapeutics-cancel-restore-incremental-merge"/);
+  assert.match(mergeWorkflow, /"sheetName": "取消与恢复明细"/);
+  // The merged ledger is what both the cancellation page and the Plan Summary cancelled column read,
+  // so the snapshot stays in its own folder for the next month to inherit by path.
+  assert.match(mergeWorkflow, /"folderPrefix": "cancel_restore"/);
+  assert.match(mergeWorkflow, /Gyre_Therapeutics_Cancel_Restore_Base\.xlsx/);
+  assert.match(mergeWorkflow, /"fileNameSuffix"/);
+  assert.match(mergeWorkflow, /sql\.compute/);
+  assert.match(mergeWorkflow, /workbook\.persist\.excel/);
+  // Both sheet defaults are declared in the schema so the page's update dialog preselects them.
+  assert.match(mergeWorkflow, /"defaultSheetName": "取消与恢复明细"/);
+  // The retired duplicate chain must stay retired: no second workflow writing its own copy.
+  assert.throws(() =>
+    readFileSync(new URL('../../database/workflows/esop-cancellation-record-sync.json', import.meta.url), 'utf8'),
+  );
 });
 
 test('Cancellation Records is wired through the ESOP page registry and API', () => {
@@ -1217,13 +1218,12 @@ test('Cancellation Records is wired through the ESOP page registry and API', () 
   const esopTablesSource = readFileSync(new URL('./esopTables.ts', import.meta.url), 'utf8');
   const mainSource = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
 
-  assert.match(
-    workflowDefinitions,
-    /'cancellation-record': \{ pageKey: 'cancellation-record', workflowCode: 'esop-cancellation-record-sync' \}/,
-  );
-  assert.match(serverSource, /'cancellation-record',/);
+  // Prettier may wrap the object literal, so match the page and its workflow independently.
+  assert.match(workflowDefinitions, /'cancellation-record': \{/);
+  assert.match(workflowDefinitions, /workflowCode: 'gyre-therapeutics-cancel-restore-incremental-merge'/);
+  assert.match(serverSource, /'cancellation-record'/);
   assert.match(serverSource, /app\.get\('\/api\/cancellation-records'/);
-  assert.match(appSource, /'cancellation-record',/);
+  assert.match(appSource, /'cancellation-record'/);
   assert.match(esopTablesSource, /\/api\/cancellation-records\?query=.*tagId=/);
   assert.match(esopTablesSource, /filterCancellationTag'\)\.addEventListener\('change', searchCancellations\)/);
   assert.match(mainSource, /esopTables\.renderCancellationRecords\(\)/);

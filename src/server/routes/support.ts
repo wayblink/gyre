@@ -236,7 +236,6 @@ export function inferOutputFolderFromProductFile(row: Record<string, unknown>): 
   if (originalName.includes('grant_record')) return 'output/grant-record';
   if (originalName.includes('exercise_record')) return 'output/exercise-record';
   if (originalName.includes('sold_shares')) return 'output/sold-shares';
-  if (originalName.includes('cancellation_records')) return 'output/cancellation-record';
   if (originalName.includes('transfer_plan')) return 'output/transfer-plan';
   if (originalName.includes('plan_summary')) return 'output/plan-summary';
   if (originalName.includes('five_percent_holders')) return 'output/five-percent-holders';
@@ -690,6 +689,46 @@ export async function readLatestWorkflowDataFrameArtifact(
     filePath: productFileDisplayPath(artifact),
     sheetName,
     month: String(artifact.run_month ?? '').trim() || null,
+    columns: preview.columns,
+    rows: preview.rows,
+    buffer,
+  };
+}
+
+/**
+ * Read a workbook straight from its logical path, bypassing the artifact table.
+ *
+ * The cancel & restore ledger is merged inside `plan-summary-sync` through a `workflow.invoke` that
+ * does not propagate child artifacts, so its monthly snapshots exist as product files without a
+ * `workflow_run_artifacts` row. The cancellation page must still show them (history included), and
+ * the path carries both the folder and the month.
+ */
+export async function readProductFileSheetByLogicalPath(
+  db: AppDb,
+  params: { logicalPath: string; sheetName: string; fallbackSheetName?: string },
+): Promise<LatestWorkflowDataFrameArtifact | null> {
+  const row = await db.queryOne<Record<string, unknown>>(
+    `select id,
+            original_name,
+            stored_name,
+            file_path,
+            uploaded_by,
+            created_at,
+            logical_path
+       from product_files
+      where lower(logical_path) = lower($1)
+      limit 1`,
+    [params.logicalPath],
+  );
+  if (!row) return null;
+  const buffer = await fileStorage.read(String(row.file_path));
+  const preview = previewWorkbookSheet(buffer, params.sheetName, 5000);
+  return {
+    fileId: Number(row.id),
+    fileName: productFileDisplayName(row),
+    filePath: productFileDisplayPath(row),
+    sheetName: params.sheetName,
+    month: null,
     columns: preview.columns,
     rows: preview.rows,
     buffer,

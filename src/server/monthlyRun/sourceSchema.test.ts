@@ -237,3 +237,34 @@ test('Cancel and restore merge keeps all rows and defers month filtering to Plan
   assert.equal(persist?.params?.folderPrefix, 'cancel_restore');
   assert.equal(persist?.params?.fileNameSuffix?.$fromRuntime, 'monthUnderscore');
 });
+
+test('the monthly workflow no longer duplicates the cancel & restore ledger', () => {
+  const workflow = JSON.parse(
+    readFileSync(path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'), 'utf8'),
+  ) as { tasks: Array<Record<string, any>>; runtimeParamsSchema: Record<string, any> };
+  assert.ok(
+    !workflow.tasks.some((task) => task.id === 'invoke_cancellation_record_sync'),
+    'the retired record-sync chain must not run again',
+  );
+  const fileRefs = workflow.runtimeParamsSchema?.fileRefs?.properties ?? {};
+  assert.ok(
+    !('cancellation_record_base' in fileRefs),
+    "the retired chain's base input must not linger in the monthly schema",
+  );
+  // The merge still runs, inside Plan Summary: one ledger, one folder.
+  const planSummary = workflow.tasks.find((task) => task.id === 'invoke_plan_summary_sync');
+  assert.ok(planSummary, 'Plan Summary keeps producing the merged ledger');
+});
+
+test('the cancellation page reads the shared cancel & restore merge', () => {
+  const dataPages = readFileSync(path.join(process.cwd(), 'src/server/routes/dataPages.ts'), 'utf8');
+  assert.match(dataPages, /CANCEL_RESTORE_MERGE_WORKFLOW_CODE = 'gyre-therapeutics-cancel-restore-incremental-merge'/);
+  assert.match(dataPages, /taskId: 'persist_cancel_restore_base'/);
+  assert.match(dataPages, /readProductFileSheetByLogicalPath/);
+  const workflowDefinitions = readFileSync(
+    path.join(process.cwd(), 'src/server/esopWorkflow/workflowDefinitions.ts'),
+    'utf8',
+  );
+  assert.match(workflowDefinitions, /'cancellation-record': \{/);
+  assert.match(workflowDefinitions, /workflowCode: 'gyre-therapeutics-cancel-restore-incremental-merge'/);
+});

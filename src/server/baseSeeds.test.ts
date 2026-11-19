@@ -32,14 +32,14 @@ const seeded =
 test('the committed seed set satisfies each base contract', seeded, async () => {
   const manifest = loadBaseSeedManifest();
   assert.ok(manifest, 'database/base-seeds/manifest.json must exist');
-  assert.equal(manifest.seeds.length, 9);
+  assert.equal(manifest.seeds.length, 8);
 
-  // The three monthly `inherit` bases plus the six record-page snapshots the pages merge into.
+  // The three monthly `inherit` bases plus the five record-page snapshots the pages merge into.
+  // The cancellation page reuses `base_cancel_restore_report`, so it has no separate seed.
   assert.deepEqual(manifest.seeds.map((seed) => seed.sourceKey).sort(), [
     'base_cancel_restore_report',
     'base_control_book',
     'base_futu_exercises',
-    'cancellation_record_base',
     'exercise_record_futu_base',
     'exercise_record_shareworks_base',
     'grant_record_futu_base',

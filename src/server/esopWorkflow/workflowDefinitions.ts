@@ -14,5 +14,8 @@ export const ESOP_PAGE_WORKFLOW_CONFIGS: Record<EsopPageKey, { pageKey: EsopPage
   'grant-record': { pageKey: 'grant-record', workflowCode: 'esop-grant-record-sync' },
   'exercise-record': { pageKey: 'exercise-record', workflowCode: 'esop-exercise-record-sync' },
   'sold-shares': { pageKey: 'sold-shares', workflowCode: 'esop-sold-shares-sync' },
-  'cancellation-record': { pageKey: 'cancellation-record', workflowCode: 'esop-cancellation-record-sync' },
+  'cancellation-record': {
+    pageKey: 'cancellation-record',
+    workflowCode: 'gyre-therapeutics-cancel-restore-incremental-merge',
+  },
 };

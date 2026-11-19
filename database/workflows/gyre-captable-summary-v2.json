@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 60,
+  "version": 61,
   "tasks": [
     {
       "x": 48,
@@ -1077,41 +1077,6 @@
       }
     },
     {
-      "id": "invoke_cancellation_record_sync",
-      "name": "Invoke Cancellation Record Sync",
-      "operatorCode": "workflow.invoke",
-      "operatorVersion": "1.0.0",
-      "description": "调用取消记录同步，写出本月「取消记录」快照。复用月度已收集的「取消与恢复报表」，未提供时跳过。",
-      "dependsOn": [],
-      "inputs": {},
-      "x": 552,
-      "y": 1470,
-      "params": {
-        "workflowCode": "esop-cancellation-record-sync",
-        "outputTaskId": "",
-        "inputMappings": [],
-        "inheritRuntimeParameters": true,
-        "propagateChildArtifacts": true,
-        "skipWhenEmpty": [
-          "fileRefs.cancellation_report"
-        ],
-        "runtimeParameters": {
-          "fileRefs": {
-            "cancellation_report": {
-              "$type": "object",
-              "$label": "cancellation_report",
-              "$fromRuntime": "fileRefs.incremental_cancel_restore_report"
-            },
-            "base_cancellation_records": {
-              "$type": "object",
-              "$label": "base_cancellation_records",
-              "$fromRuntime": "fileRefs.cancellation_record_base"
-            }
-          }
-        }
-      }
-    },
-    {
       "id": "invoke_grant_record_sync",
       "name": "Invoke Grant Record Sync",
       "operatorCode": "workflow.invoke",
@@ -1433,19 +1398,6 @@
             "sheet": "授予记录"
           }
         },
-        "cancellation_record_base": {
-          "type": "object",
-          "label": "Base · 取消记录（上月快照）",
-          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
-          "required": false,
-          "hidden": true,
-          "optionalCategory": "inherit",
-          "taskId": "invoke_cancellation_record_sync",
-          "order": 15,
-          "$type": "object",
-          "$label": "Base · 取消记录（上月快照）",
-          "$default": {}
-        },
         "sold_shares_base": {
           "type": "object",
           "label": "Base · 卖出记录（上月快照）",
@@ -1581,7 +1533,6 @@
       "futu_grants": {
         "sheet": "授予记录"
       },
-      "cancellation_record_base": {},
       "sold_shares_base": {},
       "grant_record_futu_base": {},
       "grant_record_shareworks_base": {},

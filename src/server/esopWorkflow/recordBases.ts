@@ -25,12 +25,14 @@ export type RecordBaseTarget = {
 
 export const RECORD_BASE_TARGETS: RecordBaseTarget[] = [
   {
-    monthlySourceKey: 'cancellation_record_base',
-    childKey: 'base_cancellation_records',
-    workflowCode: 'esop-cancellation-record-sync',
-    folder: 'cancellation_record',
-    fileName: 'Cancellation_Records_Base',
-    sheet: 'Cancellation Records',
+    // The cancellation page shares the cancel & restore merge workflow: one ledger, one folder. Its
+    // base is the previous month's merged cancel & restore report, not a separate record snapshot.
+    monthlySourceKey: 'base_cancel_restore_report',
+    childKey: 'base_cancel_restore_report',
+    workflowCode: 'gyre-therapeutics-cancel-restore-incremental-merge',
+    folder: 'cancel_restore',
+    fileName: 'Gyre_Therapeutics_Cancel_Restore_Base',
+    sheet: '取消与恢复明细',
   },
   {
     monthlySourceKey: 'sold_shares_base',

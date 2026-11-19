@@ -110,7 +110,6 @@ export const sourcePurposeEnglish: Record<string, string> = {
 
   // Bases are injected by the monthly trigger (last snapshot before this month), never uploaded; the
   // English UI still needs a purpose for them so it does not fall back to the Chinese description.
-  cancellation_record_base: 'Previous month cancel-record snapshot, merged with this month for the cumulative view.',
   sold_shares_base: 'Previous month sold-shares snapshot, merged with this month for the cumulative view.',
   grant_record_futu_base: 'Previous month Futu grant snapshot, merged with this month for the cumulative view.',
   grant_record_shareworks_base:
@@ -226,7 +225,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 60;
+export const MONTHLY_WORKFLOW_VERSION = 61;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was

@@ -144,7 +144,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 | 5 | Futu Exercises Summary | 可选 · 继承 | 完整的 Futu BCI Exercises 基表，作为行权增量合并的基表 | 继承上月，无模板 / \`Futu BCI Exercises\` |
 | 6 | Futu Exercise Record | 可选 | 富途「员工行权记录」导出，取 **行权汇总数据** sheet（一人一天一行、末行为合计），按 员工号+授予编号+行权日期 幂等合并；同时供「行权记录-FUTU」。不要选「行权明细数据」 | \`Gyre Therapeutics员工行权记录.xlsx\` / \`行权汇总数据\` |
 | 7 | FUTU-Cancel & Restore Summary | 可选 · 继承 | 上月完整的取消与恢复基表，默认由上月合并结果自动延续 | 继承上月，无模板 / \`取消与恢复明细\` |
-| 8 | FUTU-Cancel & Restore Record | 可选 | 本月「取消与恢复报表」明细，用于 Plan Summary 增量合并，并生成「取消记录-FUTU」页的当月快照 | \`Gyre Therapeutics取消与恢复报表.xlsx\` / \`取消与恢复明细\` |
+| 8 | FUTU-Cancel & Restore Record | 可选 | 本月「取消与恢复报表」明细，与上月基表合并成**一份**取消与恢复台账；Plan Summary 的 Cancelled 与「取消记录-FUTU」页读的都是这份台账 | \`Gyre Therapeutics取消与恢复报表.xlsx\` / \`取消与恢复明细\` |
 | 9 | Shareworks Exercise Record | 可选 · 补充 | Shareworks「Executive Awards OS Only」导出，供「行权记录」页的 Shareworks 视图 | \`DD-M-YYYY_HH-mm-ss_MDT_!GYRE_Exec_Option_OS.xlsx\` / \`Executive Awards OS Only\` |
 | 10 | Futu Sold Shares Record | 可选 · 补充 | 富途「出售汇总」导出，生成「卖出记录-FUTU」页的当月快照 | \`Gyre Therapeutics-公司出售记录YYYY-MM-DD-YYYY-MM-DD.xlsx\` / \`出售汇总数据\` |
 | 11 | Shareworks Grant Record | 可选 · 补充 | Shareworks「Options OS Detail by Plan」导出，供「授予记录」页的 Shareworks 视图 | \`DD-M-YYYY_HH-mm-ss_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx\` / \`Personnel Summary (Options OS D\` |
@@ -155,7 +155,8 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 以下 7 项由系统按上月结果自动绑定，**不需要也不要手工上传**：
 
 - **Previous Capitalization Summary**：上月产出的 Capitalization Summary，只用来校验本月的 Last Month。
-- **六份上月快照**（\`*_Base_<yyyy_MM>.xlsx\`）：授予记录 Futu / 授予记录 Shareworks / 行权记录 Futu / 行权记录 Shareworks / 卖出记录 / 取消记录，是各记录页「截至当月」链条的基表，由月度运行按月份顺序自动接上。
+- **五份上月快照**（\`*_Base_<yyyy_MM>.xlsx\`）：授予记录 Futu / 授予记录 Shareworks / 行权记录 Futu / 行权记录 Shareworks / 卖出记录，是各记录页「截至当月」链条的基表，由月度运行按月份顺序自动接上。
+- 取消记录页不再单独维护快照：它与 Plan Summary 共用第 7 项「FUTU-Cancel & Restore Summary」作为上月基表，合并结果只写一份（\`cancel_restore/\`）。
 
 ## 月度常量
 
@@ -392,7 +393,7 @@ GNI Group Ltd. 和 Songjiang Ma 的 Common Stock、Total CSEs 来自全局参数
 ![取消记录页](/guide/cancellation-record.png)
 *取消记录：取消与恢复报表的明细台账*
 
-取消记录页按月份列出取消与恢复的明细，可按姓名、计划、创建编号搜索。`,
+取消记录页按月份列出取消与恢复的明细，可按姓名、计划、创建编号搜索。它读取的是月度合并后的一份取消与恢复台账（\`cancel_restore/\`），与 Plan Summary 的 Cancelled 列同源；本月没有新报表时，页面显示的是截至上月的累计快照。`,
   },
   {
     id: 'employees',
@@ -635,7 +636,7 @@ In the order the run page shows them. "File name" is the export naming the sourc
 | 5 | Futu Exercises Summary | Optional · inherit | The complete Futu BCI Exercises base the exercise increment merges into | Inherited / \`Futu BCI Exercises\` |
 | 6 | Futu Exercise Record | Optional | Futu "employee exercise records"; the **行权汇总数据** sheet (one row per person per day, totals on the last row) is merged idempotently by employee + grant + exercise date and also feeds "Exercise Record-FUTU". Do not pick 行权明细数据 | \`Gyre Therapeutics员工行权记录.xlsx\` / \`行权汇总数据\` |
 | 7 | FUTU-Cancel & Restore Summary | Optional · inherit | Last month's complete cancel & restore base, carried over automatically | Inherited / \`取消与恢复明细\` |
-| 8 | FUTU-Cancel & Restore Record | Optional | This month's cancel & restore detail; merged into Plan Summary and used for the "Cancellation Records-FUTU" snapshot | \`Gyre Therapeutics取消与恢复报表.xlsx\` / \`取消与恢复明细\` |
+| 8 | FUTU-Cancel & Restore Record | Optional | This month's cancel & restore detail, merged with last month's base into a **single** ledger that both Plan Summary's Cancelled column and "Cancellation Records-FUTU" read | \`Gyre Therapeutics取消与恢复报表.xlsx\` / \`取消与恢复明细\` |
 | 9 | Shareworks Exercise Record | Optional · supplement | Shareworks "Executive Awards OS Only" export for the Shareworks view of Exercise Record | \`DD-M-YYYY_HH-mm-ss_MDT_!GYRE_Exec_Option_OS.xlsx\` / \`Executive Awards OS Only\` |
 | 10 | Futu Sold Shares Record | Optional · supplement | Futu "sold shares summary" export for the "Sold Shares-FUTU" snapshot | \`Gyre Therapeutics-公司出售记录YYYY-MM-DD-YYYY-MM-DD.xlsx\` / \`出售汇总数据\` |
 | 11 | Shareworks Grant Record | Optional · supplement | Shareworks "Options OS Detail by Plan" export for the Shareworks view of Grant Record | \`DD-M-YYYY_HH-mm-ss_MDT_!Cap_Table_-_Options_OS_Detail_by_Plan_(Pers._Summary_OS_only).xlsx\` / \`Personnel Summary (Options OS D\` |
