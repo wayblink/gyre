@@ -72,9 +72,12 @@ export function createFilePickerModal({
     return el('workflowFilePickerModal');
   }
 
-  function open(nextOptions: FilePickerOpenOptions = {}): Promise<FilePickerResult | null> {
-    if (pending) return Promise.resolve(null);
+  async function open(nextOptions: FilePickerOpenOptions = {}): Promise<FilePickerResult | null> {
+    if (pending) return null;
     bind();
+    // The library is no longer fetched at boot, so the picker makes sure it has one before rendering
+    // (the shared cache makes this free after the first call).
+    await refreshProductFiles();
     options = nextOptions;
     highlightedFileId = nextOptions.currentFileId ?? null;
     searchQuery = '';

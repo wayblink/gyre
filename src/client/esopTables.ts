@@ -1096,10 +1096,8 @@ export function createEsopTables(deps: EsopTablesDeps, host: EsopTablesHost): Es
       changeSoldSharesPageSize(Number((event.target as HTMLSelectElement).value)),
     );
 
-    await renderHoldings(host.getMonth());
-    await renderExerciseRecords();
-    await renderSoldShares();
-    await renderCancellationRecords();
+    // Data is rendered by activatePage for the route the session actually opens (and for each record
+    // page on navigation); boot no longer pays four list requests for pages nobody looked at.
   }
 
   return {

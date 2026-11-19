@@ -1123,6 +1123,7 @@ async function activatePage(page: PageKey) {
     if (page === 'captable') {
       await captablePage.refreshSourceFileOptions();
       if (currentMonth) await captablePage.render(currentMonth);
+      else captablePage.renderEmpty('暂无月度业务数据。请先创建 Monthly Update 或导入正式数据。');
       return;
     }
 
@@ -1136,8 +1137,13 @@ async function activatePage(page: PageKey) {
       return;
     }
 
+    if (page === 'monthly') {
+      await renderMonthlyPage('');
+      return;
+    }
+
     if (page === 'workflow') {
-      workflowPage.onActivate();
+      await workflowPage.onActivate();
     }
 
     if (page === 'user-management') {
@@ -1325,12 +1331,9 @@ async function initSummaryPage() {
     latestOutputResponse.output,
   );
   renderMonthPicker('monthPicker', currentMonth, 'hasCapTableData');
-  await captablePage.refreshSourceFileOptions();
-  if (months.length === 0) {
-    captablePage.renderEmpty('暂无月度业务数据。请先创建 Monthly Update 或导入正式数据。');
-  } else {
-    await captablePage.render(currentMonth);
-  }
+  // `currentMonth` is app-wide state every record page reads, so the month list stays on the boot
+  // path. The CapTable payload itself is loaded by activatePage for whichever route the session
+  // opens, like every other page.
   el('btnAddNote').addEventListener('click', () => {
     el('addNoteForm').classList.remove('hidden');
     el<HTMLTextAreaElement>('noteContent').focus();
@@ -1459,7 +1462,8 @@ function renderMonthPicker(inputId: string, selectedMonth: string, dataKey: Mont
 }
 
 async function initMonthlyPage() {
-  await renderMonthlyPage('');
+  // Bindings only: the plan list (and the run history it renders) loads when the page is opened, so a
+  // session that never visits it does not pay for two requests.
   el('btnAddUpdate').addEventListener('click', () => {
     el<HTMLInputElement>('newPlanMonth').value = currentMonth;
     el<HTMLTextAreaElement>('newPlanRemark').value = '';
@@ -1705,8 +1709,7 @@ async function initEmployeesPage() {
         esopTables.toggleCancellationSort(header.dataset.cancellationSort as 'name' | 'empNo'),
       ),
     );
-  await loadEmployeeLabels();
-  await loadEmployeesPage();
+  // The table and its labels load on activation (activatePage -> loadEmployeesPage).
 }
 
 async function initAccountPage() {
@@ -2344,6 +2347,9 @@ async function initializeApp() {
   await initSummaryPage();
   initPlanSummaryPage();
   await initMonthlyPage();
+  // Each page binds its controls here; the data it needs is fetched the first time the route is
+  // opened (see activatePage), so a session that lands on one page no longer downloads the other
+  // nine pages' payloads.
   await monthlyRunPage.init();
   await filesPage.init();
   await workflowPage.init();
@@ -2392,6 +2398,9 @@ async function initializeApp() {
     closeUserMenu();
   });
   appInitialized = true;
+  // With each page binding only its controls above, this is the single place that loads the data for
+  // the route the session actually opens.
+  await activatePage(getPageFromLocation());
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

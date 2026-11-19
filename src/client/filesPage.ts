@@ -129,7 +129,7 @@ export function createFilesPage({
     applyFilesWorkspaceLayout();
     updateFilesViewModeControls();
     bindBulkDeleteControls();
-    await loadProductFiles();
+    // The library loads on first activation (or on demand from a page that needs a file picker).
   }
 
   function getProductFiles() {

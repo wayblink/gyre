@@ -497,8 +497,8 @@ export function createWorkflowPage({
     el('taskNameInput').addEventListener('input', syncTaskEditorToState);
     el('taskDescriptionInput').addEventListener('input', syncTaskEditorToState);
     el('taskParamsInput').addEventListener('input', syncTaskEditorToState);
-    await loadWorkflowOperators();
-    await loadWorkflows();
+    // The definition list and operator catalogue load on first activation (see onActivate): they are
+    // the largest payload in the app and only the Workflow page ever reads them.
     renderWorkflowLayout();
   }
 
@@ -3378,7 +3378,20 @@ export function createWorkflowPage({
     await loadWorkflows();
   }
 
-  function onActivate() {
+  let workflowsLoaded = false;
+
+  async function onActivate() {
+    if (!workflowsLoaded) {
+      workflowsLoaded = true;
+      try {
+        await loadWorkflowOperators();
+        await loadWorkflows();
+      } catch (error) {
+        // Retry on the next visit instead of leaving the page permanently empty.
+        workflowsLoaded = false;
+        throw error;
+      }
+    }
     const workflow = getActiveWorkflow();
     if (!workflow) return;
 

@@ -730,7 +730,7 @@ export function createMonthlyRunPage({
     document.addEventListener('visibilitychange', refreshIfStaleOnReturn);
     window.addEventListener('focus', refreshIfStaleOnReturn);
     bindSourceModalEvents();
-    await Promise.all([refreshSourceConfig(), refreshFiles(), refreshInstance(), refreshHistory()]);
+    // Data loads through onActivate() when the route opens; binding alone must not cost four requests.
     renderRunPanel();
   }
 

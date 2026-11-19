@@ -122,6 +122,16 @@ async function bootApp(stubs = API_STUBS, settleMs = 250, url?: string) {
   return window;
 }
 
+/**
+ * Boot the shell *on the monthly run page*.
+ *
+ * Page data is loaded for the route the session opens, so a test that reads the monthly input table
+ * must start there — booting on /captable used to render it only because every page preloaded itself.
+ */
+function bootMonthlyRunPage(stubs: FetchStub[] = API_STUBS, settleMs = 400) {
+  return bootApp(stubs, settleMs, 'http://localhost/monthly/run');
+}
+
 test('the client shell boots and renders the navigation for the signed-in admin', async () => {
   const window = await bootApp();
   const doc = window.document;
@@ -188,7 +198,7 @@ test('switching pages activates the matching page container', async () => {
 });
 
 test('the monthly run page renders its source table from the workflow definition', async () => {
-  const window = await bootApp([
+  const window = await bootMonthlyRunPage([
     ...API_STUBS,
     {
       match: /\/api\/monthly-runs\/source-config$/,
@@ -222,7 +232,7 @@ test('the monthly run page renders its source table from the workflow definition
 });
 
 test('the monthly source table renders a sheet selector that preselects the configured default', async () => {
-  const window = await bootApp([
+  const window = await bootMonthlyRunPage([
     ...API_STUBS,
     {
       match: /\/api\/monthly-runs\/instance\?/,
@@ -302,7 +312,7 @@ test('the monthly source table renders a sheet selector that preselects the conf
 });
 
 test('a stale workflow definition version blocks the monthly page with a bilingual error', async () => {
-  const window = await bootApp([
+  const window = await bootMonthlyRunPage([
     ...API_STUBS,
     {
       match: /\/api\/monthly-runs\/source-config$/,
@@ -1044,7 +1054,7 @@ test('a monthly warning row expands on click and shows the assertion message', a
 });
 
 test('the source table states requiredness and purpose in one Notes column', async () => {
-  const window = await bootApp([
+  const window = await bootMonthlyRunPage([
     ...API_STUBS,
     {
       match: /\/api\/monthly-runs\/source-config$/,
@@ -1112,7 +1122,7 @@ test('the source table states requiredness and purpose in one Notes column', asy
 });
 
 test('the uploaded-file cell keeps the file name on its own line above the sheet selector', async () => {
-  const window = await bootApp([
+  const window = await bootMonthlyRunPage([
     ...API_STUBS,
     {
       match: /\/api\/monthly-runs\/source-config$/,
@@ -1403,7 +1413,7 @@ test('the cancellation-record page boots, binds its controls, and renders record
 });
 
 test('the file-name pattern starts collapsed and toggles from its icon', async () => {
-  const window = await bootApp([
+  const window = await bootMonthlyRunPage([
     ...API_STUBS,
     {
       match: /\/api\/monthly-runs\/source-config$/,
@@ -1450,7 +1460,7 @@ test('the file-name pattern starts collapsed and toggles from its icon', async (
 });
 
 test('the file-name pattern also toggles inside the per-source configuration card', async () => {
-  const window = await bootApp([
+  const window = await bootMonthlyRunPage([
     ...API_STUBS,
     {
       match: /\/api\/monthly-runs\/source-config$/,
