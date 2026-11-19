@@ -461,13 +461,19 @@ export const TEXTS = {
       'en-US':
         'This run is waiting for review: deleting it ends the run immediately (unfinished steps are marked skipped) and produces no output.',
     },
-    deleteHistoryTitle: { 'zh-CN': '删除运行历史及输出文件', 'en-US': 'Delete run history and output file' },
+    deleteHistoryTitle: { 'zh-CN': '删除运行历史及产出文件', 'en-US': 'Delete run history and its output files' },
     deleteHistoryConfirm: { 'zh-CN': '确定删除这条运行历史吗？', 'en-US': 'Delete this run history?' },
-    outputDeleteNotice: { 'zh-CN': '对应输出文件', 'en-US': 'The output file' },
-    outputDeleteNoticeSuffix: { 'zh-CN': '也会被永久删除。', 'en-US': 'will also be permanently deleted.' },
+    outputDeleteNotice: {
+      'zh-CN': '本次运行在 output/ 下产出的文件（含各子流程的汇总/台账版本）',
+      'en-US': 'The files this run produced under output/ (including child-workflow summaries and ledgers)',
+    },
+    outputDeleteNoticeSuffix: {
+      'zh-CN': '会一并永久删除；仍被其他记录或计划引用的文件会保留。',
+      'en-US': 'are deleted with it; files still referenced by another record or plan are kept.',
+    },
     historyDeleted: {
-      'zh-CN': '运行历史及对应输出文件已删除',
-      'en-US': 'Run history and corresponding output file deleted',
+      'zh-CN': '运行历史及产出文件已删除',
+      'en-US': 'Run history and its output files deleted',
     },
     previewExcel: { 'zh-CN': '预览', 'en-US': 'Preview' },
     delete: { 'zh-CN': '删除', 'en-US': 'Delete' },

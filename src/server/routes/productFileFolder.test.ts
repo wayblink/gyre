@@ -7,6 +7,8 @@ import { fileStorage } from '../storage.js';
 import {
   inputStorageFolderPrefix,
   normalizeProductFileStoragePrefix,
+  productFileDisplayPath,
+  productFileUngroupedDisplayPath,
   normalizeStorageFolderPrefix,
   saveProductWorkbook,
   toProductFile,
@@ -102,4 +104,51 @@ test('a workflow-declared output folder is where the file is registered', withDb
   } finally {
     await db.close();
   }
+});
+
+/**
+ * The file center groups `output/captable` and `output/plan-summary` by month in the rendered path
+ * only. 150+ monthly snapshots in one flat folder are unbrowsable, but the logical path is what
+ * workflow fileRefs and move targets key on, so it must stay exactly as stored.
+ */
+test('captable and plan-summary display paths gain a month folder taken from the file name', () => {
+  assert.equal(
+    productFileDisplayPath({
+      logical_path: 'output/captable/2026-08-Capitalization_Table_Summary_View.v1.xlsx',
+    }),
+    'output/captable/2026-08/2026-08-Capitalization_Table_Summary_View.v1.xlsx',
+  );
+  assert.equal(
+    productFileDisplayPath({ logical_path: 'output/plan-summary/2026-04-Plan_Summary.v1.xlsx' }),
+    'output/plan-summary/2026-04/2026-04-Plan_Summary.v1.xlsx',
+  );
+  // Only those two roots: the other output folders keep their stored layout for now.
+  assert.equal(
+    productFileDisplayPath({ logical_path: 'output/grant-record/2026-08-Shareworks_Grants_Base.xlsx' }),
+    'output/grant-record/2026-08-Shareworks_Grants_Base.xlsx',
+  );
+  assert.equal(
+    productFileDisplayPath({ logical_path: 'input/2026-08/base.xlsx' }),
+    'input/2026-08/base.xlsx',
+  );
+});
+
+test('a snapshot without the month prefix stays in its flat folder instead of being guessed', () => {
+  // These 7 old Plan_Summary snapshots predate the month-prefixed file name.
+  assert.equal(
+    productFileDisplayPath({ logical_path: 'output/plan-summary/Plan_Summary.v20260820220539.xlsx' }),
+    'output/plan-summary/Plan_Summary.v20260820220539.xlsx',
+  );
+});
+
+test('the logical-path fallback never carries the display-only month folder', () => {
+  // A row without logical_path is still addressed by a stable key; grouping it into output/2026-08
+  // would make the runtime binding point at a path that no workflow can resolve.
+  const row = {
+    original_name: '2026-08-Plan_Summary.v1.xlsx',
+    file_path: 'product/output/plan-summary/2026-08-Plan_Summary.v1.xlsx',
+    uploaded_by: 'Workflow',
+  };
+  assert.equal(productFileUngroupedDisplayPath(row), 'output/plan-summary/2026-08-Plan_Summary.v1.xlsx');
+  assert.equal(productFileDisplayPath(row), 'output/plan-summary/2026-08/2026-08-Plan_Summary.v1.xlsx');
 });

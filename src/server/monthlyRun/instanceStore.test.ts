@@ -419,6 +419,10 @@ function planDeleteStub(
       if (/from monthly_run_instance_sources/i.test(sql)) {
         return (config.boundElsewhere ?? []) as unknown as T[];
       }
+      // The history delete also collects the run's other output/ artifacts and the files still
+      // referenced elsewhere; this fixture has no child artifacts and no live references.
+      if (/from workflow_run_artifacts a/i.test(sql)) return [] as unknown as T[];
+      if (/select distinct file_id from/i.test(sql)) return [] as unknown as T[];
       throw new Error(`Unexpected query: ${sql}`);
     },
     async queryOne<T extends QueryResultRow>(sql: string, params: unknown[] = []): Promise<T | undefined> {

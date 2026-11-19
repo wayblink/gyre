@@ -417,16 +417,21 @@ test('deleteMonthlyRunHistory removes the output file and falls back to the prev
 
   assert.deepEqual(result, {
     historyId: 7,
-    deletedOutputFileId: 88,
-    deletedOutputFileName: 'latest.xlsx',
+    deletedOutputFileIds: [88],
+    deletedOutputFileNames: ['latest.xlsx'],
+    deletedOutputFilePaths: ['product/2026-06/latest.xlsx'],
     fallbackOutputFileId: 77,
-    deletedOutputFilePath: 'product/2026-06/latest.xlsx',
   });
   assert.deepEqual(removedPaths, []);
   assert.ok(executed.some((call) => /delete from monthly_run_history/i.test(call.sql) && call.params[0] === 7));
   assert.ok(executed.some((call) => /update months/i.test(call.sql) && call.params[0] === 77 && call.params[2] === 11));
   assert.ok(executed.some((call) => /update monthly_run_instances/i.test(call.sql) && call.params[2] === 77));
-  assert.ok(executed.some((call) => /delete from product_files/i.test(call.sql) && call.params[0] === 88));
+  assert.ok(
+    executed.some(
+      (call) =>
+        /delete from product_files where id = any/i.test(call.sql) && (call.params[0] as number[]).join() === '88',
+    ),
+  );
 });
 
 test('deleteMonthlyRunHistory rejects a running record before deleting anything', async () => {
@@ -536,4 +541,57 @@ test('deleteMonthlyRunHistory refuses a row whose run is still parked for review
   };
 
   await assert.rejects(() => deleteMonthlyRunHistory(db, 10), /仍在等待复核/);
+});
+
+test('deleteMonthlyRunHistory removes the run’s other output/ files and keeps referenced ones', async () => {
+  // A completed monthly run also records its child workflows' persisted files as artifacts. The
+  // record-only chains (`*_Base_<yyyy_MM>.xlsx` under exercise_record/ etc.) must never be touched:
+  // the next month reads them as its input base. They are filtered by the `output/` predicate in
+  // runOutputFiles, so only the rows below reach the deletion step.
+  const executed: Array<{ sql: string; params: unknown[] }> = [];
+  const db = {
+    async query<T>(sql: string): Promise<T[]> {
+      if (/from workflow_run_artifacts a/i.test(sql)) {
+        return [
+          { id: 90, original_name: '2026-06-Plan_Summary.v1.xlsx', file_path: 'product/output/plan-summary/90.xlsx' },
+          // Still pointed at by another plan binding — must survive the delete.
+          { id: 91, original_name: '2026-06-Grants.v2.xlsx', file_path: 'product/output/grant-record/91.xlsx' },
+        ] as unknown as T[];
+      }
+      if (/select distinct file_id from/i.test(sql)) {
+        return [{ file_id: 91 }] as unknown as T[];
+      }
+      return [] as T[];
+    },
+    async queryOne<T>(sql: string): Promise<T | undefined> {
+      if (/where h\.id = \$1/i.test(sql)) {
+        return {
+          id: 7,
+          month_id: 11,
+          month_key: '2026-06',
+          workflow_run_id: 207,
+          status: 'completed',
+          produced_file_id: 88,
+          produced_file_path: 'product/output/captable/88.xlsx',
+          produced_file_name: '2026-06-Capitalization_Table_Summary_View.v1.xlsx',
+        } as T;
+      }
+      if (/h\.id <> \$2/i.test(sql) && /produced_file_id is not null/i.test(sql)) return undefined;
+      if (/select h\.id from monthly_run_history/i.test(sql)) return undefined;
+      throw new Error(`Unexpected queryOne: ${sql}`);
+    },
+    async execute(sql: string, params: unknown[]): Promise<void> {
+      executed.push({ sql, params });
+    },
+  };
+
+  const result = await deleteMonthlyRunHistory(db, 7);
+
+  assert.deepEqual(result?.deletedOutputFileIds, [88, 90]);
+  assert.deepEqual(result?.deletedOutputFilePaths, [
+    'product/output/captable/88.xlsx',
+    'product/output/plan-summary/90.xlsx',
+  ]);
+  const deleteCall = executed.find((call) => /delete from product_files where id = any/i.test(call.sql));
+  assert.deepEqual(deleteCall?.params[0], [88, 90]);
 });

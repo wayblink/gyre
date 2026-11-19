@@ -478,8 +478,8 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
       }
       const operation = await db.transaction((tx) => deleteMonthlyRunHistory(tx, historyId));
       if (!operation) throw notFound('Monthly run not found');
-      const { deletedOutputFilePath, ...deleted } = operation;
-      if (deletedOutputFilePath) await removeStoredFilesAfterCommit([deletedOutputFilePath], app.log);
+      const { deletedOutputFilePaths, ...deleted } = operation;
+      if (deletedOutputFilePaths.length) await removeStoredFilesAfterCommit(deletedOutputFilePaths, app.log);
       return reply.send({ deleted });
     } catch (error) {
       if (error instanceof MonthlyRunHistoryDeleteConflictError) {

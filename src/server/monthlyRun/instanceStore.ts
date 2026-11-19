@@ -561,8 +561,10 @@ export async function deleteMonthlyRunPlan(
   const deletedFilePaths: string[] = [];
   for (const row of historyRows) {
     const deleted = await deleteMonthlyRunHistory(db, Number(row.id));
-    if (deleted?.deletedOutputFileId != null) deletedOutputFileIds.push(deleted.deletedOutputFileId);
-    if (deleted?.deletedOutputFilePath) deletedFilePaths.push(deleted.deletedOutputFilePath);
+    if (deleted) {
+      deletedOutputFileIds.push(...deleted.deletedOutputFileIds);
+      deletedFilePaths.push(...deleted.deletedOutputFilePaths);
+    }
   }
 
   // The trailing slash scopes this to the month's own folder, so it never matches a sibling month

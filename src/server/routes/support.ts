@@ -181,7 +181,7 @@ export function toProductFile(row: Record<string, unknown>) {
     displayName: productFileDisplayName(row),
     storedName: String(row.stored_name),
     displayPath: productFileDisplayPath(row),
-    logicalPath: String(row.logical_path ?? productFileDisplayPath(row)),
+    logicalPath: String(row.logical_path ?? productFileUngroupedDisplayPath(row)),
     fileExt: String(row.file_ext ?? ''),
     fileSizeBytes: Number(row.file_size_bytes ?? 0),
     mimeType: String(row.mime_type ?? 'application/octet-stream'),
@@ -194,7 +194,42 @@ export function toProductFile(row: Record<string, unknown>) {
   };
 }
 
+/**
+ * Output folders the file center groups by month.
+ *
+ * The persist operators already put the month in the file name (`2026-08-…xlsx`) and keep one flat
+ * logical folder underneath (`output/captable/<file>`), so after a year a folder holds 150+ snapshots
+ * that are impossible to browse. These two roots are rendered as `output/captable/2026-08/…` in the
+ * file center; the logical path is deliberately left alone because workflow `fileRefs`, move targets
+ * and runtime bindings all key on it.
+ *
+ * Extending this list is the whole change for another output folder — do not migrate stored paths
+ * for a display concern.
+ */
+const MONTH_GROUPED_OUTPUT_FOLDERS = new Set(['output/captable', 'output/plan-summary']);
+
+/** `output/captable/2026-08-…xlsx` → `output/captable/2026-08/2026-08-…xlsx` (other paths unchanged). */
+export function monthScopedOutputDisplayPath(displayPath: string): string {
+  const separator = displayPath.lastIndexOf('/');
+  if (separator < 0) return displayPath;
+  const directory = displayPath.slice(0, separator);
+  if (!MONTH_GROUPED_OUTPUT_FOLDERS.has(directory)) return displayPath;
+  const fileName = displayPath.slice(separator + 1);
+  // Files written before the month prefix existed (7 old Plan_Summary snapshots) stay flat rather than
+  // being guessed into a month by their upload timestamp.
+  const month = /^(\d{4}-\d{2})-/.exec(fileName)?.[1];
+  return month ? `${directory}/${month}/${fileName}` : displayPath;
+}
+
 export function productFileDisplayPath(row: Record<string, unknown>) {
+  return monthScopedOutputDisplayPath(productFileUngroupedDisplayPath(row));
+}
+
+/**
+ * The display path before the file center's month grouping. The logical-path fallback in the API
+ * mappers must use this one: a row without `logical_path` still has to be looked up by a stable key.
+ */
+export function productFileUngroupedDisplayPath(row: Record<string, unknown>) {
   if (row.logical_path) return String(row.logical_path);
   const relativePath = productFileRelativeStoragePath(row);
   const directory = relativePath.includes('/') ? relativePath.split('/').slice(0, -1).join('/') : '';

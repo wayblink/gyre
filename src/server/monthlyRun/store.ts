@@ -209,11 +209,65 @@ export class MonthlyRunHistoryDeleteConflictError extends Error {}
 
 export type MonthlyRunHistoryDeleteResult = {
   historyId: number;
-  deletedOutputFileId: number | null;
-  deletedOutputFileName: string | null;
+  /** Every `output/` file this run produced that was deleted with the record. */
+  deletedOutputFileIds: number[];
+  deletedOutputFileNames: string[];
+  deletedOutputFilePaths: string[];
   fallbackOutputFileId: number | null;
-  deletedOutputFilePath: string | null;
 };
+
+/**
+ * The run's own `output/` artifacts, besides its summary file.
+ *
+ * A monthly run records the files its child workflows persisted as its own artifacts, and those
+ * include the `*_Base_<yyyy_MM>.xlsx` snapshots written under `exercise_record/`, `grant_record/` and
+ * `sold_shares/`. That chain is what the *next* month's run reads as its input base, so deleting it
+ * with a run would break month-over-month inheritance. Only files under `output/` are ever candidates.
+ */
+async function runOutputFiles(db: MonthlyRunDb, runId: number) {
+  return db.query<{ id: number; original_name: string; file_path: string }>(
+    `select distinct f.id, f.original_name, f.file_path
+       from workflow_run_artifacts a
+       join product_files f on f.id = a.file_id
+      where a.run_id = $1
+        and a.file_id is not null
+        and f.logical_path like 'output/%'`,
+    [runId],
+  );
+}
+
+/**
+ * The candidate files another live record still points at: another month's summary source, a plan's
+ * input binding, or another month's latest output. Those are skipped instead of deleted, because the
+ * foreign keys would only blank the pointer and leave the other record silently broken.
+ */
+async function referencedOutputFileIds(
+  db: MonthlyRunDb,
+  fileIds: number[],
+  scope: { historyId: number; monthId: number },
+): Promise<Set<number>> {
+  if (!fileIds.length) return new Set();
+  const rows = await db.query<{ file_id: number }>(
+    `select distinct file_id from (
+       select produced_file_id as file_id from monthly_run_history
+        where id <> $2 and produced_file_id = any($1::int[])
+       union all
+       select source_file_id from monthly_run_history
+        where id <> $2 and source_file_id = any($1::int[])
+       union all
+       select file_id from monthly_run_instance_sources where file_id = any($1::int[])
+       union all
+       select capitalization_source_file_id from months
+        where id <> $3 and capitalization_source_file_id = any($1::int[])
+       union all
+       select latest_output_file_id from monthly_run_instances
+        where month_id <> $3 and latest_output_file_id = any($1::int[])
+     ) refs
+     where file_id is not null`,
+    [fileIds, scope.historyId, scope.monthId],
+  );
+  return new Set(rows.map((row) => Number(row.file_id)));
+}
 
 export async function deleteMonthlyRunHistory(
   db: MonthlyRunDb,
@@ -329,16 +383,36 @@ export async function deleteMonthlyRunHistory(
     ],
   );
 
-  if (outputFileId) {
-    await db.execute('delete from product_files where id = $1', [outputFileId]);
+  // The summary file is always part of the record (the shared-history guard above is the only stop).
+  // Child artifacts are additive: skip any that a plan or another month still points at.
+  const extraOutputFiles = workflowRunId ? await runOutputFiles(db, workflowRunId) : [];
+  const candidateExtras = extraOutputFiles
+    .map((file) => ({
+      id: Number(file.id),
+      name: file.original_name ? String(file.original_name) : null,
+      path: file.file_path ? String(file.file_path) : null,
+    }))
+    .filter((file) => file.id !== outputFileId);
+  const referenced = await referencedOutputFileIds(
+    db,
+    candidateExtras.map((file) => file.id),
+    { historyId, monthId },
+  );
+  const deletedFiles = [
+    ...(outputFileId ? [{ id: outputFileId, name: outputFileName, path: outputFilePath }] : []),
+    ...candidateExtras.filter((file) => !referenced.has(file.id)),
+  ];
+
+  if (deletedFiles.length) {
+    await db.execute('delete from product_files where id = any($1::int[])', [deletedFiles.map((file) => file.id)]);
   }
 
   return {
     historyId,
-    deletedOutputFileId: outputFileId,
-    deletedOutputFileName: outputFileName,
+    deletedOutputFileIds: deletedFiles.map((file) => file.id),
+    deletedOutputFileNames: deletedFiles.map((file) => file.name).filter((name): name is string => Boolean(name)),
+    deletedOutputFilePaths: deletedFiles.map((file) => file.path).filter((path): path is string => Boolean(path)),
     fallbackOutputFileId,
-    deletedOutputFilePath: outputFilePath,
   };
 }
 

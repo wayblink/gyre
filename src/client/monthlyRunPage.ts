@@ -2056,9 +2056,9 @@ export function createMonthlyRunPage({
         if (!historyId) return;
         const history = items.find((item) => item.id === historyId);
         const approvalNotice = history?.status === 'waiting_approval' ? `\n${tt('deleteWaitingApprovalNotice')}` : '';
-        const outputNotice = history?.producedFileName
-          ? `\n${tt('outputDeleteNotice')} “${history.producedFileName}” ${tt('outputDeleteNoticeSuffix')}`
-          : '';
+        // Deleting the record now removes every output/ file the run wrote, not only the summary
+        // workbook this row shows, so the confirmation must not promise a single file.
+        const outputNotice = `\n${tt('outputDeleteNotice')}${tt('outputDeleteNoticeSuffix')}`;
         if (
           !(await confirmAction(`${tt('deleteHistoryConfirm')}${approvalNotice}${outputNotice}`, {
             title: tt('deleteHistoryTitle'),
