@@ -4,7 +4,8 @@ import type { AppLanguage } from './i18n.js';
 import { createTexts, type TextKey } from './texts.js';
 
 const t = createTexts('fileMove');
-import { collectProductFileFolders, normalizeClientFolder, productFileFolder } from './fileTree.js';
+import { buildProductFileFolderTree, normalizeClientFolder, productFileFolder } from './fileTree.js';
+import { folderAncestors, renderFolderTreePicker } from './folderTreePicker.js';
 
 type DomGetter = <T extends HTMLElement>(id: string) => T;
 
@@ -38,6 +39,7 @@ export function createFileMoveDialog({
   let pending: ((outcome: FileMoveOutcome | null) => void) | null = null;
   let targetFiles: ProductFileSummary[] = [];
   let targetFolder = '';
+  let expandedFolderPaths = new Set<string>();
   let moving = false;
   let bound = false;
 
@@ -52,12 +54,14 @@ export function createFileMoveDialog({
     bind();
     targetFiles = files;
     targetFolder = files.length === 1 ? productFileFolder(files[0]) : '';
+    expandedFolderPaths = new Set(folderAncestors(targetFolder));
     moving = false;
     el<HTMLInputElement>('fileMoveNewFolder').value = '';
     setError('');
     renderHeader();
-    renderFolderList();
     overlay().classList.remove('hidden');
+    // The tree is rendered once the dialog is visible, otherwise the reveal measures a hidden container.
+    renderFolderTree({ revealSelected: true });
     return new Promise((resolve) => {
       pending = resolve;
     });
@@ -93,27 +97,30 @@ export function createFileMoveDialog({
         : `<div class="file-move__file">${escapeHtml(`${tt('selectedFiles')} ${targetFiles.length} ${tt('files')}`)}</div>`;
   }
 
-  function renderFolderList() {
-    const folders = collectProductFileFolders(getProductFiles());
-    el('fileMoveFolderList').innerHTML = folders
-      .map(
-        (folder) => `<button
-          class="workflow-file-picker__folder ${folder === targetFolder ? 'is-selected' : ''}"
-          data-file-move-folder="${escapeHtml(folder)}"
-          type="button"
-        >${escapeHtml(folder)}</button>`,
-      )
-      .join('');
-    el('fileMoveFolderList')
-      .querySelectorAll<HTMLElement>('[data-file-move-folder]')
-      .forEach((button) => {
-        button.addEventListener('click', () => {
-          targetFolder = button.dataset.fileMoveFolder ?? '';
-          el<HTMLInputElement>('fileMoveNewFolder').value = '';
-          setError('');
-          renderFolderList();
-        });
-      });
+  /**
+   * The target picker is the same folder tree the file centre shows, not a flat list of path chips:
+   * the operator has to see where `input/2026-08` sits before moving a file into it.
+   */
+  function renderFolderTree(options: { revealSelected?: boolean } = {}) {
+    renderFolderTreePicker({
+      container: el('fileMoveFolderList'),
+      nodes: buildProductFileFolderTree(getProductFiles()),
+      selectedPath: targetFolder,
+      expandedPaths: expandedFolderPaths,
+      escapeHtml,
+      onSelect: (path) => {
+        targetFolder = path;
+        el<HTMLInputElement>('fileMoveNewFolder').value = '';
+        setError('');
+        renderFolderTree();
+      },
+      onToggle: (path) => {
+        if (expandedFolderPaths.has(path)) expandedFolderPaths.delete(path);
+        else expandedFolderPaths.add(path);
+        renderFolderTree();
+      },
+      revealSelected: options.revealSelected,
+    });
   }
 
   function setError(message: string) {

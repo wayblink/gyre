@@ -110,6 +110,55 @@ export function collectProductFileFolders(
   return Array.from(folders).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
 }
 
+export type FolderTreeNode = {
+  name: string;
+  path: string;
+  children: FolderTreeNode[];
+};
+
+/**
+ * Directory-only tree for the "move file" target picker.
+ *
+ * The flat folder list (`collectProductFileFolders`) forced the operator to read `input/2026-08` as a
+ * string; this keeps the same logical folders but nests them so the dialog reads like the file tree.
+ * `input` and `control_book` stay listed even when empty, otherwise a file could not be moved back
+ * into them before the first upload.
+ */
+export function buildProductFileFolderTree(files: ReadonlyArray<ProductFileSummary>): FolderTreeNode[] {
+  const root: FolderTreeNode = { name: '', path: '', children: [] };
+
+  const ensureDirectory = (path: string) => {
+    let parent = root;
+    let current = '';
+    path
+      .split('/')
+      .filter(Boolean)
+      .forEach((segment) => {
+        current = current ? `${current}/${segment}` : segment;
+        let child = parent.children.find((entry) => entry.name === segment);
+        if (!child) {
+          child = { name: segment, path: current, children: [] };
+          parent.children.push(child);
+        }
+        parent = child;
+      });
+  };
+
+  ['input', 'control_book'].forEach(ensureDirectory);
+  files.forEach((file) => {
+    const segments = productFileLogicalTreePath(file).split('/').filter(Boolean);
+    if (segments.length > 1) ensureDirectory(segments.slice(0, -1).join('/'));
+  });
+
+  const sortNodes = (nodes: FolderTreeNode[]) => {
+    nodes.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+    nodes.forEach((node) => sortNodes(node.children));
+  };
+  sortNodes(root.children);
+
+  return root.children;
+}
+
 export function productFileFolder(file: ProductFileSummary): string {
   const segments = productFileLogicalTreePath(file).split('/').filter(Boolean);
   return segments.slice(0, -1).join('/');
@@ -136,4 +185,15 @@ export function normalizeClientFolder(value: string): string {
     throw new Error('Invalid folder path');
   }
   return segments.join('/');
+}
+
+/**
+ * Client mirror of `inputStorageFolderPrefix` in src/server/routes/support.ts: uploads always live under
+ * `input/`, so `2026-08` and `input/2026-08` both mean `input/2026-08`, and an empty path means `input`.
+ */
+export function inputUploadFolder(value: string): string {
+  const normalized = normalizeClientFolder(value);
+  if (!normalized) return 'input';
+  if (normalized === 'input' || normalized.startsWith('input/')) return normalized;
+  return `input/${normalized}`;
 }

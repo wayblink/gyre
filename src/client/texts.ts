@@ -590,6 +590,21 @@ export const TEXTS = {
     selectedFiles: { 'zh-CN': '已选择', 'en-US': 'Selected' },
     files: { 'zh-CN': '个文件', 'en-US': 'files' },
   },
+  /** fileUploadDialog.ts: choosing the folder an upload lands in. */
+  fileUpload: {
+    title: { 'zh-CN': '上传到目录', 'en-US': 'Upload to folder' },
+    subtitle: {
+      'zh-CN': '选择目标目录，或填写新的目录路径。',
+      'en-US': 'Pick a target folder, or enter a new folder path.',
+    },
+    newFolderLabel: {
+      'zh-CN': '或填写新目录路径（默认在 input 下）',
+      'en-US': 'Or enter a new folder path (under input)',
+    },
+    cancel: { 'zh-CN': '取消', 'en-US': 'Cancel' },
+    confirm: { 'zh-CN': '上传', 'en-US': 'Upload' },
+    invalidFolder: { 'zh-CN': '目录路径不合法', 'en-US': 'Invalid folder path' },
+  },
   /** workflowUpdateModal.ts: the shared "update this page" workflow modal. */
   /** workflowPage / runtimeParamsPanel: counts and labels around the workflow canvas. */
   workflow: {

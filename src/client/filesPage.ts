@@ -6,6 +6,7 @@ import { createTexts, type TextKey } from './texts.js';
 const t = createTexts('files');
 import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
 import { createFileMoveDialog } from './fileMoveDialog.js';
+import { createFileUploadDialog } from './fileUploadDialog.js';
 import {
   buildProductFilesTree,
   compareProductFile,
@@ -31,10 +32,21 @@ type FilesPageDeps = {
 };
 
 const FILES_LEFT_MIN = 200;
-const FILES_LEFT_MAX = 480;
-const FILES_LEFT_DEFAULT = FILES_LEFT_MAX;
+const FILES_LEFT_DEFAULT = 480;
 const FILES_LEFT_COLLAPSED_WIDTH = 28;
 const FILES_MOBILE_MEDIA = '(max-width: 768px)';
+
+/**
+ * The browser pane can be dragged out to half of the screen; there is no fixed pixel ceiling.
+ * The cap keeps its floor as a lower bound so a narrow desktop window still clamps sanely.
+ */
+function filesLeftMaxWidth(): number {
+  return Math.max(FILES_LEFT_MIN, Math.floor(window.innerWidth / 2));
+}
+
+function clampFilesLeftWidth(width: number): number {
+  return Math.max(FILES_LEFT_MIN, Math.min(filesLeftMaxWidth(), width));
+}
 
 type FilesViewMode = 'list' | 'tree';
 
@@ -60,6 +72,12 @@ export function createFilesPage({
     escapeHtml,
     getProductFiles: () => productFiles,
     notify,
+    getLanguage,
+  });
+  const fileUploadDialog = createFileUploadDialog({
+    el,
+    escapeHtml,
+    getProductFiles: () => productFiles,
     getLanguage,
   });
   let productFiles: ProductFileSummary[] = [];
@@ -136,11 +154,12 @@ export function createFilesPage({
     return productFiles;
   }
 
-  async function uploadWorkbookFile(file: File) {
+  async function uploadWorkbookFile(file: File, folderPrefix = 'input') {
     const upload = (overwrite = false) => {
       const form = new FormData();
       form.append('file', file);
       form.append('uploadedBy', 'Administrator');
+      form.append('folderPrefix', folderPrefix);
       if (overwrite) form.append('conflictPolicy', 'overwrite');
       return uploadFormDataWithProgress<{ file: ProductFileRecord }>('/api/files/upload', form, {
         fileName: file.name,
@@ -810,7 +829,9 @@ export function createFilesPage({
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       if (!file) return;
-      await uploadWorkbookFile(file);
+      const folder = await fileUploadDialog.open(file);
+      if (!folder) return;
+      await uploadWorkbookFile(file, folder);
     });
     input.click();
   }
@@ -1111,6 +1132,7 @@ export function createFilesPage({
       divider.classList.add('divider--disabled');
       return;
     }
+    filesLeftWidth = clampFilesLeftWidth(filesLeftWidth);
     workspace.style.gridTemplateColumns = filesLeftCollapsed
       ? `${FILES_LEFT_COLLAPSED_WIDTH}px 6px minmax(0, 1fr)`
       : `${filesLeftWidth}px 6px minmax(0, 1fr)`;
@@ -1127,6 +1149,8 @@ export function createFilesPage({
   function initFilesWorkspaceResize() {
     const divider = el('filesWorkspaceDivider');
     window.matchMedia(FILES_MOBILE_MEDIA).addEventListener('change', applyFilesWorkspaceLayout);
+    // The cap is half of the screen, so a narrower window has to pull an already-wide pane back in.
+    window.addEventListener('resize', applyFilesWorkspaceLayout);
     divider.addEventListener('pointerdown', (event: PointerEvent) => {
       if (window.matchMedia(FILES_MOBILE_MEDIA).matches) return;
       if (filesLeftCollapsed) return;
@@ -1138,7 +1162,7 @@ export function createFilesPage({
       const handleMove = (moveEvent: PointerEvent) => {
         const delta = moveEvent.clientX - lastX;
         lastX = moveEvent.clientX;
-        filesLeftWidth = Math.max(FILES_LEFT_MIN, Math.min(FILES_LEFT_MAX, filesLeftWidth + delta));
+        filesLeftWidth = clampFilesLeftWidth(filesLeftWidth + delta);
         applyFilesWorkspaceLayout();
       };
 

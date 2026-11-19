@@ -5003,7 +5003,8 @@ a.product-card:focus-visible {
   margin-bottom: 10px;
 }
 
-.file-move__file {
+.file-move__file,
+.file-upload__file {
   padding: 6px 10px;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
@@ -5014,9 +5015,39 @@ a.product-card:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.file-move-modal .workflow-file-picker__folder-list {
-  max-height: 180px;
+.file-upload__file {
   margin-bottom: 10px;
+}
+
+.folder-tree {
+  display: grid;
+  gap: 1px;
+  max-height: 280px;
+  margin-bottom: 10px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+/* Picking a folder is the row click, so the row drops the file tree's count column. */
+.folder-tree .workbook-tree__dir {
+  grid-template-columns: 16px 18px minmax(0, 1fr);
+}
+
+.folder-tree .workbook-tree__dir.is-selected {
+  border-color: var(--primary-600);
+  background: var(--surface-accent-muted);
+  color: var(--primary-800);
+}
+
+.folder-tree .workbook-tree__twisty {
+  cursor: pointer;
+}
+
+.folder-tree .workbook-tree__twisty.is-leaf {
+  visibility: hidden;
 }
 
 /* ============ Workflow file picker (tree select + upload + move) ============ */

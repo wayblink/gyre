@@ -5,11 +5,13 @@ import type { ProductFileRecord } from '../shared/types.js';
 import { readFileSync } from 'node:fs';
 
 import {
+  buildProductFileFolderTree,
   buildProductFilesTree,
   collectProductFileFolders,
   compareProductFile,
   countTreeFiles,
   fileAncestorDirectories,
+  inputUploadFolder,
   normalizeClientFolder,
   productFileFolder,
   productFileLogicalTreePath,
@@ -157,4 +159,54 @@ test('the monthly input list opens the file from its name, and the file centre t
   assert.match(monthly, /class="source-file-link"/);
   assert.match(monthly, /data-source-file-preview="\$\{file\.id\}"/);
   assert.doesNotMatch(monthly, /source-file-path/, 'the input list must not grow a second file link');
+});
+
+test('the move-target folder tree nests logical folders and always offers input and control_book', () => {
+  const files = [
+    fileFixture({ id: 1, displayPath: 'input/2026-08/a.xlsx', logicalPath: 'input/2026-08/a.xlsx' }),
+    fileFixture({ id: 2, displayPath: 'input/2026-08/b.xlsx', logicalPath: 'input/2026-08/b.xlsx' }),
+    fileFixture({ id: 3, displayPath: 'output/captable/c.xlsx', logicalPath: 'grant_record/c.xlsx' }),
+    fileFixture({ id: 4, displayPath: 'loose.xlsx', logicalPath: 'loose.xlsx' }),
+  ];
+
+  const tree = buildProductFileFolderTree(files);
+
+  assert.deepEqual(
+    tree.map((node) => node.path),
+    ['control_book', 'grant_record', 'input'],
+  );
+  const input = tree.find((node) => node.path === 'input')!;
+  assert.equal(input.name, 'input');
+  assert.deepEqual(
+    input.children.map((node) => node.path),
+    ['input/2026-08'],
+  );
+  assert.equal(input.children[0].name, '2026-08');
+  // A file's own name is not a folder: root-level files add nothing.
+  assert.deepEqual(tree.find((node) => node.path === 'grant_record')!.children, []);
+});
+
+test('the move-target folder tree lists a shared folder once and nests deeper paths under it', () => {
+  const files = [
+    fileFixture({ id: 1, logicalPath: 'input/2026-08/a.xlsx' }),
+    fileFixture({ id: 2, logicalPath: 'input/2026-08/nested/b.xlsx' }),
+  ];
+
+  const tree = buildProductFileFolderTree(files);
+  const input = tree.find((node) => node.path === 'input')!;
+
+  assert.equal(input.children.length, 1);
+  assert.deepEqual(
+    input.children[0].children.map((node) => node.path),
+    ['input/2026-08/nested'],
+  );
+});
+
+test('upload folder paths are normalised under input exactly like the server does', () => {
+  assert.equal(inputUploadFolder(''), 'input');
+  assert.equal(inputUploadFolder('2026-08'), 'input/2026-08');
+  assert.equal(inputUploadFolder('input/2026-08'), 'input/2026-08');
+  assert.equal(inputUploadFolder(' /input\\2026-08/ '), 'input/2026-08');
+  assert.equal(inputUploadFolder('control_book'), 'input/control_book');
+  assert.throws(() => inputUploadFolder('input/../x'), /Invalid folder path/);
 });

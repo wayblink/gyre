@@ -50,7 +50,14 @@ test('namespaces keep their own keys so shared names do not collide', () => {
 test('the merged table is the only place client copy is declared', () => {
   // Modules must read the table, not redeclare their own bilingual objects. A `{ 'zh-CN': … }`
   // object literal outside texts.ts means a new parallel table crept back in.
-  const modules = ['main.ts', 'filePickerModal.ts', 'filesPage.ts', 'fileMoveDialog.ts', 'uploadProgress.ts'];
+  const modules = [
+    'main.ts',
+    'filePickerModal.ts',
+    'filesPage.ts',
+    'fileMoveDialog.ts',
+    'fileUploadDialog.ts',
+    'uploadProgress.ts',
+  ];
   for (const module of modules) {
     const source = readFileSync(new URL(`./${module}`, import.meta.url), 'utf8');
     const inlineTables = source.match(/\{\s*'zh-CN':[ ]*'/g) ?? [];

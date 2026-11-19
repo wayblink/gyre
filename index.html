@@ -2075,7 +2075,7 @@
                         </div>
                         <div class="modal-body">
                             <div class="file-move__files" id="fileMoveModalFiles"></div>
-                            <div class="workflow-file-picker__folder-list" id="fileMoveFolderList"></div>
+                            <div class="folder-tree" id="fileMoveFolderList"></div>
                             <label class="workflow-file-picker__new-folder">
                                 <span id="fileMoveNewFolderLabel" data-no-static-translate></span>
                                 <input id="fileMoveNewFolder" class="search-input" placeholder="input/2026-08" autocomplete="off">
@@ -2085,6 +2085,31 @@
                         <div class="modal-footer">
                             <button class="btn btn-secondary" id="btnCancelFileMoveModal" type="button" data-no-static-translate></button>
                             <button class="btn btn-primary" id="btnConfirmFileMoveModal" type="button" data-no-static-translate></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay hidden" id="fileUploadModal">
+                    <div class="modal-container modal-small file-upload-modal">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title" id="fileUploadModalTitle" data-no-static-translate>上传到目录</h3>
+                                <p class="modal-subtitle" id="fileUploadModalSubtitle" data-no-static-translate></p>
+                            </div>
+                            <button class="modal-close" id="btnCloseFileUploadModal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="file-upload__file" id="fileUploadModalFile"></div>
+                            <div class="folder-tree" id="fileUploadFolderList"></div>
+                            <label class="workflow-file-picker__new-folder">
+                                <span id="fileUploadNewFolderLabel" data-no-static-translate></span>
+                                <input id="fileUploadNewFolder" class="search-input" placeholder="2026-08 或 input/2026-08" autocomplete="off" data-no-static-translate>
+                            </label>
+                            <div class="workflow-file-picker__move-error hidden" id="fileUploadModalError"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" id="btnCancelFileUploadModal" type="button" data-no-static-translate></button>
+                            <button class="btn btn-primary" id="btnConfirmFileUploadModal" type="button" data-no-static-translate></button>
                         </div>
                     </div>
                 </div>
