@@ -11,7 +11,7 @@ import {
   type AvailableMonth,
   type CapitalizationDelta,
 } from './summaryPage.js';
-import type { ProductFileRecord, SummaryCapitalizationSource, SummarySnapshot } from '../shared/types.js';
+import type { ProductFileSummary, SummaryCapitalizationSource, SummarySnapshot } from '../shared/types.js';
 
 /**
  * The CapTable summary page: month-over-month share capital reconciliation, the capitalization
@@ -28,7 +28,9 @@ export type CaptablePageDeps = {
   formatNumber: (value: unknown) => string;
   notify: NotifyFn;
   confirmAction: ConfirmActionFn;
-  productFileDisplayName: (file: ProductFileRecord) => string;
+  productFileDisplayName: (file: ProductFileSummary) => string;
+  /** Shared file library (`/api/files`): cached and deduplicated by the Files Center. */
+  refreshProductFiles: () => Promise<ProductFileSummary[]>;
   getLanguage: () => AppLanguage;
 };
 
@@ -98,7 +100,7 @@ export function createCaptablePage(deps: CaptablePageDeps, host: CaptablePageHos
 
   let summary: SummarySnapshot | null = null;
   let baselineCache: { month: string; data: SummarySnapshot | null } | null = null;
-  let sourceFiles: ProductFileRecord[] = [];
+  let sourceFiles: ProductFileSummary[] = [];
 
   function renderEmptySummaryPage(message: string) {
     summary = null;
@@ -238,8 +240,8 @@ export function createCaptablePage(deps: CaptablePageDeps, host: CaptablePageHos
   }
 
   async function refreshSummarySourceFileOptions() {
-    const data = await deps.api<{ files: ProductFileRecord[] }>('/api/files');
-    sourceFiles = data.files;
+    // The same list the Files Center shows — read through its cache instead of a second GET.
+    sourceFiles = await deps.refreshProductFiles();
     const select = deps.el<HTMLSelectElement>('capitalizationSourceFile');
     const currentValue = select.value;
     select.innerHTML = [

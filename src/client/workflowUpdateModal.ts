@@ -3,13 +3,13 @@ import { createTexts } from './texts.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { FilePickerResult } from './filePickerModal.js';
 import type {
-  ProductFileRecord,
   WorkflowExecutionResult,
   WorkflowExecutionTaskState,
   WorkflowPageConfig,
   WorkflowPageSourceBinding,
   WorkflowResultFileBinding,
   WorkflowRunRecord,
+  ProductFileSummary,
 } from '../shared/types.js';
 
 /**
@@ -37,10 +37,10 @@ export type WorkflowUpdateModalDeps = {
   escapeHtml: (text: unknown) => string;
   notify: (message: string, options?: { type?: 'info' | 'success' | 'warning' | 'error' }) => void;
   getLanguage: () => AppLanguage;
-  getProductFiles: () => ProductFileRecord[];
+  getProductFiles: () => ProductFileSummary[];
   /** Current month, used as the snapshot key for month-scoped pages. */
   getMonth?: () => string;
-  refreshProductFiles: () => Promise<unknown>;
+  refreshProductFiles: (options?: { force?: boolean }) => Promise<unknown>;
   openFilePicker: (options: {
     sourceKey: string;
     currentFileId: number | null;
@@ -48,7 +48,7 @@ export type WorkflowUpdateModalDeps = {
     allowClear?: boolean;
     uploadFolderPrefix?: string;
   }) => Promise<FilePickerResult | null>;
-  productFileDisplayName: (file: ProductFileRecord) => string;
+  productFileDisplayName: (file: ProductFileSummary) => string;
   /** Re-render the page whose workflow just ran. */
   refreshPage: (page: WorkflowUpdatePageKey) => Promise<void> | void;
 };
@@ -238,7 +238,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
   ) {
     if (source.sheet === undefined && !previous?.sheet) return '';
     const fileId = selectedFileId ?? previous?.fileId ?? null;
-    const sheetState = fileId ? sourceSheetSummaries.get(fileId) ?? null : null;
+    const sheetState = fileId ? (sourceSheetSummaries.get(fileId) ?? null) : null;
     if (fileId) void ensureSourceSheetSummaries(fileId);
     const model = getWorkflowUpdateSheetOptions({
       selectedSheet: selectedSheets[source.sourceKey] ?? previous?.sheet ?? source.sheet ?? '',
@@ -445,7 +445,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
 
   async function openModal(page: WorkflowUpdatePageKey) {
     await loadConfigs();
-    await deps.refreshProductFiles();
+    await deps.refreshProductFiles({ force: true });
     const config = getConfig(page);
     activePage = page;
     closeLocked = false;
@@ -569,7 +569,7 @@ export function createWorkflowUpdateModal(deps: WorkflowUpdateModalDeps): Workfl
         throw new Error(run.errorMessage ?? `Workflow ended with status ${run.status}`);
       }
       renderProgress(run);
-      await deps.refreshProductFiles();
+      await deps.refreshProductFiles({ force: true });
       await deps.refreshPage(page);
       el('workflowUpdateStatus').textContent = statusMessage(
         run.status === 'completed_with_warnings' ? 'completedWithWarnings' : 'completed',

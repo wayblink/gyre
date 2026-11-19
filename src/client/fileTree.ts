@@ -1,21 +1,21 @@
-import type { ProductFileRecord } from '../shared/types.js';
+import type { ProductFileSummary } from '../shared/types.js';
 
 export type FileTreeNode = {
   name: string;
   path: string;
   children: Map<string, FileTreeNode>;
-  files: ProductFileRecord[];
+  files: ProductFileSummary[];
 };
 
-export type ProductFilePathResolver = (file: ProductFileRecord) => string;
+export type ProductFilePathResolver = (file: ProductFileSummary) => string;
 
-export function productFileTreePath(file: ProductFileRecord): string {
-  return (file.displayPath || file.storedName || file.originalName).replace(/\\/g, '/');
+export function productFileTreePath(file: ProductFileSummary): string {
+  return (file.displayPath || file.originalName).replace(/\\/g, '/');
 }
 
 /** Runtime and task file references are keyed by logicalPath, so the picker groups by it. */
-export function productFileLogicalTreePath(file: ProductFileRecord): string {
-  return (file.logicalPath || file.displayPath || file.storedName || file.originalName).replace(/\\/g, '/');
+export function productFileLogicalTreePath(file: ProductFileSummary): string {
+  return (file.logicalPath || file.displayPath || file.originalName).replace(/\\/g, '/');
 }
 
 /**
@@ -49,7 +49,7 @@ export function createFileTreeNode(name: string, path: string): FileTreeNode {
 }
 
 export function buildProductFilesTree(
-  files: ReadonlyArray<ProductFileRecord>,
+  files: ReadonlyArray<ProductFileSummary>,
   pathOf: ProductFilePathResolver = productFileTreePath,
 ): FileTreeNode {
   const root = createFileTreeNode('', '');
@@ -88,13 +88,13 @@ export function compareTreeNode(a: FileTreeNode, b: FileTreeNode): number {
   return a.name.localeCompare(b.name, 'zh-Hans-CN');
 }
 
-export function compareProductFile(a: ProductFileRecord, b: ProductFileRecord): number {
+export function compareProductFile(a: ProductFileSummary, b: ProductFileSummary): number {
   return productFileTreePath(a).localeCompare(productFileTreePath(b), 'zh-Hans-CN');
 }
 
 /** Every folder (including ancestors) that files live in, so a move target can be picked from a list. */
 export function collectProductFileFolders(
-  files: ReadonlyArray<ProductFileRecord>,
+  files: ReadonlyArray<ProductFileSummary>,
   pathOf: ProductFilePathResolver = productFileLogicalTreePath,
 ): string[] {
   const folders = new Set<string>(['input', 'control_book']);
@@ -110,7 +110,7 @@ export function collectProductFileFolders(
   return Array.from(folders).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
 }
 
-export function productFileFolder(file: ProductFileRecord): string {
+export function productFileFolder(file: ProductFileSummary): string {
   const segments = productFileLogicalTreePath(file).split('/').filter(Boolean);
   return segments.slice(0, -1).join('/');
 }

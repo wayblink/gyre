@@ -1,4 +1,4 @@
-import type { ProductFileRecord } from '../shared/types.js';
+import type { ProductFileSummary } from '../shared/types.js';
 import type { NotifyFn } from './uiFeedback.js';
 import type { AppLanguage } from './i18n.js';
 import { createTexts, type TextKey } from './texts.js';
@@ -12,7 +12,7 @@ export type FileMoveDialogDeps = {
   el: DomGetter;
   api: <T>(url: string, options?: RequestInit) => Promise<T>;
   escapeHtml: (text: unknown) => string;
-  getProductFiles: () => ProductFileRecord[];
+  getProductFiles: () => ProductFileSummary[];
   notify: NotifyFn;
   getLanguage?: () => AppLanguage;
 };
@@ -20,10 +20,10 @@ export type FileMoveDialogDeps = {
 export type FileMoveOutcome = {
   moved: number;
   rewrittenWorkflows: number;
-  failures: Array<{ file: ProductFileRecord; message: string }>;
+  failures: Array<{ file: ProductFileSummary; message: string }>;
 };
 
-type MoveResponse = { file: ProductFileRecord; rewrittenWorkflows: number };
+type MoveResponse = { file: ProductFileSummary; rewrittenWorkflows: number };
 
 export function createFileMoveDialog({
   el,
@@ -36,7 +36,7 @@ export function createFileMoveDialog({
   const tt = (key: TextKey<'fileMove'>) => t(key, getLanguage?.() ?? 'zh-CN');
 
   let pending: ((outcome: FileMoveOutcome | null) => void) | null = null;
-  let targetFiles: ProductFileRecord[] = [];
+  let targetFiles: ProductFileSummary[] = [];
   let targetFolder = '';
   let moving = false;
   let bound = false;

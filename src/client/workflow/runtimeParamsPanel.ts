@@ -16,7 +16,7 @@ import {
 import type { FilePickerResult } from '../filePickerModal.js';
 import type { AppLanguage } from '../i18n.js';
 import { createTextFormatter } from '../texts.js';
-import type { ProductFileDetail, ProductFileRecord, WorkflowDefinition, WorkflowTask } from '../../shared/types.js';
+import type { ProductFileDetail, ProductFileSummary, WorkflowDefinition, WorkflowTask } from '../../shared/types.js';
 
 /**
  * The runtime-parameters panel of the workflow editor: the collapsible constants / input-files
@@ -33,8 +33,8 @@ export type RuntimeParamsPanelDeps = {
   api: <T>(url: string, options?: RequestInit) => Promise<T>;
   escapeHtml: (text: unknown) => string;
   notify: (message: string, options?: { type?: 'info' | 'success' | 'warning' | 'error' }) => void;
-  getProductFiles: () => ProductFileRecord[];
-  productFileDisplayName: (file: ProductFileRecord) => string;
+  getProductFiles: () => ProductFileSummary[];
+  productFileDisplayName: (file: ProductFileSummary) => string;
   openFilePicker: (options: {
     titleKey?: 'title' | 'defaultFileTitle' | 'fileSourceTitle';
     currentFileId?: number | null;

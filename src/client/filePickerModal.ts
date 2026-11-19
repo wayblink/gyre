@@ -1,4 +1,4 @@
-import type { ProductFileRecord } from '../shared/types.js';
+import type { ProductFileRecord, ProductFileSummary } from '../shared/types.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import type { AppLanguage } from './i18n.js';
 import { createTexts, type TextKey } from './texts.js';
@@ -24,8 +24,8 @@ export type FilePickerModalDeps = {
   api: <T>(url: string, options?: RequestInit) => Promise<T>;
   escapeHtml: (text: unknown) => string;
   formatFileSize: (bytes: number) => string;
-  getProductFiles: () => ProductFileRecord[];
-  refreshProductFiles: () => Promise<unknown>;
+  getProductFiles: () => ProductFileSummary[];
+  refreshProductFiles: (options?: { force?: boolean }) => Promise<unknown>;
   notify: NotifyFn;
   confirmAction: ConfirmActionFn;
   getLanguage?: () => AppLanguage;
@@ -140,7 +140,7 @@ export function createFilePickerModal({
     el('btnWorkflowFilePickerMoveConfirm').textContent = tt('moveConfirm');
   }
 
-  function visibleFiles(): ProductFileRecord[] {
+  function visibleFiles(): ProductFileSummary[] {
     const files = getProductFiles();
     if (!searchQuery) return [...files];
     return files.filter((file) => {
@@ -149,7 +149,7 @@ export function createFilePickerModal({
     });
   }
 
-  function fileIcon(file: ProductFileRecord) {
+  function fileIcon(file: ProductFileSummary) {
     const extension = (productFileLogicalTreePath(file).split('.').pop() ?? '').toLowerCase();
     if (extension === 'xlsx' || extension === 'xls' || extension === 'xlsm') {
       return { className: 'workbook-file-icon--excel', label: 'XLS' };
@@ -188,7 +188,7 @@ export function createFilePickerModal({
       ${children}`;
   }
 
-  function renderFile(file: ProductFileRecord, depth: number): string {
+  function renderFile(file: ProductFileSummary, depth: number): string {
     const logicalPath = productFileLogicalTreePath(file);
     const icon = fileIcon(file);
     return `
@@ -264,7 +264,7 @@ export function createFilePickerModal({
     el<HTMLButtonElement>('btnWorkflowFilePickerMove').disabled = !hasHighlight;
   }
 
-  function highlightedFile(): ProductFileRecord | null {
+  function highlightedFile(): ProductFileSummary | null {
     if (!highlightedFileId) return null;
     return getProductFiles().find((file) => file.id === highlightedFileId) ?? null;
   }
@@ -333,7 +333,7 @@ export function createFilePickerModal({
         method: 'POST',
         body: JSON.stringify({ folder }),
       });
-      await refreshProductFiles();
+      await refreshProductFiles({ force: true });
       // Same reason as an upload: the file now lives in another folder, which may be collapsed.
       expandFoldersFor(response.file);
       highlightedFileId = response.file.id;
@@ -351,7 +351,7 @@ export function createFilePickerModal({
    * A newly uploaded file is no use if its folder is collapsed: the list would render without it and
    * the highlight would have nothing to point at. Open every ancestor of the file's path.
    */
-  function expandFoldersFor(file: ProductFileRecord) {
+  function expandFoldersFor(file: ProductFileSummary) {
     const segments = productFileLogicalTreePath(file).split('/');
     segments.pop();
     let path = '';
@@ -407,7 +407,7 @@ export function createFilePickerModal({
         if (!confirmed) return;
         data = await upload(true);
       }
-      await refreshProductFiles();
+      await refreshProductFiles({ force: true });
       // The operator just uploaded this file, so put the cursor on it: clear a search that would
       // hide it, open its folder, highlight it and move focus there.
       searchQuery = '';

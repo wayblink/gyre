@@ -1,4 +1,4 @@
-import type { ProductFileDetail, ProductFileRecord } from '../shared/types.js';
+import type { ProductFileDetail, ProductFileRecord, ProductFileSummary } from '../shared/types.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
 import type { AppLanguage } from './i18n.js';
 import { createTexts, type TextKey } from './texts.js';
@@ -62,7 +62,7 @@ export function createFilesPage({
     notify,
     getLanguage,
   });
-  let productFiles: ProductFileRecord[] = [];
+  let productFiles: ProductFileSummary[] = [];
   let currentProductFileDetail: ProductFileDetail | null = null;
   let currentWorkbookBuffer: ArrayBuffer | null = null;
   let workbookViewer: WorkbookViewer | null = null;
@@ -87,6 +87,13 @@ export function createFilesPage({
   // and 563 files hidden instead of printing the whole library. A jump from another page expands
   // exactly the ancestors of the file it points at, so the tree shows where that file lives.
   const expandedTreeDirectoryPaths = new Set<string>();
+  // The file library is one shared resource: the shell, the Monthly Update page, the Captable page and
+  // the two pickers all need the same list, and boot asked for it four times (~415 KB each). One
+  // in-flight request plus a short freshness window collapses those into a single fetch; a mutation
+  // inside this page invalidates the window so the next read is a real one.
+  let productFilesFetchedAt = 0;
+  let productFilesInflight: Promise<ProductFileSummary[]> | null = null;
+  const PRODUCT_FILES_FRESH_MS = 3000;
 
   function lang(): AppLanguage {
     return getLanguage?.() ?? 'zh-CN';
@@ -105,7 +112,8 @@ export function createFilesPage({
   async function init() {
     el('btnCreateProductFile').addEventListener('click', () => void createProductFile());
     el('btnUploadProductFile').addEventListener('click', () => void uploadProductFile());
-    el('btnRefreshFiles').addEventListener('click', () => void loadProductFiles());
+    // The toolbar button means "ask the server", not "use the cache".
+    el('btnRefreshFiles').addEventListener('click', () => void loadProductFiles(undefined, { force: true }));
     el('btnDownloadProductFile').addEventListener('click', () => {
       const fileId = currentProductFileDetail?.file.id ?? selectedProductFileId;
       if (fileId) downloadProductFile(fileId);
@@ -152,7 +160,7 @@ export function createFilesPage({
       if (!confirmed) return;
       data = await upload(true);
     }
-    await loadProductFiles(data.file.id);
+    await loadProductFiles(data.file.id, { force: true });
   }
 
   async function uploadWorkbookBuffer(fileName: string, buffer: BlobPart) {
@@ -163,9 +171,28 @@ export function createFilesPage({
     );
   }
 
-  async function loadProductFiles(selectedId?: number) {
-    const data = await api<{ files: ProductFileRecord[] }>('/api/files');
-    productFiles = data.files;
+  async function fetchProductFiles(force: boolean): Promise<ProductFileSummary[]> {
+    const fresh = !force && productFiles.length > 0 && Date.now() - productFilesFetchedAt < PRODUCT_FILES_FRESH_MS;
+    if (fresh) return productFiles;
+    // A second caller arriving while the first request is in flight waits for it instead of
+    // starting an identical one.
+    if (productFilesInflight) return productFilesInflight;
+    productFilesInflight = (async () => {
+      const data = await api<{ files: ProductFileSummary[] }>('/api/files');
+      productFiles = data.files;
+      productFilesFetchedAt = Date.now();
+      return productFiles;
+    })();
+    try {
+      return await productFilesInflight;
+    } finally {
+      productFilesInflight = null;
+    }
+  }
+
+  async function loadProductFiles(selectedId?: number, options: { force?: boolean } = {}) {
+    const files = await fetchProductFiles(options.force === true);
+    productFiles = files;
     selectedProductFileIds = new Set(
       [...selectedProductFileIds].filter((id) => productFiles.some((file) => file.id === id)),
     );
@@ -215,7 +242,7 @@ export function createFilesPage({
   }
 
   /** Open the ancestor folders of one file and close everything else, so the tree reads as a path. */
-  function expandProductFilePath(file: ProductFileRecord) {
+  function expandProductFilePath(file: ProductFileSummary) {
     expandedTreeDirectoryPaths.clear();
     for (const directoryPath of fileAncestorDirectories(productFileTreePath(file))) {
       expandedTreeDirectoryPaths.add(directoryPath);
@@ -561,7 +588,7 @@ export function createFilesPage({
     if (!ids.length) return;
     const outcome = await fileMoveDialog.open(ids);
     if (!outcome?.moved) return;
-    await loadProductFiles(selectedProductFileId ?? undefined);
+    await loadProductFiles(selectedProductFileId ?? undefined, { force: true });
   }
 
   async function deleteSelectedProductFiles() {
@@ -588,7 +615,7 @@ export function createFilesPage({
       disposeWorkbookViewer();
     }
     selectedProductFileIds.clear();
-    await loadProductFiles();
+    await loadProductFiles(undefined, { force: true });
   }
 
   function bindFilesViewModeControls() {
@@ -619,11 +646,11 @@ export function createFilesPage({
     renderProductFilesList();
   }
 
-  function getProductFileDisplayPath(file: ProductFileRecord) {
+  function getProductFileDisplayPath(file: ProductFileSummary) {
     return productFileTreePath(file);
   }
 
-  function getProductFileDisplayName(file: ProductFileRecord) {
+  function getProductFileDisplayName(file: ProductFileSummary) {
     return file.displayName || file.originalName;
   }
 
@@ -646,7 +673,6 @@ export function createFilesPage({
         getProductFileDisplayName(file),
         getProductFileDisplayPath(file),
         file.originalName,
-        file.storedName,
         file.displayName,
       ]
         .join(' ')
@@ -655,14 +681,14 @@ export function createFilesPage({
     });
   }
 
-  function getProductFileExtension(file: ProductFileRecord) {
+  function getProductFileExtension(file: ProductFileSummary) {
     const path = getProductFileDisplayPath(file);
     const name = path.split('/').pop() || getProductFileDisplayName(file);
     const match = name.match(/\.([^.]+)$/);
     return (match?.[1] ?? '').toLowerCase();
   }
 
-  function getProductFileIcon(file: ProductFileRecord) {
+  function getProductFileIcon(file: ProductFileSummary) {
     const extension = getProductFileExtension(file);
     if (extension === 'xlsx' || extension === 'xls' || extension === 'xlsm') {
       return { className: 'workbook-file-icon--excel', label: 'XLS' };
@@ -673,7 +699,7 @@ export function createFilesPage({
     return { className: 'workbook-file-icon--generic', label: 'FILE' };
   }
 
-  function renderProductFilesTree(container: HTMLElement, files: ProductFileRecord[]) {
+  function renderProductFilesTree(container: HTMLElement, files: ProductFileSummary[]) {
     const root = buildProductFilesTree(files);
     const content = [
       ...Array.from(root.children.values())
@@ -724,7 +750,7 @@ export function createFilesPage({
     `;
   }
 
-  function renderTreeFile(file: ProductFileRecord, depth: number): string {
+  function renderTreeFile(file: ProductFileSummary, depth: number): string {
     const displayPath = getProductFileDisplayPath(file);
     const icon = getProductFileIcon(file);
     return `
@@ -961,7 +987,7 @@ export function createFilesPage({
     }
 
     const nextFile = productFiles.find((item) => item.id !== fileId);
-    await loadProductFiles(nextFile?.id);
+    await loadProductFiles(nextFile?.id, { force: true });
   }
 
   function startRenamingProductFile(fileId: number) {
@@ -1132,7 +1158,12 @@ export function createFilesPage({
   return {
     init,
     getProductFiles,
-    refreshProductFiles: loadProductFiles,
+    // Returns the list so a consumer that needs the files (the Monthly Update page keeps its own copy)
+    // does not have to fetch them again.
+    refreshProductFiles: async (selectedId?: number, options?: { force?: boolean }) => {
+      await loadProductFiles(selectedId, options);
+      return productFiles;
+    },
     applyLanguage() {
       el('filesCountBadge').textContent = `${productFiles.length} ${tt('count')}`;
       renderProductFilesList();

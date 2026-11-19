@@ -36,12 +36,14 @@ function fileFixture(overrides: Partial<ProductFileRecord> & { id: number }): Pr
   } as ProductFileRecord;
 }
 
-test('product file tree paths fall back through displayPath, storedName, originalName', () => {
+test('product file tree paths fall back through displayPath, then the original name', () => {
   assert.equal(
     productFileTreePath(fileFixture({ id: 1, displayPath: 'input\\2026-05\\a.xlsx' })),
     'input/2026-05/a.xlsx',
   );
-  assert.equal(productFileTreePath(fileFixture({ id: 2, displayPath: '', storedName: 'stored.xlsx' })), 'stored.xlsx');
+  // `storedName` is no longer part of the list payload (see ProductFileSummary), so the fallback is
+  // displayPath -> originalName; the server always sends a displayPath.
+  assert.equal(productFileTreePath(fileFixture({ id: 2, displayPath: '' })), 'book.xlsx');
   assert.equal(
     productFileLogicalTreePath(
       fileFixture({ id: 3, displayPath: 'output/captable/x.xlsx', logicalPath: 'input/2026-06/x.xlsx' }),

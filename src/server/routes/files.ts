@@ -11,6 +11,7 @@ import {
 } from '../fileIdentity.js';
 import { extractSheetRangeAsDataFrame, previewWorkbookSheet, summarizeWorkbookAsync } from '../excel.js';
 import { workbookSummaryFor } from '../workbookSummaryCache.js';
+import { cachedSheetPreview, invalidateSheetPreviewCache, sheetPreviewCacheKey } from '../utils/sheetPreviewCache.js';
 import { parseJson } from '../utils/json.js';
 import { rewriteProductFileKey } from '../workflow/productFileKeyRewrite.js';
 import {
@@ -24,6 +25,7 @@ import {
   productFileDisplayPath,
   saveProductWorkbook,
   toProductFile,
+  toProductFileListItem,
   updateProductWorkbook,
 } from './support.js';
 import { requireAdminUser } from './auth.js';
@@ -85,10 +87,15 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
   const { db } = ctx;
 
   app.get('/api/files', async () => {
+    // Only the columns the list payload needs: the table also carries checksum/mime/storage columns
+    // that the slim mapper drops, and `select *` shipped them over the wire to be discarded here.
     const rows = await db.query<Record<string, unknown>>(
-      'select * from product_files order by created_at desc, id desc',
+      `select id, original_name, stored_name, logical_path, file_path,
+              file_size_bytes, workbook_sheet_count, workbook_row_count, uploaded_by, created_at
+         from product_files
+        order by created_at desc, id desc`,
     );
-    return { files: rows.map(toProductFile) };
+    return { files: rows.map(toProductFileListItem) };
   });
 
   app.post('/api/files/upload', async (request, reply) => {
@@ -311,6 +318,9 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
       mimeType: uploaded.mimeType,
       uploadedBy,
     });
+    // The bytes changed: parsed previews for the old version must not survive (the checksum moves
+    // too, but dropping them keeps the cache from carrying dead entries).
+    invalidateSheetPreviewCache(Number(saved.file.id));
 
     return reply.send({
       file: toProductFile(saved.file),
@@ -322,8 +332,18 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
     const { id, sheetName } = request.params as { id: string; sheetName: string };
     const query = filePreviewQuerySchema.parse(request.query ?? {});
     const file = await getProductFileOrThrow(db, Number(id));
-    const buffer = await fileStorage.read(String(file.file_path));
-    return previewWorkbookSheet(buffer, sheetName, query.limit, query.offset);
+    // Reopening a workbook, or paging through one, used to re-parse the whole file each time.
+    return cachedSheetPreview(
+      sheetPreviewCacheKey({
+        fileId: Number(file.id),
+        checksum: String(file.checksum ?? ''),
+        sheetName,
+        limit: query.limit,
+        offset: query.offset,
+      }),
+      async () =>
+        previewWorkbookSheet(await fileStorage.read(String(file.file_path)), sheetName, query.limit, query.offset),
+    );
   });
 
   app.get('/api/files/:id/sheets/:sheetName/range', async (request) => {
@@ -360,6 +380,7 @@ export function registerFileRoutes(app: FastifyInstance, ctx: RouteContext) {
     const file = await getProductFileOrThrow(db, fileId);
     await fileStorage.remove(String(file.file_path));
     await db.execute('delete from product_files where id = $1', [fileId]);
+    invalidateSheetPreviewCache(fileId);
     return reply.code(204).send();
   });
 }

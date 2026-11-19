@@ -44,6 +44,7 @@ import { monthlySourcesFromSchema } from '../monthlyRun/sourceSchema.js';
 import { workflowApprovalBodySchema } from './workflows.js';
 import { updatePlanSchema } from './months.js';
 import { injectMonthlyRecordBases } from '../esopWorkflow/recordBases.js';
+import { invalidateSheetPreviewCache } from '../utils/sheetPreviewCache.js';
 import type {
   LatestMonthlyRunOutput,
   MonthlyRunInstanceRecord,
@@ -480,6 +481,9 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
       if (!operation) throw notFound('Monthly run not found');
       const { deletedOutputFilePaths, ...deleted } = operation;
       if (deletedOutputFilePaths.length) await removeStoredFilesAfterCommit(deletedOutputFilePaths, app.log);
+      // Deleting a run's outputs removes product files without going through the files API, so drop
+      // their parsed sheets here too — otherwise the cache keeps rows for ids that no longer exist.
+      for (const fileId of deleted.deletedOutputFileIds) invalidateSheetPreviewCache(fileId);
       return reply.send({ deleted });
     } catch (error) {
       if (error instanceof MonthlyRunHistoryDeleteConflictError) {

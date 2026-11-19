@@ -22,6 +22,7 @@ import {
   serializeCookie,
   toAuthStatus,
   touchSession,
+  SESSION_TOUCH_INTERVAL_MS,
   touchUserLastLogin,
   updateAccountPassword,
   updateAccountProfile,
@@ -129,8 +130,14 @@ async function resolveAuthUser(
     await deleteSessionByHash(db, tokenHash);
     return null;
   }
-  const expiresAt = calculateSessionExpiry(config.sessionTtlHours);
-  await touchSession(db, { tokenHash, expiresAt });
+  // Slide the expiry and record the visit at most once per interval: the write used to happen on
+  // every single API request, which is 20+ row updates per page load for a value whose only job is
+  // idle-expiry bookkeeping.
+  const lastSeenAt = user.session ? new Date(user.session.last_seen_at).getTime() : 0;
+  if (!Number.isFinite(lastSeenAt) || Date.now() - lastSeenAt > SESSION_TOUCH_INTERVAL_MS) {
+    const expiresAt = calculateSessionExpiry(config.sessionTtlHours);
+    await touchSession(db, { tokenHash, expiresAt });
+  }
   return {
     id: user.id,
     username: user.username,

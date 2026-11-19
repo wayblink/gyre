@@ -518,6 +518,18 @@ export type ProductFileRecord = {
   createdAt: string;
 };
 
+/**
+ * A product file as the file-picker payload carries it (`GET /api/files`).
+ *
+ * The storage-only columns (`checksum`, `mimeType`, `fileExt`, `storageBackend`) and the second copy
+ * of the name (`storedName`) stay on the server: the browser never reads them, and shipping 500+ of
+ * them made the list the single biggest response the app produced.
+ */
+export type ProductFileSummary = Omit<
+  ProductFileRecord,
+  'storedName' | 'fileExt' | 'mimeType' | 'checksum' | 'storageBackend'
+>;
+
 export type ProductFileSheetSummary = {
   sheetName: string;
   rowCount: number;

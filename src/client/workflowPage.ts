@@ -2,7 +2,6 @@ import type {
   WorkflowExecutionResult,
   WorkflowExecutionTaskState,
   WorkflowRunState,
-  ProductFileRecord,
   WorkflowAssertFailureStrategy,
   WorkflowAssertionResult,
   WorkflowAssertOperator,
@@ -17,6 +16,7 @@ import type {
   WorkflowTaskInput,
   WorkflowTaskPreviewResult,
   WorkflowTaskPreviewRequest,
+  ProductFileSummary,
 } from '../shared/types.js';
 import { isWorkflowRunTerminalStatus } from '../shared/workflowRunStatus.js';
 import type { ConfirmActionFn, NotifyFn } from './uiFeedback.js';
@@ -79,8 +79,8 @@ type WorkflowPageDeps = {
   api: <T>(url: string, options?: RequestInit) => Promise<T>;
   escapeHtml: (text: unknown) => string;
   formatFileSize: (bytes: number) => string;
-  getProductFiles: () => ProductFileRecord[];
-  refreshProductFiles: () => Promise<unknown>;
+  getProductFiles: () => ProductFileSummary[];
+  refreshProductFiles: (options?: { force?: boolean }) => Promise<unknown>;
   notify: NotifyFn;
   confirmAction: ConfirmActionFn;
   getLanguage?: () => AppLanguage;
@@ -109,7 +109,7 @@ export function createWorkflowPage({
     getLanguage,
   });
 
-  function productFileDisplayName(file: ProductFileRecord) {
+  function productFileDisplayName(file: ProductFileSummary) {
     return file.displayName || file.originalName;
   }
 
@@ -2622,7 +2622,7 @@ export function createWorkflowPage({
       if (pollCount < (options.minimumPollCount ?? 1)) continue;
       if (!isSettled) continue;
       if (shouldRefreshFiles || getWorkflowRunLastResult(run)?.kind === 'file') {
-        await refreshProductFiles();
+        await refreshProductFiles({ force: true });
       }
       if (run.status === 'completed' || run.status === 'completed_with_warnings' || run.status === 'skipped') {
         window.setTimeout(() => {

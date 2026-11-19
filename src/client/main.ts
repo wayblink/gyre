@@ -9,7 +9,7 @@ import type {
   MonthlyRunPlanDeleteResult,
   PaginatedResult,
   PlanSummaryResponse,
-  ProductFileRecord,
+  ProductFileSummary,
   WorkflowResultFileBinding,
   WorkflowPageSourceBinding,
 } from '../shared/types.js';
@@ -132,7 +132,7 @@ const filePicker = createFilePickerModal({
   escapeHtml,
   formatFileSize,
   getProductFiles: () => filesPage.getProductFiles(),
-  refreshProductFiles: () => filesPage.refreshProductFiles(),
+  refreshProductFiles: (options) => filesPage.refreshProductFiles(undefined, options),
   notify,
   confirmAction,
   getLanguage: () => currentLanguage,
@@ -144,7 +144,7 @@ const workflowPage = createWorkflowPage({
   escapeHtml,
   formatFileSize,
   getProductFiles: () => filesPage.getProductFiles(),
-  refreshProductFiles: () => filesPage.refreshProductFiles(),
+  refreshProductFiles: (options) => filesPage.refreshProductFiles(undefined, options),
   notify,
   confirmAction,
   getLanguage: () => currentLanguage,
@@ -183,7 +183,7 @@ const workflowUpdateModal = createWorkflowUpdateModal({
   getLanguage: () => currentLanguage,
   getProductFiles: () => filesPage.getProductFiles(),
   getMonth: () => currentMonth,
-  refreshProductFiles: () => filesPage.refreshProductFiles(),
+  refreshProductFiles: (options) => filesPage.refreshProductFiles(undefined, options),
   openFilePicker: (options) => filePicker.open(options),
   productFileDisplayName,
   refreshPage: (page) => refreshWorkflowUpdatePage(page),
@@ -197,7 +197,7 @@ const fivePercentHoldersPage = createFivePercentHoldersPage({
   formatNumber,
   getLanguage: () => currentLanguage,
   currentUserName: () => authStatus?.user?.displayName ?? 'Administrator',
-  refreshProductFiles: () => filesPage.refreshProductFiles(),
+  refreshProductFiles: (options) => filesPage.refreshProductFiles(undefined, options),
   rememberPageData: (page, response) => workflowUpdateModal.rememberPageData(page, response),
   workflowModal: {
     bindingFor: (page, sourceKey) => workflowUpdateModal.bindingFor(page, sourceKey),
@@ -237,6 +237,7 @@ const captablePage = createCaptablePage(
     notify,
     confirmAction,
     productFileDisplayName,
+    refreshProductFiles: () => filesPage.refreshProductFiles(),
     getLanguage: () => currentLanguage,
   },
   {
@@ -306,7 +307,7 @@ const monthlyRunPage = createMonthlyRunPage({
   api,
   escapeHtml,
   formatDateTime,
-  refreshProductFiles: () => filesPage.refreshProductFiles(),
+  refreshProductFiles: (options) => filesPage.refreshProductFiles(undefined, options),
   refreshSummary: (month) => captablePage.render(month),
   openProductFile: (fileId) => navigateToProductFile(fileId),
   notify,
@@ -356,7 +357,7 @@ function setPageInputSourceFiles(page: PageKey, files: string | Array<string | n
   setPageFileMetric(page, '[data-page-source-files-name]', files, 'SourceFiles');
 }
 
-function productFileDisplayName(file: ProductFileRecord) {
+function productFileDisplayName(file: ProductFileSummary) {
   return file.displayName || file.originalName;
 }
 

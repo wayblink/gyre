@@ -10,6 +10,7 @@ import type {
   ProductFileDetail,
   ProductFileRecord,
   ProductFileSheetSummary,
+  ProductFileSummary,
   WorkflowExecutionTaskState,
   WorkflowRunRecord,
 } from '../shared/types.js';
@@ -29,7 +30,7 @@ type MonthlyRunPageDeps = {
   api: <T>(url: string, options?: RequestInit) => Promise<T>;
   escapeHtml: (text: unknown) => string;
   formatDateTime: (value: string) => string;
-  refreshProductFiles: () => Promise<unknown>;
+  refreshProductFiles: (options?: { force?: boolean }) => Promise<ProductFileSummary[]>;
   refreshSummary: (month: string) => Promise<unknown>;
   openProductFile: (fileId: number) => Promise<void> | void;
   notify: NotifyFn;
@@ -318,7 +319,7 @@ function normalizeCandidateText(value: unknown): string {
     .replace(/\s+/g, ' ');
 }
 
-function productFileCandidateName(file: Pick<ProductFileRecord, 'displayName' | 'originalName'>): string {
+function productFileCandidateName(file: Pick<ProductFileSummary, 'displayName' | 'originalName'>): string {
   return file.displayName || file.originalName;
 }
 
@@ -354,7 +355,7 @@ export function getMonthlyRunSourceSheetControlModel(params: {
 
 export function retainAvailableSourceBindings(
   bindings: Record<string, MonthlyRunSourceBinding>,
-  availableFiles: ReadonlyArray<Pick<ProductFileRecord, 'id' | 'logicalPath'>>,
+  availableFiles: ReadonlyArray<Pick<ProductFileSummary, 'id' | 'logicalPath'>>,
 ): Record<string, MonthlyRunSourceBinding> {
   if (availableFiles.length === 0) return bindings;
   return Object.fromEntries(
@@ -438,7 +439,7 @@ export function getMonthlyRunModalSourceDefinitions<T extends Pick<MonthlyRunSou
 }
 
 export function getMonthlyRunFileCandidatesForSource<
-  T extends Pick<ProductFileRecord, 'id' | 'displayName' | 'originalName'> & { logicalPath?: string | null },
+  T extends Pick<ProductFileSummary, 'id' | 'displayName' | 'originalName'> & { logicalPath?: string | null },
 >(
   sourceKey: string,
   files: ReadonlyArray<T>,
@@ -505,7 +506,7 @@ function normalizedFileKey(value: unknown): string {
 }
 
 function isFileForBinding(
-  file: Pick<ProductFileRecord, 'id'> & { logicalPath?: string | null },
+  file: Pick<ProductFileSummary, 'id'> & { logicalPath?: string | null },
   binding: Pick<MonthlyRunSourceBinding, 'fileId' | 'logicalPath' | 'fileKey'> | null | undefined,
 ): boolean {
   if (!binding) return false;
@@ -664,7 +665,7 @@ export function createMonthlyRunPage({
 }: MonthlyRunPageDeps) {
   const runClient = createWorkflowRunClient(api);
   const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
-  let files: ProductFileRecord[] = [];
+  let files: ProductFileSummary[] = [];
   let monthlyWorkflowCode = '';
   /** Set when the DB monthly workflow definition version differs from MONTHLY_WORKFLOW_VERSION. */
   let workflowVersionMismatch: { expected: number; actual: number } | null = null;
@@ -814,9 +815,9 @@ export function createMonthlyRunPage({
     renderBusinessDefinedInputConfiguration();
   }
 
-  async function refreshFiles() {
-    const data = await api<{ files: ProductFileRecord[] }>('/api/files');
-    files = data.files;
+  async function refreshFiles(options: { force?: boolean } = {}) {
+    // Same list the Files Center and the pickers use: one request, shared by every consumer.
+    files = await refreshProductFiles(options);
     sanitizeSelectedSourceBindings();
     renderSourceInfo();
     renderBusinessDefinedInputConfiguration();
@@ -1003,7 +1004,7 @@ export function createMonthlyRunPage({
     });
   }
 
-  function renderUploadedFileCell(file: ProductFileRecord) {
+  function renderUploadedFileCell(file: ProductFileSummary) {
     const displayName = getFileDisplayName(file);
     const escapedDisplayName = escapeHtml(displayName);
     const copyLabel = tt('copy');
@@ -1159,17 +1160,17 @@ export function createMonthlyRunPage({
     ensureSelectedSourceBindings();
   }
 
-  function getFileById(fileId: number | null | undefined): ProductFileRecord | null {
+  function getFileById(fileId: number | null | undefined): ProductFileSummary | null {
     if (!fileId) return null;
     return files.find((file) => file.id === fileId) ?? null;
   }
 
-  function getFileForBinding(binding: MonthlyRunSourceBinding | null | undefined): ProductFileRecord | null {
+  function getFileForBinding(binding: MonthlyRunSourceBinding | null | undefined): ProductFileSummary | null {
     if (!binding) return null;
     return files.find((file) => isFileForBinding(file, binding)) ?? null;
   }
 
-  function getFileDisplayName(file: ProductFileRecord) {
+  function getFileDisplayName(file: ProductFileSummary) {
     return file.displayName || file.originalName;
   }
 
@@ -1466,8 +1467,9 @@ export function createMonthlyRunPage({
         if (!confirmed) return;
         data = await upload(true);
       }
-      await refreshFiles();
-      await refreshProductFiles();
+      // The upload changed the library: both views must re-read it, not reuse the cache.
+      await refreshFiles({ force: true });
+      await refreshProductFiles({ force: true });
       const source = sourceDefinitions.find((item) => item.sourceKey === sourceKey);
       const binding = {
         fileId: data.file.id,
@@ -1806,7 +1808,8 @@ export function createMonthlyRunPage({
   async function finalizeAfterRun(month: string) {
     if (!activeRun) return;
     if (activeRun.artifacts.some((artifact) => artifact.artifactType === 'file')) {
-      await refreshProductFiles();
+      // The run just wrote new files; the cached library predates them.
+      await refreshProductFiles({ force: true });
     }
     if (activeRun.status === 'completed' || activeRun.status === 'completed_with_warnings') {
       await refreshSummary(month);
@@ -2074,7 +2077,12 @@ export function createMonthlyRunPage({
           activeRunMonth = null;
           renderRunPanel();
         }
-        await Promise.all([refreshHistory(), refreshFiles(), refreshInstance(), refreshProductFiles()]);
+        await Promise.all([
+          refreshHistory(),
+          refreshFiles({ force: true }),
+          refreshInstance(),
+          refreshProductFiles({ force: true }),
+        ]);
         const month = el<HTMLInputElement>('monthlyRunMonth').value;
         if (month) await refreshSummary(month);
         notify(tt('historyDeleted'), { type: 'success' });

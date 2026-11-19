@@ -138,6 +138,34 @@ test('the client shell boots and renders the navigation for the signed-in admin'
   assert.ok(doc.getElementById('authShell')?.classList.contains('hidden'));
 });
 
+test('the shell fetches the file library once, not once per consumer', async () => {
+  // Boot used to ask /api/files from the summary page, the Monthly Update page, the Files Center and
+  // the picker — four identical ~415 KB responses before the operator clicked anything.
+  const window = await bootApp([
+    ...API_STUBS,
+    {
+      match: /\/api\/files$/,
+      respond: {
+        files: Array.from({ length: 40 }, (_, index) => ({
+          id: index + 1,
+          originalName: `file-${index + 1}.xlsx`,
+          displayName: `file-${index + 1}.xlsx`,
+          displayPath: `input/2026-08/file-${index + 1}.xlsx`,
+          logicalPath: `input/2026-08/file-${index + 1}.xlsx`,
+          fileSizeBytes: 1024,
+          workbookSheetCount: 1,
+          workbookRowCount: 10,
+          uploadedBy: 'Administrator',
+          createdAt: '2026-08-01T00:00:00.000Z',
+        })),
+      },
+    },
+  ]);
+  const fileRequests = lastRequests.filter((request) => /\/api\/files\?|\/api\/files$/.test(request.url));
+  assert.equal(fileRequests.length, 1, `expected a single library fetch at boot, got ${fileRequests.length}`);
+  assert.ok(window.document.querySelector('#filesCountBadge'));
+});
+
 test('switching pages activates the matching page container', async () => {
   const window = await bootApp();
   const doc = window.document;

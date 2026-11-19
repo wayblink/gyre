@@ -14,6 +14,8 @@ export type AuthUserRecord = {
   phone: string | null;
   is_active: boolean;
   last_login_at: string | null;
+  /** Session row the user was authenticated with; only the sliding-expiry fields are exposed. */
+  session?: { last_seen_at: Date | string; expires_at: Date | string };
 };
 
 export type PublicAccount = {
@@ -232,8 +234,10 @@ export async function findSessionUserByTokenHash(db: Queryable, tokenHash: strin
     is_active: boolean;
     last_login_at: string | null;
     expires_at: string;
+    last_seen_at: Date | string;
   }>(
-    `select u.id, u.username, u.display_name, u.role, u.email, u.phone, u.is_active, u.last_login_at, s.expires_at
+    `select u.id, u.username, u.display_name, u.role, u.email, u.phone, u.is_active, u.last_login_at,
+            s.expires_at, s.last_seen_at
      from app_sessions s
      join app_users u on u.id = s.user_id
      where s.session_token_hash = $1`,
@@ -252,8 +256,21 @@ export async function findSessionUserByTokenHash(db: Queryable, tokenHash: strin
     phone: sessionUser.phone === null ? null : String(sessionUser.phone),
     is_active: Boolean(sessionUser.is_active),
     last_login_at: sessionUser.last_login_at,
+    session: {
+      last_seen_at: sessionUser.last_seen_at,
+      expires_at: sessionUser.expires_at,
+    },
   };
 }
+
+/**
+ * How often a request may write `last_seen_at` / `expires_at` back to its session row.
+ *
+ * Every authenticated API call used to UPDATE the row, so one page load (20+ requests) committed 20+
+ * writes. The values only drive idle expiry, so a five-minute granularity is indistinguishable in
+ * behaviour and takes the write path off the hot path.
+ */
+export const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
 export async function touchSession(
   db: Queryable,

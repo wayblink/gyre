@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import { canonicalProductFilePath, normalizeProductFileName, normalizeProductFolder } from '../fileIdentity.js';
 import { fileStorage } from '../storage.js';
 import { previewWorkbookSheet, summarizeValidatedWorkbookAsync } from '../excel.js';
+import { cachedSheetPreview, sheetPreviewCacheKey } from '../utils/sheetPreviewCache.js';
 import { MONTHLY_WORKFLOW_CODE } from '../monthlyRun/store.js';
 import { monthlySourcesFromSchema } from '../monthlyRun/sourceSchema.js';
 import type { MonthlyRunSourceDefinition, SummaryCapitalizationSource } from '../../shared/types.js';
@@ -69,7 +70,11 @@ export type LatestWorkflowDataFrameArtifact = {
   month: string | null;
   columns: string[];
   rows: Array<Record<string, unknown>>;
-  buffer: Buffer;
+  /**
+   * The raw workbook, only when this call had to read it. Kept optional because the parsed rows are
+   * cached and a hit never touches storage.
+   */
+  buffer?: Buffer;
 };
 
 export type WorkflowPageSourceDescriptor = {
@@ -219,6 +224,38 @@ export function monthScopedOutputDisplayPath(displayPath: string): string {
   // being guessed into a month by their upload timestamp.
   const month = /^(\d{4}-\d{2})-/.exec(fileName)?.[1];
   return month ? `${directory}/${month}/${fileName}` : displayPath;
+}
+
+/**
+ * The list payload behind `/api/files`.
+ *
+ * Every page that needs a file picker fetches this endpoint, and the library is now 500+ files: the
+ * full record serialised to ~415 KB, of which the fields dropped here were ~40% — `checksum`,
+ * `mimeType` and `storageBackend` are storage facts the browser never reads, `storedName` duplicates
+ * a name the client already has, and a Date object stringifies to a 56-character locale string per
+ * row. The remaining fields are the ones the UI actually renders or keys on.
+ */
+function productFileIsoTimestamp(value: unknown): string {
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+export function toProductFileListItem(row: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    originalName: String(row.original_name),
+    displayName: productFileDisplayName(row),
+    displayPath: productFileDisplayPath(row),
+    logicalPath: String(row.logical_path ?? productFileUngroupedDisplayPath(row)),
+    fileSizeBytes: Number(row.file_size_bytes ?? 0),
+    workbookSheetCount: Number(row.workbook_sheet_count ?? 0),
+    workbookRowCount: Number(row.workbook_row_count ?? 0),
+    uploadedBy: String(row.uploaded_by ?? 'Administrator'),
+    // ISO rather than `String(date)`: the client formats it anyway, and the locale form made up a
+    // fifth of the payload in redundant "GMT+0800 (China Standard Time)" tails. A malformed value
+    // yields '' instead of throwing and failing the whole list.
+    createdAt: productFileIsoTimestamp(row.created_at),
+  };
 }
 
 export function productFileDisplayPath(row: Record<string, unknown>) {
@@ -699,7 +736,8 @@ export async function readLatestWorkflowDataFrameArtifact(
             file.stored_name,
             file.file_path,
             file.uploaded_by,
-            file.created_at
+            file.created_at,
+            file.checksum
        from workflow_run_artifacts artifact
        join workflow_runs run on run.id = artifact.run_id
        join product_files file on file.id = artifact.file_id
@@ -716,8 +754,17 @@ export async function readLatestWorkflowDataFrameArtifact(
   if (!artifact) return null;
   const metadata = parseJson<Record<string, unknown>>(artifact.metadata_json, {});
   const sheetName = params.sheetName?.trim() || workflowArtifactSheetName(metadata, params.fallbackSheetName);
-  const buffer = await fileStorage.read(String(artifact.file_path));
-  const preview = previewWorkbookSheet(buffer, sheetName, 5000);
+  // Parsing the workbook is the expensive part of every page request; the checksum makes the cache
+  // hit safe and an overwritten file self-invalidating.
+  const preview = await cachedSheetPreview(
+    sheetPreviewCacheKey({
+      fileId: Number(artifact.file_id),
+      checksum: String(artifact.checksum ?? ''),
+      sheetName,
+      limit: 5000,
+    }),
+    async () => previewWorkbookSheet(await fileStorage.read(String(artifact.file_path)), sheetName, 5000),
+  );
   return {
     fileId: Number(artifact.file_id),
     fileName: productFileDisplayName(artifact),
@@ -726,7 +773,6 @@ export async function readLatestWorkflowDataFrameArtifact(
     month: String(artifact.run_month ?? '').trim() || null,
     columns: preview.columns,
     rows: preview.rows,
-    buffer,
   };
 }
 
@@ -749,15 +795,23 @@ export async function readProductFileSheetByLogicalPath(
             file_path,
             uploaded_by,
             created_at,
-            logical_path
+            logical_path,
+            checksum
        from product_files
       where lower(logical_path) = lower($1)
       limit 1`,
     [params.logicalPath],
   );
   if (!row) return null;
-  const buffer = await fileStorage.read(String(row.file_path));
-  const preview = previewWorkbookSheet(buffer, params.sheetName, 5000);
+  const preview = await cachedSheetPreview(
+    sheetPreviewCacheKey({
+      fileId: Number(row.id),
+      checksum: String(row.checksum ?? ''),
+      sheetName: params.sheetName,
+      limit: 5000,
+    }),
+    async () => previewWorkbookSheet(await fileStorage.read(String(row.file_path)), params.sheetName, 5000),
+  );
   return {
     fileId: Number(row.id),
     fileName: productFileDisplayName(row),
@@ -766,7 +820,6 @@ export async function readProductFileSheetByLogicalPath(
     month: null,
     columns: preview.columns,
     rows: preview.rows,
-    buffer,
   };
 }
 

@@ -42,7 +42,7 @@ export type FivePercentHoldersPageDeps = {
   getLanguage: () => AppLanguage;
   /** Display name recorded as `updatedBy` when persisting a parameter. */
   currentUserName: () => string;
-  refreshProductFiles: () => Promise<unknown>;
+  refreshProductFiles: (options?: { force?: boolean }) => Promise<unknown>;
   /** Record the bindings the page response carries, for the next update. */
   rememberPageData: (
     page: 'five-percent-holders',
@@ -252,7 +252,7 @@ export function createFivePercentHoldersPage(deps: FivePercentHoldersPageDeps): 
       }
       notify(t('holdersSavedRunning'), { type: 'success' });
       const run = await runWorkflowWithPreviousSource();
-      await deps.refreshProductFiles();
+      await deps.refreshProductFiles({ force: true });
       editMode = false;
       await render();
       notify(run.status === 'completed_with_warnings' ? t('holdersUpdatedWithWarnings') : t('holdersUpdated'), {

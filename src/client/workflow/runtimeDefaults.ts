@@ -1,5 +1,5 @@
 import { isRuntimeFileParameter } from './runtimeParameterPresentation.js';
-import type { ProductFileRecord, WorkflowDefinition, WorkflowRuntimeParameterField } from '../../shared/types.js';
+import type { ProductFileSummary, WorkflowDefinition, WorkflowRuntimeParameterField } from '../../shared/types.js';
 
 /**
  * Reading and writing a workflow's runtime parameter defaults.
@@ -18,8 +18,8 @@ export type RuntimeParameterEntry = {
 };
 
 export type RuntimeDefaultsDeps = {
-  getProductFiles: () => ProductFileRecord[];
-  productFileDisplayName: (file: ProductFileRecord) => string;
+  getProductFiles: () => ProductFileSummary[];
+  productFileDisplayName: (file: ProductFileSummary) => string;
 };
 
 export function cloneJson<T>(value: T): T {
@@ -102,7 +102,7 @@ export function stringifyWorkflowJson(value: unknown): string {
 }
 
 /** Resolves a runtime default to a product file id, whether it was stored as a key or an id. */
-export function runtimeProductFileId(value: unknown, getProductFiles: () => ProductFileRecord[]): number | null {
+export function runtimeProductFileId(value: unknown, getProductFiles: () => ProductFileSummary[]): number | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (record.provider !== 'product-files') return null;
@@ -115,7 +115,7 @@ export function runtimeProductFileId(value: unknown, getProductFiles: () => Prod
 export function workflowRuntimeDefaultFileId(
   workflow: WorkflowDefinition,
   runtimePath: string,
-  getProductFiles: () => ProductFileRecord[],
+  getProductFiles: () => ProductFileSummary[],
 ): number | null {
   return runtimeProductFileId(
     getNestedValueAtPath(workflow.runtimeParamsDefaults as Record<string, unknown>, runtimePath),
@@ -127,7 +127,7 @@ export function setWorkflowRuntimeDefaultFileId(
   workflow: WorkflowDefinition,
   runtimePath: string,
   fileId: number | null,
-  getProductFiles: () => ProductFileRecord[],
+  getProductFiles: () => ProductFileSummary[],
 ) {
   const defaults = cloneJson(workflow.runtimeParamsDefaults ?? {}) as Record<string, unknown>;
   const existing = getNestedValueAtPath(defaults, runtimePath);
@@ -164,7 +164,7 @@ export function setWorkflowRuntimeDefaultString(workflow: WorkflowDefinition, ru
 export function readRuntimeDefaultControlValue(
   control: HTMLInputElement | HTMLSelectElement,
   currentValue: unknown,
-  getProductFiles: () => ProductFileRecord[],
+  getProductFiles: () => ProductFileSummary[],
 ): unknown {
   const type = control.dataset.runtimeDefaultType ?? '';
   const rawValue = control.value.trim();
@@ -192,7 +192,7 @@ export function readRuntimeDefaultControlValue(
 export function syncRuntimeDefaultControlToWorkflow(
   workflow: WorkflowDefinition,
   control: HTMLInputElement | HTMLSelectElement,
-  getProductFiles: () => ProductFileRecord[],
+  getProductFiles: () => ProductFileSummary[],
 ): boolean {
   const path = control.dataset.runtimeDefaultPath ?? '';
   if (!path) return false;
