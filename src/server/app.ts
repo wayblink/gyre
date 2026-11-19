@@ -104,7 +104,8 @@ export function buildApp(ctx: RouteContext): FastifyInstance {
   });
 
   // The client build only exists in a deployed image; running the API alone (tests, dev) skips it.
-  if (fs.existsSync(config.clientDistDir)) {
+  const hasClientBuild = fs.existsSync(config.clientDistDir);
+  if (hasClientBuild) {
     app.register(fastifyStatic, {
       root: config.clientDistDir,
       setHeaders: (reply, filePath) => {
@@ -123,11 +124,14 @@ export function buildApp(ctx: RouteContext): FastifyInstance {
       app.get(`/${page}`, async (_request, reply) => reply.sendFile('index.html'));
     }
     app.get('/monthlyrun', async (_request, reply) => reply.redirect(301, '/monthly/run'));
-    app.setNotFoundHandler((request, reply) => {
-      if (request.raw.url?.startsWith('/api/')) return reply.code(404).send({ error: 'API route not found' });
-      return reply.sendFile('index.html');
-    });
   }
+
+  // API 404s are JSON whether or not the SPA build is present; only non-API paths fall back to it.
+  app.setNotFoundHandler((request, reply) => {
+    if (request.raw.url?.startsWith('/api/')) return reply.code(404).send({ error: 'API route not found' });
+    if (!hasClientBuild) return reply.code(404).send({ error: 'Not Found' });
+    return reply.sendFile('index.html');
+  });
 
   return app;
 }

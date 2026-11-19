@@ -929,9 +929,16 @@ test('the captable page renders its reconciliation, deltas and notes', async () 
 
   // The CSV export is driven by the loaded snapshot, not by a fresh request.
   assert.equal(doc.getElementById('btnExport')?.textContent?.trim(), '导出');
-  doc.getElementById('btnExport')?.click();
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  // jsdom does not implement URL.createObjectURL; the click handler must not throw before that.
+  // jsdom has no object URLs and Node 22's URL.createObjectURL rejects jsdom's Blob, so the export
+  // path is given a stub; the assertion below is that the handler runs without throwing.
+  const originalCreateObjectUrl = URL.createObjectURL;
+  URL.createObjectURL = () => 'blob:jsdom-test';
+  try {
+    doc.getElementById('btnExport')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } finally {
+    URL.createObjectURL = originalCreateObjectUrl;
+  }
   assert.ok(doc.getElementById('capitalizationBody')?.innerHTML.length, 'page still rendered');
 });
 
