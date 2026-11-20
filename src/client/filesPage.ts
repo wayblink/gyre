@@ -7,6 +7,10 @@ const t = createTexts('files');
 import { UploadHttpError, uploadFormDataWithProgress } from './uploadProgress.js';
 import { createFileMoveDialog } from './fileMoveDialog.js';
 import { createFileUploadDialog } from './fileUploadDialog.js';
+import { shouldOpenWorkbookFind } from './workbookFindShortcut.js';
+import { createWorkbookFindBar } from './workbookFindBar.js';
+import type { WorkbookSearchResult } from './univer/createWorkbookViewer.js';
+import { selectionRange } from './fileSelection.js';
 import {
   buildProductFilesTree,
   compareProductFile,
@@ -53,7 +57,13 @@ type FilesViewMode = 'list' | 'tree';
 type WorkbookViewer = {
   dispose: () => void;
   exportXlsxBlob: () => Blob | null;
+  /** Sheet-data search behind the find bar (see `createWorkbookViewer`). */
+  searchWorkbook: (query: string) => Promise<WorkbookSearchResult>;
+  stepWorkbookSearch: (direction: 1 | -1) => WorkbookSearchResult;
+  clearWorkbookSearch: () => void;
 };
+
+type WorkbookFindBar = ReturnType<typeof createWorkbookFindBar>;
 
 export function createFilesPage({
   el,
@@ -98,8 +108,13 @@ export function createFilesPage({
   let filesViewMode: FilesViewMode = 'tree';
   let filesSearchQuery = '';
   let selectedProductFileIds = new Set<number>();
+  // Anchor for Shift-click selection, and whether the click that is about to fire `change` held Shift.
+  let lastSelectedFileId: number | null = null;
+  let pendingShiftClick = false;
   let filesViewControlsBound = false;
   let filesSearchBound = false;
+  let workbookFindShortcutBound = false;
+  let workbookFindBar: WorkbookFindBar | null = null;
   // Directories are collapsed unless the operator expanded them. Storing what is open (instead of
   // what is closed) makes "everything collapsed" the initial state: the tree opens with 27 folders
   // and 563 files hidden instead of printing the whole library. A jump from another page expands
@@ -141,6 +156,7 @@ export function createFilesPage({
     el('btnCancelProductFileEdit').addEventListener('click', () => void cancelProductFileEditing());
     bindFilesViewModeControls();
     bindFilesSearchControl();
+    bindWorkbookFindShortcut();
     el('btnCollapseFilesPane').addEventListener('click', () => setFilesPaneCollapsed(true));
     el('filesCollapsedRail').addEventListener('click', () => setFilesPaneCollapsed(false));
     initFilesWorkspaceResize();
@@ -219,6 +235,7 @@ export function createFilesPage({
 
     if (productFiles.length === 0) {
       selectedProductFileIds.clear();
+      lastSelectedFileId = null;
       currentProductFileDetail = null;
       currentWorkbookBuffer = null;
       productFileLoadError = null;
@@ -440,11 +457,33 @@ export function createFilesPage({
     });
 
     container.querySelectorAll<HTMLInputElement>('[data-select-file-id]').forEach((checkbox) => {
-      checkbox.addEventListener('click', (event) => event.stopPropagation());
+      checkbox.addEventListener('click', (event) => {
+        event.stopPropagation();
+        // `change` carries no modifier keys, so the click stashes whether Shift was held.
+        pendingShiftClick = (event as MouseEvent).shiftKey;
+      });
       checkbox.addEventListener('change', () => {
         const fileId = Number(checkbox.dataset.selectFileId);
-        if (checkbox.checked) selectedProductFileIds.add(fileId);
-        else selectedProductFileIds.delete(fileId);
+        const shiftKey = pendingShiftClick;
+        pendingShiftClick = false;
+        // The rendered order is what the operator sees: folder order in the tree, filter order in
+        // the list. Hidden rows therefore never sneak into a Shift range.
+        const visibleIds = Array.from(container.querySelectorAll<HTMLInputElement>('[data-select-file-id]')).map((el) =>
+          Number(el.dataset.selectFileId),
+        );
+        const range = shiftKey ? selectionRange(visibleIds, lastSelectedFileId, fileId) : null;
+        if (range) {
+          // Shift-click applies the clicked box's new state to the whole range, so a Shift-click on
+          // a checked row clears the range instead of only clearing that one row.
+          for (let index = range.fromIndex; index <= range.toIndex; index += 1) {
+            if (checkbox.checked) selectedProductFileIds.add(visibleIds[index]);
+            else selectedProductFileIds.delete(visibleIds[index]);
+          }
+        } else {
+          if (checkbox.checked) selectedProductFileIds.add(fileId);
+          else selectedProductFileIds.delete(fileId);
+          lastSelectedFileId = fileId;
+        }
         updateBulkDeleteControls();
         renderProductFilesList();
       });
@@ -634,6 +673,7 @@ export function createFilesPage({
       disposeWorkbookViewer();
     }
     selectedProductFileIds.clear();
+    lastSelectedFileId = null;
     await loadProductFiles(undefined, { force: true });
   }
 
@@ -643,6 +683,70 @@ export function createFilesPage({
       setFilesViewMode(filesViewMode === 'tree' ? 'list' : 'tree');
     });
     filesViewControlsBound = true;
+  }
+
+  /**
+   * Ctrl/Cmd+F opens the sheet's find dialog while a workbook is on screen.
+   *
+   * The browser's own find only searches the rendered DOM, and the viewer draws cells on a canvas,
+   * so it would report "no results" for anything in the workbook. The viewer's find runs over the
+   * sheet data instead and activates the cell it lands on.
+   */
+  function bindWorkbookFindShortcut() {
+    if (workbookFindShortcutBound) return;
+    // Capture phase on purpose: Univer's own Ctrl+F binding is registered on the document and
+    // stops the event, and it only fires while the grid already has keyboard focus — which is not
+    // the case right after a file is opened from the list.
+    window.addEventListener(
+      'keydown',
+      (event) => {
+        const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const typingOutsideWorkbook =
+          active !== null &&
+          (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable) &&
+          !active.closest('#productWorkbookViewer');
+        const openFind = shouldOpenWorkbookFind(event, {
+          hasWorkbook: Boolean(workbookViewer) && !el('productWorkbookViewer').classList.contains('hidden'),
+          pageActive: el('page-files').classList.contains('active'),
+          focusInPageTextField: typingOutsideWorkbook,
+        });
+        if (!openFind) return;
+        event.preventDefault();
+        event.stopPropagation();
+        ensureWorkbookFindBar().open();
+      },
+      { capture: true },
+    );
+    workbookFindShortcutBound = true;
+  }
+
+  /**
+   * The find bar outlives the viewer (the element is static), so its callbacks read the current
+   * viewer instead of capturing one — otherwise a reopened file would search the disposed instance.
+   */
+  function ensureWorkbookFindBar(): WorkbookFindBar {
+    if (workbookFindBar) return workbookFindBar;
+    workbookFindBar = createWorkbookFindBar({
+      elements: {
+        bar: el('filesFindBar'),
+        input: el<HTMLInputElement>('filesFindInput'),
+        count: el('filesFindCount'),
+        previous: el<HTMLButtonElement>('btnFilesFindPrev'),
+        next: el<HTMLButtonElement>('btnFilesFindNext'),
+        close: el<HTMLButtonElement>('btnFilesFindClose'),
+      },
+      labels: () => ({
+        placeholder: tt('findPlaceholder'),
+        previous: tt('findPrevious'),
+        next: tt('findNext'),
+        close: tt('findClose'),
+        noResults: tt('findNoResults'),
+      }),
+      search: (query) => workbookViewer?.searchWorkbook(query) ?? Promise.resolve({ total: 0, index: 0 }),
+      step: (direction) => workbookViewer?.stepWorkbookSearch(direction) ?? { total: 0, index: 0 },
+      clear: () => workbookViewer?.clearWorkbookSearch(),
+    });
+    return workbookFindBar;
   }
 
   function bindFilesSearchControl() {
@@ -1076,6 +1180,8 @@ export function createFilesPage({
   }
 
   function disposeWorkbookViewer() {
+    // A find bar left open would point at the workbook that is going away.
+    workbookFindBar?.close();
     workbookViewer?.dispose();
     workbookViewer = null;
     updateFileActionState();

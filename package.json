@@ -26,6 +26,7 @@
     "@fastify/static": "^7.0.4",
     "@univerjs/design": "^0.25.0",
     "@univerjs/preset-sheets-core": "^0.25.0",
+    "@univerjs/preset-sheets-find-replace": "^0.25.0",
     "@univerjs/presets": "^0.25.0",
     "@univerjs/sheets": "^0.25.0",
     "@univerjs/sheets-ui": "^0.25.0",

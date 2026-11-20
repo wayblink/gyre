@@ -4509,8 +4509,8 @@ a.product-card:focus-visible {
 .workbook-item__select,
 .workbook-tree__select {
   position: absolute;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   margin: 0;
   accent-color: var(--primary-600);
   cursor: pointer;
@@ -4518,8 +4518,8 @@ a.product-card:focus-visible {
 }
 
 .workbook-item__select {
-  left: 12px;
-  top: 12px;
+  left: 10px;
+  top: 10px;
 }
 
 .workbook-item__delete {
@@ -4857,8 +4857,8 @@ a.product-card:focus-visible {
 }
 
 .workbook-tree__select {
-  left: calc(12px + var(--tree-indent));
-  top: 11px;
+  left: calc(10px + var(--tree-indent));
+  top: 9px;
 }
 
 .workbook-tree__file-icon {
@@ -5239,6 +5239,82 @@ a.product-card:focus-visible {
   flex: 0 0 auto;
 }
 
+/* Find bar for the workbook viewer: the sheet is canvas-drawn, so the browser's own find cannot
+   see it and this bar drives the viewer's data-level search instead. */
+.files-find-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+}
+
+.files-find-bar__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+}
+
+.files-find-bar__input:focus {
+  outline: 2px solid var(--primary-300);
+  outline-offset: 0;
+  border-color: var(--primary-400);
+}
+
+.files-find-bar__count {
+  flex: 0 0 auto;
+  min-width: 44px;
+  text-align: right;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.files-find-bar__count--empty {
+  color: var(--text-tertiary);
+}
+
+.files-find-bar__btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.files-find-bar__btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.files-find-bar__btn:focus-visible {
+  outline: 2px solid var(--primary-300);
+  outline-offset: 1px;
+}
+
+.files-find-bar__btn--close {
+  margin-left: 2px;
+}
+
 .files-empty-state {
   height: 100%;
   width: 100%;
@@ -5257,6 +5333,155 @@ a.product-card:focus-visible {
 .univer-mount {
   width: 100%;
   height: 100%;
+}
+
+/* Read-only cell detail card: the grid paints the cell's number format (`-29,590`), while the card
+   shows the stored value (`-29590.2182`) after a double-click (see workbookCellDetail.ts). It lives
+   in <body> with fixed positioning because Univer owns the mount's children. */
+.workbook-cell-detail {
+  position: fixed;
+  z-index: 2000;
+  box-sizing: border-box;
+  width: 272px;
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.workbook-cell-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 6px;
+}
+
+.workbook-cell-detail__title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.workbook-cell-detail__sheet {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbook-cell-detail__address {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+}
+
+.workbook-cell-detail__close {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.workbook-cell-detail__close:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.workbook-cell-detail__list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.workbook-cell-detail__row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.workbook-cell-detail__row dt {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.workbook-cell-detail__row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.workbook-cell-detail__value--value {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-weight: var(--font-semibold);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+.workbook-cell-detail__value--formula {
+  color: var(--primary-600);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: var(--text-xs);
+  user-select: text;
+}
+
+.workbook-cell-detail__value--format {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  user-select: text;
+}
+
+.workbook-cell-detail__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: 8px;
+}
+
+.workbook-cell-detail__status {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.workbook-cell-detail__copy {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.workbook-cell-detail__copy:hover:not(:disabled) {
+  border-color: var(--primary-400);
+  color: var(--primary-600);
+}
+
+.workbook-cell-detail__copy:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
 }
 
 @media (max-width: 1100px) {

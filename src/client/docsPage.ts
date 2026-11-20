@@ -465,6 +465,8 @@ GNI Group Ltd. 和 Songjiang Ma 的 Common Stock、Total CSEs 来自全局参数
 
 点开一个文件，右侧会打开工作簿，可以逐个 Sheet 查看内容，无需下载到本地；确实需要原文件时，点右上角的 **下载文件** 保存到本机。
 
+预览区支持查找：按 **Ctrl+F**（macOS 为 **Cmd+F**）打开查找栏，输入内容后在当前 Sheet 内全量匹配（不受屏幕上已滚到的范围限制），命中单元格会高亮并滚动到视野内；右侧显示「第几个 / 共几个」，按 **回车** 跳到下一个、**Shift+回车** 跳上一个（到末尾会循环），按 **Esc** 关闭查找并清除高亮。
+
 打开时默认是 **只读预览**，不能改动单元格；需要修改时点工作簿上方的 **编辑**，改完点 **保存** 写回文件，或点 **取消** 放弃修改。
 
 在月度更新的输入表里点击 Uploaded file 的文件名，也会跳到这里以只读方式预览该文件。
@@ -912,6 +914,8 @@ Plan Summary and 5% Holders are result pages: after changing source files or par
 Open a file to view its workbook on the right, inspecting each sheet without downloading it. When you do need the original, click **Download file** in the top-right corner of the preview.
 
 Files open as a **read-only preview**, so cells cannot be changed. To make changes, click **Edit** above the workbook, then **Save** to write them back, or **Cancel** to discard them.
+
+To search inside the sheet, press **Ctrl+F** (**Cmd+F** on macOS) and type. Matches are found across the whole sheet, not just the rows on screen; the matching cells are highlighted and scrolled into view, and the **n / m** counter shows where you are. **Enter** moves to the next match, **Shift+Enter** to the previous one (wrapping at the ends), and **Esc** closes the bar and clears the highlights.
 
 Clicking an uploaded file name in a Monthly Updates input table also jumps here, opening only that file's folder and highlighting the row before previewing it read-only.
 
