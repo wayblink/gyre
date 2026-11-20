@@ -1,5 +1,6 @@
 import type {
   MonthlyRunHistoryRecord,
+  MonthlyRunInheritedSourceFile,
   MonthlyRunInstanceRecord,
   MonthlyRunInstanceUpsertRequest,
   MonthlyRunSourceConfigResponse,
@@ -46,6 +47,18 @@ type SourceSheetSummaryState = {
   loading: boolean;
   errorMessage: string | null;
 };
+
+/** The instance endpoint answers with the month's bindings plus the files the system inherits. */
+type MonthlyRunInstanceResponse = {
+  instance: MonthlyRunInstanceRecord;
+  inheritedSources: MonthlyRunInheritedSourceFile[];
+};
+
+/**
+ * What the uploaded-file cell needs to render. Inherited files can lack a product-files row (the
+ * base was deleted after the run), so the id is nullable and the cell falls back to plain text.
+ */
+type DisplayFile = { id: number | null; originalName: string; displayName?: string | null; createdAt?: string };
 
 const sourceFileNameMatchers: Record<string, string[]> = {
   base_control_book: ['eq control book'],
@@ -672,6 +685,11 @@ export function createMonthlyRunPage({
   let sourceDefinitions: MonthlyRunSourceDefinition[] = [];
   let currentInstance: MonthlyRunInstanceRecord | null = null;
   let selectedSources: Record<string, MonthlyRunSourceBinding> = {};
+  /**
+   * Files the system carries into the month on its own (bases, last month's summary). The server
+   * resolves them from the same chain the run uses; the page shows them in place of "not configured".
+   */
+  let inheritedSources: Record<string, MonthlyRunInheritedSourceFile> = {};
   let draftSources: SourceDraftBindings = {};
   let activeSourceModalKey: string | null = null;
   const sourceSheetSummariesByFileId = new Map<number, SourceSheetSummaryState>();
@@ -786,31 +804,38 @@ export function createMonthlyRunPage({
     if (!month) {
       currentInstance = null;
       selectedSources = {};
+      inheritedSources = {};
       renderSourceInfo();
       renderBusinessDefinedInputConfiguration();
       return;
     }
-    const data = await api<{ instance: MonthlyRunInstanceRecord }>(
-      `/api/monthly-runs/instance?month=${encodeURIComponent(month)}`,
-    );
-    currentInstance = data.instance;
-    selectedSources = applyDefaultSourceSheets(sourceDefinitions, sourceBindingsFromInstance(data.instance));
-    renderSourceInfo();
-    renderBusinessDefinedInputConfiguration();
+    const data = await api<MonthlyRunInstanceResponse>(`/api/monthly-runs/instance?month=${encodeURIComponent(month)}`);
+    applyInstanceResponse(data);
   }
 
   async function saveInstance(patch: MonthlyRunInstanceUpsertRequest) {
     const month = el<HTMLInputElement>('monthlyRunMonth').value;
     if (!month) throw new Error(tt('selectMonth'));
-    const data = await api<{ instance: MonthlyRunInstanceRecord }>(
+    const data = await api<MonthlyRunInstanceResponse>(
       `/api/monthly-runs/instance?month=${encodeURIComponent(month)}`,
       {
         method: 'PUT',
         body: JSON.stringify(patch),
       },
     );
+    applyInstanceResponse(data);
+  }
+
+  /**
+   * Store the instance together with the files the server inherited for it.
+   *
+   * The two travel in one response on purpose: the table renders both columns in a single pass, so a
+   * second request would first paint "not configured" and then swap it for the inherited file.
+   */
+  function applyInstanceResponse(data: MonthlyRunInstanceResponse) {
     currentInstance = data.instance;
     selectedSources = applyDefaultSourceSheets(sourceDefinitions, sourceBindingsFromInstance(data.instance));
+    inheritedSources = Object.fromEntries((data.inheritedSources ?? []).map((source) => [source.sourceKey, source]));
     renderSourceInfo();
     renderBusinessDefinedInputConfiguration();
   }
@@ -1004,13 +1029,17 @@ export function createMonthlyRunPage({
     });
   }
 
-  function renderUploadedFileCell(file: ProductFileSummary) {
+  function renderUploadedFileCell(file: DisplayFile) {
     const displayName = getFileDisplayName(file);
     const escapedDisplayName = escapeHtml(displayName);
     const copyLabel = tt('copy');
     const previewLabel = tt('previewExcel');
-    return `<div class="source-file-actions">
-      <button
+    // An inherited file can outlive its product_files row (someone deleted the base afterwards); the
+    // name is still the truth of what the run read, so it is shown without a preview action.
+    const name =
+      file.id === null
+        ? `<span class="source-file-link__text" title="${escapedDisplayName}">${escapedDisplayName}</span>`
+        : `<button
         type="button"
         class="source-file-link"
         data-source-file-preview="${file.id}"
@@ -1018,7 +1047,9 @@ export function createMonthlyRunPage({
         aria-label="${escapeHtml(`${previewLabel} ${displayName}`)}"
       >
         <span class="source-file-link__text">${escapedDisplayName}</span>
-      </button>
+      </button>`;
+    return `<div class="source-file-actions">
+      ${name}
       <button
         type="button"
         class="source-file-copy"
@@ -1102,10 +1133,15 @@ export function createMonthlyRunPage({
       .map((source) => {
         const binding = selectedSources[source.sourceKey] ?? null;
         const file = getFileForBinding(binding);
-        const uploaded = file
-          ? `<div class="source-uploaded-inline">${renderUploadedFileCell(file)}${renderBusinessSourceSheetControl(source, binding)}</div>`
+        // Nothing bound? Show what the system carries for this row instead of claiming it is unset:
+        // the run reads it anyway (the bases come from the previous month's output).
+        const inherited = binding ? null : (inheritedSources[source.sourceKey] ?? null);
+        const inheritedFile = inherited ? inheritedDisplayFile(inherited) : null;
+        const shownFile: DisplayFile | null = file ?? inheritedFile;
+        const uploaded = shownFile
+          ? `<div class="source-uploaded-inline">${renderUploadedFileCell(shownFile)}${file ? renderBusinessSourceSheetControl(source, binding) : ''}</div>`
           : `<div class="source-uploaded-inline"><span class="source-not-uploaded">${escapeHtml(source.required ? tt('notUploaded') : tt('optionalNotConfigured'))}</span></div>`;
-        const uploadedTime = file ? formatUploadedTimestamp(file.createdAt) : '-';
+        const uploadedTime = shownFile ? formatUploadedTimestamp(shownFile.createdAt ?? '') : '-';
         const actions = file
           ? `<div class="source-file-action-group">
               <button class="source-upload-btn" type="button" data-business-source-configure="${escapeHtml(source.sourceKey)}">${escapeHtml(tt('selectSourceFile'))}</button>
@@ -1170,8 +1206,15 @@ export function createMonthlyRunPage({
     return files.find((file) => isFileForBinding(file, binding)) ?? null;
   }
 
-  function getFileDisplayName(file: ProductFileSummary) {
+  function getFileDisplayName(file: DisplayFile) {
     return file.displayName || file.originalName;
+  }
+
+  /** An inherited file as the uploaded-file cell shows it; the path is the fallback for a deleted row. */
+  function inheritedDisplayFile(source: MonthlyRunInheritedSourceFile): DisplayFile | null {
+    const name = source.fileName ?? source.logicalPath?.split('/').filter(Boolean).pop() ?? null;
+    if (!name) return null;
+    return { id: source.fileId, originalName: name, displayName: null, createdAt: source.createdAt ?? undefined };
   }
 
   async function copySourceFileName(fileName: string) {

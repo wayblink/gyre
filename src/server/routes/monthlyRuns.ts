@@ -44,12 +44,14 @@ import { monthlySourcesFromSchema } from '../monthlyRun/sourceSchema.js';
 import { workflowApprovalBodySchema } from './workflows.js';
 import { updatePlanSchema } from './months.js';
 import { injectMonthlyRecordBases } from '../esopWorkflow/recordBases.js';
+import { resolveInheritedSourceFiles } from '../monthlyRun/inheritedSources.js';
 import { invalidateSheetPreviewCache } from '../utils/sheetPreviewCache.js';
 import type {
   LatestMonthlyRunOutput,
   MonthlyRunInstanceRecord,
   MonthlyRunInstanceUpsertRequest,
   MonthlyRunSourceConfigResponse,
+  MonthlyRunInheritedSourceFile,
   WorkflowRuntimeParameters,
 } from '../../shared/types.js';
 import type { RouteContext } from './context.js';
@@ -209,6 +211,82 @@ async function assertMonthlyRunInstanceReady(
   }
 }
 
+/**
+ * Fill in every file reference the system maintains itself, returning the parameters the run uses.
+ *
+ * Shared by the run trigger and the Monthly Update page's inherited-file display, so the two cannot
+ * disagree about which base a month reads. The page only knows the instance's saved bindings, which
+ * is why these sources used to show "not configured" while the run consumed a real file.
+ */
+async function resolveMonthlyRuntimeParameters(
+  db: RouteContext['db'],
+  instance: MonthlyRunInstanceRecord,
+): Promise<WorkflowRuntimeParameters> {
+  const resolvedRuntimeParameters: WorkflowRuntimeParameters = monthlyRunInstanceToRuntimeParameters(instance);
+
+  // Previous Capitalization Summary 由业务自动引入：若上一个月的月度执行已产出汇总表，则用它作为
+  // 本源（用于校验本月 EQ Control Book 的 Last Month）；无则置空、跳过对账校验。该源在 UI 隐藏。
+  const prevFileRefs = resolvedRuntimeParameters.fileRefs as Record<string, unknown> | undefined;
+  if (prevFileRefs && !prevFileRefs.previous_capitalization_summary) {
+    const previousOutput = await getMonthlyRunOutputForMonth(db, previousMonthKey(instance.monthKey));
+    if (previousOutput?.logicalPath) {
+      prevFileRefs.previous_capitalization_summary = { provider: 'product-files', key: previousOutput.logicalPath };
+    }
+  }
+
+  // 四个记录页的「上月累计快照」: 记录页展示的是截至当月的累计数据（base + 增量幂等合并），所以每个
+  // 视图的 base 取上一条该月的快照。无则置空——合并结果即本月增量，链条自然从有数据的那一月开始。
+  await injectMonthlyRecordBases(db, prevFileRefs, instance.monthKey);
+
+  // Every inherited base chains month over month: this month reads the newest snapshot before it, and
+  // its own run writes the snapshot the next month will read. Each of these was previously either exact
+  // "previous month" (which loses the history when a month is skipped) or, for the Control Book, not
+  // injected at all — so a month could silently use its own output as its base.
+  await injectLatestEarlierBase(
+    db,
+    resolvedRuntimeParameters,
+    instance.monthKey,
+    'base_cancel_restore_report',
+    'cancel_restore',
+    'Gyre_Therapeutics_Cancel_Restore_Base',
+    '取消与恢复明细',
+  );
+  await injectLatestEarlierBase(
+    db,
+    resolvedRuntimeParameters,
+    instance.monthKey,
+    'base_futu_exercises',
+    'futu_exercises',
+    'Futu_Exercises_Base',
+    'Futu BCI Exercises',
+  );
+  await injectLatestEarlierBase(
+    db,
+    resolvedRuntimeParameters,
+    instance.monthKey,
+    'base_control_book',
+    'control_book',
+    'EQ_Control_Book_Base',
+    'EQ Control Book',
+  );
+
+  return resolvedRuntimeParameters;
+}
+
+/** The inherited files for one month, minus whatever the operator bound by hand. */
+async function inheritedSourcesForInstance(
+  db: RouteContext['db'],
+  instance: MonthlyRunInstanceRecord,
+): Promise<MonthlyRunInheritedSourceFile[]> {
+  const explicitRefs = monthlyRunInstanceToRuntimeParameters(instance).fileRefs as Record<string, unknown> | undefined;
+  const resolvedRefs = (await resolveMonthlyRuntimeParameters(db, instance)).fileRefs as
+    Record<string, unknown> | undefined;
+  const sourceKeys = Object.keys(resolvedRefs ?? {}).filter(
+    (key) => !explicitRefs || !Object.prototype.hasOwnProperty.call(explicitRefs, key),
+  );
+  return resolveInheritedSourceFiles(db, { monthKey: instance.monthKey, fileRefs: resolvedRefs, sourceKeys });
+}
+
 export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext) {
   const { db, workflowRunStore, workflowRunExecutor } = ctx;
 
@@ -245,20 +323,32 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
     }
   });
 
-  app.get('/api/monthly-runs/instance', async (request): Promise<{ instance: MonthlyRunInstanceRecord }> => {
-    const query = monthlyRunInstanceQuerySchema.parse(request.query);
-    await getOrCreateMonth(db, query.month);
-    const instance = await ensureMonthlyRunInstance(db, query.month);
-    return { instance };
-  });
+  app.get(
+    '/api/monthly-runs/instance',
+    async (
+      request,
+    ): Promise<{ instance: MonthlyRunInstanceRecord; inheritedSources: MonthlyRunInheritedSourceFile[] }> => {
+      const query = monthlyRunInstanceQuerySchema.parse(request.query);
+      await getOrCreateMonth(db, query.month);
+      const instance = await ensureMonthlyRunInstance(db, query.month);
+      return { instance, inheritedSources: await inheritedSourcesForInstance(db, instance) };
+    },
+  );
 
-  app.put('/api/monthly-runs/instance', async (request): Promise<{ instance: MonthlyRunInstanceRecord }> => {
-    const query = monthlyRunInstanceQuerySchema.parse(request.query);
-    const body = monthlyRunInstanceUpsertSchema.parse(request.body ?? {}) as MonthlyRunInstanceUpsertRequest;
-    await getOrCreateMonth(db, query.month);
-    const instance = await upsertMonthlyRunInstance(db, query.month, body);
-    return { instance };
-  });
+  app.put(
+    '/api/monthly-runs/instance',
+    async (
+      request,
+    ): Promise<{ instance: MonthlyRunInstanceRecord; inheritedSources: MonthlyRunInheritedSourceFile[] }> => {
+      const query = monthlyRunInstanceQuerySchema.parse(request.query);
+      const body = monthlyRunInstanceUpsertSchema.parse(request.body ?? {}) as MonthlyRunInstanceUpsertRequest;
+      await getOrCreateMonth(db, query.month);
+      const instance = await upsertMonthlyRunInstance(db, query.month, body);
+      // Re-resolve after a save: clearing a binding hands the source back to the inheritance chain,
+      // and the page must show the file that took over instead of a stale one.
+      return { instance, inheritedSources: await inheritedSourcesForInstance(db, instance) };
+    },
+  );
 
   app.get('/api/monthly-runs/source-config', async (): Promise<MonthlyRunSourceConfigResponse> => {
     const row = await db.queryOne<Record<string, unknown>>(
@@ -296,54 +386,7 @@ export function registerMonthlyRunRoutes(app: FastifyInstance, ctx: RouteContext
     // fixedValues are now per-month, sourced from the instance (monthlyRunInstanceToRuntimeParameters
     // already carries all 6). New months inherit the prior month's values; the very first month was
     // seeded from global_parameters. We no longer overwrite them from the global table here.
-    const resolvedRuntimeParameters: WorkflowRuntimeParameters =
-      monthlyRunInstanceToRuntimeParameters(monthlyRunInstance);
-
-    // Previous Capitalization Summary 由业务自动引入：若上一个月的月度执行已产出汇总表，则用它作为
-    // 本源（用于校验本月 EQ Control Book 的 Last Month）；无则置空、跳过对账校验。该源在 UI 隐藏。
-    const prevFileRefs = resolvedRuntimeParameters.fileRefs as Record<string, unknown> | undefined;
-    if (prevFileRefs && !prevFileRefs.previous_capitalization_summary) {
-      const previousOutput = await getMonthlyRunOutputForMonth(db, previousMonthKey(monthlyRunInstance.monthKey));
-      if (previousOutput?.logicalPath) {
-        prevFileRefs.previous_capitalization_summary = { provider: 'product-files', key: previousOutput.logicalPath };
-      }
-    }
-
-    // 四个记录页的「上月累计快照」: 记录页展示的是截至当月的累计数据（base + 增量幂等合并），所以每个
-    // 视图的 base 取上一条该月的快照。无则置空——合并结果即本月增量，链条自然从有数据的那一月开始。
-    await injectMonthlyRecordBases(db, prevFileRefs, monthlyRunInstance.monthKey);
-
-    // Every inherited base chains month over month: this month reads the newest snapshot before it, and
-    // its own run writes the snapshot the next month will read. Each of these was previously either exact
-    // "previous month" (which loses the history when a month is skipped) or, for the Control Book, not
-    // injected at all — so a month could silently use its own output as its base.
-    await injectLatestEarlierBase(
-      db,
-      resolvedRuntimeParameters,
-      monthlyRunInstance.monthKey,
-      'base_cancel_restore_report',
-      'cancel_restore',
-      'Gyre_Therapeutics_Cancel_Restore_Base',
-      '取消与恢复明细',
-    );
-    await injectLatestEarlierBase(
-      db,
-      resolvedRuntimeParameters,
-      monthlyRunInstance.monthKey,
-      'base_futu_exercises',
-      'futu_exercises',
-      'Futu_Exercises_Base',
-      'Futu BCI Exercises',
-    );
-    await injectLatestEarlierBase(
-      db,
-      resolvedRuntimeParameters,
-      monthlyRunInstance.monthKey,
-      'base_control_book',
-      'control_book',
-      'EQ_Control_Book_Base',
-      'EQ Control Book',
-    );
+    const resolvedRuntimeParameters = await resolveMonthlyRuntimeParameters(db, monthlyRunInstance);
 
     const monthKey = String(resolvedRuntimeParameters.month);
     const monthId = await getOrCreateMonth(db, monthKey);

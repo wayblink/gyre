@@ -315,7 +315,9 @@ test('file uploads use a shared visible progress dialog', () => {
     monthlyRunPageSource,
     /uploadFormDataWithProgress<\{ file: ProductFileRecord \}>\('\/api\/files\/upload'/,
   );
-  assert.match(monthlyRunPageSource, /renderUploadedFileCell\(file\)/);
+  // The cell renderer is shared by uploaded and inherited files: a row the system fills in itself
+  // must look the same as one the operator picked.
+  assert.match(monthlyRunPageSource, /renderUploadedFileCell\(shownFile\)/);
   assert.match(monthlyRunPageSource, /\.source-file-link\[data-source-file-preview\]/);
   assert.match(monthlyRunPageSource, /\.source-file-copy\[data-source-file-copy\]/);
   assert.doesNotMatch(monthlyRunPageSource, /data-business-source-preview/);

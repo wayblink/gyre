@@ -1150,3 +1150,21 @@ export type MonthlyRunSourceConfigResponse = {
   sources: MonthlyRunSourceDefinition[];
   fixedValues: MonthlyRunFixedValueDefinition[];
 };
+
+/**
+ * A file the system carries into a month by itself (an `optionalCategory: 'inherit'` source the
+ * operator never binds), so the Monthly Update page can show it instead of "not configured".
+ *
+ * `resolvedFrom` says where the file comes from: `run` is the snapshot of the month's latest run —
+ * the file that run actually consumed, which stays authoritative after the fact — while `inherited`
+ * is the chain lookup for a month that has not run yet.
+ */
+export type MonthlyRunInheritedSourceFile = {
+  sourceKey: string;
+  fileId: number | null;
+  fileName: string | null;
+  logicalPath: string | null;
+  sheetName: string | null;
+  createdAt: string | null;
+  resolvedFrom: 'run' | 'inherited';
+};
