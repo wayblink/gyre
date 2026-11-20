@@ -3,7 +3,7 @@
   "name": "Gyre Cap Table Summary",
   "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
   "status": "active",
-  "version": 61,
+  "version": 62,
   "tasks": [
     {
       "x": 48,
@@ -140,7 +140,13 @@
       "y": 863,
       "id": "invoke_plan_summary_sync",
       "name": "Invoke Plan Summary Sync",
-      "inputs": {},
+      "inputs": {
+        "input1": {
+          "from": "invoke_plan_summary_metrics",
+          "slot": "dataframe",
+          "guards": []
+        }
+      },
       "params": {
         "outputTaskId": "persist_plan_summary_file",
         "workflowCode": "plan-summary-sync",
@@ -172,10 +178,60 @@
             }
           }
         },
-        "inheritRuntimeParameters": true
+        "inheritRuntimeParameters": true,
+        "inputMappings": [
+          {
+            "inputSlot": "input1",
+            "taskId": "invoke_plan_summary_metrics"
+          }
+        ]
       },
       "dependsOn": [],
       "description": "调用独立 Plan Summary Sync 子工作流，按本次月度运行的月份生成 Plan Summary 输出文件。",
+      "operatorCode": "workflow.invoke",
+      "operatorVersion": "1.0.0"
+    },
+    {
+      "x": 260,
+      "y": 700,
+      "id": "invoke_plan_summary_metrics",
+      "name": "Invoke Plan Summary Metrics",
+      "inputs": {},
+      "params": {
+        "outputTaskId": "aggregate_plan_summary",
+        "workflowCode": "plan-summary-metrics",
+        "runtimeParameters": {
+          "fileRefs": {
+            "option_plans_summary": {
+              "$type": "object",
+              "$label": "Gyre Option Plans Summary SL workbook",
+              "$default": {
+                "sheet": "!Option Plans Summary (Post-Gyr"
+              },
+              "$fromRuntime": "fileRefs.option_plans_summary"
+            },
+            "base_cancel_restore_report": {
+              "$type": "object",
+              "$label": "FUTU-Cancel & Restore Summary",
+              "$default": {
+                "sheet": "取消与恢复明细"
+              },
+              "$fromRuntime": "fileRefs.base_cancel_restore_report"
+            },
+            "incremental_cancel_restore_report": {
+              "$type": "object",
+              "$label": "Cancel & Restore Detail",
+              "$default": {
+                "sheet": "取消与恢复明细"
+              },
+              "$fromRuntime": "fileRefs.incremental_cancel_restore_report"
+            }
+          }
+        },
+        "inheritRuntimeParameters": true
+      },
+      "dependsOn": [],
+      "description": "调用 Plan Summary Metrics 子工作流，拿到按台账覆盖 Cancelled 并由 Granted + Exercised + Cancelled 重算后的计划级指标，供期权合计使用。",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -400,19 +456,41 @@
               "enabled": true
             }
           ]
+        },
+        "summary": {
+          "from": "invoke_plan_summary_metrics",
+          "slot": "dataframe",
+          "guards": [
+            {
+              "id": "guard_assert_plan_summary_metrics",
+              "name": "Assert Plan Summary Metrics Schema",
+              "type": "dataframe.schema.assert",
+              "params": {
+                "mode": "contains",
+                "failureMessage": "Plan Summary Metrics 缺少 plan_name 或 outstanding 列",
+                "expectedColumns": "plan_name, outstanding",
+                "failureStrategy": "block"
+              },
+              "enabled": true
+            }
+          ]
         }
       },
       "params": {
-        "sql": "\nwith totals as (\n  select\n    p.key,\n    sum(p.[value]) as total_value\n  from {plans} p\n  where p.key in (\n    'Awards Outstanding',\n    'Shares Remaining For Issuance',\n    'Awards Outstanding + Shares Remaining for Issuance'\n  )\n  group by p.key\n)\nselect\n  coalesce(max(case when totals.key = 'Awards Outstanding' then totals.total_value else null end), 0) as total_options_outstanding,\n  coalesce(max(case when totals.key = 'Shares Remaining For Issuance' then totals.total_value else null end), 0) as total_options_available,\n  coalesce(max(case when totals.key = 'Awards Outstanding + Shares Remaining for Issuance' then totals.total_value else null end), 0) as total_options_outstanding_plus_available\nfrom totals\n",
+        "sql": "\nselect\n  coalesce((select sum(s.outstanding) from {summary} s), 0) as total_options_outstanding,\n  coalesce((select sum(p.[value]) from {plans} p where p.key = 'Shares Remaining For Issuance'), 0) as total_options_available,\n  coalesce((select sum(s.outstanding) from {summary} s), 0)\n    + coalesce((select sum(p.[value]) from {plans} p where p.key = 'Shares Remaining For Issuance'), 0) as total_options_outstanding_plus_available\n",
         "tableBindings": [
           {
             "inputSlot": "plans",
             "tableName": "plans"
+          },
+          {
+            "inputSlot": "summary",
+            "tableName": "summary"
           }
         ]
       },
       "dependsOn": [],
-      "description": "按 Option Plans Summary workflow 的标准化 key/value 输出汇总期权指标。",
+      "description": "期权合计：Outstanding 取 Plan Summary Metrics 的 outstanding 之和（已按台账覆盖 Cancelled 并由 Granted + Exercised + Cancelled 重算），Available 取源表 Shares Remaining For Issuance。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },

@@ -8,15 +8,20 @@ import { executeSqlDataFrameQuery } from './operators/sqlUtils.js';
 import type { WorkflowOperatorRuntime } from './operators/types.js';
 
 /**
- * Option metrics used to borrow `2025 BC Subplan Transfer` to repair a GYRE 2025 BC Subplan
- * "Cancelled = 0" reading. That input file was retired (2026-11-10), so the adjustment is gone and
- * the numbers are exactly what the Option Plans Summary says — this pins that the task still runs,
- * that it no longer needs a second input, and that it no longer publishes the adjustment column.
+ * The option total has two inputs: the workbook's `Shares Remaining For Issuance` rows (available) and
+ * the recalculated plan metrics (`outstanding`). The latter is not the workbook's Awards Outstanding —
+ * once Plan Summary overrides a plan's cancelled from the ledger, only `granted + exercised + cancelled`
+ * keeps the row consistent, and the capital structure's option total has to use that same number.
  */
 
 const seedPath = path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json');
 
-type SeedTask = { id: string; operatorCode: string; params: Record<string, unknown> };
+type SeedTask = {
+  id: string;
+  operatorCode: string;
+  params: Record<string, unknown>;
+  inputs?: Record<string, { from: string }>;
+};
 
 function seedTask(taskId: string): SeedTask {
   const seed = JSON.parse(readFileSync(seedPath, 'utf8')) as { tasks: SeedTask[] };
@@ -35,17 +40,25 @@ const runtime = {
   }),
 } as unknown as WorkflowOperatorRuntime;
 
-function plansFrame(rows: Array<Record<string, unknown>>): WorkflowDataFrame {
+function frame(rows: Array<Record<string, unknown>>): WorkflowDataFrame {
+  const columns = Object.keys(rows[0] ?? {});
   return {
-    columns: Object.keys(rows[0] ?? {}),
+    columns,
     rows,
     index: rows.map((_, index) => index + 1),
     matrix: [],
-    range: { sheetName: 'plans', a1Range: '', startRow: 1, endRow: rows.length + 1, startCol: 1, endCol: 5 },
+    range: {
+      sheetName: 'result',
+      a1Range: '',
+      startRow: 1,
+      endRow: rows.length + 1,
+      startCol: 1,
+      endCol: columns.length,
+    },
   };
 }
 
-test('option metrics are computed from the Option Plans Summary alone', async () => {
+test('option totals use the recalculated outstanding and the workbook available shares', async () => {
   const task = seedTask('calc_option_metrics');
   const bound = {
     id: task.id,
@@ -56,38 +69,48 @@ test('option metrics are computed from the Option Plans Summary alone', async ()
     x: 0,
     y: 0,
     params: task.params,
-    inputs: { plans: { from: 'invoke_option_plans_summary', slot: 'dataframe' } },
+    inputs: {
+      plans: { from: 'invoke_option_plans_summary', slot: 'dataframe' },
+      summary: { from: 'invoke_plan_summary_metrics', slot: 'dataframe' },
+    },
     dependsOn: [],
   } as unknown as WorkflowTask;
 
-  const { dataFrame: out } = await executeSqlDataFrameQuery(bound, runtime, async () =>
-    plansFrame([
-      { category_for_grouping: 'Gyre', plan_name: 'GYRE 2023 Plan', key: 'Awards Outstanding', value: 13_690_892 },
-      {
-        category_for_grouping: 'Gyre',
-        plan_name: 'GYRE 2023 Plan',
-        key: 'Shares Remaining For Issuance',
-        value: 3_667_401,
-      },
-      {
-        category_for_grouping: 'Gyre',
-        plan_name: 'GYRE 2023 Plan',
-        key: 'Awards Outstanding + Shares Remaining for Issuance',
-        value: 17_358_293,
-      },
-      // GYRE 2025 BC Subplan reports no cancellations: used to be repaired from the transfer file.
-      { category_for_grouping: 'BC', plan_name: 'GYRE 2025 BC Subplan', key: 'Awards Outstanding', value: 0 },
-      { category_for_grouping: 'BC', plan_name: 'GYRE 2025 BC Subplan', key: 'Cancelled', value: 0 },
-    ]),
-  );
+  const { dataFrame: out } = await executeSqlDataFrameQuery(bound, runtime, async (slot: string) => {
+    if (slot === 'plans') {
+      return frame([
+        {
+          category_for_grouping: 'Gyre',
+          plan_name: 'GYRE 2023 Plan',
+          key: 'Shares Remaining For Issuance',
+          value: 3_667_401,
+        },
+        // Still present in the raw plan rows, but must NOT drive the total any more.
+        { category_for_grouping: 'Gyre', plan_name: 'GYRE 2023 Plan', key: 'Awards Outstanding', value: 13_690_892 },
+      ]);
+    }
+    return frame([
+      { plan_name: 'GYRE 2023 Plan', outstanding: 13_690_892 },
+      { plan_name: 'GYRE 2025 BC Subplan', outstanding: 2_032_384 },
+    ]);
+  });
 
   const metrics = out.rows[0] ?? {};
-  assert.equal(metrics.total_options_outstanding, 13_690_892);
+  assert.equal(metrics.total_options_outstanding, 15_723_276);
   assert.equal(metrics.total_options_available, 3_667_401);
-  assert.equal(metrics.total_options_outstanding_plus_available, 17_358_293);
+  assert.equal(metrics.total_options_outstanding_plus_available, 19_390_677);
   assert.equal(
     'bc_subplan_cancelled_adjustment' in metrics,
     false,
     'the transfer-driven adjustment column must be gone, not just zero',
   );
+});
+
+test('calc_option_metrics reads the recalculated plan metrics instead of the workbook outstanding', () => {
+  const task = seedTask('calc_option_metrics');
+  assert.equal(task.inputs?.summary?.from, 'invoke_plan_summary_metrics');
+  const sql = String(task.params.sql ?? '');
+  assert.match(sql, /sum\(s\.outstanding\)/);
+  assert.match(sql, /Shares Remaining For Issuance/);
+  assert.doesNotMatch(sql, /'Awards Outstanding'/);
 });

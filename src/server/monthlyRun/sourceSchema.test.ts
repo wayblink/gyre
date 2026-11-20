@@ -198,9 +198,9 @@ test('CapTable workflow derives Series B Preferred Stock from the Read SERIES B 
 
 test('Plan Summary overrides BC Subplan Cancelled from the dated cancel/restore report', () => {
   const workflow = JSON.parse(
-    readFileSync(path.join(process.cwd(), 'database', 'workflows', 'plan-summary-sync.json'), 'utf8'),
+    readFileSync(path.join(process.cwd(), 'database', 'workflows', 'plan-summary-metrics.json'), 'utf8'),
   ) as { version: number; tasks: Array<Record<string, any>> };
-  assert.ok(workflow.version >= 3);
+  assert.ok(workflow.version >= 1);
   const readReport = workflow.tasks.find((task) => task.id === 'invoke_cancel_restore_report');
   assert.equal(readReport?.operatorCode, 'workflow.invoke');
   assert.equal(readReport?.params?.workflowCode, 'gyre-therapeutics-cancel-restore-incremental-merge');
@@ -218,6 +218,45 @@ test('Plan Summary overrides BC Subplan Cancelled from the dated cancel/restore 
   const aggregate = workflow.tasks.find((task) => task.id === 'aggregate_plan_summary');
   assert.equal(aggregate?.inputs?.input1?.from, 'union_plan_summary_inputs');
   assert.match(aggregate?.params?.sql ?? '', /category_for_grouping = 'cancel_restore'/);
+  // An overridden cancellation has to move the outstanding with it: never copy the workbook row.
+  assert.match(aggregate?.params?.sql ?? '', /granted \+ exercised \+ cancelled as outstanding/);
+  assert.doesNotMatch(aggregate?.params?.sql ?? '', /'Awards Outstanding'/);
+});
+
+test('Plan Summary only files the shared plan metrics', () => {
+  const workflow = JSON.parse(
+    readFileSync(path.join(process.cwd(), 'database', 'workflows', 'plan-summary-sync.json'), 'utf8'),
+  ) as { version: number; tasks: Array<Record<string, any>> };
+  assert.ok(workflow.version >= 8);
+  const invoke = workflow.tasks.find((task) => task.id === 'invoke_plan_summary_metrics');
+  assert.equal(invoke?.operatorCode, 'workflow.invoke');
+  assert.equal(invoke?.params?.workflowCode, 'plan-summary-metrics');
+  assert.equal(invoke?.params?.outputTaskId, 'aggregate_plan_summary');
+  const persist = workflow.tasks.find((task) => task.id === 'persist_plan_summary_file');
+  assert.equal(persist?.inputs?.input1?.from, 'invoke_plan_summary_metrics');
+  assert.equal(
+    workflow.tasks.some((task) => task.id === 'aggregate_plan_summary'),
+    false,
+  );
+});
+
+test('the monthly workflow feeds the same recalculated metrics to its option total', () => {
+  const workflow = JSON.parse(
+    readFileSync(path.join(process.cwd(), 'database', 'workflows', 'gyre-captable-summary-v2.json'), 'utf8'),
+  ) as { version: number; tasks: Array<Record<string, any>> };
+  assert.ok(workflow.version >= 62);
+  const metrics = workflow.tasks.find((task) => task.id === 'invoke_plan_summary_metrics');
+  assert.equal(metrics?.operatorCode, 'workflow.invoke');
+  assert.equal(metrics?.params?.workflowCode, 'plan-summary-metrics');
+  assert.equal(metrics?.params?.outputTaskId, 'aggregate_plan_summary');
+  const planSummary = workflow.tasks.find((task) => task.id === 'invoke_plan_summary_sync');
+  assert.equal(planSummary?.inputs?.input1?.from, 'invoke_plan_summary_metrics');
+  assert.deepEqual(planSummary?.params?.inputMappings, [
+    { inputSlot: 'input1', taskId: 'invoke_plan_summary_metrics' },
+  ]);
+  const optionMetrics = workflow.tasks.find((task) => task.id === 'calc_option_metrics');
+  assert.equal(optionMetrics?.inputs?.summary?.from, 'invoke_plan_summary_metrics');
+  assert.match(optionMetrics?.params?.sql ?? '', /sum\(s\.outstanding\)/);
 });
 
 test('Cancel and restore merge keeps all rows and defers month filtering to Plan Summary', () => {

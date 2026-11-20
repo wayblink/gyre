@@ -640,7 +640,7 @@ test('workflow update modal gives the sheet input the shared form-control struct
 
 test('plan summary update modal explains the non-zero Outstanding filter', () => {
   const workflowSource = readFileSync(
-    new URL('../../database/workflows/plan-summary-sync.json', import.meta.url),
+    new URL('../../database/workflows/plan-summary-metrics.json', import.meta.url),
     'utf8',
   );
   const optionSummarySource = readFileSync(
@@ -650,8 +650,8 @@ test('plan summary update modal explains the non-zero Outstanding filter', () =>
 
   assert.match(textsSource, /only plans with non-zero Outstanding are shown/);
   assert.match(textsSource, /仅显示 Outstanding 不为 0 的计划/);
-  assert.match(workflowSource, /having sum\(case when \[key\] = 'Awards Outstanding'/);
-  assert.match(workflowSource, /Outstanding 不为 0/);
+  assert.match(workflowSource, /granted \+ exercised \+ cancelled <> 0/);
+  assert.match(workflowSource, /Outstanding 为 0 的计划/);
   assert.match(optionSummarySource, /coalesce\(lookup\.sorting,.*coalesce\(base\.sorting/);
   assert.match(optionSummarySource, /lookup\.\[key\] not in/);
   assert.doesNotMatch(optionSummarySource, /limit 1 offset 1/);

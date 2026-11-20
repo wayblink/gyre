@@ -25,6 +25,7 @@ const OPTIONAL_FILE_WORKFLOWS = [
   'futu-exercises-incremental-merge',
   'gyre-therapeutics-cancel-restore-incremental-merge',
   'plan-summary-sync',
+  'plan-summary-metrics',
 ];
 
 test('no workflow seed pins a file from a specific month folder in its runtime defaults', () => {

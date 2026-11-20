@@ -8,18 +8,20 @@ import { executeSqlDataFrameQuery } from './operators/sqlUtils.js';
 import type { WorkflowOperatorRuntime } from './operators/types.js';
 
 /**
- * Plan Summary's `cancelled` column used to be the source workbook's own `Cancelled` row, except for
- * one hard-coded plan ('GYRE 2025 BC Subplan') that was overwritten with the Cancel & Restore report
- * total. The ledger is the system of record for cancellations, and it names the plan it belongs to
- * (`所属计划` = `2023 OMNIBUS INCENTIVE PLAN`), so the number has to be computed per plan from the
- * report — otherwise every plan's cancellations land on whichever plan the definition happens to
- * hard-code.
+ * Plan-level metrics live in `plan-summary-metrics`, shared by the Plan Summary page and the
+ * Capitalization Summary's option total.
  *
- * A plan the report never mentions keeps the workbook value: legacy plans (CBIO 2015/2018, Cullgen)
- * have no ledger rows at all, and zeroing their cancellations would silently invent data.
+ * The ledger is the system of record for cancellations and names the plan it belongs to
+ * (`所属计划` = `2023 OMNIBUS INCENTIVE PLAN`), so `cancelled` has to be computed per plan from the
+ * report — otherwise every plan's cancellations land on whichever plan the definition happens to
+ * hard-code. A plan the report never mentions keeps the workbook value: legacy plans (CBIO 2015/2018,
+ * Cullgen) have no ledger rows at all, and zeroing their cancellations would silently invent data.
+ *
+ * `outstanding` is never copied from the workbook: once `cancelled` is overridden, the only value that
+ * keeps the row internally consistent is `granted + exercised + cancelled`.
  */
 
-const seedPath = path.join(process.cwd(), 'database', 'workflows', 'plan-summary-sync.json');
+const seedPath = path.join(process.cwd(), 'database', 'workflows', 'plan-summary-metrics.json');
 const WORKFLOW_MONTH = '2026-08';
 
 type SeedTask = {
@@ -83,6 +85,7 @@ function planRows(): Array<Record<string, unknown>> {
     row('GYRE 2025 BC Subplan', 'Cancelled', -67_616),
     row('GYRE 2025 BC Subplan', 'Awards Outstanding', 2_063_380),
     row('CBIO 2015 Stock Incentive Plan', 'Granted', 359_686),
+    row('CBIO 2015 Stock Incentive Plan', 'Exercised', -13_264),
     row('CBIO 2015 Stock Incentive Plan', 'Cancelled', -193_894),
     row('CBIO 2015 Stock Incentive Plan', 'Awards Outstanding', 152_528),
   ];
@@ -188,4 +191,23 @@ test('cancellations dated after the run month stay out of the total', async () =
   const cancelled = await runTask('calculate_cancel_restore_cancelled', { input1: cancelRestore, plans });
   const omnibus = cancelled.find((row) => String(row.plan_name) === 'GYRE 2023 Omnibus Incentive Plan');
   assert.equal(omnibus?.value, -1_071);
+});
+
+test('outstanding is recalculated from granted + exercised + cancelled', async () => {
+  const rows = await planSummary();
+  const byPlan = new Map(rows.map((row) => [String(row.plan_name), row]));
+
+  // 4,158,418 - 250,049 - 1,071: the overridden ledger cancellation replaces the workbook's -435,000,
+  // so the workbook's own Awards Outstanding (3,473,369) would be inconsistent with the row.
+  assert.equal(byPlan.get('GYRE 2023 Omnibus Incentive Plan')?.outstanding, 3_907_298);
+  // No ledger row names BC Subplan: keep the workbook cancellation and recompute anyway.
+  assert.equal(byPlan.get('GYRE 2025 BC Subplan')?.outstanding, 2_032_384);
+  assert.equal(byPlan.get('CBIO 2015 Stock Incentive Plan')?.outstanding, 152_528);
+});
+
+test('the aggregate derives outstanding instead of copying the Awards Outstanding row', () => {
+  const task = seedTask('aggregate_plan_summary');
+  const sql = String(task.params.sql ?? '');
+  assert.match(sql, /granted \+ exercised \+ cancelled as outstanding/);
+  assert.doesNotMatch(sql, /'Awards Outstanding'/);
 });
