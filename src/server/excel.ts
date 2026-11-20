@@ -393,6 +393,52 @@ function startsWithBytes(buffer: Buffer, signature: Buffer): boolean {
   return buffer.length >= signature.length && buffer.subarray(0, signature.length).equals(signature);
 }
 
+const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const XLS_MIME_TYPE = 'application/vnd.ms-excel';
+const CSV_MIME_TYPE = 'text/csv';
+
+/** The MIME type follows the extension the file keeps, not whatever the editor uploaded. */
+export function workbookMimeTypeForFileName(fileName: string): string {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'xls') return XLS_MIME_TYPE;
+  if (extension === 'csv') return CSV_MIME_TYPE;
+  return XLSX_MIME_TYPE;
+}
+
+/**
+ * The in-app editor always exports xlsx. Saving back onto a `.xls`/`.csv` file has to rewrite the
+ * bytes to the format the extension promises, otherwise the upload guard rejects the xlsx signature
+ * and those files cannot be saved at all.
+ */
+export function coerceWorkbookBufferForExtension(buffer: Buffer, fileName: string): Buffer {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'xls') {
+    if (startsWithBytes(buffer, XLS_OLE_SIGNATURE)) return buffer;
+    const workbook = readWorkbook(buffer);
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'biff8' }) as Buffer;
+  }
+  if (extension === 'csv') {
+    // CSV text is already a valid target; only workbook containers have to be flattened.
+    if (
+      !startsWithBytes(buffer, XLSX_ZIP_SIGNATURE) &&
+      !startsWithBytes(buffer, XLS_OLE_SIGNATURE) &&
+      !buffer.includes(0)
+    ) {
+      return buffer;
+    }
+    const workbook = readWorkbook(buffer);
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0] ?? ''];
+    if (!firstSheet) throw new Error('Workbook contains no sheets');
+    return Buffer.from(XLSX.utils.sheet_to_csv(firstSheet), 'utf8');
+  }
+  if (extension === 'xlsx') {
+    if (startsWithBytes(buffer, XLSX_ZIP_SIGNATURE)) return buffer;
+    const workbook = readWorkbook(buffer);
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+  return buffer;
+}
+
 function validateWorkbookUploadContainer(buffer: Buffer, fileName: string): void {
   if (buffer.length === 0) throw new Error('Workbook upload is empty');
   const extension = fileName.split('.').pop()?.toLowerCase();

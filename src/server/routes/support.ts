@@ -4,7 +4,12 @@ import type { AppDb } from '../db.js';
 import { config } from '../config.js';
 import { canonicalProductFilePath, normalizeProductFileName, normalizeProductFolder } from '../fileIdentity.js';
 import { fileStorage } from '../storage.js';
-import { previewWorkbookSheet, summarizeValidatedWorkbookAsync } from '../excel.js';
+import {
+  coerceWorkbookBufferForExtension,
+  previewWorkbookSheet,
+  summarizeValidatedWorkbookAsync,
+  workbookMimeTypeForFileName,
+} from '../excel.js';
 import { cachedSheetPreview, sheetPreviewCacheKey } from '../utils/sheetPreviewCache.js';
 import { MONTHLY_WORKFLOW_CODE } from '../monthlyRun/store.js';
 import { monthlySourcesFromSchema } from '../monthlyRun/sourceSchema.js';
@@ -639,21 +644,24 @@ export async function updateProductWorkbook(
   },
 ) {
   const existing = await getProductFileOrThrow(db, params.fileId);
-  const mimeType = params.mimeType?.trim() || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const uploadedBy = params.uploadedBy?.trim() || String(existing.uploaded_by ?? 'Administrator');
   const originalName = String(existing.original_name);
-  const checksum = crypto.createHash('sha256').update(params.buffer).digest('hex');
   const ext = path.extname(originalName).toLowerCase() || '.xlsx';
+  // The editor exports xlsx regardless of the file it opened; rewrite the bytes to the extension the
+  // stored file keeps before validating/saving, otherwise .xls/.csv files can never be saved.
+  const buffer = coerceWorkbookBufferForExtension(params.buffer, originalName);
+  const mimeType = workbookMimeTypeForFileName(originalName);
+  const checksum = crypto.createHash('sha256').update(buffer).digest('hex');
   const storedName = originalName;
   const existingDirectory = productFileRelativeStoragePath(existing).split('/').slice(0, -1).join('/');
   let summary;
   try {
-    summary = await summarizeValidatedWorkbookAsync(params.buffer, originalName);
+    summary = await summarizeValidatedWorkbookAsync(buffer, originalName);
   } catch (error) {
     throw badRequest(error instanceof Error ? error.message : 'Invalid workbook');
   }
 
-  const stored = await fileStorage.save('product', storedName, params.buffer, {
+  const stored = await fileStorage.save('product', storedName, buffer, {
     prefix: existingDirectory,
   });
 
@@ -681,7 +689,7 @@ export async function updateProductWorkbook(
       stored.storedName,
       stored.filePath,
       String(existing.logical_path ?? canonicalProductFilePath(existingDirectory, originalName)),
-      params.buffer.length,
+      buffer.length,
       mimeType,
       checksum,
       stored.storageBackend,

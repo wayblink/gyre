@@ -3,11 +3,13 @@ import test from 'node:test';
 import * as XLSX from 'xlsx';
 import type { WorkflowDataFrame } from '../shared/types.js';
 import {
+  coerceWorkbookBufferForExtension,
   dataFrameToWorkbookBuffer,
   extractSheetRangeAsDataFrame,
   rowsToDataFrame,
   summarizeValidatedWorkbook,
   summarizeValidatedWorkbookAsync,
+  workbookMimeTypeForFileName,
 } from './excel.js';
 
 function dataframeFixture(): WorkflowDataFrame {
@@ -241,4 +243,29 @@ test('extractSheetRangeAsDataFrame can keep trailing blank rows when configured'
   assert.equal(dataframe.rows.length, 6);
   assert.equal(dataframe.range.endRow, 8);
   assert.equal(dataframe.range.a1Range, 'A2:B8');
+});
+
+test('editor saves are rewritten to the extension the file keeps', () => {
+  const xlsx = dataFrameToWorkbookBuffer(dataframeFixture());
+  assert.throws(() => summarizeValidatedWorkbook(xlsx, 'book.xls'), /Invalid XLS file signature/);
+
+  const xls = coerceWorkbookBufferForExtension(xlsx, 'book.xls');
+  assert.deepEqual(
+    [...xls.subarray(0, 8)],
+    [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1],
+    'a saved .xls must be a real OLE/BIFF8 workbook',
+  );
+  assert.equal(summarizeValidatedWorkbook(xls, 'book.xls').sheetCount, 1);
+  assert.equal(coerceWorkbookBufferForExtension(xls, 'book.xls'), xls, 'already valid .xls passes through');
+
+  const csv = coerceWorkbookBufferForExtension(xlsx, 'book.csv');
+  assert.match(csv.toString('utf8'), /Employee Number/);
+  assert.equal(summarizeValidatedWorkbook(csv, 'book.csv').sheetCount, 1);
+
+  assert.equal(workbookMimeTypeForFileName('book.xls'), 'application/vnd.ms-excel');
+  assert.equal(workbookMimeTypeForFileName('book.csv'), 'text/csv');
+  assert.equal(
+    workbookMimeTypeForFileName('book.xlsx'),
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  );
 });
