@@ -9692,6 +9692,9 @@ textarea.form-input {
     padding: var(--space-4) var(--space-5);
     background: linear-gradient(180deg, color-mix(in srgb, var(--primary-50) 60%, white), white);
     border-top: 1px solid var(--border-light);
+    /* The panel sits in a `.data-table td`, which is `white-space: nowrap`; inherited here that
+       stopped long source labels from wrapping and let them paint over the file name. */
+    white-space: normal;
 }
 
 .monthly-run-history__detail-header {
@@ -9716,7 +9719,7 @@ textarea.form-input {
 
 .monthly-run-history__input-item {
     display: grid;
-    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+    grid-template-columns: minmax(180px, 300px) minmax(0, 1fr);
     gap: var(--space-3);
     align-items: start;
     padding: var(--space-3) var(--space-4);
@@ -9728,6 +9731,7 @@ textarea.form-input {
 .monthly-run-history__input-label {
     color: var(--text-secondary);
     font-weight: var(--font-semibold);
+    overflow-wrap: anywhere;
 }
 
 .monthly-run-history__input-value {
