@@ -1,9 +1,9 @@
 {
   "code": "plan-summary-metrics",
   "name": "Plan Summary Metrics",
-  "description": "把 Gyre Option Plans Summary 与取消恢复台账合成计划级指标：Cancelled 按台账「所属计划」逐计划计算，Outstanding 由 Granted + Exercised + Cancelled 重算，供 Plan Summary 页面与资本结构表的期权合计共用。",
+  "description": "把 Gyre Option Plans Summary 与取消恢复台账合成计划级指标：取消台账合计覆盖 GYRE 2025 BC Subplan（报表的「所属计划」是 Futu 主计划名，不能按字面匹配），Outstanding 由 Granted + Exercised + Cancelled 重算，供 Plan Summary 页面与资本结构表的期权合计共用。",
   "status": "active",
-  "version": 1,
+  "version": 2,
   "tasks": [
     {
       "x": 420,
@@ -87,7 +87,7 @@
         }
       },
       "params": {
-        "sql": "\nselect\n  'cancel_restore' as category_for_grouping,\n  names.plan_name as plan_name,\n  'Cancelled' as [key],\n  agg.ledger_total as [value]\nfrom (\n  select distinct plan_name\n  from {plans}\n  where trim(concat('', coalesce(plan_name, ''))) <> ''\n) names\ninner join (\n  select\n    lower(trim(concat('', coalesce([所属计划], '')))) as plan_key,\n    sum(\n      case\n        when trim(concat('', coalesce(cast([数量] as string), '0'))) in ('--', '', 'null') then 0\n        else cast([数量] as number)\n      end\n    ) as ledger_total\n  from {cancel_restore}\n  where wf_month_key([变更日期]) is not null\n    and wf_month_key([变更日期]) <= {constants.workflowMonth}\n    and trim(concat('', coalesce(cast([变更类型] as string), ''))) <> '已归属到期失效'\n  group by lower(trim(concat('', coalesce([所属计划], ''))))\n) agg\non (\n  lower(trim(concat('', coalesce(names.plan_name, '')))) = agg.plan_key\n  or lower(trim(concat('', coalesce(names.plan_name, '')))) like concat('% ', agg.plan_key)\n)\n",
+        "sql": "\nselect\n  'cancel_restore' as category_for_grouping,\n  'GYRE 2025 BC Subplan' as plan_name,\n  'Cancelled' as [key],\n  coalesce(\n    sum(\n      case\n        when trim(concat('', coalesce(cast([数量] as string), '0'))) in ('--', '', 'null') then 0\n        else cast([数量] as number)\n      end\n    ),\n    0\n  ) as [value]\nfrom {cancel_restore}\nwhere wf_month_key([变更日期]) is not null\n  and wf_month_key([变更日期]) <= {constants.workflowMonth}\n  and trim(concat('', coalesce(cast([变更类型] as string), ''))) <> '已归属到期失效'\n  and exists (\n    select 1\n    from {plans}\n    where lower(trim(concat('', coalesce(plan_name, '')))) = lower('GYRE 2025 BC Subplan')\n  )\n",
         "constants": {
           "workflowMonth": {
             "$type": "string",
@@ -107,7 +107,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "按「变更日期」截止到业务月份、排除「已归属到期失效」，按取消与恢复报表的「所属计划」分组汇总数量，并把每个分组挂到 Option Plans Summary 中对应的计划名上（大小写/前后缀差异通过 lower+trim 与后缀匹配归一），输出每个计划的 Cancelled 覆盖行。报表里没有出现的计划不产出覆盖行，下游回退到源文件里的取消列。",
+      "description": "按「变更日期」截止到业务月份、排除「已归属到期失效」，把取消与恢复报表的「数量」合计覆盖到 GYRE 2025 BC Subplan。台账的「所属计划」写的是 Futu 的主计划名 2023 OMNIBUS INCENTIVE PLAN，但这批记录的授予日期全部是 2025-11-20、授予编号为 KDN 前缀，属于 2025 BC Subplan 的授予批次；不能按「所属计划」字面 like 匹配，否则会错误挂到 GYRE 2023 Omnibus Incentive Plan。",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },

@@ -200,7 +200,7 @@ test('Plan Summary overrides BC Subplan Cancelled from the dated cancel/restore 
   const workflow = JSON.parse(
     readFileSync(path.join(process.cwd(), 'database', 'workflows', 'plan-summary-metrics.json'), 'utf8'),
   ) as { version: number; tasks: Array<Record<string, any>> };
-  assert.ok(workflow.version >= 1);
+  assert.ok(workflow.version >= 2);
   const readReport = workflow.tasks.find((task) => task.id === 'invoke_cancel_restore_report');
   assert.equal(readReport?.operatorCode, 'workflow.invoke');
   assert.equal(readReport?.params?.workflowCode, 'gyre-therapeutics-cancel-restore-incremental-merge');
@@ -210,10 +210,10 @@ test('Plan Summary overrides BC Subplan Cancelled from the dated cancel/restore 
   assert.match(calculate?.params?.sql ?? '', /\[变更类型\]/);
   assert.match(calculate?.params?.sql ?? '', /已归属到期失效/);
   assert.match(calculate?.params?.sql ?? '', /wf_month_key\(\[变更日期\]\) <= \{constants\.workflowMonth\}/);
-  // The cancelled total is derived per plan from the report's 所属计划 column; pinning a single plan
-  // name in the SQL attributed every ledger row to whichever plan the definition hard-coded.
-  assert.match(calculate?.params?.sql ?? '', /所属计划/);
-  assert.doesNotMatch(calculate?.params?.sql ?? '', /'GYRE 2025 BC Subplan' as plan_name/);
+  // The ledger's 所属计划 is the Futu master plan name (2023 OMNIBUS INCENTIVE PLAN), but the rows are
+  // the 2025-11-20 BC Subplan grants. Matching the text put the total on GYRE 2023 Omnibus by mistake.
+  assert.match(calculate?.params?.sql ?? '', /GYRE 2025 BC Subplan/);
+  assert.doesNotMatch(calculate?.params?.sql ?? '', /所属计划/);
   assert.equal(calculate?.inputs?.plans?.from, 'invoke_option_plans_summary');
   const aggregate = workflow.tasks.find((task) => task.id === 'aggregate_plan_summary');
   assert.equal(aggregate?.inputs?.input1?.from, 'union_plan_summary_inputs');

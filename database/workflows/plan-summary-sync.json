@@ -1,9 +1,9 @@
 {
   "code": "plan-summary-sync",
   "name": "Plan Summary Sync",
-  "description": "读取 Gyre Option Plans Summary SL，并消费取消与恢复报表增量合并后的完整基表；计划级指标由 plan-summary-metrics 计算（Cancelled 按报表「所属计划」逐计划覆盖，Outstanding 由 Granted + Exercised + Cancelled 重算），本工作流只负责把结果落成 Plan_Summary.xlsx。",
+  "description": "读取 Gyre Option Plans Summary SL，并消费取消与恢复报表增量合并后的完整基表；计划级指标由 plan-summary-metrics 计算（取消台账合计覆盖 GYRE 2025 BC Subplan，Outstanding 由 Granted + Exercised + Cancelled 重算），本工作流只负责把结果落成 Plan_Summary.xlsx。",
   "status": "active",
-  "version": 8,
+  "version": 9,
   "tasks": [
     {
       "x": 420,

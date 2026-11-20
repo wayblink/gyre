@@ -11,11 +11,11 @@ import type { WorkflowOperatorRuntime } from './operators/types.js';
  * Plan-level metrics live in `plan-summary-metrics`, shared by the Plan Summary page and the
  * Capitalization Summary's option total.
  *
- * The ledger is the system of record for cancellations and names the plan it belongs to
- * (`所属计划` = `2023 OMNIBUS INCENTIVE PLAN`), so `cancelled` has to be computed per plan from the
- * report — otherwise every plan's cancellations land on whichever plan the definition happens to
- * hard-code. A plan the report never mentions keeps the workbook value: legacy plans (CBIO 2015/2018,
- * Cullgen) have no ledger rows at all, and zeroing their cancellations would silently invent data.
+ * The ledger's `所属计划` is the Futu master plan name (`2023 OMNIBUS INCENTIVE PLAN`), but every
+ * record belongs to the 2025 BC Subplan grant batch: grant date 2025-11-20, grant numbers KDN…,
+ * vesting rule `第二期期权归属规则`. The ledger total therefore overrides GYRE 2025 BC Subplan and
+ * must never be matched by the `所属计划` text — that put it on GYRE 2023 Omnibus Incentive Plan.
+ * Legacy plans (CBIO 2015/2018, Cullgen) keep the workbook cancellation.
  *
  * `outstanding` is never copied from the workbook: once `cancelled` is overridden, the only value that
  * keeps the row internally consistent is `granted + exercised + cancelled`.
@@ -104,8 +104,6 @@ function cancelRestoreRows(): Array<Record<string, unknown>> {
     row('2026-03-20', '待归属取消', -95),
     row('2026-06-20', '待归属取消', -1_000),
     row('2026-07-01', '待归属取消恢复', 120),
-    // a different plan name that no summary plan carries: must not be attributed to anything
-    row('2026-07-02', '待归属取消', -500, 'SOME OTHER PLAN'),
     // excluded by type and by month
     row('2026-07-03', '已归属到期失效', -9_999),
     row('2026-12-31', '待归属取消', -500),
@@ -149,35 +147,30 @@ async function planSummary(): Promise<Array<Record<string, unknown>>> {
   return runTask('aggregate_plan_summary', { input1: union });
 }
 
-test('cancelled is computed per plan from the Cancel & Restore ledger', async () => {
+test('the ledger total overrides GYRE 2025 BC Subplan, not the Futu master plan name', async () => {
   const rows = await planSummary();
   const byPlan = new Map(rows.map((row) => [String(row.plan_name), row]));
 
   // -96 -95 -1000 +120 = -1,071 as of 2026-08 (the December cancellation and 已归属到期失效 stay out).
-  assert.equal(byPlan.get('GYRE 2023 Omnibus Incentive Plan')?.cancelled, -1_071);
+  assert.equal(byPlan.get('GYRE 2025 BC Subplan')?.cancelled, -1_071);
+  // The Futu plan name is the master name; matching it textually would wrongly override this row.
+  assert.equal(byPlan.get('GYRE 2023 Omnibus Incentive Plan')?.cancelled, -435_000);
 });
 
 test('plans without ledger rows keep the workbook cancellation value', async () => {
   const rows = await planSummary();
   const byPlan = new Map(rows.map((row) => [String(row.plan_name), row]));
 
-  assert.equal(byPlan.get('GYRE 2025 BC Subplan')?.cancelled, -67_616);
+  assert.equal(byPlan.get('GYRE 2023 Omnibus Incentive Plan')?.cancelled, -435_000);
   assert.equal(byPlan.get('CBIO 2015 Stock Incentive Plan')?.cancelled, -193_894);
 });
 
-test('the ledger total is no longer attributed to a hard-coded plan', async () => {
-  const rows = await planSummary();
-  const byPlan = new Map(rows.map((row) => [String(row.plan_name), row]));
-
-  assert.notEqual(byPlan.get('GYRE 2025 BC Subplan')?.cancelled, -1_071);
-});
-
-test('the definition derives the plan column instead of hard-coding one plan name', () => {
+test('the definition targets the BC Subplan instead of deriving it from 所属计划', () => {
   const task = seedTask('calculate_cancel_restore_cancelled');
   const sql = String(task.params.sql ?? '');
-  assert.match(sql, /所属计划/, 'the ledger column names the plan');
-  assert.doesNotMatch(sql, /'GYRE 2025 BC Subplan' as plan_name/, 'no single plan may be pinned in the SQL');
-  assert.ok(task.inputs?.plans, 'the task needs the plan name list to map ledger rows onto summary plans');
+  assert.match(sql, /GYRE 2025 BC Subplan/, 'the ledger belongs to the 2025 BC Subplan grants');
+  assert.doesNotMatch(sql, /所属计划/, 'the Futu master plan name must not drive attribution');
+  assert.ok(task.inputs?.plans, 'the target plan still has to exist in the summary');
 });
 
 test('cancellations dated after the run month stay out of the total', async () => {
@@ -189,19 +182,18 @@ test('cancellations dated after the run month stay out of the total', async () =
   const plans = frame('plans', Object.keys(planRows()[0]), planRows());
   const cancelRestore = frame('cancel_restore', Object.keys(cancelRestoreRows()[0]), [...cancelRestoreRows(), later]);
   const cancelled = await runTask('calculate_cancel_restore_cancelled', { input1: cancelRestore, plans });
-  const omnibus = cancelled.find((row) => String(row.plan_name) === 'GYRE 2023 Omnibus Incentive Plan');
-  assert.equal(omnibus?.value, -1_071);
+  const bcSubplan = cancelled.find((row) => String(row.plan_name) === 'GYRE 2025 BC Subplan');
+  assert.equal(bcSubplan?.value, -1_071);
 });
 
 test('outstanding is recalculated from granted + exercised + cancelled', async () => {
   const rows = await planSummary();
   const byPlan = new Map(rows.map((row) => [String(row.plan_name), row]));
 
-  // 4,158,418 - 250,049 - 1,071: the overridden ledger cancellation replaces the workbook's -435,000,
-  // so the workbook's own Awards Outstanding (3,473,369) would be inconsistent with the row.
-  assert.equal(byPlan.get('GYRE 2023 Omnibus Incentive Plan')?.outstanding, 3_907_298);
-  // No ledger row names BC Subplan: keep the workbook cancellation and recompute anyway.
-  assert.equal(byPlan.get('GYRE 2025 BC Subplan')?.outstanding, 2_032_384);
+  // 4,158,418 - 250,049 - 435,000: this row keeps the workbook cancellation.
+  assert.equal(byPlan.get('GYRE 2023 Omnibus Incentive Plan')?.outstanding, 3_473_369);
+  // 2,100,000 - 1,071: the ledger overrides this row's workbook cancellation (-67,616).
+  assert.equal(byPlan.get('GYRE 2025 BC Subplan')?.outstanding, 2_098_929);
   assert.equal(byPlan.get('CBIO 2015 Stock Incentive Plan')?.outstanding, 152_528);
 });
 
