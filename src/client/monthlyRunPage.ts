@@ -105,7 +105,10 @@ export function monthlyRunSourceFolders(sourceKey: string | null | undefined, mo
 export const sourcePurposeEnglish: Record<string, string> = {
   base_control_book: 'Prior month full EQ Control Book; base for the incremental merge.',
   incremental_control_book: 'Current month Control Book detail, merged into the base.',
-  series_b: 'Shares Issued × 5 gives Series B Preferred Stock; 0 when not supplied.',
+  series_b:
+    "Shareholder-level Series B ledger: this month's detail is merged into the carried base by As of Date + Account Number; (Shares Issued − Shares Retired) × 5 gives Series B Preferred Stock.",
+  base_series_b:
+    "Prior month Series B shareholder ledger, carried over automatically; the first month seeds it from that month's detail export (not shown on the page).",
   option_plans_summary: 'Per-plan outstanding and available share totals.',
   base_futu_exercises:
     'Prior month full Futu BCI Exercises base for the incremental merge; normally carried over from last month, but can be set manually.',
@@ -239,7 +242,7 @@ function sourceDescription(source: MonthlyRunSourceDefinition, language: AppLang
  * and this constant together. A mismatch blocks the page and the run instead of silently rendering
  * inputs the workflow no longer reads.
  */
-export const MONTHLY_WORKFLOW_VERSION = 62;
+export const MONTHLY_WORKFLOW_VERSION = 64;
 
 /**
  * Compares the workflow definition version reported by the API against the version this page was

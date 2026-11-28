@@ -1,9 +1,9 @@
 {
   "code": "gyre-captable-summary-v2",
   "name": "Gyre Cap Table Summary",
-  "description": "基于 GyreESOP 管理系统需求文档 0614 的 Summary 计算：EQ Control Book、Gyre Option Plans Summary SL、Futu BCI Exercises 三个业务输入分别绑定对应抽取节点；关键输入、口径常数、汇总公式和输出结构均拆分断言，2025 BC Subplan transfer 使用 EQ Control Book 当月计算值。",
+  "description": "\u57fa\u4e8e GyreESOP \u7ba1\u7406\u7cfb\u7edf\u9700\u6c42\u6587\u6863 0614 \u7684 Summary \u8ba1\u7b97\uff1aEQ Control Book\u3001Gyre Option Plans Summary SL\u3001Futu BCI Exercises \u4e09\u4e2a\u4e1a\u52a1\u8f93\u5165\u5206\u522b\u7ed1\u5b9a\u5bf9\u5e94\u62bd\u53d6\u8282\u70b9\uff1b\u5173\u952e\u8f93\u5165\u3001\u53e3\u5f84\u5e38\u6570\u3001\u6c47\u603b\u516c\u5f0f\u548c\u8f93\u51fa\u7ed3\u6784\u5747\u62c6\u5206\u65ad\u8a00\uff0c2025 BC Subplan transfer \u4f7f\u7528 EQ Control Book \u5f53\u6708\u8ba1\u7b97\u503c\u3002",
   "status": "active",
-  "version": 62,
+  "version": 64,
   "tasks": [
     {
       "x": 48,
@@ -38,7 +38,7 @@
         "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "调用 EQ Control Book Incremental Merge 子工作流：上月 base + 本月增量按交易自然键幂等合并出当月完整 EQ Control Book（12 列），供指标计算；子工作流同时落盘可作为下月 base 的 workbook。",
+      "description": "\u8c03\u7528 EQ Control Book Incremental Merge \u5b50\u5de5\u4f5c\u6d41\uff1a\u4e0a\u6708 base + \u672c\u6708\u589e\u91cf\u6309\u4ea4\u6613\u81ea\u7136\u952e\u5e42\u7b49\u5408\u5e76\u51fa\u5f53\u6708\u5b8c\u6574 EQ Control Book\uff0812 \u5217\uff09\uff0c\u4f9b\u6307\u6807\u8ba1\u7b97\uff1b\u5b50\u5de5\u4f5c\u6d41\u540c\u65f6\u843d\u76d8\u53ef\u4f5c\u4e3a\u4e0b\u6708 base \u7684 workbook\u3002",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -66,7 +66,7 @@
         "dropTrailingEmptyRows": true
       },
       "dependsOn": [],
-      "description": "可选抽取上一个月的 Capitalization Summary；未配置文件时输出空 dataframe，不阻断 workflow。",
+      "description": "\u53ef\u9009\u62bd\u53d6\u4e0a\u4e00\u4e2a\u6708\u7684 Capitalization Summary\uff1b\u672a\u914d\u7f6e\u6587\u4ef6\u65f6\u8f93\u51fa\u7a7a dataframe\uff0c\u4e0d\u963b\u65ad workflow\u3002",
       "operatorCode": "sheet.optional-range.extract",
       "operatorVersion": "1.0.0"
     },
@@ -94,7 +94,7 @@
               "$type": "object",
               "$label": "Futu Exercise Record workbook",
               "$default": {
-                "sheet": "行权汇总数据"
+                "sheet": "\u884c\u6743\u6c47\u603b\u6570\u636e"
               },
               "$fromRuntime": "fileRefs.incremental_futu_exercises"
             }
@@ -103,7 +103,7 @@
         "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "调用 Futu Exercises Incremental Merge 子工作流：上月 base + 本月富途「员工行权记录」的『行权汇总数据』sheet，按 员工号+授予编号+行权日期 幂等合并出当月完整 to-date（14 列），供 calc_futu_metrics 求和；子工作流同时落盘固定路径 workbook 作为下月 base。",
+      "description": "\u8c03\u7528 Futu Exercises Incremental Merge \u5b50\u5de5\u4f5c\u6d41\uff1a\u4e0a\u6708 base + \u672c\u6708\u5bcc\u9014\u300c\u5458\u5de5\u884c\u6743\u8bb0\u5f55\u300d\u7684\u300e\u884c\u6743\u6c47\u603b\u6570\u636e\u300fsheet\uff0c\u6309 \u5458\u5de5\u53f7+\u6388\u4e88\u7f16\u53f7+\u884c\u6743\u65e5\u671f \u5e42\u7b49\u5408\u5e76\u51fa\u5f53\u6708\u5b8c\u6574 to-date\uff0814 \u5217\uff09\uff0c\u4f9b calc_futu_metrics \u6c42\u548c\uff1b\u5b50\u5de5\u4f5c\u6d41\u540c\u65f6\u843d\u76d8\u56fa\u5b9a\u8def\u5f84 workbook \u4f5c\u4e3a\u4e0b\u6708 base\u3002",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -131,7 +131,7 @@
         "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "调用可复用的 Option Plans Summary workflow，输出标准化的 category_for_grouping/plan_name/key/value dataframe。",
+      "description": "\u8c03\u7528\u53ef\u590d\u7528\u7684 Option Plans Summary workflow\uff0c\u8f93\u51fa\u6807\u51c6\u5316\u7684 category_for_grouping/plan_name/key/value dataframe\u3002",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -164,7 +164,7 @@
               "$type": "object",
               "$label": "FUTU-Cancel & Restore Summary",
               "$default": {
-                "sheet": "取消与恢复明细"
+                "sheet": "\u53d6\u6d88\u4e0e\u6062\u590d\u660e\u7ec6"
               },
               "$fromRuntime": "fileRefs.base_cancel_restore_report"
             },
@@ -172,7 +172,7 @@
               "$type": "object",
               "$label": "Cancel & Restore Detail",
               "$default": {
-                "sheet": "取消与恢复明细"
+                "sheet": "\u53d6\u6d88\u4e0e\u6062\u590d\u660e\u7ec6"
               },
               "$fromRuntime": "fileRefs.incremental_cancel_restore_report"
             }
@@ -187,7 +187,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "调用独立 Plan Summary Sync 子工作流，按本次月度运行的月份生成 Plan Summary 输出文件。",
+      "description": "\u8c03\u7528\u72ec\u7acb Plan Summary Sync \u5b50\u5de5\u4f5c\u6d41\uff0c\u6309\u672c\u6b21\u6708\u5ea6\u8fd0\u884c\u7684\u6708\u4efd\u751f\u6210 Plan Summary \u8f93\u51fa\u6587\u4ef6\u3002",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -214,7 +214,7 @@
               "$type": "object",
               "$label": "FUTU-Cancel & Restore Summary",
               "$default": {
-                "sheet": "取消与恢复明细"
+                "sheet": "\u53d6\u6d88\u4e0e\u6062\u590d\u660e\u7ec6"
               },
               "$fromRuntime": "fileRefs.base_cancel_restore_report"
             },
@@ -222,7 +222,7 @@
               "$type": "object",
               "$label": "Cancel & Restore Detail",
               "$default": {
-                "sheet": "取消与恢复明细"
+                "sheet": "\u53d6\u6d88\u4e0e\u6062\u590d\u660e\u7ec6"
               },
               "$fromRuntime": "fileRefs.incremental_cancel_restore_report"
             }
@@ -231,7 +231,7 @@
         "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "调用 Plan Summary Metrics 子工作流，拿到按台账覆盖 Cancelled 并由 Granted + Exercised + Cancelled 重算后的计划级指标，供期权合计使用。",
+      "description": "\u8c03\u7528 Plan Summary Metrics \u5b50\u5de5\u4f5c\u6d41\uff0c\u62ff\u5230\u6309\u53f0\u8d26\u8986\u76d6 Cancelled \u5e76\u7531 Granted + Exercised + Cancelled \u91cd\u7b97\u540e\u7684\u8ba1\u5212\u7ea7\u6307\u6807\uff0c\u4f9b\u671f\u6743\u5408\u8ba1\u4f7f\u7528\u3002",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -262,7 +262,7 @@
               "name": "Warn EQ Control Book Comment Spelling Variants",
               "type": "dataframe.sql.assert",
               "params": {
-                "sql": "select case\n  when (select count(*) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')) = 0 then '0 行'\n  else concat('影响 ', (select count(*) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')), ' 行 / ', (select sum([Shares Issued]) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')), ' 股，Comment 拼写为：', '\n', (select group_concat(distinct [Comment] separator '\n') from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')))\nend as comment_variant_hint",
+                "sql": "select case\n  when (select count(*) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')) = 0 then '0 \u884c'\n  else concat('\u5f71\u54cd ', (select count(*) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')), ' \u884c / ', (select sum([Shares Issued]) from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')), ' \u80a1\uff0cComment \u62fc\u5199\u4e3a\uff1a', '\n', (select group_concat(distinct [Comment] separator '\n') from {control_book} where ([Comment] like '%mnibus%' or [Comment] like '%minibus%') and not (lower([Comment]) like 'omnibus%inc%pl' or lower([Comment]) like 'omnibus%inc%pl.')))\nend as comment_variant_hint",
                 "tableBindings": [
                   {
                     "inputSlot": "control_book",
@@ -270,9 +270,9 @@
                   }
                 ],
                 "operator": "=",
-                "expectedValue": "0 行",
+                "expectedValue": "0 \u884c",
                 "failureStrategy": "warning",
-                "failureMessage": "EQ Control Book 的 Comment 列发现与规范写法不一致的 Omnibus 拼写（例如 Ominibus）。\n这些行已按模糊匹配计入 2025 BC Subplan shares transferred to Futu，本次汇总数值不受影响、无需重算。\n建议在源数据（Shareworks 控制账簿导出）中把 Comment 改成规范写法 \"Omnibus Inc. Pl\"，否则以后每个月都会在此停下确认。\n（空格、标点与大小写差异视为格式差异，不算拼写变体：Omnibus Inc.Pl. 等写法会被直接接受。）"
+                "failureMessage": "EQ Control Book \u7684 Comment \u5217\u53d1\u73b0\u4e0e\u89c4\u8303\u5199\u6cd5\u4e0d\u4e00\u81f4\u7684 Omnibus \u62fc\u5199\uff08\u4f8b\u5982 Ominibus\uff09\u3002\n\u8fd9\u4e9b\u884c\u5df2\u6309\u6a21\u7cca\u5339\u914d\u8ba1\u5165 2025 BC Subplan shares transferred to Futu\uff0c\u672c\u6b21\u6c47\u603b\u6570\u503c\u4e0d\u53d7\u5f71\u54cd\u3001\u65e0\u9700\u91cd\u7b97\u3002\n\u5efa\u8bae\u5728\u6e90\u6570\u636e\uff08Shareworks \u63a7\u5236\u8d26\u7c3f\u5bfc\u51fa\uff09\u4e2d\u628a Comment \u6539\u6210\u89c4\u8303\u5199\u6cd5 \"Omnibus Inc. Pl\"\uff0c\u5426\u5219\u4ee5\u540e\u6bcf\u4e2a\u6708\u90fd\u4f1a\u5728\u6b64\u505c\u4e0b\u786e\u8ba4\u3002\n\uff08\u7a7a\u683c\u3001\u6807\u70b9\u4e0e\u5927\u5c0f\u5199\u5dee\u5f02\u89c6\u4e3a\u683c\u5f0f\u5dee\u5f02\uff0c\u4e0d\u7b97\u62fc\u5199\u53d8\u4f53\uff1aOmnibus Inc.Pl. \u7b49\u5199\u6cd5\u4f1a\u88ab\u76f4\u63a5\u63a5\u53d7\u3002\uff09"
               },
               "enabled": true
             },
@@ -281,7 +281,7 @@
               "name": "Warn Duplicate BC Subplan Transfer Rows",
               "type": "dataframe.sql.assert",
               "params": {
-                "sql": "select case\n  when (select count(*) from (select 1 from {control_book} where ([Comment] like 'Omnibus Inc%Pl%' or [Comment] like 'Ominibus Inc%Pl%') and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) group by wf_date_key([As of Date]), wf_date_key([Process Date]), [Shares Issued], [Issued & Outstanding] having count(*) > 1) g) = 0 then '0 组'\n  else concat('发现 ',\n    (select count(*) from (select 1 from {control_book} where ([Comment] like 'Omnibus Inc%Pl%' or [Comment] like 'Ominibus Inc%Pl%') and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) group by wf_date_key([As of Date]), wf_date_key([Process Date]), [Shares Issued], [Issued & Outstanding] having count(*) > 1) g), ' 组重复的 BC Subplan transfer，已按一笔计入：',\n    (select group_concat(distinct h separator '；') from (\n       select concat(cast(k.[As of Date] as string), ' / ', cast(k.[Shares Issued] as string), ' 股') as h\n         from (select wf_date_key([As of Date]) as [As of Date], [Shares Issued] as [Shares Issued] from {control_book} where ([Comment] like 'Omnibus Inc%Pl%' or [Comment] like 'Ominibus Inc%Pl%') and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) group by wf_date_key([As of Date]), wf_date_key([Process Date]), [Shares Issued], [Issued & Outstanding] having count(*) > 1) k\n     ) t))\nend as bc_duplicate_hint\nfrom {control_book}\nlimit 1",
+                "sql": "select case\n  when (select count(*) from (select 1 from {control_book} where ([Comment] like 'Omnibus Inc%Pl%' or [Comment] like 'Ominibus Inc%Pl%') and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) group by wf_date_key([As of Date]), wf_date_key([Process Date]), [Shares Issued], [Issued & Outstanding] having count(*) > 1) g) = 0 then '0 \u7ec4'\n  else concat('\u53d1\u73b0 ',\n    (select count(*) from (select 1 from {control_book} where ([Comment] like 'Omnibus Inc%Pl%' or [Comment] like 'Ominibus Inc%Pl%') and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) group by wf_date_key([As of Date]), wf_date_key([Process Date]), [Shares Issued], [Issued & Outstanding] having count(*) > 1) g), ' \u7ec4\u91cd\u590d\u7684 BC Subplan transfer\uff0c\u5df2\u6309\u4e00\u7b14\u8ba1\u5165\uff1a',\n    (select group_concat(distinct h separator '\uff1b') from (\n       select concat(cast(k.[As of Date] as string), ' / ', cast(k.[Shares Issued] as string), ' \u80a1') as h\n         from (select wf_date_key([As of Date]) as [As of Date], [Shares Issued] as [Shares Issued] from {control_book} where ([Comment] like 'Omnibus Inc%Pl%' or [Comment] like 'Ominibus Inc%Pl%') and (wf_month_key([As of Date]) is null or wf_month_key([As of Date]) <= {constants.workflowMonth}) group by wf_date_key([As of Date]), wf_date_key([Process Date]), [Shares Issued], [Issued & Outstanding] having count(*) > 1) k\n     ) t))\nend as bc_duplicate_hint\nfrom {control_book}\nlimit 1",
                 "constants": {
                   "workflowMonth": {
                     "$type": "string",
@@ -290,14 +290,14 @@
                   }
                 },
                 "operator": "=",
-                "expectedValue": "0 组",
+                "expectedValue": "0 \u7ec4",
                 "tableBindings": [
                   {
                     "inputSlot": "control_book",
                     "tableName": "control_book"
                   }
                 ],
-                "failureMessage": "EQ Control Book 里同一笔 BC Subplan transfer 出现了多行（同 As of Date、同股数、同期末余额），本次已按一笔计入，「2025 BC Subplan shares transferred to Futu」的数值不受影响。\n常见原因是 base 与当月增量用了两种导出格式（例如一行是 BOOK ENTRY ISSUANCE、另一行是 O.I.），合并时无法识别为同一笔。\n建议在源数据中删除重复行；确认后继续即可。",
+                "failureMessage": "EQ Control Book \u91cc\u540c\u4e00\u7b14 BC Subplan transfer \u51fa\u73b0\u4e86\u591a\u884c\uff08\u540c As of Date\u3001\u540c\u80a1\u6570\u3001\u540c\u671f\u672b\u4f59\u989d\uff09\uff0c\u672c\u6b21\u5df2\u6309\u4e00\u7b14\u8ba1\u5165\uff0c\u300c2025 BC Subplan shares transferred to Futu\u300d\u7684\u6570\u503c\u4e0d\u53d7\u5f71\u54cd\u3002\n\u5e38\u89c1\u539f\u56e0\u662f base \u4e0e\u5f53\u6708\u589e\u91cf\u7528\u4e86\u4e24\u79cd\u5bfc\u51fa\u683c\u5f0f\uff08\u4f8b\u5982\u4e00\u884c\u662f BOOK ENTRY ISSUANCE\u3001\u53e6\u4e00\u884c\u662f O.I.\uff09\uff0c\u5408\u5e76\u65f6\u65e0\u6cd5\u8bc6\u522b\u4e3a\u540c\u4e00\u7b14\u3002\n\u5efa\u8bae\u5728\u6e90\u6570\u636e\u4e2d\u5220\u9664\u91cd\u590d\u884c\uff1b\u786e\u8ba4\u540e\u7ee7\u7eed\u5373\u53ef\u3002",
                 "failureStrategy": "warning"
               },
               "enabled": true
@@ -322,7 +322,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "从合并后的 EQ Control Book 汇总当月指标：EOM / Last Month 余额、2025 BC Subplan transfer、Cullgen common stock 与 Gyre 2023 China SubPlan 总数全部按 As of Date 截断到 workflow 月份（同一份完整 Control Book 可回算任意历史月份）。BC Subplan transfer 按 Comment 模糊匹配 Omnibus / Ominibus 的 Shares Issued 求和，并按「经济指纹」（日历日 As of Date + Process Date + Shares Issued + Issued & Outstanding）去重：同一笔转账在 base 与增量两种导出格式里各出现一次时要算一笔；真正的两笔同股数转账期末余额不同，仍各自计入。重复行会在运行页给出 warning。Cullgen common stock 取 Trans. Type = Agr. & Pl. of Merger 的 Shares Issued，合并发生前该月为 0（合并行 2026-05 才出现）；Gyre 2023 China SubPlan 总数同理取 Equity Inc.Sub-Pl. Futu Network Technology 行，该行出现前为 0。",
+      "description": "\u4ece\u5408\u5e76\u540e\u7684 EQ Control Book \u6c47\u603b\u5f53\u6708\u6307\u6807\uff1aEOM / Last Month \u4f59\u989d\u30012025 BC Subplan transfer\u3001Cullgen common stock \u4e0e Gyre 2023 China SubPlan \u603b\u6570\u5168\u90e8\u6309 As of Date \u622a\u65ad\u5230 workflow \u6708\u4efd\uff08\u540c\u4e00\u4efd\u5b8c\u6574 Control Book \u53ef\u56de\u7b97\u4efb\u610f\u5386\u53f2\u6708\u4efd\uff09\u3002BC Subplan transfer \u6309 Comment \u6a21\u7cca\u5339\u914d Omnibus / Ominibus \u7684 Shares Issued \u6c42\u548c\uff0c\u5e76\u6309\u300c\u7ecf\u6d4e\u6307\u7eb9\u300d\uff08\u65e5\u5386\u65e5 As of Date + Process Date + Shares Issued + Issued & Outstanding\uff09\u53bb\u91cd\uff1a\u540c\u4e00\u7b14\u8f6c\u8d26\u5728 base \u4e0e\u589e\u91cf\u4e24\u79cd\u5bfc\u51fa\u683c\u5f0f\u91cc\u5404\u51fa\u73b0\u4e00\u6b21\u65f6\u8981\u7b97\u4e00\u7b14\uff1b\u771f\u6b63\u7684\u4e24\u7b14\u540c\u80a1\u6570\u8f6c\u8d26\u671f\u672b\u4f59\u989d\u4e0d\u540c\uff0c\u4ecd\u5404\u81ea\u8ba1\u5165\u3002\u91cd\u590d\u884c\u4f1a\u5728\u8fd0\u884c\u9875\u7ed9\u51fa warning\u3002Cullgen common stock \u53d6 Trans. Type = Agr. & Pl. of Merger \u7684 Shares Issued\uff0c\u5408\u5e76\u53d1\u751f\u524d\u8be5\u6708\u4e3a 0\uff08\u5408\u5e76\u884c 2026-05 \u624d\u51fa\u73b0\uff09\uff1bGyre 2023 China SubPlan \u603b\u6570\u540c\u7406\u53d6 Equity Inc.Sub-Pl. Futu Network Technology \u884c\uff0c\u8be5\u884c\u51fa\u73b0\u524d\u4e3a 0\u3002",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -348,7 +348,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "从可选上月 Capitalization Summary 中读取上月 EOM EQ Balance OS；未传文件时 row_count=0。",
+      "description": "\u4ece\u53ef\u9009\u4e0a\u6708 Capitalization Summary \u4e2d\u8bfb\u53d6\u4e0a\u6708 EOM EQ Balance OS\uff1b\u672a\u4f20\u6587\u4ef6\u65f6 row_count=0\u3002",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -379,7 +379,7 @@
               "name": "Warn Futu Exercises Dated After The Run Month",
               "type": "dataframe.sql.assert",
               "params": {
-                "sql": "select case\n  when (select count(*) from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}) = 0 then '0 行'\n  else concat('已排除 ',\n    (select count(*) from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}), ' 行 / ',\n    (select sum([Exercised Qty]) from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}), ' 股（行权日期晚于 ', {constants.workflowMonth}, '，涉及月份：',\n    (select group_concat(distinct m separator ', ') from (select wf_month_key([Exercise Date]) as m from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}) t), '）')\nend as futu_future_rows_hint\nfrom {futu}\nlimit 1",
+                "sql": "select case\n  when (select count(*) from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}) = 0 then '0 \u884c'\n  else concat('\u5df2\u6392\u9664 ',\n    (select count(*) from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}), ' \u884c / ',\n    (select sum([Exercised Qty]) from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}), ' \u80a1\uff08\u884c\u6743\u65e5\u671f\u665a\u4e8e ', {constants.workflowMonth}, '\uff0c\u6d89\u53ca\u6708\u4efd\uff1a',\n    (select group_concat(distinct m separator ', ') from (select wf_month_key([Exercise Date]) as m from {futu} where wf_month_key([Exercise Date]) is not null and wf_month_key([Exercise Date]) > {constants.workflowMonth}) t), '\uff09')\nend as futu_future_rows_hint\nfrom {futu}\nlimit 1",
                 "constants": {
                   "workflowMonth": {
                     "$type": "string",
@@ -388,14 +388,14 @@
                   }
                 },
                 "operator": "=",
-                "expectedValue": "0 行",
+                "expectedValue": "0 \u884c",
                 "tableBindings": [
                   {
                     "inputSlot": "futu",
                     "tableName": "futu"
                   }
                 ],
-                "failureMessage": "Futu 行权表里有行权日期晚于运行月份的记录（见下文实际值），本次已按 Exercise Date 截断、不计入 BCI Shares Held by Futu 的扣减。\n这通常是绑定的底表本身就是「到当日」的合并结果，属正常现象，确认后继续即可。\n（BCI = China Subplan total − 截至运行月份的已行权数量；若这些晚于本月的行权本应计入，请检查运行月份是否选错。）",
+                "failureMessage": "Futu \u884c\u6743\u8868\u91cc\u6709\u884c\u6743\u65e5\u671f\u665a\u4e8e\u8fd0\u884c\u6708\u4efd\u7684\u8bb0\u5f55\uff08\u89c1\u4e0b\u6587\u5b9e\u9645\u503c\uff09\uff0c\u672c\u6b21\u5df2\u6309 Exercise Date \u622a\u65ad\u3001\u4e0d\u8ba1\u5165 BCI Shares Held by Futu \u7684\u6263\u51cf\u3002\n\u8fd9\u901a\u5e38\u662f\u7ed1\u5b9a\u7684\u5e95\u8868\u672c\u8eab\u5c31\u662f\u300c\u5230\u5f53\u65e5\u300d\u7684\u5408\u5e76\u7ed3\u679c\uff0c\u5c5e\u6b63\u5e38\u73b0\u8c61\uff0c\u786e\u8ba4\u540e\u7ee7\u7eed\u5373\u53ef\u3002\n\uff08BCI = China Subplan total \u2212 \u622a\u81f3\u8fd0\u884c\u6708\u4efd\u7684\u5df2\u884c\u6743\u6570\u91cf\uff1b\u82e5\u8fd9\u4e9b\u665a\u4e8e\u672c\u6708\u7684\u884c\u6743\u672c\u5e94\u8ba1\u5165\uff0c\u8bf7\u68c0\u67e5\u8fd0\u884c\u6708\u4efd\u662f\u5426\u9009\u9519\u3002\uff09",
                 "failureStrategy": "warning"
               },
               "enabled": true
@@ -409,7 +409,7 @@
         }
       },
       "params": {
-        "sql": "select\n  sum(case when wf_month_key(f.[Exercise Date]) is null or wf_month_key(f.[Exercise Date]) <= {constants.workflowMonth} then f.[Exercised Qty] else 0 end) as futu_exercised_qty,\n  max(c.gyre_2023_china_subplan_total) - sum(case when wf_month_key(f.[Exercise Date]) is null or wf_month_key(f.[Exercise Date]) <= {constants.workflowMonth} then f.[Exercised Qty] else 0 end) as bci_shares_held_by_futu,\n  sum(case when wf_month_key(f.[Exercise Date]) is not null and wf_month_key(f.[Exercise Date]) > {constants.workflowMonth} then f.[Exercised Qty] else 0 end) as futu_exercised_after_month_qty,\n  max(case when wf_month_key(f.[Exercise Date]) is not null and wf_month_key(f.[Exercise Date]) > {constants.workflowMonth} then wf_month_key(f.[Exercise Date]) else null end) as futu_latest_exercise_month\nfrom (\n  select * from {futu}\n  where trim(concat('', coalesce([Employee No.], ''))) <> ''\n    and trim(concat('', coalesce([Employee No.], ''))) <> '员工编号'\n) f, {control_metrics} c",
+        "sql": "select\n  sum(case when wf_month_key(f.[Exercise Date]) is null or wf_month_key(f.[Exercise Date]) <= {constants.workflowMonth} then f.[Exercised Qty] else 0 end) as futu_exercised_qty,\n  max(c.gyre_2023_china_subplan_total) - sum(case when wf_month_key(f.[Exercise Date]) is null or wf_month_key(f.[Exercise Date]) <= {constants.workflowMonth} then f.[Exercised Qty] else 0 end) as bci_shares_held_by_futu,\n  sum(case when wf_month_key(f.[Exercise Date]) is not null and wf_month_key(f.[Exercise Date]) > {constants.workflowMonth} then f.[Exercised Qty] else 0 end) as futu_exercised_after_month_qty,\n  max(case when wf_month_key(f.[Exercise Date]) is not null and wf_month_key(f.[Exercise Date]) > {constants.workflowMonth} then wf_month_key(f.[Exercise Date]) else null end) as futu_latest_exercise_month\nfrom (\n  select * from {futu}\n  where trim(concat('', coalesce([Employee No.], ''))) <> ''\n    and trim(concat('', coalesce([Employee No.], ''))) <> '\u5458\u5de5\u7f16\u53f7'\n) f, {control_metrics} c",
         "tableBindings": [
           {
             "inputSlot": "futu",
@@ -429,7 +429,7 @@
         }
       },
       "dependsOn": [],
-      "description": "计算 Futu 已行权总数以及 BCI Shares Held by Futu。行权数量按 Exercise Date 截断到运行月份（与 Control Book 的 As of Date 口径一致，因此同一份合并底表可回算任意历史月份）；日期为空的行按计入处理，晚于运行月份的行不计入并在运行页给出 warning。",
+      "description": "\u8ba1\u7b97 Futu \u5df2\u884c\u6743\u603b\u6570\u4ee5\u53ca BCI Shares Held by Futu\u3002\u884c\u6743\u6570\u91cf\u6309 Exercise Date \u622a\u65ad\u5230\u8fd0\u884c\u6708\u4efd\uff08\u4e0e Control Book \u7684 As of Date \u53e3\u5f84\u4e00\u81f4\uff0c\u56e0\u6b64\u540c\u4e00\u4efd\u5408\u5e76\u5e95\u8868\u53ef\u56de\u7b97\u4efb\u610f\u5386\u53f2\u6708\u4efd\uff09\uff1b\u65e5\u671f\u4e3a\u7a7a\u7684\u884c\u6309\u8ba1\u5165\u5904\u7406\uff0c\u665a\u4e8e\u8fd0\u884c\u6708\u4efd\u7684\u884c\u4e0d\u8ba1\u5165\u5e76\u5728\u8fd0\u884c\u9875\u7ed9\u51fa warning\u3002",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -467,7 +467,7 @@
               "type": "dataframe.schema.assert",
               "params": {
                 "mode": "contains",
-                "failureMessage": "Plan Summary Metrics 缺少 plan_name 或 outstanding 列",
+                "failureMessage": "Plan Summary Metrics \u7f3a\u5c11 plan_name \u6216 outstanding \u5217",
                 "expectedColumns": "plan_name, outstanding",
                 "failureStrategy": "block"
               },
@@ -490,7 +490,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "期权合计：Outstanding 取 Plan Summary Metrics 的 outstanding 之和（已按台账覆盖 Cancelled 并由 Granted + Exercised + Cancelled 重算），Available 取源表 Shares Remaining For Issuance。",
+      "description": "\u671f\u6743\u5408\u8ba1\uff1aOutstanding \u53d6 Plan Summary Metrics \u7684 outstanding \u4e4b\u548c\uff08\u5df2\u6309\u53f0\u8d26\u8986\u76d6 Cancelled \u5e76\u7531 Granted + Exercised + Cancelled \u91cd\u7b97\uff09\uff0cAvailable \u53d6\u6e90\u8868 Shares Remaining For Issuance\u3002",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -530,7 +530,7 @@
                     "tableName": "control_metrics"
                   }
                 ],
-                "failureMessage": "Cullgen common stock 与月度固定参数 cullgen_common_stock 不一致（对账失败，已阻断）。Control Book 按 As of Date 截断后该列见下文实际值；合并发生前（2026-05 之前）该值应为 0。请核对 Control Book 的 Agr. & Pl. of Merger 行，或到月度页面修正该固定参数。",
+                "failureMessage": "Cullgen common stock \u4e0e\u6708\u5ea6\u56fa\u5b9a\u53c2\u6570 cullgen_common_stock \u4e0d\u4e00\u81f4\uff08\u5bf9\u8d26\u5931\u8d25\uff0c\u5df2\u963b\u65ad\uff09\u3002Control Book \u6309 As of Date \u622a\u65ad\u540e\u8be5\u5217\u89c1\u4e0b\u6587\u5b9e\u9645\u503c\uff1b\u5408\u5e76\u53d1\u751f\u524d\uff082026-05 \u4e4b\u524d\uff09\u8be5\u503c\u5e94\u4e3a 0\u3002\u8bf7\u6838\u5bf9 Control Book \u7684 Agr. & Pl. of Merger \u884c\uff0c\u6216\u5230\u6708\u5ea6\u9875\u9762\u4fee\u6b63\u8be5\u56fa\u5b9a\u53c2\u6570\u3002",
                 "failureStrategy": "block"
               },
               "enabled": true
@@ -556,7 +556,7 @@
                     "tableName": "control_metrics"
                   }
                 ],
-                "failureMessage": "Gyre 2023 China SubPlan total 与月度固定参数 gyre_2023_china_subplan_total 不一致（对账失败，已阻断）。两类值的实际值见下文；Equity Inc.Sub-Pl. Futu Network Technology 行出现前（2024-07 之前）该值应为 0。请核对 Control Book 或到月度页面修正该固定参数。",
+                "failureMessage": "Gyre 2023 China SubPlan total \u4e0e\u6708\u5ea6\u56fa\u5b9a\u53c2\u6570 gyre_2023_china_subplan_total \u4e0d\u4e00\u81f4\uff08\u5bf9\u8d26\u5931\u8d25\uff0c\u5df2\u963b\u65ad\uff09\u3002\u4e24\u7c7b\u503c\u7684\u5b9e\u9645\u503c\u89c1\u4e0b\u6587\uff1bEquity Inc.Sub-Pl. Futu Network Technology \u884c\u51fa\u73b0\u524d\uff082024-07 \u4e4b\u524d\uff09\u8be5\u503c\u5e94\u4e3a 0\u3002\u8bf7\u6838\u5bf9 Control Book \u6216\u5230\u6708\u5ea6\u9875\u9762\u4fee\u6b63\u8be5\u56fa\u5b9a\u53c2\u6570\u3002",
                 "failureStrategy": "block"
               },
               "enabled": true
@@ -607,7 +607,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "汇总 Summary 计算所需业务输入；Series B Preferred Stock 来自 Read SERIES B 的 Shares Issued 合计乘以 5，其余固定值来自 global parameters，Gyre option totals 由 raw option plans workbook 与 cancellation 调整计算。",
+      "description": "\u6c47\u603b Summary \u8ba1\u7b97\u6240\u9700\u4e1a\u52a1\u8f93\u5165\uff1bSeries B Preferred Stock \u6765\u81ea Read SERIES B \u7684 Shares Issued \u5408\u8ba1\u4e58\u4ee5 5\uff0c\u5176\u4f59\u56fa\u5b9a\u503c\u6765\u81ea global parameters\uff0cGyre option totals \u7531 raw option plans workbook \u4e0e cancellation \u8c03\u6574\u8ba1\u7b97\u3002",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -641,11 +641,11 @@
           }
         ],
         "blockExecution": true,
-        "failureMessage": "EQ Control Book 输入文件错月：忽略运行月份之后的行后，最后一条 Issued & Outstanding 所属月份比运行月份早了一个月以上（允许「本月无交易、沿用上月余额」，即最后一个月是运行月份或它的上一个月）。请检查绑定的是不是当月的 Control Book。",
+        "failureMessage": "EQ Control Book \u8f93\u5165\u6587\u4ef6\u9519\u6708\uff1a\u5ffd\u7565\u8fd0\u884c\u6708\u4efd\u4e4b\u540e\u7684\u884c\u540e\uff0c\u6700\u540e\u4e00\u6761 Issued & Outstanding \u6240\u5c5e\u6708\u4efd\u6bd4\u8fd0\u884c\u6708\u4efd\u65e9\u4e86\u4e00\u4e2a\u6708\u4ee5\u4e0a\uff08\u5141\u8bb8\u300c\u672c\u6708\u65e0\u4ea4\u6613\u3001\u6cbf\u7528\u4e0a\u6708\u4f59\u989d\u300d\uff0c\u5373\u6700\u540e\u4e00\u4e2a\u6708\u662f\u8fd0\u884c\u6708\u4efd\u6216\u5b83\u7684\u4e0a\u4e00\u4e2a\u6708\uff09\u3002\u8bf7\u68c0\u67e5\u7ed1\u5b9a\u7684\u662f\u4e0d\u662f\u5f53\u6708\u7684 Control Book\u3002",
         "failureStrategy": "block"
       },
       "dependsOn": [],
-      "description": "阻断错月输入：忽略 workflow 月份之后的数据后，EQ Control Book 最后一条有效 Issued & Outstanding 的 As of Date 必须属于 workflow 月份或其上一个月。允许「本月没有 Control Book 更新」的情形——没有交易时账簿不会新增行，余额沿用上月，这是正常状态而不是输入错误；比上一个月更早才说明绑错了文件。",
+      "description": "\u963b\u65ad\u9519\u6708\u8f93\u5165\uff1a\u5ffd\u7565 workflow \u6708\u4efd\u4e4b\u540e\u7684\u6570\u636e\u540e\uff0cEQ Control Book \u6700\u540e\u4e00\u6761\u6709\u6548 Issued & Outstanding \u7684 As of Date \u5fc5\u987b\u5c5e\u4e8e workflow \u6708\u4efd\u6216\u5176\u4e0a\u4e00\u4e2a\u6708\u3002\u5141\u8bb8\u300c\u672c\u6708\u6ca1\u6709 Control Book \u66f4\u65b0\u300d\u7684\u60c5\u5f62\u2014\u2014\u6ca1\u6709\u4ea4\u6613\u65f6\u8d26\u7c3f\u4e0d\u4f1a\u65b0\u589e\u884c\uff0c\u4f59\u989d\u6cbf\u7528\u4e0a\u6708\uff0c\u8fd9\u662f\u6b63\u5e38\u72b6\u6001\u800c\u4e0d\u662f\u8f93\u5165\u9519\u8bef\uff1b\u6bd4\u4e0a\u4e00\u4e2a\u6708\u66f4\u65e9\u624d\u8bf4\u660e\u7ed1\u9519\u4e86\u6587\u4ef6\u3002",
       "operatorCode": "dataframe.sql.assert",
       "operatorVersion": "1.0.0"
     },
@@ -687,7 +687,7 @@
       "dependsOn": [
         "assert_control_book_workflow_month"
       ],
-      "description": "若传入上月 Capitalization Summary，则校验其 EOM 等于当前 EQ Control Book 计算出的 Last Month；未传文件时通过。",
+      "description": "\u82e5\u4f20\u5165\u4e0a\u6708 Capitalization Summary\uff0c\u5219\u6821\u9a8c\u5176 EOM \u7b49\u4e8e\u5f53\u524d EQ Control Book \u8ba1\u7b97\u51fa\u7684 Last Month\uff1b\u672a\u4f20\u6587\u4ef6\u65f6\u901a\u8fc7\u3002",
       "operatorCode": "dataframe.sql.assert",
       "operatorVersion": "1.0.0"
     },
@@ -743,7 +743,7 @@
         "assert_control_book_workflow_month",
         "assert_previous_summary_last_month"
       ],
-      "description": "从 EQ Control Book 单表生成 Shares OS Reconciliation：Last Month 取 workflow 月份之前最后一条 I&O，EOM 取 workflow 月份内最后一条 I&O。",
+      "description": "\u4ece EQ Control Book \u5355\u8868\u751f\u6210 Shares OS Reconciliation\uff1aLast Month \u53d6 workflow \u6708\u4efd\u4e4b\u524d\u6700\u540e\u4e00\u6761 I&O\uff0cEOM \u53d6 workflow \u6708\u4efd\u5185\u6700\u540e\u4e00\u6761 I&O\u3002",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -837,7 +837,7 @@
                     "tableName": "control_metrics"
                   }
                 ],
-                "failureMessage": "Control Book 的 2025 BC Subplan transfer 缺失（为空）：无法计算 Total Fully Diluted 中的扣减项。0 是允许的（转仓发生前的月份），只有空值才阻断。",
+                "failureMessage": "Control Book \u7684 2025 BC Subplan transfer \u7f3a\u5931\uff08\u4e3a\u7a7a\uff09\uff1a\u65e0\u6cd5\u8ba1\u7b97 Total Fully Diluted \u4e2d\u7684\u6263\u51cf\u9879\u30020 \u662f\u5141\u8bb8\u7684\uff08\u8f6c\u4ed3\u53d1\u751f\u524d\u7684\u6708\u4efd\uff09\uff0c\u53ea\u6709\u7a7a\u503c\u624d\u963b\u65ad\u3002",
                 "failureStrategy": "block"
               },
               "enabled": true
@@ -867,7 +867,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "按需求文档生成 Capitalization Table (Summary View) 数据行；包含可配置的 Series B Preferred Stock，并输出 section/header/detail/total 结构。",
+      "description": "\u6309\u9700\u6c42\u6587\u6863\u751f\u6210 Capitalization Table (Summary View) \u6570\u636e\u884c\uff1b\u5305\u542b\u53ef\u914d\u7f6e\u7684 Series B Preferred Stock\uff0c\u5e76\u8f93\u51fa section/header/detail/total \u7ed3\u6784\u3002",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -914,7 +914,7 @@
                     "tableName": "summary"
                   }
                 ],
-                "failureMessage": "Options Outstanding- Gyre 行为负或缺失：期权总数小于被扣减的 2025 BC Subplan transfer。0 是允许的，负数说明源数据有问题。",
+                "failureMessage": "Options Outstanding- Gyre \u884c\u4e3a\u8d1f\u6216\u7f3a\u5931\uff1a\u671f\u6743\u603b\u6570\u5c0f\u4e8e\u88ab\u6263\u51cf\u7684 2025 BC Subplan transfer\u30020 \u662f\u5141\u8bb8\u7684\uff0c\u8d1f\u6570\u8bf4\u660e\u6e90\u6570\u636e\u6709\u95ee\u9898\u3002",
                 "failureStrategy": "block"
               },
               "enabled": true
@@ -1014,7 +1014,7 @@
         }
       },
       "dependsOn": [],
-      "description": "将通过校验后的 Summary View 持久化为 Excel 并写入 Files；百分比列导出为 Excel 百分号格式但保留真实小数值。",
+      "description": "\u5c06\u901a\u8fc7\u6821\u9a8c\u540e\u7684 Summary View \u6301\u4e45\u5316\u4e3a Excel \u5e76\u5199\u5165 Files\uff1b\u767e\u5206\u6bd4\u5217\u5bfc\u51fa\u4e3a Excel \u767e\u5206\u53f7\u683c\u5f0f\u4f46\u4fdd\u7559\u771f\u5b9e\u5c0f\u6570\u503c\u3002",
       "operatorCode": "workbook.persist.excel",
       "operatorVersion": "1.0.0"
     },
@@ -1025,7 +1025,7 @@
       "name": "Invoke Read SERIES B",
       "inputs": {},
       "params": {
-        "outputTaskId": "sum_series_b_shares_issued",
+        "outputTaskId": "sum_series_b_outstanding",
         "workflowCode": "read-series-b",
         "inputMappings": [],
         "runtimeParameters": {
@@ -1037,13 +1037,21 @@
                 "sheet": "43105"
               },
               "$fromRuntime": "fileRefs.series_b"
+            },
+            "base_series_b": {
+              "$type": "object",
+              "$label": "Base SERIES B Control Book",
+              "$default": {
+                "sheet": "Series B Control Book"
+              },
+              "$fromRuntime": "fileRefs.base_series_b"
             }
           }
         },
         "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "调用 Read SERIES B 子工作流，读取 43105 Sheet 的 Shares Issued 合计值。",
+      "description": "\u8c03\u7528 Read SERIES B \u5b50\u5de5\u4f5c\u6d41\uff1a\u628a\u5f53\u6708\u660e\u7ec6\u5e76\u5165\u7d2f\u8ba1\u53f0\u8d26\uff08\u5e42\u7b49\uff09\u3001\u7528 43105 \u5bf9\u8d26\u3001\u8f93\u51fa\u51c0\u5728\u5916\u80a1\u6570\uff08Shares Issued \u2212 Shares Retired\uff09\u3002",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     },
@@ -1060,7 +1068,7 @@
         }
       },
       "params": {
-        "sql": "select coalesce(max([Shares Issued Total]), 0) * 5 as series_b_preferred_stock from {series_b}",
+        "sql": "select coalesce(max([Shares Outstanding]), 0) * 5 as series_b_preferred_stock from {series_b}",
         "tableBindings": [
           {
             "inputSlot": "series_b",
@@ -1069,7 +1077,7 @@
         ]
       },
       "dependsOn": [],
-      "description": "将 Read SERIES B 返回的 Shares Issued 合计乘以 5，得到 Summary 使用的 Series B Preferred Stock 数值；未提供 SERIES B Control Book 时该值为 0。",
+      "description": "\u628a Read SERIES B \u8fd4\u56de\u7684\u51c0\u5728\u5916\u80a1\u6570\uff08\u7d2f\u8ba1 Shares Issued \u2212 \u7d2f\u8ba1 Shares Retired\uff09\u4e58\u4ee5 5\uff0c\u5f97\u5230 Summary \u4f7f\u7528\u7684 Series B Preferred Stock \u6570\u503c\uff1b\u672a\u63d0\u4f9b SERIES B Control Book \u65f6\u8be5\u503c\u4e3a 0\u3002",
       "operatorCode": "sql.compute",
       "operatorVersion": "1.0.0"
     },
@@ -1078,7 +1086,7 @@
       "name": "Invoke Exercise Record Sync",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0",
-      "description": "调用 ESOP 行权记录同步，写出本月「行权记录」快照（月份透传，文件名带月份后缀）。两个来源都可选：都未提供时跳过，任一提供则执行。",
+      "description": "\u8c03\u7528 ESOP \u884c\u6743\u8bb0\u5f55\u540c\u6b65\uff0c\u5199\u51fa\u672c\u6708\u300c\u884c\u6743\u8bb0\u5f55\u300d\u5feb\u7167\uff08\u6708\u4efd\u900f\u4f20\uff0c\u6587\u4ef6\u540d\u5e26\u6708\u4efd\u540e\u7f00\uff09\u3002\u4e24\u4e2a\u6765\u6e90\u90fd\u53ef\u9009\uff1a\u90fd\u672a\u63d0\u4f9b\u65f6\u8df3\u8fc7\uff0c\u4efb\u4e00\u63d0\u4f9b\u5219\u6267\u884c\u3002",
       "dependsOn": [],
       "inputs": {},
       "x": 48,
@@ -1124,7 +1132,7 @@
       "name": "Invoke Sold Shares Sync",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0",
-      "description": "调用 ESOP 卖出记录同步，写出本月「卖出记录」快照。来源可选：未提供时跳过。",
+      "description": "\u8c03\u7528 ESOP \u5356\u51fa\u8bb0\u5f55\u540c\u6b65\uff0c\u5199\u51fa\u672c\u6708\u300c\u5356\u51fa\u8bb0\u5f55\u300d\u5feb\u7167\u3002\u6765\u6e90\u53ef\u9009\uff1a\u672a\u63d0\u4f9b\u65f6\u8df3\u8fc7\u3002",
       "dependsOn": [],
       "inputs": {},
       "x": 300,
@@ -1159,7 +1167,7 @@
       "name": "Invoke Grant Record Sync",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0",
-      "description": "调用 ESOP 授予记录同步，写出本月「授予记录」快照（月份透传，文件名带月份后缀）。两个来源都可选：都未提供时跳过，任一提供则执行。",
+      "description": "\u8c03\u7528 ESOP \u6388\u4e88\u8bb0\u5f55\u540c\u6b65\uff0c\u5199\u51fa\u672c\u6708\u300c\u6388\u4e88\u8bb0\u5f55\u300d\u5feb\u7167\uff08\u6708\u4efd\u900f\u4f20\uff0c\u6587\u4ef6\u540d\u5e26\u6708\u4efd\u540e\u7f00\uff09\u3002\u4e24\u4e2a\u6765\u6e90\u90fd\u53ef\u9009\uff1a\u90fd\u672a\u63d0\u4f9b\u65f6\u8df3\u8fc7\uff0c\u4efb\u4e00\u63d0\u4f9b\u5219\u6267\u884c\u3002",
       "dependsOn": [],
       "inputs": {},
       "x": 804,
@@ -1218,7 +1226,7 @@
           "fileRefs": {
             "futu_grants": {
               "$type": "object",
-              "$label": "Futu 授予记录",
+              "$label": "Futu \u6388\u4e88\u8bb0\u5f55",
               "$fromRuntime": "fileRefs.futu_grants"
             },
             "shareworks_grants": {
@@ -1231,7 +1239,7 @@
         "inheritRuntimeParameters": true
       },
       "dependsOn": [],
-      "description": "用本月已收集的两份授予导出刷新员工主数据（员工归集：按工号 UPSERT，幂等）。两份都没提供时跳过；只提供一份时按该来源归集。",
+      "description": "\u7528\u672c\u6708\u5df2\u6536\u96c6\u7684\u4e24\u4efd\u6388\u4e88\u5bfc\u51fa\u5237\u65b0\u5458\u5de5\u4e3b\u6570\u636e\uff08\u5458\u5de5\u5f52\u96c6\uff1a\u6309\u5de5\u53f7 UPSERT\uff0c\u5e42\u7b49\uff09\u3002\u4e24\u4efd\u90fd\u6ca1\u63d0\u4f9b\u65f6\u8df3\u8fc7\uff1b\u53ea\u63d0\u4f9b\u4e00\u4efd\u65f6\u6309\u8be5\u6765\u6e90\u5f52\u96c6\u3002",
       "operatorCode": "workflow.invoke",
       "operatorVersion": "1.0.0"
     }
@@ -1240,7 +1248,7 @@
     "month": {
       "type": "string",
       "label": "Month",
-      "description": "用于生成月度输出文件名前缀，例如 2026-05-Capitalization_Table_Summary_View.xlsx。"
+      "description": "\u7528\u4e8e\u751f\u6210\u6708\u5ea6\u8f93\u51fa\u6587\u4ef6\u540d\u524d\u7f00\uff0c\u4f8b\u5982 2026-05-Capitalization_Table_Summary_View.xlsx\u3002"
     },
     "fileRefs": {
       "type": "object",
@@ -1251,8 +1259,8 @@
           "label": "SERIES B Control Book",
           "order": 3,
           "hidden": false,
-          "allowSheetNameOverride": true,
-          "defaultSheetName": "43105",
+          "allowSheetNameOverride": false,
+          "defaultSheetName": "CB Details Sort By Process Date",
           "taskId": "invoke_read_series_b",
           "required": true,
           "properties": {
@@ -1261,7 +1269,7 @@
               "label": "SERIES B sheet"
             }
           },
-          "description": "必填：本月 Series B 的 Control Book 明细导出，提供 Shares Issued，×5 得到 Series B Preferred Stock。未提供时月度运行会被拦下（Missing source binding: series_b）。",
+          "description": "\u5fc5\u586b\uff1a\u672c\u6708 SERIES B Control Book \u5bfc\u51fa\uff08SeriesB_Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\uff09\u3002\u7cfb\u7edf\u8bfb\u80a1\u4e1c\u7ea7\u660e\u7ec6\u5e76\u5165\u7d2f\u8ba1\u53f0\u8d26\uff0c\u7528 43105 \u6c47\u603b sheet \u5bf9\u8d26\uff1bSeries B Preferred Stock =\uff08\u7d2f\u8ba1 Shares Issued \u2212 \u7d2f\u8ba1 Shares Retired\uff09\u00d7 5\u3002\u672a\u63d0\u4f9b\u65f6\u6708\u5ea6\u8fd0\u884c\u4f1a\u88ab\u62e6\u4e0b\uff08Missing source binding: series_b\uff09\u3002",
           "fileTemplate": "SeriesB_Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx"
         },
         "base_control_book": {
@@ -1280,7 +1288,7 @@
               "label": "Base sheet"
             }
           },
-          "description": "完整的 EQ Control Book，作为增量合并的基表；一般由上月结果自动带出，也可手动换成新的 Cap Table 文件。"
+          "description": "\u5b8c\u6574\u7684 EQ Control Book\uff0c\u4f5c\u4e3a\u589e\u91cf\u5408\u5e76\u7684\u57fa\u8868\uff1b\u4e00\u822c\u7531\u4e0a\u6708\u7ed3\u679c\u81ea\u52a8\u5e26\u51fa\uff0c\u4e5f\u53ef\u624b\u52a8\u6362\u6210\u65b0\u7684 Cap Table \u6587\u4ef6\u3002"
         },
         "base_futu_exercises": {
           "type": "object",
@@ -1298,7 +1306,7 @@
               "label": "Base sheet"
             }
           },
-          "description": "完整的 Futu BCI Exercises 基表，作为增量合并的基表；一般由上月结果自动带出，也可手动设置。"
+          "description": "\u5b8c\u6574\u7684 Futu BCI Exercises \u57fa\u8868\uff0c\u4f5c\u4e3a\u589e\u91cf\u5408\u5e76\u7684\u57fa\u8868\uff1b\u4e00\u822c\u7531\u4e0a\u6708\u7ed3\u679c\u81ea\u52a8\u5e26\u51fa\uff0c\u4e5f\u53ef\u624b\u52a8\u8bbe\u7f6e\u3002"
         },
         "option_plans_summary": {
           "type": "object",
@@ -1315,7 +1323,7 @@
               "label": "Sheet"
             }
           },
-          "description": "各计划的 outstanding 与 available 股数，用于计算 Options Outstanding / Available。",
+          "description": "\u5404\u8ba1\u5212\u7684 outstanding \u4e0e available \u80a1\u6570\uff0c\u7528\u4e8e\u8ba1\u7b97 Options Outstanding / Available\u3002",
           "fileTemplate": "DD-M-YYYY_HH-mm-ss_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx"
         },
         "incremental_control_book": {
@@ -1333,7 +1341,7 @@
               "label": "Increment sheet"
             }
           },
-          "description": "必填：本月 Control Book 明细导出，合并进基表；报告期必须是本月，否则运行会被拦下。本月即使没有新交易也要上传当期导出（合并结果等于基表），未提供时月度运行会被拦下（Missing source binding: incremental_control_book）。",
+          "description": "\u5fc5\u586b\uff1a\u672c\u6708 Control Book \u660e\u7ec6\u5bfc\u51fa\uff0c\u5408\u5e76\u8fdb\u57fa\u8868\uff1b\u62a5\u544a\u671f\u5fc5\u987b\u662f\u672c\u6708\uff0c\u5426\u5219\u8fd0\u884c\u4f1a\u88ab\u62e6\u4e0b\u3002\u672c\u6708\u5373\u4f7f\u6ca1\u6709\u65b0\u4ea4\u6613\u4e5f\u8981\u4e0a\u4f20\u5f53\u671f\u5bfc\u51fa\uff08\u5408\u5e76\u7ed3\u679c\u7b49\u4e8e\u57fa\u8868\uff09\uff0c\u672a\u63d0\u4f9b\u65f6\u6708\u5ea6\u8fd0\u884c\u4f1a\u88ab\u62e6\u4e0b\uff08Missing source binding: incremental_control_book\uff09\u3002",
           "fileTemplate": "Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx"
         },
         "base_cancel_restore_report": {
@@ -1342,7 +1350,7 @@
           "order": 9,
           "hidden": false,
           "allowSheetNameOverride": true,
-          "defaultSheetName": "取消与恢复明细",
+          "defaultSheetName": "\u53d6\u6d88\u4e0e\u6062\u590d\u660e\u7ec6",
           "taskId": "invoke_plan_summary_sync",
           "required": false,
           "optionalCategory": "inherit",
@@ -1352,7 +1360,7 @@
               "label": "Base sheet"
             }
           },
-          "description": "上月完整的取消与恢复基表，默认由上月合并结果自动延续。"
+          "description": "\u4e0a\u6708\u5b8c\u6574\u7684\u53d6\u6d88\u4e0e\u6062\u590d\u57fa\u8868\uff0c\u9ed8\u8ba4\u7531\u4e0a\u6708\u5408\u5e76\u7ed3\u679c\u81ea\u52a8\u5ef6\u7eed\u3002"
         },
         "incremental_futu_exercises": {
           "type": "object",
@@ -1360,7 +1368,7 @@
           "order": 6,
           "hidden": false,
           "allowSheetNameOverride": true,
-          "defaultSheetName": "行权汇总数据",
+          "defaultSheetName": "\u884c\u6743\u6c47\u603b\u6570\u636e",
           "taskId": "invoke_futu_exercises_merge",
           "required": false,
           "properties": {
@@ -1369,8 +1377,8 @@
               "label": "Increment sheet"
             }
           },
-          "description": "富途「员工行权记录」导出。取其中的『行权汇总数据』sheet（一人一天一行，末行为合计）作为行权增量：它与基表按 员工号+授予编号+行权日期 幂等合并，同时用于「行权记录」页的 Futu 视图。不要选『行权明细数据』——那是界面导出，列契约和分页窗口会随导出状态变化。",
-          "fileTemplate": "Gyre Therapeutics员工行权记录.xlsx"
+          "description": "\u5bcc\u9014\u300c\u5458\u5de5\u884c\u6743\u8bb0\u5f55\u300d\u5bfc\u51fa\u3002\u53d6\u5176\u4e2d\u7684\u300e\u884c\u6743\u6c47\u603b\u6570\u636e\u300fsheet\uff08\u4e00\u4eba\u4e00\u5929\u4e00\u884c\uff0c\u672b\u884c\u4e3a\u5408\u8ba1\uff09\u4f5c\u4e3a\u884c\u6743\u589e\u91cf\uff1a\u5b83\u4e0e\u57fa\u8868\u6309 \u5458\u5de5\u53f7+\u6388\u4e88\u7f16\u53f7+\u884c\u6743\u65e5\u671f \u5e42\u7b49\u5408\u5e76\uff0c\u540c\u65f6\u7528\u4e8e\u300c\u884c\u6743\u8bb0\u5f55\u300d\u9875\u7684 Futu \u89c6\u56fe\u3002\u4e0d\u8981\u9009\u300e\u884c\u6743\u660e\u7ec6\u6570\u636e\u300f\u2014\u2014\u90a3\u662f\u754c\u9762\u5bfc\u51fa\uff0c\u5217\u5951\u7ea6\u548c\u5206\u9875\u7a97\u53e3\u4f1a\u968f\u5bfc\u51fa\u72b6\u6001\u53d8\u5316\u3002",
+          "fileTemplate": "Gyre Therapeutics\u5458\u5de5\u884c\u6743\u8bb0\u5f55.xlsx"
         },
         "previous_capitalization_summary": {
           "type": "object",
@@ -1382,7 +1390,7 @@
           "taskId": "extract_previous_capitalization_summary",
           "required": false,
           "optionalCategory": "inherit",
-          "description": "上月 Capitalization Summary，由系统按上月产出自动引入，仅用于校验本月 Last Month；无需人工上传，故不在输入列表显示。"
+          "description": "\u4e0a\u6708 Capitalization Summary\uff0c\u7531\u7cfb\u7edf\u6309\u4e0a\u6708\u4ea7\u51fa\u81ea\u52a8\u5f15\u5165\uff0c\u4ec5\u7528\u4e8e\u6821\u9a8c\u672c\u6708 Last Month\uff1b\u65e0\u9700\u4eba\u5de5\u4e0a\u4f20\uff0c\u6545\u4e0d\u5728\u8f93\u5165\u5217\u8868\u663e\u793a\u3002"
         },
         "incremental_cancel_restore_report": {
           "type": "object",
@@ -1390,7 +1398,7 @@
           "order": 10,
           "hidden": false,
           "allowSheetNameOverride": true,
-          "defaultSheetName": "取消与恢复明细",
+          "defaultSheetName": "\u53d6\u6d88\u4e0e\u6062\u590d\u660e\u7ec6",
           "taskId": "invoke_plan_summary_sync",
           "required": false,
           "properties": {
@@ -1399,8 +1407,8 @@
               "label": "Increment sheet"
             }
           },
-          "description": "本月「取消与恢复报表」明细，用于 Plan Summary 增量合并，同时生成「取消记录」页的当月快照。",
-          "fileTemplate": "Gyre Therapeutics取消与恢复报表.xlsx"
+          "description": "\u672c\u6708\u300c\u53d6\u6d88\u4e0e\u6062\u590d\u62a5\u8868\u300d\u660e\u7ec6\uff0c\u7528\u4e8e Plan Summary \u589e\u91cf\u5408\u5e76\uff0c\u540c\u65f6\u751f\u6210\u300c\u53d6\u6d88\u8bb0\u5f55\u300d\u9875\u7684\u5f53\u6708\u5feb\u7167\u3002",
+          "fileTemplate": "Gyre Therapeutics\u53d6\u6d88\u4e0e\u6062\u590d\u62a5\u8868.xlsx"
         },
         "exercise_record_shareworks": {
           "type": "object",
@@ -1418,7 +1426,7 @@
               "label": "Sheet"
             }
           },
-          "description": "Shareworks「Executive Awards OS Only」导出，用于「行权记录」页的 Shareworks 视图；未提供时该视图当月为空。",
+          "description": "Shareworks\u300cExecutive Awards OS Only\u300d\u5bfc\u51fa\uff0c\u7528\u4e8e\u300c\u884c\u6743\u8bb0\u5f55\u300d\u9875\u7684 Shareworks \u89c6\u56fe\uff1b\u672a\u63d0\u4f9b\u65f6\u8be5\u89c6\u56fe\u5f53\u6708\u4e3a\u7a7a\u3002",
           "fileTemplate": "DD-M-YYYY_HH-mm-ss_MDT_!GYRE_Exec_Option_OS.xlsx"
         },
         "sold_shares_futu": {
@@ -1427,7 +1435,7 @@
           "order": 12,
           "hidden": false,
           "allowSheetNameOverride": true,
-          "defaultSheetName": "出售汇总数据",
+          "defaultSheetName": "\u51fa\u552e\u6c47\u603b\u6570\u636e",
           "taskId": "invoke_sold_shares_sync",
           "required": false,
           "optionalCategory": "supplement",
@@ -1437,13 +1445,13 @@
               "label": "Sheet"
             }
           },
-          "description": "富途「出售汇总」导出，用于「卖出记录」页的当月快照；未提供时该页当月为空。",
-          "fileTemplate": "Gyre Therapeutics-公司出售记录YYYY-MM-DD-YYYY-MM-DD.xlsx"
+          "description": "\u5bcc\u9014\u300c\u51fa\u552e\u6c47\u603b\u300d\u5bfc\u51fa\uff0c\u7528\u4e8e\u300c\u5356\u51fa\u8bb0\u5f55\u300d\u9875\u7684\u5f53\u6708\u5feb\u7167\uff1b\u672a\u63d0\u4f9b\u65f6\u8be5\u9875\u5f53\u6708\u4e3a\u7a7a\u3002",
+          "fileTemplate": "Gyre Therapeutics-\u516c\u53f8\u51fa\u552e\u8bb0\u5f55YYYY-MM-DD-YYYY-MM-DD.xlsx"
         },
         "shareworks_grants": {
           "type": "object",
           "label": "Shareworks Grant Record",
-          "description": "Shareworks「Options OS Detail by Plan」导出，用于「授予记录」页的 Shareworks 视图；未提供时该视图当月为空。",
+          "description": "Shareworks\u300cOptions OS Detail by Plan\u300d\u5bfc\u51fa\uff0c\u7528\u4e8e\u300c\u6388\u4e88\u8bb0\u5f55\u300d\u9875\u7684 Shareworks \u89c6\u56fe\uff1b\u672a\u63d0\u4f9b\u65f6\u8be5\u89c6\u56fe\u5f53\u6708\u4e3a\u7a7a\u3002",
           "defaultSheetName": "Personnel Summary (Options OS D",
           "allowSheetNameOverride": true,
           "required": false,
@@ -1461,85 +1469,103 @@
         "futu_grants": {
           "type": "object",
           "label": "Futu Grant Record",
-          "description": "富途「授予记录」导出，用于「授予记录」页的 Futu 视图；未提供时该视图当月为空。",
-          "defaultSheetName": "授予记录",
+          "description": "\u5bcc\u9014\u300c\u6388\u4e88\u8bb0\u5f55\u300d\u5bfc\u51fa\uff0c\u7528\u4e8e\u300c\u6388\u4e88\u8bb0\u5f55\u300d\u9875\u7684 Futu \u89c6\u56fe\uff1b\u672a\u63d0\u4f9b\u65f6\u8be5\u89c6\u56fe\u5f53\u6708\u4e3a\u7a7a\u3002",
+          "defaultSheetName": "\u6388\u4e88\u8bb0\u5f55",
           "allowSheetNameOverride": true,
           "required": false,
           "hidden": false,
           "optionalCategory": "supplement",
           "taskId": "invoke_grant_record_sync",
-          "fileTemplate": "Gyre Therapeutics授予数据导出报表YYYYMMDD.xlsx",
+          "fileTemplate": "Gyre Therapeutics\u6388\u4e88\u6570\u636e\u5bfc\u51fa\u62a5\u8868YYYYMMDD.xlsx",
           "order": 14,
           "$type": "object",
           "$label": "Futu Grant Record",
           "$default": {
-            "sheet": "授予记录"
+            "sheet": "\u6388\u4e88\u8bb0\u5f55"
           }
         },
         "sold_shares_base": {
           "type": "object",
-          "label": "Base · 卖出记录（上月快照）",
-          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "label": "Base \u00b7 \u5356\u51fa\u8bb0\u5f55\uff08\u4e0a\u6708\u5feb\u7167\uff09",
+          "description": "\u4e0a\u4e00\u6708\u7684\u7d2f\u8ba1\u5feb\u7167\uff0c\u7531\u6708\u5ea6\u8fd0\u884c\u81ea\u52a8\u5e26\u51fa\uff0c\u7528\u4e8e\u548c\u672c\u6708\u589e\u91cf\u505a\u5e42\u7b49\u5408\u5e76\uff1b\u65e0\u9700\u4eba\u5de5\u4e0a\u4f20\u3002",
           "required": false,
           "hidden": true,
           "optionalCategory": "inherit",
           "taskId": "invoke_sold_shares_sync",
           "order": 16,
           "$type": "object",
-          "$label": "Base · 卖出记录（上月快照）",
+          "$label": "Base \u00b7 \u5356\u51fa\u8bb0\u5f55\uff08\u4e0a\u6708\u5feb\u7167\uff09",
           "$default": {}
         },
         "grant_record_futu_base": {
           "type": "object",
-          "label": "Base · 授予记录 Futu（上月快照）",
-          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "label": "Base \u00b7 \u6388\u4e88\u8bb0\u5f55 Futu\uff08\u4e0a\u6708\u5feb\u7167\uff09",
+          "description": "\u4e0a\u4e00\u6708\u7684\u7d2f\u8ba1\u5feb\u7167\uff0c\u7531\u6708\u5ea6\u8fd0\u884c\u81ea\u52a8\u5e26\u51fa\uff0c\u7528\u4e8e\u548c\u672c\u6708\u589e\u91cf\u505a\u5e42\u7b49\u5408\u5e76\uff1b\u65e0\u9700\u4eba\u5de5\u4e0a\u4f20\u3002",
           "required": false,
           "hidden": true,
           "optionalCategory": "inherit",
           "taskId": "invoke_grant_record_sync",
           "order": 17,
           "$type": "object",
-          "$label": "Base · 授予记录 Futu（上月快照）",
+          "$label": "Base \u00b7 \u6388\u4e88\u8bb0\u5f55 Futu\uff08\u4e0a\u6708\u5feb\u7167\uff09",
           "$default": {}
         },
         "grant_record_shareworks_base": {
           "type": "object",
-          "label": "Base · 授予记录 Shareworks（上月快照）",
-          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "label": "Base \u00b7 \u6388\u4e88\u8bb0\u5f55 Shareworks\uff08\u4e0a\u6708\u5feb\u7167\uff09",
+          "description": "\u4e0a\u4e00\u6708\u7684\u7d2f\u8ba1\u5feb\u7167\uff0c\u7531\u6708\u5ea6\u8fd0\u884c\u81ea\u52a8\u5e26\u51fa\uff0c\u7528\u4e8e\u548c\u672c\u6708\u589e\u91cf\u505a\u5e42\u7b49\u5408\u5e76\uff1b\u65e0\u9700\u4eba\u5de5\u4e0a\u4f20\u3002",
           "required": false,
           "hidden": true,
           "optionalCategory": "inherit",
           "taskId": "invoke_grant_record_sync",
           "order": 18,
           "$type": "object",
-          "$label": "Base · 授予记录 Shareworks（上月快照）",
+          "$label": "Base \u00b7 \u6388\u4e88\u8bb0\u5f55 Shareworks\uff08\u4e0a\u6708\u5feb\u7167\uff09",
           "$default": {}
         },
         "exercise_record_futu_base": {
           "type": "object",
-          "label": "Base · 行权记录 Futu（上月快照）",
-          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "label": "Base \u00b7 \u884c\u6743\u8bb0\u5f55 Futu\uff08\u4e0a\u6708\u5feb\u7167\uff09",
+          "description": "\u4e0a\u4e00\u6708\u7684\u7d2f\u8ba1\u5feb\u7167\uff0c\u7531\u6708\u5ea6\u8fd0\u884c\u81ea\u52a8\u5e26\u51fa\uff0c\u7528\u4e8e\u548c\u672c\u6708\u589e\u91cf\u505a\u5e42\u7b49\u5408\u5e76\uff1b\u65e0\u9700\u4eba\u5de5\u4e0a\u4f20\u3002",
           "required": false,
           "hidden": true,
           "optionalCategory": "inherit",
           "taskId": "invoke_exercise_record_sync",
           "order": 19,
           "$type": "object",
-          "$label": "Base · 行权记录 Futu（上月快照）",
+          "$label": "Base \u00b7 \u884c\u6743\u8bb0\u5f55 Futu\uff08\u4e0a\u6708\u5feb\u7167\uff09",
           "$default": {}
         },
         "exercise_record_shareworks_base": {
           "type": "object",
-          "label": "Base · 行权记录 Shareworks（上月快照）",
-          "description": "上一月的累计快照，由月度运行自动带出，用于和本月增量做幂等合并；无需人工上传。",
+          "label": "Base \u00b7 \u884c\u6743\u8bb0\u5f55 Shareworks\uff08\u4e0a\u6708\u5feb\u7167\uff09",
+          "description": "\u4e0a\u4e00\u6708\u7684\u7d2f\u8ba1\u5feb\u7167\uff0c\u7531\u6708\u5ea6\u8fd0\u884c\u81ea\u52a8\u5e26\u51fa\uff0c\u7528\u4e8e\u548c\u672c\u6708\u589e\u91cf\u505a\u5e42\u7b49\u5408\u5e76\uff1b\u65e0\u9700\u4eba\u5de5\u4e0a\u4f20\u3002",
           "required": false,
           "hidden": true,
           "optionalCategory": "inherit",
           "taskId": "invoke_exercise_record_sync",
           "order": 20,
           "$type": "object",
-          "$label": "Base · 行权记录 Shareworks（上月快照）",
+          "$label": "Base \u00b7 \u884c\u6743\u8bb0\u5f55 Shareworks\uff08\u4e0a\u6708\u5feb\u7167\uff09",
           "$default": {}
+        },
+        "base_series_b": {
+          "type": "object",
+          "label": "SERIES B Control Book Summary",
+          "order": 3.5,
+          "hidden": false,
+          "allowSheetNameOverride": false,
+          "defaultSheetName": "Series B Control Book",
+          "taskId": "invoke_read_series_b",
+          "required": false,
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "label": "Base sheet"
+            }
+          },
+          "description": "\u4e0a\u6708\u7684 SERIES B \u7d2f\u79ef\u660e\u7ec6\u53f0\u8d26\uff08series_b/SeriesB_Control_Book_Base_yyyy_MM.xlsx\uff09\uff0c\u7531 Read SERIES B \u6bcf\u6708\u4ea7\u51fa\uff0c\u4e00\u822c\u81ea\u52a8\u5e26\u51fa\uff1b\u4e5f\u53ef\u4ee5\u624b\u52a8\u6362\u6210\u4e00\u4efd\u65b0\u7684\u7d2f\u79ef\u6587\u4ef6\u3002\u9996\u6b21\u8fd0\u884c\u6ca1\u6709 base \u65f6\uff0c\u76f4\u63a5\u7531\u5f53\u6708 SERIES B \u660e\u7ec6\u5bfc\u51fa\u5efa\u7acb\u3002",
+          "optionalCategory": "inherit"
         }
       }
     },
@@ -1572,14 +1598,14 @@
     "monthUnderscore": {
       "type": "string",
       "label": "Month (underscore)",
-      "description": "产出月下划线形式（yyyy_MM），用于带月份后缀的输出文件名。"
+      "description": "\u4ea7\u51fa\u6708\u4e0b\u5212\u7ebf\u5f62\u5f0f\uff08yyyy_MM\uff09\uff0c\u7528\u4e8e\u5e26\u6708\u4efd\u540e\u7f00\u7684\u8f93\u51fa\u6587\u4ef6\u540d\u3002"
     }
   },
   "runtimeParamsDefaults": {
     "month": "2026-05",
     "fileRefs": {
       "series_b": {
-        "sheet": "43105"
+        "sheet": "CB Details Sort By Process Date"
       },
       "base_control_book": {
         "sheet": "EQ Control Book"
@@ -1592,16 +1618,16 @@
         "sheet": "27591"
       },
       "base_cancel_restore_report": {
-        "sheet": "取消与恢复明细"
+        "sheet": "\u53d6\u6d88\u4e0e\u6062\u590d\u660e\u7ec6"
       },
       "incremental_futu_exercises": {
-        "sheet": "行权汇总数据"
+        "sheet": "\u884c\u6743\u6c47\u603b\u6570\u636e"
       },
       "previous_capitalization_summary": {
         "sheet": "Capitalization Summary"
       },
       "incremental_cancel_restore_report": {
-        "sheet": "取消与恢复明细"
+        "sheet": "\u53d6\u6d88\u4e0e\u6062\u590d\u660e\u7ec6"
       },
       "exercise_record_shareworks": {},
       "sold_shares_futu": {},
@@ -1609,13 +1635,16 @@
         "sheet": "Personnel Summary (Options OS D"
       },
       "futu_grants": {
-        "sheet": "授予记录"
+        "sheet": "\u6388\u4e88\u8bb0\u5f55"
       },
       "sold_shares_base": {},
       "grant_record_futu_base": {},
       "grant_record_shareworks_base": {},
       "exercise_record_futu_base": {},
-      "exercise_record_shareworks_base": {}
+      "exercise_record_shareworks_base": {},
+      "base_series_b": {
+        "sheet": "Series B Control Book"
+      }
     },
     "fixedValues": {
       "cullgenCommonStock": 14450527,

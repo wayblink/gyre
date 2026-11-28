@@ -771,6 +771,14 @@ create table if not exists monthly_run_instance_sources (
 );
 create index if not exists idx_monthly_run_instance_sources_instance on monthly_run_instance_sources(instance_id);
 
+-- SERIES B now reads the shareholder-level detail sheet instead of the 43105 rollup (which is only
+-- used for reconciliation). Bindings saved while the default was 43105 still say so; the run ignores
+-- that value, but the Monthly page would show a sheet the workflow no longer reads.
+update monthly_run_instance_sources
+   set sheet_name = 'CB Details Sort By Process Date'
+ where source_key = 'series_b'
+   and (sheet_name is null or sheet_name = '43105');
+
 -- 一次性迁移：把旧的每源物理列灌入子表（幂等：on conflict do nothing；仅迁有文件的源）。
 -- 旧表无 base/incremental 的 sheet 列，用其 defaultSheetName 保持运行时传 sheet 行为一致。
 insert into monthly_run_instance_sources (instance_id, source_key, file_id, sheet_name)

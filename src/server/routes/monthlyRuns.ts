@@ -269,6 +269,18 @@ async function resolveMonthlyRuntimeParameters(
     'EQ_Control_Book_Base',
     'EQ Control Book',
   );
+  // Series B is a shareholder-level ledger, so its base is the merged detail workbook from the last
+  // month that ran. The first month has no base: Read SERIES B then seeds the ledger from that month's
+  // export instead of failing.
+  await injectLatestEarlierBase(
+    db,
+    resolvedRuntimeParameters,
+    instance.monthKey,
+    'base_series_b',
+    'series_b',
+    'SeriesB_Control_Book_Base',
+    'Series B Control Book',
+  );
 
   return resolvedRuntimeParameters;
 }

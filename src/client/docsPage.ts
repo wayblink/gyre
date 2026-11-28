@@ -139,7 +139,7 @@ Gyre CapTable 是一套用来管理公司股权与员工持股（ESOP）数据�
 | --- | --- | --- | --- | --- |
 | 1 | Control Book Summary | 可选 · 继承 | 完整的 EQ Control Book，作为增量合并的基表；默认带入上月产出，也可换成新的 Cap Table 文件 | 继承上月，无模板 / \`EQ Control Book\` |
 | 2 | Control Book Detail | **必须** | 本月 Control Book 明细导出，幂等合并进基表；报告期必须是本月，本月没有新交易也要上传当期导出 | \`Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / \`27591\` |
-| 3 | SERIES B Control Book | **必须** | 本月 Series B 的 Control Book 明细，Shares Issued × 5 得到 Series B Preferred Stock | \`SeriesB_Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / \`43105\` |
+| 3 | SERIES B Control Book | **必须** | 本月 Series B 的股东级明细，按 As of Date + Account Number 并入上月累积台账，并用 43105 汇总 sheet 对账；(累计 Shares Issued − 累计 Shares Retired) × 5 得到 Series B Preferred Stock | \`SeriesB_Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / 明细 sheet |
 | 4 | Gyre Option Plans Summary | **必须** | 各计划的 outstanding 与 available 股数，用于 Options Outstanding / Available | \`DD-M-YYYY_HH-mm-ss_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx\` / \`!Option Plans Summary (Post-Gyr…\` |
 | 5 | Futu Exercises Summary | 可选 · 继承 | 完整的 Futu BCI Exercises 基表，作为行权增量合并的基表 | 继承上月，无模板 / \`Futu BCI Exercises\` |
 | 6 | Futu Exercise Record | 可选 | 富途「员工行权记录」导出，取 **行权汇总数据** sheet（一人一天一行、末行为合计），按 员工号+授予编号+行权日期 幂等合并；同时供「行权记录-FUTU」。不要选「行权明细数据」 | \`Gyre Therapeutics员工行权记录.xlsx\` / \`行权汇总数据\` |
@@ -634,7 +634,7 @@ In the order the run page shows them. "File name" is the export naming the sourc
 | --- | --- | --- | --- | --- |
 | 1 | Control Book Summary | Optional · inherit | The complete EQ Control Book used as the base for the incremental merge; last month's output by default | Inherited / \`EQ Control Book\` |
 | 2 | Control Book Detail | **Required** | This month's Control Book detail export, merged idempotently into the base; the reporting period must be this month, and a quiet month still has to upload it | \`Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / \`27591\` |
-| 3 | SERIES B Control Book | **Required** | This month's Series B Control Book detail; Shares Issued × 5 gives Series B Preferred Stock | \`SeriesB_Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / \`43105\` |
+| 3 | SERIES B Control Book | **Required** | This month's shareholder-level Series B detail, merged into last month's ledger by As of Date + Account Number and reconciled against the 43105 rollup; (cumulative Shares Issued − cumulative Shares Retired) × 5 gives Series B Preferred Stock | \`SeriesB_Control_Books_Detail_Data_DD.MM.YYYY_HH.mm.xlsx\` / detail sheet |
 | 4 | Gyre Option Plans Summary | **Required** | Per-plan outstanding and available shares, feeding Options Outstanding / Available | \`DD-M-YYYY_HH-mm-ss_MDT_Clone_Of_!Gyre_Option_Plans_Summary_SL.xlsx\` / \`!Option Plans Summary (Post-Gyr…\` |
 | 5 | Futu Exercises Summary | Optional · inherit | The complete Futu BCI Exercises base the exercise increment merges into | Inherited / \`Futu BCI Exercises\` |
 | 6 | Futu Exercise Record | Optional | Futu "employee exercise records"; the **行权汇总数据** sheet (one row per person per day, totals on the last row) is merged idempotently by employee + grant + exercise date and also feeds "Exercise Record-FUTU". Do not pick 行权明细数据 | \`Gyre Therapeutics员工行权记录.xlsx\` / \`行权汇总数据\` |

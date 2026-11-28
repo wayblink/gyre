@@ -21,6 +21,9 @@ test('monthly input sources render in the order the workflow definition declares
       'Control Book Summary',
       'Control Book Detail',
       'SERIES B Control Book',
+      // The accumulated Series B ledger the run carries over; shown so the operator can see which
+      // base this month will merge into (and swap it if the chain ever has to be re-seeded).
+      'SERIES B Control Book Summary',
       'Gyre Option Plans Summary',
       'Futu Exercises Summary',
       'Futu Exercise Record',
@@ -64,6 +67,7 @@ test('only sources the operator uploads carry a file-name template', () => {
   for (const sourceKey of [
     'base_control_book',
     'base_futu_exercises',
+    'base_series_b',
     'previous_capitalization_summary',
     'base_cancel_restore_report',
   ]) {
@@ -125,6 +129,7 @@ test('monthly input sources distinguish required business files from optional in
   for (const sourceKey of [
     'base_control_book',
     'base_futu_exercises',
+    'base_series_b',
     'base_cancel_restore_report',
     'previous_capitalization_summary',
   ]) {
@@ -133,8 +138,13 @@ test('monthly input sources distinguish required business files from optional in
 
   assert.equal(byKey.get('base_control_book')?.optionalCategory, 'inherit');
   assert.equal(byKey.get('base_futu_exercises')?.optionalCategory, 'inherit');
+  assert.equal(byKey.get('base_series_b')?.optionalCategory, 'inherit');
   assert.equal(byKey.get('previous_capitalization_summary')?.optionalCategory, 'inherit');
   assert.equal(byKey.get('base_cancel_restore_report')?.optionalCategory, 'inherit');
+
+  // The Series B ledger base is carried over by the system but surfaced, unlike the hidden
+  // Capitalization Summary: it is a workbook the operator may need to inspect or re-seed.
+  assert.equal(byKey.get('base_series_b')?.hidden, false, 'the Series B base is a visible inherit row');
   // A required source must not still be tagged as an optional supplement.
   assert.equal(byKey.get('series_b')?.optionalCategory, undefined);
 });
